@@ -1,0 +1,73 @@
+use anyhow::{Context, Result, bail};
+use std::env;
+use std::mem::size_of;
+use std::slice;
+use windows::Win32::Foundation::{ERROR_FILE_NOT_FOUND, ERROR_SUCCESS};
+use windows::Win32::System::Registry::{
+    HKEY, HKEY_CURRENT_USER, KEY_SET_VALUE, REG_OPEN_CREATE_OPTIONS, REG_SZ, RegCloseKey,
+    RegCreateKeyExW, RegDeleteValueW, RegSetValueExW,
+};
+use windows::core::PCWSTR;
+
+const RUN_KEY: &str = r"Software\Microsoft\Windows\CurrentVersion\Run";
+const VALUE_NAME: &str = "UnfocusMute";
+
+pub fn set_launch_on_startup(enabled: bool) -> Result<()> {
+    let key = open_run_key()?;
+    let value_name = to_wide(VALUE_NAME);
+    let result = if enabled {
+        let exe = env::current_exe().context("resolve current executable")?;
+        let command = format!("\"{}\" --minimized", exe.display());
+        let mut wide = to_wide(&command);
+        let bytes = unsafe {
+            slice::from_raw_parts(
+                wide.as_mut_ptr().cast::<u8>(),
+                wide.len() * size_of::<u16>(),
+            )
+        };
+        unsafe { RegSetValueExW(key, PCWSTR(value_name.as_ptr()), None, REG_SZ, Some(bytes)) }
+    } else {
+        unsafe { RegDeleteValueW(key, PCWSTR(value_name.as_ptr())) }
+    };
+
+    unsafe {
+        let _ = RegCloseKey(key);
+    }
+
+    if result == ERROR_SUCCESS || (!enabled && result == ERROR_FILE_NOT_FOUND) {
+        Ok(())
+    } else {
+        bail!("registry update failed with WIN32 error {}", result.0)
+    }
+}
+
+fn open_run_key() -> Result<HKEY> {
+    let mut key = HKEY::default();
+    let subkey = to_wide(RUN_KEY);
+    let result = unsafe {
+        RegCreateKeyExW(
+            HKEY_CURRENT_USER,
+            PCWSTR(subkey.as_ptr()),
+            None,
+            PCWSTR::null(),
+            REG_OPEN_CREATE_OPTIONS(0),
+            KEY_SET_VALUE,
+            None,
+            &mut key,
+            None,
+        )
+    };
+
+    if result == ERROR_SUCCESS {
+        Ok(key)
+    } else {
+        bail!(
+            "open startup registry key failed with WIN32 error {}",
+            result.0
+        )
+    }
+}
+
+fn to_wide(text: &str) -> Vec<u16> {
+    text.encode_utf16().chain(std::iter::once(0)).collect()
+}
