@@ -32,6 +32,7 @@ impl TargetProcess {
 pub struct AppConfig {
     pub version: u32,
     pub language: Language,
+    pub onboarding_completed: bool,
     pub polling_interval_ms: u64,
     pub launch_on_startup: bool,
     pub start_minimized: bool,
@@ -44,6 +45,7 @@ impl Default for AppConfig {
         Self {
             version: CONFIG_VERSION,
             language: Language::default(),
+            onboarding_completed: false,
             polling_interval_ms: DEFAULT_POLLING_INTERVAL_MS,
             launch_on_startup: false,
             start_minimized: false,
@@ -63,6 +65,9 @@ impl AppConfig {
         let raw = fs::read_to_string(path)?;
         let mut config = serde_json::from_str::<Self>(&raw).unwrap_or_default();
         config.deduplicate_targets();
+        if !config.targets.is_empty() {
+            config.onboarding_completed = true;
+        }
         Ok(config)
     }
 

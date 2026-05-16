@@ -28,7 +28,6 @@ try {
     Copy-Item "target\$Target\release\unfocusmute.exe" (Join-Path $Stage "UnfocusMute.exe")
     Copy-Item "README.md" $Stage
     Copy-Item "LICENSE" $Stage
-    Copy-Item "icon.png" $Stage
 
     if (Test-Path $Zip) {
         Remove-Item $Zip -Force

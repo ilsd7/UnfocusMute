@@ -1,7 +1,3 @@
-<p align="center">
-  <img src="./icon.png" width="104" alt="UnfocusMute icon">
-</p>
-
 # UnfocusMute
 
 UnfocusMute는 Windows 11에서 등록한 게임이나 앱이 백그라운드로 전환되면 자동으로 음소거하고, 다시 전면에 표시되면 뮤트를 해제하는 로컬 우선 Rust 데스크톱 툴입니다.
@@ -12,7 +8,7 @@ UnfocusMute는 Windows 11에서 등록한 게임이나 앱이 백그라운드로
 
 - 등록한 프로세스가 전면에 없을 때 해당 오디오 세션만 자동 뮤트
 - 전면으로 돌아온 세션은 UnfocusMute가 직접 음소거했던 경우에만 자동 해제
-- 실행 중 프로세스 목록에서 선택 추가, 현재 전면 앱 추가, 직접 입력 추가 지원
+- 첫 실행 온보딩과 실행 중 프로세스 선택/직접 입력 기반 앱 등록
 - 등록 프로세스 제거, 일시 중지, 트레이 숨김, 종료 시 앱이 적용한 음소거 복구
 - 한국어, 영어, 일본어, 중국어 간체 UI 지원
 - 설정 자동 저장: `%APPDATA%\UnfocusMute\config.json`
@@ -24,15 +20,17 @@ UnfocusMute는 Windows 11에서 등록한 게임이나 앱이 백그라운드로
 - `src/engine.rs`: 전면 PID와 오디오 세션 상태를 기반으로 음소거 작업 계획
 - `src/i18n.rs`: UI 다국어 문자열
 - `src/windows_app/`: Win32 UI, 트레이, 프로세스 감지, CoreAudio 세션 제어, 시작 프로그램 등록
-- `build.rs`: 루트의 `icon.png`를 Windows 실행 파일 아이콘 리소스로 사용
+- `build.rs`: 루트의 `icon.png`와 Windows 시각 스타일 매니페스트를 실행 파일 리소스로 포함
 
 ## 사용 방법
 
 1. UnfocusMute를 실행합니다.
-2. `실행 중인 프로세스`에서 게임 또는 앱을 선택한 뒤 `선택 추가`를 누릅니다.
-3. 이미 전면에 띄운 앱은 `전면 앱 추가`로 바로 등록할 수 있습니다.
-4. 목록에서 등록 항목을 선택하고 `선택 제거`로 제거합니다.
-5. 창을 닫으면 앱은 트레이에 남아 계속 감시합니다. 완전히 종료하려면 `종료`를 누릅니다.
+2. 첫 실행 안내를 확인합니다.
+3. 음소거할 게임 또는 앱을 먼저 실행합니다.
+4. `실행 중인 앱` 목록을 새로 고친 뒤 항목을 선택하고 `선택 추가`를 누릅니다.
+5. 목록에 없으면 실행 파일 이름을 `game.exe` 형식으로 직접 입력하고 `직접 추가`를 누릅니다.
+6. 목록에서 등록 항목을 선택하고 `선택 제거`로 제거합니다.
+7. 창을 닫으면 앱은 트레이에 남아 계속 감시합니다. 완전히 종료하려면 `종료`를 누릅니다.
 
 ## 빌드
 
@@ -61,7 +59,15 @@ target\x86_64-pc-windows-msvc\release\unfocusmute.exe
 powershell -ExecutionPolicy Bypass -File scripts\package-windows.ps1
 ```
 
-결과물은 `dist\UnfocusMute-<version>-windows-x64.zip`에 생성됩니다. ZIP에는 실행 파일, `README.md`, `LICENSE`, `icon.png`가 포함됩니다.
+결과물은 `dist\UnfocusMute-<version>-windows-x64.zip`에 생성됩니다. ZIP에는 실행 파일, `README.md`, `LICENSE`가 포함됩니다.
+
+`icon.png`는 빌드 시 실행 파일 아이콘 리소스로 포함되므로 배포 ZIP에는 원본 PNG를 넣지 않습니다.
+
+### windows-msvc와 windows-gnu 차이
+
+- `x86_64-pc-windows-msvc`: Microsoft Visual C++ ABI와 Windows SDK/Visual Studio Build Tools를 사용합니다. Windows 데스크톱 앱 배포에서 가장 일반적이며, 이 프로젝트의 권장 릴리스 타깃입니다.
+- `x86_64-pc-windows-gnu`: MinGW-w64 GNU 툴체인을 사용합니다. WSL이나 리눅스 CI에서 Windows용 타입 체크와 일부 크로스 빌드 검증에 유용하지만, 리소스 컴파일러와 `dlltool` 같은 MinGW 도구가 별도로 필요합니다.
+- 실제 배포 파일은 `windows-msvc`로 만드는 것을 권장합니다. `windows-gnu`는 개발 환경에서 빠른 호환성 확인용으로 두는 성격입니다.
 
 ### WSL Ubuntu에서 검증
 

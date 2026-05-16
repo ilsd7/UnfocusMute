@@ -18,13 +18,13 @@ use windows::Win32::UI::Shell::{
     Shell_NotifyIconW,
 };
 use windows::Win32::UI::WindowsAndMessaging::{
-    AppendMenuW, BM_GETCHECK, BM_SETCHECK, BS_AUTOCHECKBOX, BS_PUSHBUTTON, CB_ADDSTRING,
-    CB_GETCURSEL, CB_RESETCONTENT, CB_SETCURSEL, CBN_SELCHANGE, CBS_DROPDOWNLIST, CREATESTRUCTW,
-    CreatePopupMenu, CreateWindowExW, DefWindowProcW, DestroyMenu, DestroyWindow, DispatchMessageW,
-    ES_AUTOHSCROLL, GWLP_USERDATA, GetCursorPos, GetMessageW, HMENU, ICON_BIG, ICON_SMALL,
-    IDC_ARROW, IDI_APPLICATION, LB_ADDSTRING, LB_GETCURSEL, LB_RESETCONTENT, LBN_SELCHANGE,
-    LBS_NOTIFY, LoadCursorW, LoadIconW, MF_SEPARATOR, MF_STRING, MSG, PostQuitMessage,
-    RegisterClassW, SW_HIDE, SW_SHOW, SendMessageW, SetForegroundWindow, SetTimer,
+    AppendMenuW, BM_GETCHECK, BM_SETCHECK, BS_AUTOCHECKBOX, BS_GROUPBOX, BS_PUSHBUTTON,
+    CB_ADDSTRING, CB_GETCURSEL, CB_RESETCONTENT, CB_SETCURSEL, CBN_SELCHANGE, CBS_DROPDOWNLIST,
+    CREATESTRUCTW, CreatePopupMenu, CreateWindowExW, DefWindowProcW, DestroyMenu, DestroyWindow,
+    DispatchMessageW, ES_AUTOHSCROLL, GWLP_USERDATA, GetCursorPos, GetMessageW, HMENU, ICON_BIG,
+    ICON_SMALL, IDC_ARROW, IDI_APPLICATION, LB_ADDSTRING, LB_GETCURSEL, LB_RESETCONTENT,
+    LBN_SELCHANGE, LBS_NOTIFY, LoadCursorW, LoadIconW, MF_SEPARATOR, MF_STRING, MSG,
+    PostQuitMessage, RegisterClassW, SW_HIDE, SW_SHOW, SendMessageW, SetForegroundWindow, SetTimer,
     SetWindowLongPtrW, SetWindowTextW, ShowWindow, TPM_RIGHTBUTTON, TrackPopupMenu,
     TranslateMessage, WINDOW_EX_STYLE, WINDOW_STYLE, WM_APP, WM_CLOSE, WM_COMMAND, WM_CREATE,
     WM_DESTROY, WM_LBUTTONDBLCLK, WM_NCCREATE, WM_NCDESTROY, WM_RBUTTONUP, WM_SETFONT, WM_SETICON,
@@ -41,7 +41,6 @@ const WM_TRAY_ICON: u32 = WM_APP + 1;
 const ID_TARGETS: i32 = 1001;
 const ID_RUNNING: i32 = 1002;
 const ID_MANUAL: i32 = 1003;
-const ID_ADD_FOCUSED: i32 = 1004;
 const ID_ADD_SELECTED: i32 = 1005;
 const ID_ADD_MANUAL: i32 = 1006;
 const ID_REMOVE: i32 = 1007;
@@ -54,6 +53,7 @@ const ID_LANGUAGE: i32 = 1013;
 const ID_HIDE: i32 = 1014;
 const ID_QUIT: i32 = 1015;
 const ID_SHOW: i32 = 1016;
+const ID_ONBOARDING_DONE: i32 = 1017;
 
 pub fn run() -> Result<()> {
     unsafe {
@@ -105,8 +105,8 @@ unsafe fn run_window() -> Result<()> {
             WS_OVERLAPPEDWINDOW,
             100,
             100,
-            780,
-            540,
+            860,
+            660,
             None,
             None,
             Some(instance),
@@ -214,6 +214,8 @@ impl AppWindow {
         let child = WS_CHILD | WS_VISIBLE;
         let tab_child = child | WS_TABSTOP;
 
+        self.controls.header_group =
+            unsafe { create_group_box(self.hwnd, instance, "", 20, 16, 800, 112, 0)? };
         self.controls.status = unsafe {
             create_control(
                 self.hwnd,
@@ -222,14 +224,14 @@ impl AppWindow {
                 "",
                 child,
                 WINDOW_EX_STYLE(0),
-                20,
-                16,
-                260,
+                38,
+                40,
+                600,
                 24,
                 0,
             )?
         };
-        self.controls.foreground_label = unsafe {
+        self.controls.status_detail = unsafe {
             create_control(
                 self.hwnd,
                 instance,
@@ -237,29 +239,29 @@ impl AppWindow {
                 "",
                 child,
                 WINDOW_EX_STYLE(0),
-                20,
-                52,
-                190,
-                22,
+                38,
+                66,
+                610,
+                54,
                 0,
             )?
         };
-        self.controls.foreground_value = unsafe {
-            create_control(
+        self.controls.onboarding_button = unsafe {
+            create_button(
                 self.hwnd,
                 instance,
-                w!("STATIC"),
-                "-",
-                child,
-                WINDOW_EX_STYLE(0),
-                220,
-                52,
-                520,
-                22,
-                0,
+                "",
+                660,
+                72,
+                140,
+                34,
+                ID_ONBOARDING_DONE,
             )?
         };
-        self.controls.targets_label = unsafe {
+
+        self.controls.targets_group =
+            unsafe { create_group_box(self.hwnd, instance, "", 20, 146, 380, 352, 0)? };
+        self.controls.target_summary = unsafe {
             create_control(
                 self.hwnd,
                 instance,
@@ -267,9 +269,9 @@ impl AppWindow {
                 "",
                 child,
                 WINDOW_EX_STYLE(0),
-                20,
-                92,
-                260,
+                38,
+                174,
+                344,
                 22,
                 0,
             )?
@@ -282,15 +284,18 @@ impl AppWindow {
                 "",
                 child | WS_BORDER | WINDOW_STYLE(LBS_NOTIFY as u32),
                 WS_EX_CLIENTEDGE,
-                20,
-                118,
-                340,
-                250,
+                38,
+                204,
+                344,
+                226,
                 ID_TARGETS,
             )?
         };
         self.controls.remove_button =
-            unsafe { create_button(self.hwnd, instance, "", 20, 382, 160, 34, ID_REMOVE)? };
+            unsafe { create_button(self.hwnd, instance, "", 38, 444, 160, 34, ID_REMOVE)? };
+
+        self.controls.add_group =
+            unsafe { create_group_box(self.hwnd, instance, "", 420, 146, 400, 236, 0)? };
         self.controls.running_label = unsafe {
             create_control(
                 self.hwnd,
@@ -299,9 +304,24 @@ impl AppWindow {
                 "",
                 child,
                 WINDOW_EX_STYLE(0),
-                395,
-                92,
+                438,
+                174,
                 240,
+                22,
+                0,
+            )?
+        };
+        self.controls.running_hint = unsafe {
+            create_control(
+                self.hwnd,
+                instance,
+                w!("STATIC"),
+                "",
+                child,
+                WINDOW_EX_STYLE(0),
+                438,
+                198,
+                360,
                 22,
                 0,
             )?
@@ -314,19 +334,32 @@ impl AppWindow {
                 "",
                 tab_child | WINDOW_STYLE(CBS_DROPDOWNLIST as u32),
                 WS_EX_CLIENTEDGE,
-                395,
-                118,
-                250,
-                260,
+                438,
+                226,
+                252,
+                220,
                 ID_RUNNING,
             )?
         };
         self.controls.refresh_button =
-            unsafe { create_button(self.hwnd, instance, "", 655, 118, 90, 34, ID_REFRESH)? };
+            unsafe { create_button(self.hwnd, instance, "", 704, 224, 96, 34, ID_REFRESH)? };
         self.controls.add_selected_button =
-            unsafe { create_button(self.hwnd, instance, "", 395, 164, 160, 34, ID_ADD_SELECTED)? };
-        self.controls.add_focused_button =
-            unsafe { create_button(self.hwnd, instance, "", 565, 164, 180, 34, ID_ADD_FOCUSED)? };
+            unsafe { create_button(self.hwnd, instance, "", 438, 270, 160, 34, ID_ADD_SELECTED)? };
+        self.controls.manual_label = unsafe {
+            create_control(
+                self.hwnd,
+                instance,
+                w!("STATIC"),
+                "",
+                child,
+                WINDOW_EX_STYLE(0),
+                438,
+                322,
+                90,
+                22,
+                0,
+            )?
+        };
         self.controls.manual_edit = unsafe {
             create_control(
                 self.hwnd,
@@ -335,22 +368,25 @@ impl AppWindow {
                 "",
                 tab_child | WS_BORDER | WINDOW_STYLE(ES_AUTOHSCROLL as u32),
                 WS_EX_CLIENTEDGE,
-                395,
-                218,
-                250,
-                28,
+                528,
+                316,
+                162,
+                30,
                 ID_MANUAL,
             )?
         };
         self.controls.add_manual_button =
-            unsafe { create_button(self.hwnd, instance, "", 655, 214, 90, 34, ID_ADD_MANUAL)? };
+            unsafe { create_button(self.hwnd, instance, "", 704, 314, 96, 34, ID_ADD_MANUAL)? };
+
+        self.controls.settings_group =
+            unsafe { create_group_box(self.hwnd, instance, "", 420, 402, 400, 136, 0)? };
         self.controls.start_minimized_check = unsafe {
             create_checkbox(
                 self.hwnd,
                 instance,
                 "",
-                395,
-                274,
+                438,
+                430,
                 300,
                 26,
                 ID_START_MINIMIZED,
@@ -361,15 +397,15 @@ impl AppWindow {
                 self.hwnd,
                 instance,
                 "",
-                395,
-                306,
+                438,
+                460,
                 300,
                 26,
                 ID_LAUNCH_STARTUP,
             )?
         };
         self.controls.restore_exit_check = unsafe {
-            create_checkbox(self.hwnd, instance, "", 395, 338, 300, 26, ID_RESTORE_EXIT)?
+            create_checkbox(self.hwnd, instance, "", 438, 490, 300, 26, ID_RESTORE_EXIT)?
         };
         self.controls.language_label = unsafe {
             create_control(
@@ -379,8 +415,8 @@ impl AppWindow {
                 "",
                 child,
                 WINDOW_EX_STYLE(0),
-                20,
-                434,
+                438,
+                518,
                 80,
                 22,
                 0,
@@ -394,19 +430,19 @@ impl AppWindow {
                 "",
                 tab_child | WINDOW_STYLE(CBS_DROPDOWNLIST as u32),
                 WS_EX_CLIENTEDGE,
-                100,
-                430,
+                528,
+                514,
                 170,
                 180,
                 ID_LANGUAGE,
             )?
         };
         self.controls.pause_button =
-            unsafe { create_button(self.hwnd, instance, "", 395, 424, 110, 36, ID_PAUSE)? };
+            unsafe { create_button(self.hwnd, instance, "", 420, 560, 124, 36, ID_PAUSE)? };
         self.controls.hide_button =
-            unsafe { create_button(self.hwnd, instance, "", 515, 424, 110, 36, ID_HIDE)? };
+            unsafe { create_button(self.hwnd, instance, "", 558, 560, 124, 36, ID_HIDE)? };
         self.controls.quit_button =
-            unsafe { create_button(self.hwnd, instance, "", 635, 424, 110, 36, ID_QUIT)? };
+            unsafe { create_button(self.hwnd, instance, "", 696, 560, 124, 36, ID_QUIT)? };
 
         self.apply_default_font();
         Ok(())
@@ -416,16 +452,19 @@ impl AppWindow {
         self.strings = self.config.language.strings();
         unsafe {
             set_text(self.hwnd, self.strings.app_title);
+            set_text(self.controls.header_group, self.strings.app_title);
             set_text(
-                self.controls.foreground_label,
-                self.strings.current_foreground,
-            );
-            set_text(
-                self.controls.targets_label,
+                self.controls.targets_group,
                 self.strings.registered_processes,
             );
+            set_text(self.controls.add_group, self.strings.add_process_section);
+            set_text(self.controls.settings_group, self.strings.settings_title);
             set_text(self.controls.running_label, self.strings.running_processes);
-            set_text(self.controls.add_focused_button, self.strings.add_focused);
+            set_text(
+                self.controls.running_hint,
+                self.strings.running_process_hint,
+            );
+            set_text(self.controls.manual_label, self.strings.manual_process);
             set_text(self.controls.add_selected_button, self.strings.add_selected);
             set_text(self.controls.add_manual_button, self.strings.add_manual);
             set_text(self.controls.remove_button, self.strings.remove_selected);
@@ -453,6 +492,14 @@ impl AppWindow {
             );
             set_text(self.controls.hide_button, self.strings.hide);
             set_text(self.controls.quit_button, self.strings.quit);
+            set_text(
+                self.controls.onboarding_button,
+                self.strings.onboarding_done,
+            );
+            show_control(
+                self.controls.onboarding_button,
+                !self.config.onboarding_completed,
+            );
 
             let placeholder = to_wide(self.strings.manual_placeholder);
             SendMessageW(
@@ -463,6 +510,7 @@ impl AppWindow {
             );
         }
         self.update_status();
+        self.update_target_summary();
         self.add_tray_icon();
     }
 
@@ -509,6 +557,8 @@ impl AppWindow {
                 add_list_item(self.controls.target_list, &target.name);
             }
         }
+        self.update_target_summary();
+        self.update_status();
     }
 
     fn refresh_processes(&mut self) {
@@ -532,9 +582,9 @@ impl AppWindow {
 
     fn tick(&mut self) {
         self.foreground = process::foreground_process();
-        self.update_foreground_label();
 
         if self.paused {
+            self.update_status();
             return;
         }
 
@@ -542,10 +592,12 @@ impl AppWindow {
             self.audio = AudioController::new().ok();
         }
         let Some(audio) = &self.audio else {
+            self.update_status();
             return;
         };
 
         let Ok(sessions) = audio.sessions() else {
+            self.update_status();
             return;
         };
         let foreground_pid = self.foreground.as_ref().map(|process| process.pid);
@@ -565,39 +617,61 @@ impl AppWindow {
                 }
             }
         }
-    }
 
-    fn update_foreground_label(&self) {
-        let label = self
-            .foreground
-            .as_ref()
-            .map(|process| format!("{} ({})", process.name, process.pid))
-            .unwrap_or_else(|| "-".to_owned());
-        unsafe {
-            set_text(self.controls.foreground_value, &label);
-        }
+        self.update_status();
     }
 
     fn update_status(&self) {
+        let detail = if self.config.onboarding_completed {
+            format!(
+                "{} {} · {} {} · {} {} ms",
+                self.strings.target_count,
+                self.config.targets.len(),
+                self.strings.muted_count,
+                self.muted_by_app.len(),
+                self.strings.polling_interval,
+                self.config.polling_interval_ms
+            )
+        } else {
+            self.strings.onboarding_body.to_owned()
+        };
         unsafe {
             set_text(
                 self.controls.status,
-                if self.paused {
+                if !self.config.onboarding_completed {
+                    self.strings.onboarding_title
+                } else if self.paused {
                     self.strings.status_paused
                 } else {
                     self.strings.status_running
                 },
             );
+            set_text(self.controls.status_detail, &detail);
+        }
+    }
+
+    fn update_target_summary(&self) {
+        let summary = if self.config.targets.is_empty() {
+            self.strings.no_targets.to_owned()
+        } else {
+            format!(
+                "{} {}",
+                self.strings.target_count,
+                self.config.targets.len()
+            )
+        };
+        unsafe {
+            set_text(self.controls.target_summary, &summary);
         }
     }
 
     fn command(&mut self, id: i32, notification: u16) {
         match id {
-            ID_ADD_FOCUSED => self.add_foreground_target(),
             ID_ADD_SELECTED => self.add_selected_process(),
             ID_ADD_MANUAL => self.add_manual_target(),
             ID_REMOVE => self.remove_selected_target(),
             ID_REFRESH => self.refresh_processes(),
+            ID_ONBOARDING_DONE => self.complete_onboarding(),
             ID_PAUSE => self.toggle_pause(),
             ID_HIDE => unsafe {
                 let _ = ShowWindow(self.hwnd, SW_HIDE);
@@ -614,17 +688,6 @@ impl AppWindow {
         }
     }
 
-    fn add_foreground_target(&mut self) {
-        self.foreground = process::foreground_process();
-        if let Some(process) = &self.foreground
-            && self.config.add_target(&process.name)
-        {
-            let _ = self.config.save();
-            self.refresh_targets();
-        }
-        self.update_foreground_label();
-    }
-
     fn add_selected_process(&mut self) {
         let index =
             unsafe { SendMessageW(self.controls.running_combo, CB_GETCURSEL, None, None).0 };
@@ -635,16 +698,14 @@ impl AppWindow {
             return;
         };
         if self.config.add_target(&process.name) {
-            let _ = self.config.save();
-            self.refresh_targets();
+            self.finish_target_change();
         }
     }
 
     fn add_manual_target(&mut self) {
         let text = unsafe { window_text(self.controls.manual_edit) };
         if self.config.add_target(&text) {
-            let _ = self.config.save();
-            self.refresh_targets();
+            self.finish_target_change();
             unsafe {
                 set_text(self.controls.manual_edit, "");
             }
@@ -664,6 +725,21 @@ impl AppWindow {
             let _ = self.config.save();
             self.refresh_targets();
         }
+    }
+
+    fn complete_onboarding(&mut self) {
+        if !self.config.onboarding_completed {
+            self.config.onboarding_completed = true;
+            let _ = self.config.save();
+        }
+        self.refresh_text();
+    }
+
+    fn finish_target_change(&mut self) {
+        self.config.onboarding_completed = true;
+        let _ = self.config.save();
+        self.refresh_targets();
+        self.refresh_text();
     }
 
     fn toggle_pause(&mut self) {
@@ -812,19 +888,24 @@ impl AppWindow {
 
 #[derive(Clone, Copy, Default)]
 struct Controls {
+    header_group: HWND,
     status: HWND,
-    foreground_label: HWND,
-    foreground_value: HWND,
-    targets_label: HWND,
+    status_detail: HWND,
+    onboarding_button: HWND,
+    targets_group: HWND,
+    target_summary: HWND,
     target_list: HWND,
     remove_button: HWND,
+    add_group: HWND,
     running_label: HWND,
+    running_hint: HWND,
     running_combo: HWND,
     refresh_button: HWND,
     add_selected_button: HWND,
-    add_focused_button: HWND,
+    manual_label: HWND,
     manual_edit: HWND,
     add_manual_button: HWND,
+    settings_group: HWND,
     start_minimized_check: HWND,
     launch_startup_check: HWND,
     restore_exit_check: HWND,
@@ -836,21 +917,26 @@ struct Controls {
 }
 
 impl Controls {
-    fn all(self) -> [HWND; 21] {
+    fn all(self) -> [HWND; 26] {
         [
+            self.header_group,
             self.status,
-            self.foreground_label,
-            self.foreground_value,
-            self.targets_label,
+            self.status_detail,
+            self.onboarding_button,
+            self.targets_group,
+            self.target_summary,
             self.target_list,
             self.remove_button,
+            self.add_group,
             self.running_label,
+            self.running_hint,
             self.running_combo,
             self.refresh_button,
             self.add_selected_button,
-            self.add_focused_button,
+            self.manual_label,
             self.manual_edit,
             self.add_manual_button,
+            self.settings_group,
             self.start_minimized_check,
             self.launch_startup_check,
             self.restore_exit_check,
@@ -1002,6 +1088,34 @@ unsafe fn create_checkbox(
 }
 
 #[allow(clippy::too_many_arguments)]
+unsafe fn create_group_box(
+    parent: HWND,
+    instance: HINSTANCE,
+    text: &str,
+    x: i32,
+    y: i32,
+    width: i32,
+    height: i32,
+    id: i32,
+) -> Result<HWND> {
+    unsafe {
+        create_control(
+            parent,
+            instance,
+            w!("BUTTON"),
+            text,
+            WS_CHILD | WS_VISIBLE | WINDOW_STYLE(BS_GROUPBOX as u32),
+            WINDOW_EX_STYLE(0),
+            x,
+            y,
+            width,
+            height,
+            id,
+        )
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
 unsafe fn create_control(
     parent: HWND,
     instance: HINSTANCE,
@@ -1038,6 +1152,12 @@ unsafe fn create_control(
 unsafe fn set_text(hwnd: HWND, text: &str) {
     let wide = to_wide(text);
     let _ = unsafe { SetWindowTextW(hwnd, PCWSTR(wide.as_ptr())) };
+}
+
+unsafe fn show_control(hwnd: HWND, show: bool) {
+    unsafe {
+        let _ = ShowWindow(hwnd, if show { SW_SHOW } else { SW_HIDE });
+    }
 }
 
 unsafe fn window_text(hwnd: HWND) -> String {
