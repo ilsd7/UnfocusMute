@@ -1,4 +1,4 @@
-use crate::config::AppConfig;
+use crate::config::{AppConfig, WindowPosition, config_file_path};
 use crate::engine::plan_mute_actions;
 use crate::i18n::{Language, Strings};
 use crate::windows_app::audio::AudioController;
@@ -8,35 +8,47 @@ use anyhow::{Context, Result};
 use std::collections::HashSet;
 use std::ffi::c_void;
 use std::mem::size_of;
-use windows::Win32::Foundation::{HINSTANCE, HWND, LPARAM, LRESULT, POINT, WPARAM};
-use windows::Win32::Graphics::Gdi::{COLOR_WINDOW, DEFAULT_GUI_FONT, GetStockObject, HBRUSH};
+use windows::Win32::Foundation::{
+    COLORREF, CloseHandle, ERROR_ALREADY_EXISTS, GetLastError, HANDLE, HINSTANCE, HWND, LPARAM,
+    LRESULT, POINT, RECT, WPARAM,
+};
+use windows::Win32::Graphics::Gdi::{
+    CreateSolidBrush, DEFAULT_GUI_FONT, DeleteObject, GetStockObject, HBRUSH, HDC, HGDIOBJ,
+    SetBkColor, SetBkMode, SetTextColor, TRANSPARENT,
+};
 use windows::Win32::System::Com::{COINIT_APARTMENTTHREADED, CoInitializeEx, CoUninitialize};
 use windows::Win32::System::LibraryLoader::GetModuleHandleW;
+use windows::Win32::System::Threading::CreateMutexW;
 use windows::Win32::UI::Controls::{BST_CHECKED, BST_UNCHECKED, EM_SETCUEBANNER};
 use windows::Win32::UI::Shell::{
     NIF_ICON, NIF_MESSAGE, NIF_TIP, NIM_ADD, NIM_DELETE, NIM_MODIFY, NOTIFYICONDATAW,
-    Shell_NotifyIconW,
+    Shell_NotifyIconW, ShellExecuteW,
 };
 use windows::Win32::UI::WindowsAndMessaging::{
-    AppendMenuW, BM_GETCHECK, BM_SETCHECK, BS_AUTOCHECKBOX, BS_GROUPBOX, BS_PUSHBUTTON,
-    CB_ADDSTRING, CB_GETCURSEL, CB_RESETCONTENT, CB_SETCURSEL, CBN_SELCHANGE, CBS_DROPDOWNLIST,
-    CREATESTRUCTW, CreatePopupMenu, CreateWindowExW, DefWindowProcW, DestroyMenu, DestroyWindow,
-    DispatchMessageW, ES_AUTOHSCROLL, GWLP_USERDATA, GetCursorPos, GetMessageW, HMENU, ICON_BIG,
-    ICON_SMALL, IDC_ARROW, IDI_APPLICATION, LB_ADDSTRING, LB_GETCURSEL, LB_RESETCONTENT,
-    LBN_SELCHANGE, LBS_NOTIFY, LoadCursorW, LoadIconW, MF_SEPARATOR, MF_STRING, MSG,
-    PostQuitMessage, RegisterClassW, SW_HIDE, SW_SHOW, SendMessageW, SetForegroundWindow, SetTimer,
-    SetWindowLongPtrW, SetWindowTextW, ShowWindow, TPM_RIGHTBUTTON, TrackPopupMenu,
-    TranslateMessage, WINDOW_EX_STYLE, WINDOW_STYLE, WM_APP, WM_CLOSE, WM_COMMAND, WM_CREATE,
-    WM_DESTROY, WM_LBUTTONDBLCLK, WM_NCCREATE, WM_NCDESTROY, WM_RBUTTONUP, WM_SETFONT, WM_SETICON,
-    WM_TIMER, WNDCLASSW, WS_BORDER, WS_CHILD, WS_EX_CLIENTEDGE, WS_OVERLAPPEDWINDOW, WS_TABSTOP,
-    WS_VISIBLE,
+    AppendMenuW, BM_GETCHECK, BM_SETCHECK, BS_AUTOCHECKBOX, BS_DEFPUSHBUTTON, BS_FLAT,
+    BS_PUSHBUTTON, CB_ADDSTRING, CB_GETCURSEL, CB_RESETCONTENT, CB_SETCURSEL, CBN_SELCHANGE,
+    CBS_DROPDOWNLIST, CREATESTRUCTW, CreatePopupMenu, CreateWindowExW, DefWindowProcW, DestroyMenu,
+    DestroyWindow, DispatchMessageW, ES_AUTOHSCROLL, FindWindowW, GWLP_USERDATA, GetCursorPos,
+    GetMessageW, GetSystemMetrics, GetWindowRect, HICON, HMENU, ICON_BIG, ICON_SMALL, IDC_ARROW,
+    IDI_APPLICATION, IMAGE_ICON, LB_ADDSTRING, LB_GETCURSEL, LB_RESETCONTENT, LBN_SELCHANGE,
+    LBS_NOTIFY, LR_DEFAULTCOLOR, LoadCursorW, LoadIconW, LoadImageW, MF_SEPARATOR, MF_STRING, MSG,
+    PostQuitMessage, RegisterClassW, SM_CXSCREEN, SM_CXSMICON, SM_CYSCREEN, SM_CYSMICON, SW_HIDE,
+    SW_RESTORE, SW_SHOW, SendMessageW, SetForegroundWindow, SetTimer, SetWindowLongPtrW,
+    SetWindowTextW, ShowWindow, TPM_RIGHTBUTTON, TrackPopupMenu, TranslateMessage, WINDOW_EX_STYLE,
+    WINDOW_STYLE, WM_APP, WM_CLOSE, WM_COMMAND, WM_CREATE, WM_CTLCOLORBTN, WM_CTLCOLOREDIT,
+    WM_CTLCOLORLISTBOX, WM_CTLCOLORSTATIC, WM_DESTROY, WM_LBUTTONDBLCLK, WM_MOVE, WM_NCCREATE,
+    WM_NCDESTROY, WM_RBUTTONUP, WM_SETFONT, WM_SETICON, WM_TIMER, WNDCLASSW, WS_BORDER, WS_CHILD,
+    WS_EX_CLIENTEDGE, WS_OVERLAPPEDWINDOW, WS_TABSTOP, WS_VISIBLE,
 };
 use windows::core::{PCWSTR, w};
 
 const CLASS_NAME: PCWSTR = w!("UnfocusMuteWindow");
+const MUTEX_NAME: PCWSTR = w!("Local\\UnfocusMute.SingleInstance");
 const TIMER_ID: usize = 1;
 const TRAY_ID: u32 = 1;
 const WM_TRAY_ICON: u32 = WM_APP + 1;
+const WINDOW_WIDTH: i32 = 920;
+const WINDOW_HEIGHT: i32 = 640;
 
 const ID_TARGETS: i32 = 1001;
 const ID_RUNNING: i32 = 1002;
@@ -53,7 +65,16 @@ const ID_LANGUAGE: i32 = 1013;
 const ID_HIDE: i32 = 1014;
 const ID_QUIT: i32 = 1015;
 const ID_SHOW: i32 = 1016;
-const ID_ONBOARDING_DONE: i32 = 1017;
+const ID_OPEN_CONFIG: i32 = 1017;
+
+const PAGE_COLOR: COLORREF = rgb(245, 247, 250);
+const PANEL_COLOR: COLORREF = rgb(255, 255, 255);
+const TEXT_COLOR: COLORREF = rgb(25, 33, 45);
+const SUBTLE_TEXT_COLOR: COLORREF = rgb(85, 96, 112);
+
+const fn rgb(red: u8, green: u8, blue: u8) -> COLORREF {
+    COLORREF((red as u32) | ((green as u32) << 8) | ((blue as u32) << 16))
+}
 
 pub fn run() -> Result<()> {
     unsafe {
@@ -69,10 +90,16 @@ pub fn run() -> Result<()> {
 }
 
 unsafe fn run_window() -> Result<()> {
+    let Some(_single_instance) = (unsafe { acquire_single_instance()? }) else {
+        return Ok(());
+    };
+
     let module = unsafe { GetModuleHandleW(None).context("get module handle")? };
     let instance = HINSTANCE(module.0);
     let icon = unsafe { load_app_icon(instance) };
+    let tray_icon = unsafe { load_tray_icon(instance) };
     let cursor = unsafe { LoadCursorW(None, IDC_ARROW).context("load cursor")? };
+    let background = unsafe { CreateSolidBrush(PAGE_COLOR) };
 
     let class = WNDCLASSW {
         style: Default::default(),
@@ -82,7 +109,7 @@ unsafe fn run_window() -> Result<()> {
         hInstance: instance,
         hIcon: icon,
         hCursor: cursor,
-        hbrBackground: HBRUSH((COLOR_WINDOW.0 + 1) as isize as *mut c_void),
+        hbrBackground: background,
         lpszMenuName: PCWSTR::null(),
         lpszClassName: CLASS_NAME,
     };
@@ -93,8 +120,9 @@ unsafe fn run_window() -> Result<()> {
     let config = AppConfig::load_or_default().unwrap_or_default();
     let forced_minimized = std::env::args().any(|arg| arg == "--minimized");
     let start_hidden = forced_minimized || config.start_minimized;
+    let WindowPosition { x, y } = initial_window_position(&config);
 
-    let app = Box::new(AppWindow::new(config, icon)?);
+    let app = Box::new(AppWindow::new(config, icon, tray_icon)?);
     let app_ptr = Box::into_raw(app);
     let title = to_wide(Language::Ko.strings().app_title);
     let hwnd = unsafe {
@@ -103,10 +131,10 @@ unsafe fn run_window() -> Result<()> {
             CLASS_NAME,
             PCWSTR(title.as_ptr()),
             WS_OVERLAPPEDWINDOW,
-            100,
-            100,
-            860,
-            660,
+            x,
+            y,
+            WINDOW_WIDTH,
+            WINDOW_HEIGHT,
             None,
             None,
             Some(instance),
@@ -135,6 +163,74 @@ unsafe fn run_window() -> Result<()> {
     Ok(())
 }
 
+struct SingleInstance(HANDLE);
+
+impl Drop for SingleInstance {
+    fn drop(&mut self) {
+        unsafe {
+            let _ = CloseHandle(self.0);
+        }
+    }
+}
+
+unsafe fn acquire_single_instance() -> Result<Option<SingleInstance>> {
+    let handle = unsafe { CreateMutexW(None, false, MUTEX_NAME).context("create app mutex")? };
+    if unsafe { GetLastError() } == ERROR_ALREADY_EXISTS {
+        unsafe {
+            bring_existing_window_to_front();
+            let _ = CloseHandle(handle);
+        }
+        return Ok(None);
+    }
+
+    Ok(Some(SingleInstance(handle)))
+}
+
+unsafe fn bring_existing_window_to_front() {
+    if let Ok(hwnd) = unsafe { FindWindowW(CLASS_NAME, PCWSTR::null()) } {
+        unsafe {
+            let _ = ShowWindow(hwnd, SW_SHOW);
+            let _ = ShowWindow(hwnd, SW_RESTORE);
+            let _ = SetForegroundWindow(hwnd);
+        }
+    }
+}
+
+fn initial_window_position(config: &AppConfig) -> WindowPosition {
+    config
+        .window_position
+        .unwrap_or_else(centered_window_position)
+}
+
+fn centered_window_position() -> WindowPosition {
+    let screen_width = unsafe { GetSystemMetrics(SM_CXSCREEN) };
+    let screen_height = unsafe { GetSystemMetrics(SM_CYSCREEN) };
+    WindowPosition {
+        x: ((screen_width - WINDOW_WIDTH) / 2).max(0),
+        y: ((screen_height - WINDOW_HEIGHT) / 2).max(0),
+    }
+}
+
+struct AppTheme {
+    panel_brush: HBRUSH,
+}
+
+impl AppTheme {
+    fn new() -> Self {
+        Self {
+            panel_brush: unsafe { CreateSolidBrush(PANEL_COLOR) },
+        }
+    }
+}
+
+impl Drop for AppTheme {
+    fn drop(&mut self) {
+        unsafe {
+            let _ = DeleteObject(HGDIOBJ(self.panel_brush.0));
+        }
+    }
+}
+
 struct AppWindow {
     hwnd: HWND,
     controls: Controls,
@@ -146,14 +242,13 @@ struct AppWindow {
     muted_by_app: HashSet<u32>,
     paused: bool,
     tray_added: bool,
-    icon: windows::Win32::UI::WindowsAndMessaging::HICON,
+    theme: AppTheme,
+    icon: HICON,
+    tray_icon: HICON,
 }
 
 impl AppWindow {
-    fn new(
-        config: AppConfig,
-        icon: windows::Win32::UI::WindowsAndMessaging::HICON,
-    ) -> Result<Self> {
+    fn new(config: AppConfig, icon: HICON, tray_icon: HICON) -> Result<Self> {
         let strings = config.language.strings();
         Ok(Self {
             hwnd: HWND::default(),
@@ -166,7 +261,9 @@ impl AppWindow {
             muted_by_app: HashSet::new(),
             paused: false,
             tray_added: false,
+            theme: AppTheme::new(),
             icon,
+            tray_icon,
         })
     }
 
@@ -214,8 +311,37 @@ impl AppWindow {
         let child = WS_CHILD | WS_VISIBLE;
         let tab_child = child | WS_TABSTOP;
 
-        self.controls.header_group =
-            unsafe { create_group_box(self.hwnd, instance, "", 20, 16, 800, 112, 0)? };
+        self.controls.header_panel = unsafe { create_panel(self.hwnd, instance, 16, 16, 888, 96)? };
+        self.controls.title_label = unsafe {
+            create_control(
+                self.hwnd,
+                instance,
+                w!("STATIC"),
+                "",
+                child,
+                WINDOW_EX_STYLE(0),
+                36,
+                34,
+                260,
+                26,
+                0,
+            )?
+        };
+        self.controls.subtitle_label = unsafe {
+            create_control(
+                self.hwnd,
+                instance,
+                w!("STATIC"),
+                "",
+                child,
+                WINDOW_EX_STYLE(0),
+                36,
+                64,
+                540,
+                24,
+                0,
+            )?
+        };
         self.controls.status = unsafe {
             create_control(
                 self.hwnd,
@@ -224,9 +350,9 @@ impl AppWindow {
                 "",
                 child,
                 WINDOW_EX_STYLE(0),
-                38,
-                40,
-                600,
+                646,
+                34,
+                218,
                 24,
                 0,
             )?
@@ -239,28 +365,31 @@ impl AppWindow {
                 "",
                 child,
                 WINDOW_EX_STYLE(0),
-                38,
-                66,
-                610,
-                54,
+                646,
+                64,
+                218,
+                24,
                 0,
             )?
         };
-        self.controls.onboarding_button = unsafe {
-            create_button(
+
+        self.controls.targets_panel =
+            unsafe { create_panel(self.hwnd, instance, 16, 128, 432, 372)? };
+        self.controls.targets_label = unsafe {
+            create_control(
                 self.hwnd,
                 instance,
+                w!("STATIC"),
                 "",
-                660,
-                72,
-                140,
-                34,
-                ID_ONBOARDING_DONE,
+                child,
+                WINDOW_EX_STYLE(0),
+                36,
+                150,
+                220,
+                24,
+                0,
             )?
         };
-
-        self.controls.targets_group =
-            unsafe { create_group_box(self.hwnd, instance, "", 20, 146, 380, 352, 0)? };
         self.controls.target_summary = unsafe {
             create_control(
                 self.hwnd,
@@ -269,9 +398,9 @@ impl AppWindow {
                 "",
                 child,
                 WINDOW_EX_STYLE(0),
-                38,
-                174,
-                344,
+                36,
+                178,
+                382,
                 22,
                 0,
             )?
@@ -284,18 +413,32 @@ impl AppWindow {
                 "",
                 child | WS_BORDER | WINDOW_STYLE(LBS_NOTIFY as u32),
                 WS_EX_CLIENTEDGE,
-                38,
-                204,
-                344,
+                36,
+                210,
+                392,
                 226,
                 ID_TARGETS,
             )?
         };
         self.controls.remove_button =
-            unsafe { create_button(self.hwnd, instance, "", 38, 444, 160, 34, ID_REMOVE)? };
+            unsafe { create_button(self.hwnd, instance, "", 36, 452, 150, 34, ID_REMOVE)? };
 
-        self.controls.add_group =
-            unsafe { create_group_box(self.hwnd, instance, "", 420, 146, 400, 236, 0)? };
+        self.controls.add_panel = unsafe { create_panel(self.hwnd, instance, 464, 128, 440, 236)? };
+        self.controls.add_label = unsafe {
+            create_control(
+                self.hwnd,
+                instance,
+                w!("STATIC"),
+                "",
+                child,
+                WINDOW_EX_STYLE(0),
+                484,
+                150,
+                220,
+                24,
+                0,
+            )?
+        };
         self.controls.running_label = unsafe {
             create_control(
                 self.hwnd,
@@ -304,8 +447,8 @@ impl AppWindow {
                 "",
                 child,
                 WINDOW_EX_STYLE(0),
-                438,
-                174,
+                484,
+                184,
                 240,
                 22,
                 0,
@@ -319,9 +462,9 @@ impl AppWindow {
                 "",
                 child,
                 WINDOW_EX_STYLE(0),
-                438,
-                198,
-                360,
+                484,
+                208,
+                380,
                 22,
                 0,
             )?
@@ -334,17 +477,18 @@ impl AppWindow {
                 "",
                 tab_child | WINDOW_STYLE(CBS_DROPDOWNLIST as u32),
                 WS_EX_CLIENTEDGE,
-                438,
-                226,
-                252,
+                484,
+                236,
+                280,
                 220,
                 ID_RUNNING,
             )?
         };
         self.controls.refresh_button =
-            unsafe { create_button(self.hwnd, instance, "", 704, 224, 96, 34, ID_REFRESH)? };
-        self.controls.add_selected_button =
-            unsafe { create_button(self.hwnd, instance, "", 438, 270, 160, 34, ID_ADD_SELECTED)? };
+            unsafe { create_button(self.hwnd, instance, "", 776, 234, 108, 34, ID_REFRESH)? };
+        self.controls.add_selected_button = unsafe {
+            create_primary_button(self.hwnd, instance, "", 484, 282, 160, 36, ID_ADD_SELECTED)?
+        };
         self.controls.manual_label = unsafe {
             create_control(
                 self.hwnd,
@@ -353,9 +497,9 @@ impl AppWindow {
                 "",
                 child,
                 WINDOW_EX_STYLE(0),
-                438,
-                322,
-                90,
+                484,
+                330,
+                100,
                 22,
                 0,
             )?
@@ -368,24 +512,39 @@ impl AppWindow {
                 "",
                 tab_child | WS_BORDER | WINDOW_STYLE(ES_AUTOHSCROLL as u32),
                 WS_EX_CLIENTEDGE,
-                528,
-                316,
-                162,
+                594,
+                324,
+                170,
                 30,
                 ID_MANUAL,
             )?
         };
         self.controls.add_manual_button =
-            unsafe { create_button(self.hwnd, instance, "", 704, 314, 96, 34, ID_ADD_MANUAL)? };
+            unsafe { create_button(self.hwnd, instance, "", 776, 322, 108, 34, ID_ADD_MANUAL)? };
 
-        self.controls.settings_group =
-            unsafe { create_group_box(self.hwnd, instance, "", 420, 402, 400, 136, 0)? };
+        self.controls.settings_panel =
+            unsafe { create_panel(self.hwnd, instance, 464, 380, 440, 148)? };
+        self.controls.settings_label = unsafe {
+            create_control(
+                self.hwnd,
+                instance,
+                w!("STATIC"),
+                "",
+                child,
+                WINDOW_EX_STYLE(0),
+                484,
+                402,
+                180,
+                24,
+                0,
+            )?
+        };
         self.controls.start_minimized_check = unsafe {
             create_checkbox(
                 self.hwnd,
                 instance,
                 "",
-                438,
+                484,
                 430,
                 300,
                 26,
@@ -397,7 +556,7 @@ impl AppWindow {
                 self.hwnd,
                 instance,
                 "",
-                438,
+                484,
                 460,
                 300,
                 26,
@@ -405,7 +564,7 @@ impl AppWindow {
             )?
         };
         self.controls.restore_exit_check = unsafe {
-            create_checkbox(self.hwnd, instance, "", 438, 490, 300, 26, ID_RESTORE_EXIT)?
+            create_checkbox(self.hwnd, instance, "", 484, 490, 300, 26, ID_RESTORE_EXIT)?
         };
         self.controls.language_label = unsafe {
             create_control(
@@ -415,8 +574,8 @@ impl AppWindow {
                 "",
                 child,
                 WINDOW_EX_STYLE(0),
-                438,
-                518,
+                682,
+                402,
                 80,
                 22,
                 0,
@@ -430,19 +589,22 @@ impl AppWindow {
                 "",
                 tab_child | WINDOW_STYLE(CBS_DROPDOWNLIST as u32),
                 WS_EX_CLIENTEDGE,
-                528,
-                514,
-                170,
+                734,
+                398,
+                150,
                 180,
                 ID_LANGUAGE,
             )?
         };
+        self.controls.open_config_button =
+            unsafe { create_button(self.hwnd, instance, "", 720, 484, 164, 34, ID_OPEN_CONFIG)? };
+
         self.controls.pause_button =
-            unsafe { create_button(self.hwnd, instance, "", 420, 560, 124, 36, ID_PAUSE)? };
+            unsafe { create_button(self.hwnd, instance, "", 464, 552, 132, 38, ID_PAUSE)? };
         self.controls.hide_button =
-            unsafe { create_button(self.hwnd, instance, "", 558, 560, 124, 36, ID_HIDE)? };
+            unsafe { create_button(self.hwnd, instance, "", 610, 552, 132, 38, ID_HIDE)? };
         self.controls.quit_button =
-            unsafe { create_button(self.hwnd, instance, "", 696, 560, 124, 36, ID_QUIT)? };
+            unsafe { create_button(self.hwnd, instance, "", 756, 552, 148, 38, ID_QUIT)? };
 
         self.apply_default_font();
         Ok(())
@@ -452,13 +614,14 @@ impl AppWindow {
         self.strings = self.config.language.strings();
         unsafe {
             set_text(self.hwnd, self.strings.app_title);
-            set_text(self.controls.header_group, self.strings.app_title);
+            set_text(self.controls.title_label, self.strings.app_title);
+            set_text(self.controls.subtitle_label, self.strings.app_subtitle);
             set_text(
-                self.controls.targets_group,
+                self.controls.targets_label,
                 self.strings.registered_processes,
             );
-            set_text(self.controls.add_group, self.strings.add_process_section);
-            set_text(self.controls.settings_group, self.strings.settings_title);
+            set_text(self.controls.add_label, self.strings.add_process_section);
+            set_text(self.controls.settings_label, self.strings.settings_title);
             set_text(self.controls.running_label, self.strings.running_processes);
             set_text(
                 self.controls.running_hint,
@@ -492,14 +655,7 @@ impl AppWindow {
             );
             set_text(self.controls.hide_button, self.strings.hide);
             set_text(self.controls.quit_button, self.strings.quit);
-            set_text(
-                self.controls.onboarding_button,
-                self.strings.onboarding_done,
-            );
-            show_control(
-                self.controls.onboarding_button,
-                !self.config.onboarding_completed,
-            );
+            set_text(self.controls.open_config_button, self.strings.open_config);
 
             let placeholder = to_wide(self.strings.manual_placeholder);
             SendMessageW(
@@ -622,25 +778,18 @@ impl AppWindow {
     }
 
     fn update_status(&self) {
-        let detail = if self.config.onboarding_completed {
-            format!(
-                "{} {} · {} {} · {} {} ms",
-                self.strings.target_count,
-                self.config.targets.len(),
-                self.strings.muted_count,
-                self.muted_by_app.len(),
-                self.strings.polling_interval,
-                self.config.polling_interval_ms
-            )
-        } else {
-            self.strings.onboarding_body.to_owned()
-        };
+        let detail = format!(
+            "{} {} · {} {} · {} ms",
+            self.strings.target_count,
+            self.config.targets.len(),
+            self.strings.muted_count,
+            self.muted_by_app.len(),
+            self.config.polling_interval_ms
+        );
         unsafe {
             set_text(
                 self.controls.status,
-                if !self.config.onboarding_completed {
-                    self.strings.onboarding_title
-                } else if self.paused {
+                if self.paused {
                     self.strings.status_paused
                 } else {
                     self.strings.status_running
@@ -671,12 +820,14 @@ impl AppWindow {
             ID_ADD_MANUAL => self.add_manual_target(),
             ID_REMOVE => self.remove_selected_target(),
             ID_REFRESH => self.refresh_processes(),
-            ID_ONBOARDING_DONE => self.complete_onboarding(),
+            ID_OPEN_CONFIG => self.open_config_file(),
             ID_PAUSE => self.toggle_pause(),
             ID_HIDE => unsafe {
+                self.save_window_position();
                 let _ = ShowWindow(self.hwnd, SW_HIDE);
             },
             ID_QUIT => unsafe {
+                self.save_window_position();
                 let _ = DestroyWindow(self.hwnd);
             },
             ID_START_MINIMIZED => self.update_bool_setting(id),
@@ -727,19 +878,29 @@ impl AppWindow {
         }
     }
 
-    fn complete_onboarding(&mut self) {
-        if !self.config.onboarding_completed {
-            self.config.onboarding_completed = true;
-            let _ = self.config.save();
-        }
-        self.refresh_text();
-    }
-
     fn finish_target_change(&mut self) {
-        self.config.onboarding_completed = true;
         let _ = self.config.save();
         self.refresh_targets();
         self.refresh_text();
+    }
+
+    fn open_config_file(&mut self) {
+        let _ = self.config.save();
+        let Ok(path) = config_file_path() else {
+            return;
+        };
+        let path = path.to_string_lossy();
+        let path = to_wide(path.as_ref());
+        unsafe {
+            let _ = ShellExecuteW(
+                Some(self.hwnd),
+                w!("open"),
+                PCWSTR(path.as_ptr()),
+                PCWSTR::null(),
+                PCWSTR::null(),
+                SW_SHOW,
+            );
+        }
     }
 
     fn toggle_pause(&mut self) {
@@ -796,7 +957,23 @@ impl AppWindow {
         self.refresh_text();
     }
 
+    fn remember_window_position(&mut self) {
+        let mut rect = RECT::default();
+        if unsafe { GetWindowRect(self.hwnd, &mut rect) }.is_ok() {
+            self.config.window_position = Some(WindowPosition {
+                x: rect.left,
+                y: rect.top,
+            });
+        }
+    }
+
+    fn save_window_position(&mut self) {
+        self.remember_window_position();
+        let _ = self.config.save();
+    }
+
     fn cleanup(&mut self) {
+        self.save_window_position();
         if self.config.restore_muted_on_exit
             && let Some(audio) = &self.audio
         {
@@ -828,7 +1005,7 @@ impl AppWindow {
             uID: TRAY_ID,
             uFlags: NIF_MESSAGE | NIF_ICON | NIF_TIP,
             uCallbackMessage: WM_TRAY_ICON,
-            hIcon: self.icon,
+            hIcon: self.tray_icon,
             ..Default::default()
         };
         copy_wide_fixed(self.strings.app_title, &mut data.szTip);
@@ -869,6 +1046,25 @@ impl AppWindow {
         }
     }
 
+    fn control_color(&self, wparam: WPARAM, message: u32) -> LRESULT {
+        let hdc = HDC(wparam.0 as *mut c_void);
+        unsafe {
+            let _ = SetBkMode(hdc, TRANSPARENT);
+            let _ = SetTextColor(hdc, TEXT_COLOR);
+            match message {
+                WM_CTLCOLOREDIT | WM_CTLCOLORLISTBOX => {
+                    let _ = SetBkColor(hdc, PANEL_COLOR);
+                    LRESULT(self.theme.panel_brush.0 as isize)
+                }
+                WM_CTLCOLORBTN => LRESULT(self.theme.panel_brush.0 as isize),
+                _ => {
+                    let _ = SetTextColor(hdc, SUBTLE_TEXT_COLOR);
+                    LRESULT(self.theme.panel_brush.0 as isize)
+                }
+            }
+        }
+    }
+
     fn apply_default_font(&self) {
         unsafe {
             let font = GetStockObject(DEFAULT_GUI_FONT);
@@ -888,15 +1084,18 @@ impl AppWindow {
 
 #[derive(Clone, Copy, Default)]
 struct Controls {
-    header_group: HWND,
+    header_panel: HWND,
+    title_label: HWND,
+    subtitle_label: HWND,
     status: HWND,
     status_detail: HWND,
-    onboarding_button: HWND,
-    targets_group: HWND,
+    targets_panel: HWND,
+    targets_label: HWND,
     target_summary: HWND,
     target_list: HWND,
     remove_button: HWND,
-    add_group: HWND,
+    add_panel: HWND,
+    add_label: HWND,
     running_label: HWND,
     running_hint: HWND,
     running_combo: HWND,
@@ -905,29 +1104,34 @@ struct Controls {
     manual_label: HWND,
     manual_edit: HWND,
     add_manual_button: HWND,
-    settings_group: HWND,
+    settings_panel: HWND,
+    settings_label: HWND,
     start_minimized_check: HWND,
     launch_startup_check: HWND,
     restore_exit_check: HWND,
     language_label: HWND,
     language_combo: HWND,
+    open_config_button: HWND,
     pause_button: HWND,
     hide_button: HWND,
     quit_button: HWND,
 }
 
 impl Controls {
-    fn all(self) -> [HWND; 26] {
+    fn all(self) -> [HWND; 31] {
         [
-            self.header_group,
+            self.header_panel,
+            self.title_label,
+            self.subtitle_label,
             self.status,
             self.status_detail,
-            self.onboarding_button,
-            self.targets_group,
+            self.targets_panel,
+            self.targets_label,
             self.target_summary,
             self.target_list,
             self.remove_button,
-            self.add_group,
+            self.add_panel,
+            self.add_label,
             self.running_label,
             self.running_hint,
             self.running_combo,
@@ -936,12 +1140,14 @@ impl Controls {
             self.manual_label,
             self.manual_edit,
             self.add_manual_button,
-            self.settings_group,
+            self.settings_panel,
+            self.settings_label,
             self.start_minimized_check,
             self.launch_startup_check,
             self.restore_exit_check,
             self.language_label,
             self.language_combo,
+            self.open_config_button,
             self.pause_button,
             self.hide_button,
             self.quit_button,
@@ -986,6 +1192,7 @@ unsafe extern "system" fn window_proc(
                 if id == ID_SHOW && notification == 0 {
                     unsafe {
                         let _ = ShowWindow(hwnd, SW_SHOW);
+                        let _ = ShowWindow(hwnd, SW_RESTORE);
                         let _ = SetForegroundWindow(hwnd);
                     }
                 } else {
@@ -997,16 +1204,25 @@ unsafe extern "system" fn window_proc(
                 app.tick();
                 return LRESULT(0);
             }
+            WM_MOVE => {
+                app.remember_window_position();
+                return LRESULT(0);
+            }
             WM_CLOSE => {
+                app.save_window_position();
                 unsafe {
                     let _ = ShowWindow(hwnd, SW_HIDE);
                 }
                 return LRESULT(0);
             }
+            WM_CTLCOLORSTATIC | WM_CTLCOLOREDIT | WM_CTLCOLORLISTBOX | WM_CTLCOLORBTN => {
+                return app.control_color(wparam, message);
+            }
             WM_TRAY_ICON => {
                 match lparam.0 as u32 {
                     WM_LBUTTONDBLCLK => unsafe {
                         let _ = ShowWindow(hwnd, SW_SHOW);
+                        let _ = ShowWindow(hwnd, SW_RESTORE);
                         let _ = SetForegroundWindow(hwnd);
                     },
                     WM_RBUTTONUP => app.tray_menu(),
@@ -1048,7 +1264,35 @@ unsafe fn create_button(
             instance,
             w!("BUTTON"),
             text,
-            WS_CHILD | WS_VISIBLE | WS_TABSTOP | WINDOW_STYLE(BS_PUSHBUTTON as u32),
+            WS_CHILD | WS_VISIBLE | WS_TABSTOP | WINDOW_STYLE((BS_PUSHBUTTON | BS_FLAT) as u32),
+            WINDOW_EX_STYLE(0),
+            x,
+            y,
+            width,
+            height,
+            id,
+        )
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
+unsafe fn create_primary_button(
+    parent: HWND,
+    instance: HINSTANCE,
+    text: &str,
+    x: i32,
+    y: i32,
+    width: i32,
+    height: i32,
+    id: i32,
+) -> Result<HWND> {
+    unsafe {
+        create_control(
+            parent,
+            instance,
+            w!("BUTTON"),
+            text,
+            WS_CHILD | WS_VISIBLE | WS_TABSTOP | WINDOW_STYLE((BS_DEFPUSHBUTTON | BS_FLAT) as u32),
             WINDOW_EX_STYLE(0),
             x,
             y,
@@ -1087,30 +1331,27 @@ unsafe fn create_checkbox(
     }
 }
 
-#[allow(clippy::too_many_arguments)]
-unsafe fn create_group_box(
+unsafe fn create_panel(
     parent: HWND,
     instance: HINSTANCE,
-    text: &str,
     x: i32,
     y: i32,
     width: i32,
     height: i32,
-    id: i32,
 ) -> Result<HWND> {
     unsafe {
         create_control(
             parent,
             instance,
-            w!("BUTTON"),
-            text,
-            WS_CHILD | WS_VISIBLE | WINDOW_STYLE(BS_GROUPBOX as u32),
+            w!("STATIC"),
+            "",
+            WS_CHILD | WS_VISIBLE,
             WINDOW_EX_STYLE(0),
             x,
             y,
             width,
             height,
-            id,
+            0,
         )
     }
 }
@@ -1152,12 +1393,6 @@ unsafe fn create_control(
 unsafe fn set_text(hwnd: HWND, text: &str) {
     let wide = to_wide(text);
     let _ = unsafe { SetWindowTextW(hwnd, PCWSTR(wide.as_ptr())) };
-}
-
-unsafe fn show_control(hwnd: HWND, show: bool) {
-    unsafe {
-        let _ = ShowWindow(hwnd, if show { SW_SHOW } else { SW_HIDE });
-    }
 }
 
 unsafe fn window_text(hwnd: HWND) -> String {
@@ -1209,11 +1444,31 @@ unsafe fn is_checked(hwnd: HWND) -> bool {
     unsafe { SendMessageW(hwnd, BM_GETCHECK, None, None).0 as u32 == BST_CHECKED.0 }
 }
 
-unsafe fn load_app_icon(instance: HINSTANCE) -> windows::Win32::UI::WindowsAndMessaging::HICON {
+unsafe fn load_app_icon(instance: HINSTANCE) -> HICON {
     unsafe {
         LoadIconW(Some(instance), int_resource(1))
             .or_else(|_| LoadIconW(None, IDI_APPLICATION))
             .unwrap_or_default()
+    }
+}
+
+unsafe fn load_tray_icon(instance: HINSTANCE) -> HICON {
+    let size = unsafe { GetSystemMetrics(SM_CXSMICON).max(GetSystemMetrics(SM_CYSMICON)) };
+    unsafe { load_sized_app_icon(instance, size).unwrap_or_else(|| load_app_icon(instance)) }
+}
+
+unsafe fn load_sized_app_icon(instance: HINSTANCE, size: i32) -> Option<HICON> {
+    unsafe {
+        LoadImageW(
+            Some(instance),
+            int_resource(1),
+            IMAGE_ICON,
+            size,
+            size,
+            LR_DEFAULTCOLOR,
+        )
+        .ok()
+        .map(|handle| HICON(handle.0))
     }
 }
 
