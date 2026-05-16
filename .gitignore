@@ -26,3 +26,6 @@ target
 /target
 .cargo-home/
 /dist/
+
+# Local convenience build launcher
+/build-local.bat
