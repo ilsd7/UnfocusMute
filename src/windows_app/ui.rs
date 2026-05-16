@@ -1,4 +1,4 @@
-use crate::config::{AppConfig, WindowPosition, config_file_path};
+use crate::config::{AppConfig, WindowPosition, config_file_exists, config_file_path};
 use crate::engine::plan_mute_actions;
 use crate::i18n::{Language, Strings};
 use crate::windows_app::audio::AudioController;
@@ -43,6 +43,7 @@ use windows::Win32::UI::WindowsAndMessaging::{
 use windows::core::{PCWSTR, w};
 
 const CLASS_NAME: PCWSTR = w!("UnfocusMuteWindow");
+const LANGUAGE_PROMPT_CLASS_NAME: PCWSTR = w!("UnfocusMuteLanguagePrompt");
 const MUTEX_NAME: PCWSTR = w!("Local\\UnfocusMute.SingleInstance");
 const TIMER_ID: usize = 1;
 const TRAY_ID: u32 = 1;
@@ -66,6 +67,8 @@ const ID_HIDE: i32 = 1014;
 const ID_QUIT: i32 = 1015;
 const ID_SHOW: i32 = 1016;
 const ID_OPEN_CONFIG: i32 = 1017;
+const ID_LANGUAGE_PROMPT_COMBO: i32 = 2001;
+const ID_LANGUAGE_PROMPT_OK: i32 = 2002;
 
 const PAGE_COLOR: COLORREF = rgb(245, 247, 250);
 const PANEL_COLOR: COLORREF = rgb(255, 255, 255);
@@ -117,9 +120,19 @@ unsafe fn run_window() -> Result<()> {
         RegisterClassW(&class);
     }
 
-    let config = AppConfig::load_or_default().unwrap_or_default();
+    let first_run = !config_file_exists();
+    let mut config = AppConfig::load_or_default().unwrap_or_default();
+    if first_run {
+        if let Some(language) = unsafe { prompt_initial_language(instance, icon, config.language)? }
+        {
+            config.language = language;
+        }
+        let _ = config.save();
+    }
+    sync_startup_setting(&mut config);
+
     let forced_minimized = std::env::args().any(|arg| arg == "--minimized");
-    let start_hidden = forced_minimized || config.start_minimized;
+    let start_hidden = !first_run && (forced_minimized || config.start_minimized);
     let WindowPosition { x, y } = initial_window_position(&config);
 
     let app = Box::new(AppWindow::new(config, icon, tray_icon)?);
@@ -196,6 +209,102 @@ unsafe fn bring_existing_window_to_front() {
     }
 }
 
+fn sync_startup_setting(config: &mut AppConfig) {
+    if config.launch_on_startup && startup::set_launch_on_startup(true).is_err() {
+        config.launch_on_startup = false;
+        let _ = config.save();
+    }
+}
+
+struct LanguagePrompt {
+    combo: HWND,
+    done: bool,
+    selected: Option<Language>,
+    current: Language,
+    brush: HBRUSH,
+}
+
+impl LanguagePrompt {
+    fn new(current: Language) -> Self {
+        Self {
+            combo: HWND::default(),
+            done: false,
+            selected: None,
+            current,
+            brush: unsafe { CreateSolidBrush(PAGE_COLOR) },
+        }
+    }
+}
+
+impl Drop for LanguagePrompt {
+    fn drop(&mut self) {
+        unsafe {
+            let _ = DeleteObject(HGDIOBJ(self.brush.0));
+        }
+    }
+}
+
+unsafe fn prompt_initial_language(
+    instance: HINSTANCE,
+    icon: HICON,
+    current: Language,
+) -> Result<Option<Language>> {
+    let cursor = unsafe { LoadCursorW(None, IDC_ARROW).context("load language prompt cursor")? };
+    let background = unsafe { CreateSolidBrush(PAGE_COLOR) };
+    let class = WNDCLASSW {
+        style: Default::default(),
+        lpfnWndProc: Some(language_prompt_proc),
+        cbClsExtra: 0,
+        cbWndExtra: 0,
+        hInstance: instance,
+        hIcon: icon,
+        hCursor: cursor,
+        hbrBackground: background,
+        lpszMenuName: PCWSTR::null(),
+        lpszClassName: LANGUAGE_PROMPT_CLASS_NAME,
+    };
+    unsafe {
+        RegisterClassW(&class);
+    }
+
+    let mut state = Box::new(LanguagePrompt::new(current));
+    let state_ptr = state.as_mut() as *mut LanguagePrompt;
+    let title = to_wide("언어 선택");
+    let position = centered_position(420, 220);
+    let hwnd = unsafe {
+        CreateWindowExW(
+            WINDOW_EX_STYLE(0),
+            LANGUAGE_PROMPT_CLASS_NAME,
+            PCWSTR(title.as_ptr()),
+            WS_OVERLAPPEDWINDOW,
+            position.x,
+            position.y,
+            420,
+            220,
+            None,
+            None,
+            Some(instance),
+            Some(state_ptr.cast()),
+        )
+        .context("create language prompt")?
+    };
+
+    unsafe {
+        let _ = ShowWindow(hwnd, SW_SHOW);
+        let _ = SetForegroundWindow(hwnd);
+    }
+
+    let mut msg = MSG::default();
+    while !state.done && unsafe { GetMessageW(&mut msg, None, 0, 0).as_bool() } {
+        unsafe {
+            let _ = TranslateMessage(&msg);
+            DispatchMessageW(&msg);
+        }
+    }
+
+    Ok(state.selected)
+}
+
 fn initial_window_position(config: &AppConfig) -> WindowPosition {
     config
         .window_position
@@ -203,11 +312,15 @@ fn initial_window_position(config: &AppConfig) -> WindowPosition {
 }
 
 fn centered_window_position() -> WindowPosition {
+    centered_position(WINDOW_WIDTH, WINDOW_HEIGHT)
+}
+
+fn centered_position(width: i32, height: i32) -> WindowPosition {
     let screen_width = unsafe { GetSystemMetrics(SM_CXSCREEN) };
     let screen_height = unsafe { GetSystemMetrics(SM_CYSCREEN) };
     WindowPosition {
-        x: ((screen_width - WINDOW_WIDTH) / 2).max(0),
-        y: ((screen_height - WINDOW_HEIGHT) / 2).max(0),
+        x: ((screen_width - width) / 2).max(0),
+        y: ((screen_height - height) / 2).max(0),
     }
 }
 
@@ -1245,6 +1358,165 @@ unsafe extern "system" fn window_proc(
     }
 
     unsafe { DefWindowProcW(hwnd, message, wparam, lparam) }
+}
+
+unsafe extern "system" fn language_prompt_proc(
+    hwnd: HWND,
+    message: u32,
+    wparam: WPARAM,
+    lparam: LPARAM,
+) -> LRESULT {
+    if message == WM_NCCREATE {
+        let create = lparam.0 as *const CREATESTRUCTW;
+        if !create.is_null() {
+            let prompt = unsafe { (*create).lpCreateParams as *mut LanguagePrompt };
+            unsafe {
+                SetWindowLongPtrW(hwnd, GWLP_USERDATA, prompt as isize);
+            }
+        }
+        return LRESULT(1);
+    }
+
+    let prompt = unsafe {
+        let ptr = windows::Win32::UI::WindowsAndMessaging::GetWindowLongPtrW(hwnd, GWLP_USERDATA)
+            as *mut LanguagePrompt;
+        ptr.as_mut()
+    };
+
+    if let Some(prompt) = prompt {
+        match message {
+            WM_CREATE => {
+                if unsafe { prompt.create_controls(hwnd) }.is_err() {
+                    return LRESULT(-1);
+                }
+                return LRESULT(0);
+            }
+            WM_COMMAND => {
+                let id = loword(wparam.0 as u32) as i32;
+                if id == ID_LANGUAGE_PROMPT_OK {
+                    prompt.accept();
+                    unsafe {
+                        let _ = DestroyWindow(hwnd);
+                    }
+                }
+                return LRESULT(0);
+            }
+            WM_CLOSE => {
+                prompt.done = true;
+                unsafe {
+                    let _ = DestroyWindow(hwnd);
+                }
+                return LRESULT(0);
+            }
+            WM_CTLCOLORSTATIC | WM_CTLCOLORBTN => {
+                let hdc = HDC(wparam.0 as *mut c_void);
+                unsafe {
+                    let _ = SetBkMode(hdc, TRANSPARENT);
+                    let _ = SetTextColor(hdc, TEXT_COLOR);
+                }
+                return LRESULT(prompt.brush.0 as isize);
+            }
+            WM_NCDESTROY => unsafe {
+                SetWindowLongPtrW(hwnd, GWLP_USERDATA, 0);
+            },
+            _ => {}
+        }
+    }
+
+    unsafe { DefWindowProcW(hwnd, message, wparam, lparam) }
+}
+
+impl LanguagePrompt {
+    unsafe fn create_controls(&mut self, hwnd: HWND) -> Result<()> {
+        let instance = HINSTANCE(unsafe { GetModuleHandleW(None)?.0 });
+        let child = WS_CHILD | WS_VISIBLE;
+
+        let title = unsafe {
+            create_control(
+                hwnd,
+                instance,
+                w!("STATIC"),
+                "언어를 선택하세요.",
+                child,
+                WINDOW_EX_STYLE(0),
+                32,
+                28,
+                340,
+                24,
+                0,
+            )?
+        };
+        let subtitle = unsafe {
+            create_control(
+                hwnd,
+                instance,
+                w!("STATIC"),
+                "Select the language to use in UnfocusMute.",
+                child,
+                WINDOW_EX_STYLE(0),
+                32,
+                56,
+                340,
+                22,
+                0,
+            )?
+        };
+        self.combo = unsafe {
+            create_control(
+                hwnd,
+                instance,
+                w!("COMBOBOX"),
+                "",
+                child | WS_TABSTOP | WINDOW_STYLE(CBS_DROPDOWNLIST as u32),
+                WS_EX_CLIENTEDGE,
+                32,
+                92,
+                220,
+                180,
+                ID_LANGUAGE_PROMPT_COMBO,
+            )?
+        };
+        let ok = unsafe {
+            create_primary_button(
+                hwnd,
+                instance,
+                "시작",
+                270,
+                90,
+                96,
+                34,
+                ID_LANGUAGE_PROMPT_OK,
+            )?
+        };
+
+        unsafe {
+            let font = GetStockObject(DEFAULT_GUI_FONT);
+            for control in [title, subtitle, self.combo, ok] {
+                SendMessageW(
+                    control,
+                    WM_SETFONT,
+                    Some(WPARAM(font.0 as usize)),
+                    Some(LPARAM(1)),
+                );
+            }
+            for language in Language::ALL {
+                add_combo_item(self.combo, language.native_name());
+            }
+            let index = Language::ALL
+                .iter()
+                .position(|language| *language == self.current)
+                .unwrap_or(0);
+            SendMessageW(self.combo, CB_SETCURSEL, Some(WPARAM(index)), None);
+        }
+
+        Ok(())
+    }
+
+    fn accept(&mut self) {
+        let index = unsafe { SendMessageW(self.combo, CB_GETCURSEL, None, None).0 };
+        self.selected = Language::ALL.get(index as usize).copied();
+        self.done = true;
+    }
 }
 
 #[allow(clippy::too_many_arguments)]

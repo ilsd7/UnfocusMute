@@ -60,7 +60,7 @@ fn build_ico_from_png(source: &Path) -> io::Result<PathBuf> {
     let mut icon_dir = ico::IconDir::new(ico::ResourceType::Icon);
     for size in [16, 20, 24, 32, 40, 48, 64, 128, 256] {
         let resized = resize_icon_for_shell(&image, size);
-        icon_dir.add_entry(ico::IconDirEntry::encode_as_png(&resized)?);
+        icon_dir.add_entry(ico::IconDirEntry::encode(&resized)?);
     }
 
     let mut ico_file = File::create(&destination)?;
@@ -81,16 +81,59 @@ fn resize_icon_for_shell(source: &ico::IconImage, size: u32) -> ico::IconImage {
     let mut rgba = vec![0u8; (size * size * 4) as usize];
     for y in 0..draw_height {
         for x in 0..draw_width {
-            let src_x = left + ((x as u64 * width as u64) / draw_width as u64) as u32;
-            let src_y = top + ((y as u64 * height as u64) / draw_height as u64) as u32;
-            let src_index = ((src_y * source.width() + src_x) * 4) as usize;
+            let src_x = left as f32 + (x as f32 + 0.5) * width as f32 / draw_width as f32 - 0.5;
+            let src_y = top as f32 + (y as f32 + 0.5) * height as f32 / draw_height as f32 - 0.5;
             let dst_index = (((offset_y + y) * size + offset_x + x) * 4) as usize;
-            rgba[dst_index..dst_index + 4]
-                .copy_from_slice(&source.rgba_data()[src_index..src_index + 4]);
+            rgba[dst_index..dst_index + 4].copy_from_slice(&sample_bilinear(source, src_x, src_y));
         }
     }
 
     ico::IconImage::from_rgba_data(size, size, rgba)
+}
+
+fn sample_bilinear(image: &ico::IconImage, x: f32, y: f32) -> [u8; 4] {
+    let x0 = x.floor().clamp(0.0, (image.width() - 1) as f32) as u32;
+    let y0 = y.floor().clamp(0.0, (image.height() - 1) as f32) as u32;
+    let x1 = (x0 + 1).min(image.width() - 1);
+    let y1 = (y0 + 1).min(image.height() - 1);
+    let wx = x - x.floor();
+    let wy = y - y.floor();
+
+    let top = mix_pixel(pixel(image, x0, y0), pixel(image, x1, y0), wx);
+    let bottom = mix_pixel(pixel(image, x0, y1), pixel(image, x1, y1), wx);
+    unpremultiply(mix_pixel(top, bottom, wy))
+}
+
+fn pixel(image: &ico::IconImage, x: u32, y: u32) -> [f32; 4] {
+    let index = ((y * image.width() + x) * 4) as usize;
+    let red = image.rgba_data()[index] as f32;
+    let green = image.rgba_data()[index + 1] as f32;
+    let blue = image.rgba_data()[index + 2] as f32;
+    let alpha = image.rgba_data()[index + 3] as f32 / 255.0;
+    [red * alpha, green * alpha, blue * alpha, alpha]
+}
+
+fn mix_pixel(left: [f32; 4], right: [f32; 4], amount: f32) -> [f32; 4] {
+    [
+        left[0] + (right[0] - left[0]) * amount,
+        left[1] + (right[1] - left[1]) * amount,
+        left[2] + (right[2] - left[2]) * amount,
+        left[3] + (right[3] - left[3]) * amount,
+    ]
+}
+
+fn unpremultiply(pixel: [f32; 4]) -> [u8; 4] {
+    let alpha = pixel[3].clamp(0.0, 1.0);
+    if alpha <= 0.0 {
+        return [0, 0, 0, 0];
+    }
+
+    [
+        (pixel[0] / alpha).round().clamp(0.0, 255.0) as u8,
+        (pixel[1] / alpha).round().clamp(0.0, 255.0) as u8,
+        (pixel[2] / alpha).round().clamp(0.0, 255.0) as u8,
+        (alpha * 255.0).round().clamp(0.0, 255.0) as u8,
+    ]
 }
 
 fn alpha_bounds(image: &ico::IconImage) -> (u32, u32, u32, u32) {

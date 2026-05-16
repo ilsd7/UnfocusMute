@@ -53,9 +53,9 @@ impl Default for AppConfig {
             language: Language::default(),
             window_position: None,
             polling_interval_ms: DEFAULT_POLLING_INTERVAL_MS,
-            launch_on_startup: false,
-            start_minimized: false,
-            restore_muted_on_exit: true,
+            launch_on_startup: true,
+            start_minimized: true,
+            restore_muted_on_exit: false,
             targets: Vec::new(),
         }
     }
@@ -162,6 +162,10 @@ pub fn config_file_path() -> io::Result<PathBuf> {
     Ok(config_dir()?.join("config.json"))
 }
 
+pub fn config_file_exists() -> bool {
+    config_file_path().is_ok_and(|path| path.exists())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -188,5 +192,14 @@ mod tests {
         assert_eq!(config.targets.len(), 1);
         assert!(config.remove_target("GAME.EXE"));
         assert!(config.targets.is_empty());
+    }
+
+    #[test]
+    fn default_startup_preferences_match_release_defaults() {
+        let config = AppConfig::default();
+
+        assert!(config.launch_on_startup);
+        assert!(config.start_minimized);
+        assert!(!config.restore_muted_on_exit);
     }
 }
