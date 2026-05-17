@@ -53,7 +53,7 @@ impl Language {
                 pause: "일시 중지",
                 resume: "다시 시작",
                 start_minimized: "시작 시 트레이로 최소화",
-                launch_on_startup: "Windows 로그인 시 실행",
+                launch_on_startup: "Windows에 로그인하면 자동 실행",
                 restore_on_exit: "종료 시 앱 음소거 해제",
                 language: "언어",
                 refresh: "새로 고침",
@@ -66,6 +66,10 @@ impl Language {
                 target_count: "등록 앱",
                 muted_count: "현재 음소거",
                 open_config: "설정 파일 열기",
+                first_run_window_title: "언어 선택",
+                first_run_language_title: "언어를 선택하세요.",
+                first_run_language_subtitle: "나중에 UnfocusMute 안에서 언제든 바꿀 수 있습니다.",
+                first_run_start: "시작",
                 unsupported_os: "UnfocusMute는 Windows 11용 앱입니다. 이 환경에서는 코어 테스트와 문서 작업만 실행할 수 있습니다.",
             },
             Language::En => Strings {
@@ -87,7 +91,7 @@ impl Language {
                 pause: "Pause",
                 resume: "Resume",
                 start_minimized: "Start minimized to tray",
-                launch_on_startup: "Run at Windows sign-in",
+                launch_on_startup: "Auto-start when I sign in to Windows",
                 restore_on_exit: "Unmute apps on exit",
                 language: "Language",
                 refresh: "Refresh",
@@ -100,6 +104,10 @@ impl Language {
                 target_count: "Registered apps",
                 muted_count: "Currently muted",
                 open_config: "Open config file",
+                first_run_window_title: "Select language",
+                first_run_language_title: "Choose your language.",
+                first_run_language_subtitle: "You can change it later in UnfocusMute.",
+                first_run_start: "Start",
                 unsupported_os: "UnfocusMute is a Windows 11 app. This environment can run only core tests and documentation tasks.",
             },
             Language::Ja => Strings {
@@ -121,7 +129,7 @@ impl Language {
                 pause: "一時停止",
                 resume: "再開",
                 start_minimized: "起動時にトレイへ最小化",
-                launch_on_startup: "Windowsサインイン時に実行",
+                launch_on_startup: "Windowsサインイン時に自動起動",
                 restore_on_exit: "終了時にミュート解除",
                 language: "言語",
                 refresh: "更新",
@@ -134,6 +142,10 @@ impl Language {
                 target_count: "登録アプリ",
                 muted_count: "現在ミュート",
                 open_config: "設定ファイルを開く",
+                first_run_window_title: "言語を選択",
+                first_run_language_title: "言語を選択してください。",
+                first_run_language_subtitle: "あとでUnfocusMute内から変更できます。",
+                first_run_start: "開始",
                 unsupported_os: "UnfocusMuteはWindows 11向けアプリです。この環境ではコアテストとドキュメント作業のみ実行できます。",
             },
             Language::ZhHans => Strings {
@@ -155,7 +167,7 @@ impl Language {
                 pause: "暂停",
                 resume: "继续",
                 start_minimized: "启动时最小化到托盘",
-                launch_on_startup: "Windows 登录时运行",
+                launch_on_startup: "登录 Windows 时自动启动",
                 restore_on_exit: "退出时取消静音",
                 language: "语言",
                 refresh: "刷新",
@@ -168,6 +180,10 @@ impl Language {
                 target_count: "已注册应用",
                 muted_count: "当前静音",
                 open_config: "打开配置文件",
+                first_run_window_title: "选择语言",
+                first_run_language_title: "选择语言。",
+                first_run_language_subtitle: "之后可在 UnfocusMute 中随时更改。",
+                first_run_start: "开始",
                 unsupported_os: "UnfocusMute 是 Windows 11 应用。此环境只能运行核心测试和文档任务。",
             },
             Language::Es => Strings {
@@ -189,7 +205,7 @@ impl Language {
                 pause: "Pausar",
                 resume: "Reanudar",
                 start_minimized: "Iniciar minimizado en bandeja",
-                launch_on_startup: "Ejecutar al iniciar Windows",
+                launch_on_startup: "Iniciar automáticamente al entrar en Windows",
                 restore_on_exit: "Quitar silencio al salir",
                 language: "Idioma",
                 refresh: "Actualizar",
@@ -202,6 +218,10 @@ impl Language {
                 target_count: "Apps registradas",
                 muted_count: "Silenciadas ahora",
                 open_config: "Abrir archivo de configuración",
+                first_run_window_title: "Seleccionar idioma",
+                first_run_language_title: "Elige tu idioma.",
+                first_run_language_subtitle: "Puedes cambiarlo más tarde en UnfocusMute.",
+                first_run_start: "Empezar",
                 unsupported_os: "UnfocusMute es una app para Windows 11. En este entorno solo se pueden ejecutar pruebas del núcleo y tareas de documentación.",
             },
         }
@@ -241,6 +261,10 @@ pub struct Strings {
     pub target_count: &'static str,
     pub muted_count: &'static str,
     pub open_config: &'static str,
+    pub first_run_window_title: &'static str,
+    pub first_run_language_title: &'static str,
+    pub first_run_language_subtitle: &'static str,
+    pub first_run_start: &'static str,
     pub unsupported_os: &'static str,
 }
 
@@ -252,6 +276,10 @@ mod tests {
     fn every_language_has_a_title() {
         for language in Language::ALL {
             assert!(!language.strings().app_title.is_empty());
+            assert!(!language.strings().first_run_window_title.is_empty());
+            assert!(!language.strings().first_run_language_title.is_empty());
+            assert!(!language.strings().first_run_language_subtitle.is_empty());
+            assert!(!language.strings().first_run_start.is_empty());
             assert!(!language.native_name().is_empty());
         }
     }

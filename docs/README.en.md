@@ -32,7 +32,7 @@ The Windows distribution ZIP contains a portable executable. Extract the archive
 6. Use `Show PIDs` only when you need to register one specific process instance.
 7. Closing the window keeps UnfocusMute running in the tray. Use `Quit` to fully exit.
 
-On first run, you can choose whether UnfocusMute runs at Windows sign-in. Default settings for new configs are: run at Windows sign-in disabled, start minimized to tray enabled, and unmute apps on exit enabled.
+On first run, you can choose whether UnfocusMute auto-starts when you sign in to Windows. Default settings for new configs are: auto-start disabled, start minimized to tray enabled, and unmute apps on exit enabled.
 
 ## Language
 

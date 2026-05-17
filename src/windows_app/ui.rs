@@ -236,8 +236,12 @@ fn should_start_hidden(first_run: bool, forced_minimized: bool, start_minimized:
 }
 
 struct LanguagePrompt {
+    hwnd: HWND,
+    title_label: HWND,
+    subtitle_label: HWND,
     combo: HWND,
     launch_on_startup_check: HWND,
+    start_button: HWND,
     done: bool,
     selected: Option<InitialPreferences>,
     current: Language,
@@ -254,8 +258,12 @@ struct InitialPreferences {
 impl LanguagePrompt {
     fn new(current: Language, launch_on_startup: bool) -> Self {
         Self {
+            hwnd: HWND::default(),
+            title_label: HWND::default(),
+            subtitle_label: HWND::default(),
             combo: HWND::default(),
             launch_on_startup_check: HWND::default(),
+            start_button: HWND::default(),
             done: false,
             selected: None,
             current,
@@ -299,7 +307,7 @@ unsafe fn prompt_initial_language(
 
     let mut state = Box::new(LanguagePrompt::new(current, launch_on_startup));
     let state_ptr = state.as_mut() as *mut LanguagePrompt;
-    let title = to_wide("Select language");
+    let title = to_wide(current.strings().first_run_window_title);
     let position = centered_position(420, 260);
     let hwnd = unsafe {
         CreateWindowExW(
@@ -722,7 +730,7 @@ impl AppWindow {
                 "",
                 484,
                 460,
-                220,
+                380,
                 26,
                 ID_LAUNCH_STARTUP,
             )?
@@ -1713,11 +1721,16 @@ unsafe extern "system" fn language_prompt_proc(
             }
             WM_COMMAND => {
                 let id = loword(wparam.0 as u32) as i32;
+                let notification = hiword(wparam.0 as u32);
                 if id == ID_LANGUAGE_PROMPT_OK {
                     prompt.accept();
                     unsafe {
                         let _ = DestroyWindow(hwnd);
                     }
+                } else if id == ID_LANGUAGE_PROMPT_COMBO
+                    && (notification == CBN_SELCHANGE as u16 || notification == CBN_SELENDOK as u16)
+                {
+                    prompt.refresh_prompt_text();
                 }
                 return LRESULT(0);
             }
@@ -1748,15 +1761,17 @@ unsafe extern "system" fn language_prompt_proc(
 
 impl LanguagePrompt {
     unsafe fn create_controls(&mut self, hwnd: HWND) -> Result<()> {
+        self.hwnd = hwnd;
         let instance = HINSTANCE(unsafe { GetModuleHandleW(None)?.0 });
         let child = WS_CHILD | WS_VISIBLE;
+        let strings = self.current.strings();
 
-        let title = unsafe {
+        self.title_label = unsafe {
             create_control(
                 hwnd,
                 instance,
                 w!("STATIC"),
-                "Choose your language.",
+                strings.first_run_language_title,
                 child,
                 WINDOW_EX_STYLE(0),
                 32,
@@ -1766,12 +1781,12 @@ impl LanguagePrompt {
                 0,
             )?
         };
-        let subtitle = unsafe {
+        self.subtitle_label = unsafe {
             create_control(
                 hwnd,
                 instance,
                 w!("STATIC"),
-                "You can change it later in UnfocusMute.",
+                strings.first_run_language_subtitle,
                 child,
                 WINDOW_EX_STYLE(0),
                 32,
@@ -1791,7 +1806,7 @@ impl LanguagePrompt {
                 WS_EX_CLIENTEDGE,
                 32,
                 92,
-                220,
+                240,
                 34,
                 ID_LANGUAGE_PROMPT_COMBO,
             )?
@@ -1800,19 +1815,19 @@ impl LanguagePrompt {
             create_checkbox(
                 hwnd,
                 instance,
-                "Run at Windows sign-in",
+                strings.launch_on_startup,
                 32,
                 136,
-                280,
+                340,
                 26,
                 ID_LANGUAGE_PROMPT_STARTUP,
             )?
         };
-        let ok = unsafe {
+        self.start_button = unsafe {
             create_primary_button(
                 hwnd,
                 instance,
-                "Start",
+                strings.first_run_start,
                 270,
                 174,
                 96,
@@ -1824,11 +1839,11 @@ impl LanguagePrompt {
         unsafe {
             let font = GetStockObject(DEFAULT_GUI_FONT);
             for control in [
-                title,
-                subtitle,
+                self.title_label,
+                self.subtitle_label,
                 self.combo,
                 self.launch_on_startup_check,
-                ok,
+                self.start_button,
             ] {
                 SendMessageW(
                     control,
@@ -1857,16 +1872,30 @@ impl LanguagePrompt {
         Ok(())
     }
 
-    fn accept(&mut self) {
+    fn selected_language(&self) -> Language {
         let index = unsafe { SendMessageW(self.combo, CB_GETCURSEL, None, None).0 };
-        self.selected =
-            Language::ALL
-                .get(index as usize)
-                .copied()
-                .map(|language| InitialPreferences {
-                    language,
-                    launch_on_startup: unsafe { is_checked(self.launch_on_startup_check) },
-                });
+        Language::ALL
+            .get(index as usize)
+            .copied()
+            .unwrap_or(self.current)
+    }
+
+    fn refresh_prompt_text(&self) {
+        let strings = self.selected_language().strings();
+        unsafe {
+            set_text(self.hwnd, strings.first_run_window_title);
+            set_text(self.title_label, strings.first_run_language_title);
+            set_text(self.subtitle_label, strings.first_run_language_subtitle);
+            set_text(self.launch_on_startup_check, strings.launch_on_startup);
+            set_text(self.start_button, strings.first_run_start);
+        }
+    }
+
+    fn accept(&mut self) {
+        self.selected = Some(InitialPreferences {
+            language: self.selected_language(),
+            launch_on_startup: unsafe { is_checked(self.launch_on_startup_check) },
+        });
         self.done = true;
     }
 }

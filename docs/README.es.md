@@ -32,7 +32,7 @@ El ZIP de distribución para Windows contiene un ejecutable portátil. Extrae el
 6. Usa `Ver PID` solo cuando necesites registrar una instancia concreta.
 7. Al cerrar la ventana, UnfocusMute sigue en la bandeja. Usa `Salir` para cerrarla por completo.
 
-En el primer inicio puedes elegir si UnfocusMute se ejecuta al iniciar Windows. La configuración nueva deja desactivado el inicio con Windows y activa iniciar minimizado en bandeja y quitar silencio al salir.
+En el primer inicio puedes elegir si UnfocusMute se inicia automáticamente al entrar en Windows. La configuración nueva deja desactivado el inicio automático y activa iniciar minimizado en bandeja y quitar silencio al salir.
 
 ## Idioma
 
