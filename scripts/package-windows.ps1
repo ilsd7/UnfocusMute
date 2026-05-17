@@ -50,6 +50,9 @@ function Remove-ReadmeScreenshotBlock {
 Push-Location $RepoRoot
 try {
     cargo build --release --target $Target
+    if ($LASTEXITCODE -ne 0) {
+        throw "cargo build failed with exit code $LASTEXITCODE"
+    }
 
     New-Item -ItemType Directory -Force -Path $Stage | Out-Null
 
