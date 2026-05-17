@@ -10,11 +10,13 @@ use std::ffi::c_void;
 use std::mem::size_of;
 use windows::Win32::Foundation::{
     COLORREF, CloseHandle, ERROR_ALREADY_EXISTS, GetLastError, HANDLE, HINSTANCE, HWND, LPARAM,
-    LRESULT, POINT, RECT, WPARAM,
+    LRESULT, POINT, RECT, SIZE, WPARAM,
 };
 use windows::Win32::Graphics::Gdi::{
-    BeginPaint, CreateSolidBrush, DEFAULT_GUI_FONT, DeleteObject, EndPaint, FillRect, FrameRect,
-    GetStockObject, HBRUSH, HDC, HGDIOBJ, PAINTSTRUCT, SetBkColor, SetBkMode, SetTextColor,
+    BeginPaint, CLIP_DEFAULT_PRECIS, CreateFontW, CreateSolidBrush, DEFAULT_CHARSET,
+    DEFAULT_GUI_FONT, DEFAULT_QUALITY, DeleteObject, EndPaint, FF_DONTCARE, FW_NORMAL, FillRect,
+    FrameRect, GetDC, GetStockObject, GetTextExtentPoint32W, HBRUSH, HDC, HGDIOBJ,
+    OUT_DEFAULT_PRECIS, PAINTSTRUCT, ReleaseDC, SelectObject, SetBkColor, SetBkMode, SetTextColor,
     TRANSPARENT,
 };
 use windows::Win32::System::Com::{COINIT_APARTMENTTHREADED, CoInitializeEx, CoUninitialize};
@@ -38,11 +40,11 @@ use windows::Win32::UI::WindowsAndMessaging::{
     GetMessageW, GetSystemMetrics, GetWindowRect, HICON, HMENU, ICON_BIG, ICON_SMALL, IDC_ARROW,
     IDI_APPLICATION, IMAGE_ICON, LB_ADDSTRING, LB_GETCURSEL, LB_RESETCONTENT, LBN_SELCHANGE,
     LBS_NOTIFY, LR_DEFAULTCOLOR, LoadCursorW, LoadIconW, LoadImageW, MF_SEPARATOR, MF_STRING, MSG,
-    PostQuitMessage, RegisterClassW, SM_CXICON, SM_CXSCREEN, SM_CXSMICON, SM_CYICON, SM_CYSCREEN,
-    SM_CYSMICON, SW_HIDE, SW_RESTORE, SW_SHOW, SendMessageW, SetForegroundWindow, SetTimer,
-    SetWindowLongPtrW, SetWindowTextW, ShowWindow, TPM_NONOTIFY, TPM_RETURNCMD, TPM_RIGHTBUTTON,
-    TRACK_POPUP_MENU_FLAGS, TrackPopupMenu, TranslateMessage, WINDOW_EX_STYLE, WINDOW_STYLE,
-    WM_APP, WM_CLOSE, WM_COMMAND, WM_CREATE, WM_CTLCOLOREDIT, WM_CTLCOLORLISTBOX,
+    MoveWindow, PostQuitMessage, RegisterClassW, SM_CXICON, SM_CXSCREEN, SM_CXSMICON, SM_CYICON,
+    SM_CYSCREEN, SM_CYSMICON, SW_HIDE, SW_RESTORE, SW_SHOW, SendMessageW, SetForegroundWindow,
+    SetTimer, SetWindowLongPtrW, SetWindowTextW, ShowWindow, TPM_NONOTIFY, TPM_RETURNCMD,
+    TPM_RIGHTBUTTON, TRACK_POPUP_MENU_FLAGS, TrackPopupMenu, TranslateMessage, WINDOW_EX_STYLE,
+    WINDOW_STYLE, WM_APP, WM_CLOSE, WM_COMMAND, WM_CREATE, WM_CTLCOLOREDIT, WM_CTLCOLORLISTBOX,
     WM_CTLCOLORSTATIC, WM_DESTROY, WM_LBUTTONDBLCLK, WM_MOVE, WM_NCCREATE, WM_NCDESTROY, WM_PAINT,
     WM_RBUTTONUP, WM_SETFONT, WM_SETICON, WM_TIMER, WNDCLASSW, WS_BORDER, WS_CHILD,
     WS_CLIPCHILDREN, WS_CLIPSIBLINGS, WS_EX_CLIENTEDGE, WS_OVERLAPPEDWINDOW, WS_TABSTOP,
@@ -56,7 +58,7 @@ const MUTEX_NAME: PCWSTR = w!("Local\\UnfocusMute.SingleInstance");
 const TIMER_ID: usize = 1;
 const TRAY_ID: u32 = 1;
 const WM_TRAY_ICON: u32 = WM_APP + 1;
-const WINDOW_WIDTH: i32 = 920;
+const WINDOW_WIDTH: i32 = 980;
 const WINDOW_HEIGHT: i32 = 640;
 
 const ID_TARGETS: i32 = 1001;
@@ -247,6 +249,7 @@ struct LanguagePrompt {
     current: Language,
     launch_on_startup: bool,
     brush: HBRUSH,
+    font: UiFont,
 }
 
 #[derive(Clone, Copy)]
@@ -269,6 +272,7 @@ impl LanguagePrompt {
             current,
             launch_on_startup,
             brush: unsafe { CreateSolidBrush(PAGE_COLOR) },
+            font: UiFont::new(ui_font_point_size(current)),
         }
     }
 }
@@ -365,14 +369,20 @@ fn centered_position(width: i32, height: i32) -> WindowPosition {
 struct AppTheme {
     panel_brush: HBRUSH,
     border_brush: HBRUSH,
+    font: UiFont,
 }
 
 impl AppTheme {
-    fn new() -> Self {
+    fn new(language: Language) -> Self {
         Self {
             panel_brush: unsafe { CreateSolidBrush(PANEL_COLOR) },
             border_brush: unsafe { CreateSolidBrush(PANEL_BORDER_COLOR) },
+            font: UiFont::new(ui_font_point_size(language)),
         }
+    }
+
+    fn set_font_language(&mut self, language: Language) {
+        self.font = UiFont::new(ui_font_point_size(language));
     }
 }
 
@@ -381,6 +391,65 @@ impl Drop for AppTheme {
         unsafe {
             let _ = DeleteObject(HGDIOBJ(self.panel_brush.0));
             let _ = DeleteObject(HGDIOBJ(self.border_brush.0));
+        }
+    }
+}
+
+struct UiFont {
+    handle: HGDIOBJ,
+    owned: bool,
+}
+
+impl UiFont {
+    fn new(point_size: i32) -> Self {
+        let dpi = unsafe { GetDpiForSystem() as i32 };
+        let height = -((point_size * dpi + 36) / 72);
+        let font = unsafe {
+            CreateFontW(
+                height,
+                0,
+                0,
+                0,
+                FW_NORMAL.0 as i32,
+                0,
+                0,
+                0,
+                DEFAULT_CHARSET,
+                OUT_DEFAULT_PRECIS,
+                CLIP_DEFAULT_PRECIS,
+                DEFAULT_QUALITY,
+                FF_DONTCARE.0 as u32,
+                w!("Segoe UI"),
+            )
+        };
+        if font.0.is_null() {
+            Self {
+                handle: unsafe { GetStockObject(DEFAULT_GUI_FONT) },
+                owned: false,
+            }
+        } else {
+            Self {
+                handle: HGDIOBJ(font.0),
+                owned: true,
+            }
+        }
+    }
+
+    fn wparam(&self) -> WPARAM {
+        WPARAM(self.handle.0 as usize)
+    }
+
+    fn handle(&self) -> HGDIOBJ {
+        self.handle
+    }
+}
+
+impl Drop for UiFont {
+    fn drop(&mut self) {
+        if self.owned {
+            unsafe {
+                let _ = DeleteObject(self.handle);
+            }
         }
     }
 }
@@ -409,6 +478,7 @@ struct AppWindow {
 
 impl AppWindow {
     fn new(config: AppConfig, icon: HICON, tray_icon: HICON) -> Result<Self> {
+        let language = config.language;
         let strings = config.language.strings();
         Ok(Self {
             hwnd: HWND::default(),
@@ -427,7 +497,7 @@ impl AppWindow {
             paused: false,
             show_process_details: false,
             tray_added: false,
-            theme: AppTheme::new(),
+            theme: AppTheme::new(language),
             icon,
             tray_icon,
         })
@@ -513,11 +583,11 @@ impl AppWindow {
                 instance,
                 w!("STATIC"),
                 "",
-                child,
+                child | SS_RIGHT_STYLE,
                 WINDOW_EX_STYLE(0),
                 600,
                 34,
-                284,
+                328,
                 24,
                 0,
             )?
@@ -528,11 +598,11 @@ impl AppWindow {
                 instance,
                 w!("STATIC"),
                 "",
-                child,
+                child | SS_RIGHT_STYLE,
                 WINDOW_EX_STYLE(0),
                 600,
                 64,
-                284,
+                328,
                 24,
                 0,
             )?
@@ -563,8 +633,8 @@ impl AppWindow {
                 WINDOW_EX_STYLE(0),
                 36,
                 178,
-                382,
-                22,
+                392,
+                34,
                 0,
             )?
         };
@@ -577,9 +647,9 @@ impl AppWindow {
                 child | WS_BORDER | WS_VSCROLL | WINDOW_STYLE(LBS_NOTIFY as u32),
                 WS_EX_CLIENTEDGE,
                 36,
-                210,
+                222,
                 392,
-                226,
+                214,
                 ID_TARGETS,
             )?
         };
@@ -626,7 +696,7 @@ impl AppWindow {
                 WINDOW_EX_STYLE(0),
                 484,
                 208,
-                380,
+                440,
                 22,
                 0,
             )?
@@ -641,19 +711,19 @@ impl AppWindow {
                 WS_EX_CLIENTEDGE,
                 484,
                 236,
-                280,
+                340,
                 34,
                 ID_RUNNING,
             )?
         };
         self.controls.refresh_button =
-            unsafe { create_button(self.hwnd, instance, "", 776, 234, 108, 34, ID_REFRESH)? };
+            unsafe { create_button(self.hwnd, instance, "", 836, 234, 108, 34, ID_REFRESH)? };
         self.controls.toggle_process_details_button = unsafe {
             create_button(
                 self.hwnd,
                 instance,
                 "",
-                654,
+                714,
                 274,
                 110,
                 36,
@@ -661,7 +731,7 @@ impl AppWindow {
             )?
         };
         self.controls.add_selected_button = unsafe {
-            create_primary_button(self.hwnd, instance, "", 484, 274, 160, 36, ID_ADD_SELECTED)?
+            create_primary_button(self.hwnd, instance, "", 484, 274, 220, 36, ID_ADD_SELECTED)?
         };
         self.controls.manual_label = unsafe {
             create_control(
@@ -688,13 +758,13 @@ impl AppWindow {
                 WS_EX_CLIENTEDGE,
                 594,
                 326,
-                170,
+                230,
                 24,
                 ID_MANUAL,
             )?
         };
         self.controls.add_manual_button =
-            unsafe { create_button(self.hwnd, instance, "", 776, 322, 108, 34, ID_ADD_MANUAL)? };
+            unsafe { create_button(self.hwnd, instance, "", 836, 322, 108, 34, ID_ADD_MANUAL)? };
 
         self.controls.settings_label = unsafe {
             create_control(
@@ -718,7 +788,7 @@ impl AppWindow {
                 "",
                 484,
                 430,
-                220,
+                260,
                 26,
                 ID_START_MINIMIZED,
             )?
@@ -730,13 +800,13 @@ impl AppWindow {
                 "",
                 484,
                 456,
-                380,
+                440,
                 26,
                 ID_LAUNCH_STARTUP,
             )?
         };
         self.controls.restore_exit_check = unsafe {
-            create_checkbox(self.hwnd, instance, "", 484, 490, 220, 26, ID_RESTORE_EXIT)?
+            create_checkbox(self.hwnd, instance, "", 484, 490, 230, 26, ID_RESTORE_EXIT)?
         };
         self.controls.language_label = unsafe {
             create_control(
@@ -746,7 +816,7 @@ impl AppWindow {
                 "",
                 child | SS_RIGHT_STYLE,
                 WINDOW_EX_STYLE(0),
-                682,
+                726,
                 407,
                 64,
                 22,
@@ -754,16 +824,16 @@ impl AppWindow {
             )?
         };
         self.controls.language_button =
-            unsafe { create_button(self.hwnd, instance, "", 754, 398, 130, 34, ID_LANGUAGE)? };
+            unsafe { create_button(self.hwnd, instance, "", 798, 398, 130, 34, ID_LANGUAGE)? };
         self.controls.open_config_button =
-            unsafe { create_button(self.hwnd, instance, "", 720, 484, 164, 34, ID_OPEN_CONFIG)? };
+            unsafe { create_button(self.hwnd, instance, "", 724, 484, 220, 34, ID_OPEN_CONFIG)? };
 
         self.controls.pause_button =
-            unsafe { create_button(self.hwnd, instance, "", 448, 552, 132, 38, ID_PAUSE)? };
+            unsafe { create_button(self.hwnd, instance, "", 492, 552, 132, 38, ID_PAUSE)? };
         self.controls.hide_button =
-            unsafe { create_button(self.hwnd, instance, "", 596, 552, 132, 38, ID_HIDE)? };
+            unsafe { create_button(self.hwnd, instance, "", 640, 552, 132, 38, ID_HIDE)? };
         self.controls.quit_button =
-            unsafe { create_button(self.hwnd, instance, "", 744, 552, 140, 38, ID_QUIT)? };
+            unsafe { create_button(self.hwnd, instance, "", 788, 552, 140, 38, ID_QUIT)? };
 
         unsafe {
             SendMessageW(
@@ -779,6 +849,8 @@ impl AppWindow {
 
     fn refresh_text(&mut self) {
         self.strings = self.config.language.strings();
+        self.theme.set_font_language(self.config.language);
+        self.apply_default_font();
         unsafe {
             set_text(self.hwnd, self.strings.app_title);
             set_text(self.controls.title_label, self.strings.app_title);
@@ -851,6 +923,7 @@ impl AppWindow {
                 Some(LPARAM(process_placeholder.as_ptr() as isize)),
             );
         }
+        self.layout_localized_controls();
         self.update_status();
         self.update_target_summary();
         self.add_tray_icon();
@@ -880,6 +953,133 @@ impl AppWindow {
                 self.config.restore_muted_on_exit,
             );
         }
+    }
+
+    fn layout_localized_controls(&self) {
+        let content_right = WINDOW_WIDTH - 52;
+        let right_panel_left = 484;
+        let gap = 12;
+
+        let refresh_width = self.button_width(self.strings.refresh, 108, 150);
+        let refresh_x = content_right - refresh_width;
+        let _ = unsafe {
+            MoveWindow(
+                self.controls.refresh_button,
+                refresh_x,
+                234,
+                refresh_width,
+                34,
+                true,
+            )
+        };
+        let _ = unsafe {
+            MoveWindow(
+                self.controls.running_combo,
+                right_panel_left,
+                236,
+                refresh_x - right_panel_left - gap,
+                34,
+                true,
+            )
+        };
+
+        let add_selected_width = self.button_width(self.strings.add_selected, 120, 220);
+        let details_text = if self.show_process_details {
+            self.strings.hide_pid_details
+        } else {
+            self.strings.show_pid_details
+        };
+        let details_width = self.button_width(details_text, 110, 170);
+        let _ = unsafe {
+            MoveWindow(
+                self.controls.add_selected_button,
+                right_panel_left,
+                274,
+                add_selected_width,
+                36,
+                true,
+            )
+        };
+        let _ = unsafe {
+            MoveWindow(
+                self.controls.toggle_process_details_button,
+                right_panel_left + add_selected_width + gap,
+                274,
+                details_width,
+                36,
+                true,
+            )
+        };
+
+        let manual_label_width = self.label_width(self.strings.manual_process, 100, 130);
+        let manual_edit_x = right_panel_left + manual_label_width + gap;
+        let add_manual_width = self.button_width(self.strings.add_manual, 108, 200);
+        let add_manual_x = content_right - add_manual_width;
+        let _ = unsafe {
+            MoveWindow(
+                self.controls.manual_label,
+                right_panel_left,
+                330,
+                manual_label_width,
+                22,
+                true,
+            )
+        };
+        let _ = unsafe {
+            MoveWindow(
+                self.controls.manual_edit,
+                manual_edit_x,
+                326,
+                add_manual_x - manual_edit_x - gap,
+                24,
+                true,
+            )
+        };
+        let _ = unsafe {
+            MoveWindow(
+                self.controls.add_manual_button,
+                add_manual_x,
+                322,
+                add_manual_width,
+                34,
+                true,
+            )
+        };
+
+        let open_config_width = self.button_width(self.strings.open_config, 150, 250);
+        let open_config_x = content_right - open_config_width;
+        let _ = unsafe {
+            MoveWindow(
+                self.controls.restore_exit_check,
+                right_panel_left,
+                490,
+                open_config_x - right_panel_left - gap,
+                26,
+                true,
+            )
+        };
+        let _ = unsafe {
+            MoveWindow(
+                self.controls.open_config_button,
+                open_config_x,
+                484,
+                open_config_width,
+                34,
+                true,
+            )
+        };
+    }
+
+    fn button_width(&self, text: &str, min_width: i32, max_width: i32) -> i32 {
+        (self.text_width(text) + 44).clamp(min_width, max_width)
+    }
+
+    fn label_width(&self, text: &str, min_width: i32, max_width: i32) -> i32 {
+        (self.text_width(text) + 8).clamp(min_width, max_width)
+    }
+
+    fn text_width(&self, text: &str) -> i32 {
+        unsafe { measure_text_width(self.hwnd, self.theme.font.handle(), text) }
     }
 
     fn refresh_targets(&mut self) {
@@ -1416,7 +1616,7 @@ impl AppWindow {
             RECT {
                 left: 16,
                 top: 16,
-                right: 904,
+                right: 948,
                 bottom: 112,
             },
             RECT {
@@ -1428,13 +1628,13 @@ impl AppWindow {
             RECT {
                 left: 464,
                 top: 128,
-                right: 904,
+                right: 948,
                 bottom: 364,
             },
             RECT {
                 left: 464,
                 top: 380,
-                right: 904,
+                right: 948,
                 bottom: 528,
             },
         ] {
@@ -1450,13 +1650,12 @@ impl AppWindow {
 
     fn apply_default_font(&self) {
         unsafe {
-            let font = GetStockObject(DEFAULT_GUI_FONT);
             for hwnd in self.controls.all() {
                 if hwnd != HWND::default() {
                     SendMessageW(
                         hwnd,
                         WM_SETFONT,
-                        Some(WPARAM(font.0 as usize)),
+                        Some(self.theme.font.wparam()),
                         Some(LPARAM(1)),
                     );
                 }
@@ -1504,6 +1703,13 @@ impl ProcessChoice {
 
 fn language_button_text(language: Language) -> String {
     language.native_name().to_owned()
+}
+
+fn ui_font_point_size(language: Language) -> i32 {
+    match language {
+        Language::Hi | Language::Ar => 10,
+        _ => 9,
+    }
 }
 
 fn format_polling_interval(milliseconds: u64, language: Language) -> String {
@@ -1841,21 +2047,7 @@ impl LanguagePrompt {
         };
 
         unsafe {
-            let font = GetStockObject(DEFAULT_GUI_FONT);
-            for control in [
-                self.title_label,
-                self.subtitle_label,
-                self.combo,
-                self.launch_on_startup_check,
-                self.start_button,
-            ] {
-                SendMessageW(
-                    control,
-                    WM_SETFONT,
-                    Some(WPARAM(font.0 as usize)),
-                    Some(LPARAM(1)),
-                );
-            }
+            self.apply_font();
             for language in Language::ALL {
                 add_combo_item(self.combo, language.native_name());
             }
@@ -1876,6 +2068,25 @@ impl LanguagePrompt {
         Ok(())
     }
 
+    unsafe fn apply_font(&self) {
+        unsafe {
+            for control in [
+                self.title_label,
+                self.subtitle_label,
+                self.combo,
+                self.launch_on_startup_check,
+                self.start_button,
+            ] {
+                SendMessageW(
+                    control,
+                    WM_SETFONT,
+                    Some(self.font.wparam()),
+                    Some(LPARAM(1)),
+                );
+            }
+        }
+    }
+
     fn selected_language(&self) -> Language {
         let index = unsafe { SendMessageW(self.combo, CB_GETCURSEL, None, None).0 };
         Language::ALL
@@ -1884,9 +2095,12 @@ impl LanguagePrompt {
             .unwrap_or(self.current)
     }
 
-    fn refresh_prompt_text(&self) {
-        let strings = self.selected_language().strings();
+    fn refresh_prompt_text(&mut self) {
+        let language = self.selected_language();
+        self.font = UiFont::new(ui_font_point_size(language));
+        let strings = language.strings();
         unsafe {
+            self.apply_font();
             set_text(self.hwnd, strings.first_run_window_title);
             set_text(self.title_label, strings.first_run_language_title);
             set_text(self.subtitle_label, strings.first_run_language_subtitle);
@@ -2029,6 +2243,36 @@ unsafe fn create_control(
 unsafe fn set_text(hwnd: HWND, text: &str) {
     let wide = to_wide(text);
     let _ = unsafe { SetWindowTextW(hwnd, PCWSTR(wide.as_ptr())) };
+}
+
+unsafe fn measure_text_width(hwnd: HWND, font: HGDIOBJ, text: &str) -> i32 {
+    let fallback_width = text.chars().count() as i32 * 8;
+    let wide: Vec<u16> = text.encode_utf16().collect();
+    if wide.is_empty() {
+        return 0;
+    }
+
+    let hdc = unsafe { GetDC(Some(hwnd)) };
+    if hdc.0.is_null() {
+        return fallback_width;
+    }
+
+    let previous = unsafe { SelectObject(hdc, font) };
+    let mut size = SIZE::default();
+    let width = if unsafe { GetTextExtentPoint32W(hdc, &wide, &mut size).as_bool() } {
+        size.cx
+    } else {
+        fallback_width
+    };
+    if !previous.0.is_null() {
+        unsafe {
+            let _ = SelectObject(hdc, previous);
+        }
+    }
+    unsafe {
+        let _ = ReleaseDC(Some(hwnd), hdc);
+    }
+    width
 }
 
 unsafe fn window_text(hwnd: HWND) -> String {
