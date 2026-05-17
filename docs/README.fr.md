@@ -8,7 +8,7 @@
 
 UnfocusMute est une petite application légère pour la zone de notification Windows. Elle coupe automatiquement le son des jeux ou applications sélectionnés lorsqu’ils passent en arrière-plan.
 
-Compilée comme application native Rust, elle s’exécute sans runtime séparé. L’exécutable Windows actuel pèse environ 676 Ko, soit moins de 1 Mo.
+Compilée comme application native Rust, elle s’exécute sans runtime séparé. L’exécutable Windows actuel pèse environ 517 Ko, soit moins de 1 Mo.
 
 Enregistrez les applications à gérer, et UnfocusMute ne coupe leurs sessions audio que lorsqu’elles ne sont plus au premier plan. Quand une application revient au premier plan, UnfocusMute réactive uniquement les sessions qu’elle avait coupées elle-même, sans toucher aux coupures manuelles.
 
