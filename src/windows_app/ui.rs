@@ -470,6 +470,7 @@ struct AppWindow {
     paused: bool,
     show_process_details: bool,
     tray_added: bool,
+    last_status: Option<(String, String)>,
     theme: AppTheme,
     icon: HICON,
     tray_icon: HICON,
@@ -495,6 +496,7 @@ impl AppWindow {
             paused: false,
             show_process_details: false,
             tray_added: false,
+            last_status: None,
             theme: AppTheme::new(language),
             icon,
             tray_icon,
@@ -1175,12 +1177,14 @@ impl AppWindow {
             self.update_status();
             return;
         };
-        let active_sessions = sessions
-            .iter()
-            .map(|session| session.key.clone())
-            .collect::<HashSet<_>>();
-        self.muted_by_app
-            .retain(|session| active_sessions.contains(session));
+        if !self.muted_by_app.is_empty() {
+            let active_sessions = sessions
+                .iter()
+                .map(|session| session.key.clone())
+                .collect::<HashSet<_>>();
+            self.muted_by_app
+                .retain(|session| active_sessions.contains(session));
+        }
 
         let foreground_pid = process::foreground_pid();
         let foreground_process_name = foreground_pid.and_then(process::process_name);
@@ -1206,7 +1210,7 @@ impl AppWindow {
         self.update_status();
     }
 
-    fn update_status(&self) {
+    fn update_status(&mut self) {
         let interval =
             format_polling_interval(self.config.polling_interval_ms, self.config.language);
         let status = format!(
@@ -1225,10 +1229,20 @@ impl AppWindow {
             self.strings.muted_count,
             self.muted_by_app.len()
         );
+        if self
+            .last_status
+            .as_ref()
+            .is_some_and(|(last_status, last_detail)| {
+                last_status == &status && last_detail == &detail
+            })
+        {
+            return;
+        }
         unsafe {
             set_text(self.controls.status, &status);
             set_text(self.controls.status_detail, &detail);
         }
+        self.last_status = Some((status, detail));
     }
 
     fn update_target_summary(&self) {
