@@ -23,14 +23,14 @@ pub fn plan_mute_actions(
     managed_muted_pids: &HashSet<u32>,
     sessions: &[AudioSessionSnapshot],
 ) -> Vec<MuteAction> {
-    let target_names = enabled_target_names(targets);
+    let matcher = TargetMatcher::new(targets);
     let mut actions = Vec::new();
 
     for session in sessions {
         let Some(name) = normalize_process_name(&session.process_name) else {
             continue;
         };
-        if !target_names.contains(&name) {
+        if !matcher.matches(&name, session.pid) {
             continue;
         }
 
@@ -53,12 +53,33 @@ pub fn plan_mute_actions(
     actions
 }
 
-fn enabled_target_names(targets: &[TargetProcess]) -> BTreeSet<String> {
-    targets
-        .iter()
-        .filter(|target| target.enabled)
-        .filter_map(|target| normalize_process_name(&target.name))
-        .collect()
+struct TargetMatcher {
+    names: BTreeSet<String>,
+    pids: BTreeSet<(String, u32)>,
+}
+
+impl TargetMatcher {
+    fn new(targets: &[TargetProcess]) -> Self {
+        let mut names = BTreeSet::new();
+        let mut pids = BTreeSet::new();
+
+        for target in targets.iter().filter(|target| target.enabled) {
+            let Some(name) = normalize_process_name(&target.name) else {
+                continue;
+            };
+            if let Some(pid) = target.pid {
+                pids.insert((name, pid));
+            } else {
+                names.insert(name);
+            }
+        }
+
+        Self { names, pids }
+    }
+
+    fn matches(&self, name: &str, pid: u32) -> bool {
+        self.names.contains(name) || self.pids.contains(&(name.to_owned(), pid))
+    }
 }
 
 #[cfg(test)]
@@ -126,5 +147,31 @@ mod tests {
         }];
 
         assert!(plan_mute_actions(&targets, Some(10), &HashSet::new(), &sessions).is_empty());
+    }
+
+    #[test]
+    fn pid_target_matches_only_that_process_instance() {
+        let targets = vec![TargetProcess::for_pid("browser.exe", 20).unwrap()];
+        let sessions = vec![
+            AudioSessionSnapshot {
+                pid: 10,
+                process_name: "browser.exe".to_owned(),
+                muted: false,
+            },
+            AudioSessionSnapshot {
+                pid: 20,
+                process_name: "browser.exe".to_owned(),
+                muted: false,
+            },
+        ];
+
+        assert_eq!(
+            plan_mute_actions(&targets, Some(30), &HashSet::new(), &sessions),
+            vec![MuteAction {
+                pid: 20,
+                process_name: "browser.exe".to_owned(),
+                mute: true,
+            }]
+        );
     }
 }

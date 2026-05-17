@@ -14,6 +14,8 @@ const DEFAULT_POLLING_INTERVAL_MS: u64 = 350;
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct TargetProcess {
     pub name: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub pid: Option<u32>,
     pub enabled: bool,
 }
 
@@ -22,8 +24,25 @@ impl TargetProcess {
         let name = normalize_process_name(name.as_ref())?;
         Some(Self {
             name,
+            pid: None,
             enabled: true,
         })
+    }
+
+    pub fn for_pid(name: impl AsRef<str>, pid: u32) -> Option<Self> {
+        let name = normalize_process_name(name.as_ref())?;
+        Some(Self {
+            name,
+            pid: Some(pid),
+            enabled: true,
+        })
+    }
+
+    pub fn display_name(&self) -> String {
+        match self.pid {
+            Some(pid) => format!("{} (PID {pid})", self.name),
+            None => self.name.clone(),
+        }
     }
 }
 
@@ -90,26 +109,33 @@ impl AppConfig {
         let Some(target) = TargetProcess::new(name) else {
             return false;
         };
-        if self
-            .targets
-            .iter()
-            .any(|existing| existing.name.eq_ignore_ascii_case(&target.name))
-        {
+        self.add_target_process(target)
+    }
+
+    pub fn add_pid_target(&mut self, name: impl AsRef<str>, pid: u32) -> bool {
+        let Some(target) = TargetProcess::for_pid(name, pid) else {
+            return false;
+        };
+        self.add_target_process(target)
+    }
+
+    fn add_target_process(&mut self, target: TargetProcess) -> bool {
+        if self.targets.iter().any(|existing| {
+            existing.name.eq_ignore_ascii_case(&target.name) && existing.pid == target.pid
+        }) {
             return false;
         }
         self.targets.push(target);
-        self.targets.sort_by_key(|target| target.name.clone());
+        self.sort_targets();
         true
     }
 
-    pub fn remove_target(&mut self, name: impl AsRef<str>) -> bool {
-        let Some(name) = normalize_process_name(name.as_ref()) else {
+    pub fn remove_target_at(&mut self, index: usize) -> bool {
+        if index >= self.targets.len() {
             return false;
-        };
-        let before = self.targets.len();
-        self.targets
-            .retain(|target| !target.name.eq_ignore_ascii_case(&name));
-        before != self.targets.len()
+        }
+        self.targets.remove(index);
+        true
     }
 
     pub fn deduplicate_targets(&mut self) {
@@ -118,9 +144,14 @@ impl AppConfig {
             let Some(name) = normalize_process_name(&target.name) else {
                 return false;
             };
-            names.insert(name)
+            names.insert((name, target.pid))
         });
-        self.targets.sort_by_key(|target| target.name.clone());
+        self.sort_targets();
+    }
+
+    fn sort_targets(&mut self) {
+        self.targets
+            .sort_by_key(|target| (target.name.clone(), target.pid.unwrap_or(0)));
     }
 }
 
@@ -190,8 +221,21 @@ mod tests {
         assert!(config.add_target("Game.EXE"));
         assert!(!config.add_target("game.exe"));
         assert_eq!(config.targets.len(), 1);
-        assert!(config.remove_target("GAME.EXE"));
+        assert!(config.remove_target_at(0));
         assert!(config.targets.is_empty());
+    }
+
+    #[test]
+    fn exe_and_pid_targets_can_coexist() {
+        let mut config = AppConfig::default();
+
+        assert!(config.add_target("browser.exe"));
+        assert!(config.add_pid_target("browser.exe", 42));
+        assert!(!config.add_pid_target("browser.exe", 42));
+        assert_eq!(config.targets.len(), 2);
+        assert_eq!(config.targets[1].display_name(), "browser.exe (PID 42)");
+        assert!(config.remove_target_at(1));
+        assert_eq!(config.targets.len(), 1);
     }
 
     #[test]

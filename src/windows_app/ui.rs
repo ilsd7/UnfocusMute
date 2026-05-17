@@ -5,7 +5,7 @@ use crate::windows_app::audio::AudioController;
 use crate::windows_app::process::{self, ProcessInfo};
 use crate::windows_app::startup;
 use anyhow::{Context, Result};
-use std::collections::HashSet;
+use std::collections::{BTreeMap, HashSet};
 use std::ffi::c_void;
 use std::mem::size_of;
 use windows::Win32::Foundation::{
@@ -13,8 +13,9 @@ use windows::Win32::Foundation::{
     LRESULT, POINT, RECT, WPARAM,
 };
 use windows::Win32::Graphics::Gdi::{
-    CreateSolidBrush, DEFAULT_GUI_FONT, DeleteObject, GetStockObject, HBRUSH, HDC, HGDIOBJ,
-    SetBkColor, SetBkMode, SetTextColor, TRANSPARENT,
+    BeginPaint, CreateSolidBrush, DEFAULT_GUI_FONT, DeleteObject, EndPaint, FillRect, FrameRect,
+    GetStockObject, HBRUSH, HDC, HGDIOBJ, PAINTSTRUCT, SetBkColor, SetBkMode, SetTextColor,
+    TRANSPARENT,
 };
 use windows::Win32::System::Com::{COINIT_APARTMENTTHREADED, CoInitializeEx, CoUninitialize};
 use windows::Win32::System::LibraryLoader::GetModuleHandleW;
@@ -26,19 +27,20 @@ use windows::Win32::UI::Shell::{
 };
 use windows::Win32::UI::WindowsAndMessaging::{
     AppendMenuW, BM_GETCHECK, BM_SETCHECK, BS_AUTOCHECKBOX, BS_DEFPUSHBUTTON, BS_FLAT,
-    BS_PUSHBUTTON, CB_ADDSTRING, CB_GETCURSEL, CB_RESETCONTENT, CB_SETCURSEL, CBN_SELCHANGE,
-    CBS_DROPDOWNLIST, CREATESTRUCTW, CreatePopupMenu, CreateWindowExW, DefWindowProcW, DestroyMenu,
-    DestroyWindow, DispatchMessageW, ES_AUTOHSCROLL, FindWindowW, GWLP_USERDATA, GetCursorPos,
-    GetMessageW, GetSystemMetrics, GetWindowRect, HICON, HMENU, ICON_BIG, ICON_SMALL, IDC_ARROW,
-    IDI_APPLICATION, IMAGE_ICON, LB_ADDSTRING, LB_GETCURSEL, LB_RESETCONTENT, LBN_SELCHANGE,
-    LBS_NOTIFY, LR_DEFAULTCOLOR, LoadCursorW, LoadIconW, LoadImageW, MF_SEPARATOR, MF_STRING, MSG,
-    PostQuitMessage, RegisterClassW, SM_CXSCREEN, SM_CXSMICON, SM_CYSCREEN, SM_CYSMICON, SW_HIDE,
-    SW_RESTORE, SW_SHOW, SendMessageW, SetForegroundWindow, SetTimer, SetWindowLongPtrW,
-    SetWindowTextW, ShowWindow, TPM_RIGHTBUTTON, TrackPopupMenu, TranslateMessage, WINDOW_EX_STYLE,
-    WINDOW_STYLE, WM_APP, WM_CLOSE, WM_COMMAND, WM_CREATE, WM_CTLCOLORBTN, WM_CTLCOLOREDIT,
-    WM_CTLCOLORLISTBOX, WM_CTLCOLORSTATIC, WM_DESTROY, WM_LBUTTONDBLCLK, WM_MOVE, WM_NCCREATE,
-    WM_NCDESTROY, WM_RBUTTONUP, WM_SETFONT, WM_SETICON, WM_TIMER, WNDCLASSW, WS_BORDER, WS_CHILD,
-    WS_EX_CLIENTEDGE, WS_OVERLAPPEDWINDOW, WS_TABSTOP, WS_VISIBLE,
+    BS_PUSHBUTTON, CB_ADDSTRING, CB_GETCURSEL, CB_RESETCONTENT, CB_SETCURSEL, CB_SHOWDROPDOWN,
+    CBN_SELCHANGE, CBS_DROPDOWNLIST, CREATESTRUCTW, CreatePopupMenu, CreateWindowExW,
+    DefWindowProcW, DestroyMenu, DestroyWindow, DispatchMessageW, ES_AUTOHSCROLL, FindWindowW,
+    GWLP_USERDATA, GetCursorPos, GetMessageW, GetSystemMetrics, GetWindowRect, HICON, HMENU,
+    ICON_BIG, ICON_SMALL, IDC_ARROW, IDI_APPLICATION, IMAGE_ICON, LB_ADDSTRING, LB_GETCURSEL,
+    LB_RESETCONTENT, LBN_SELCHANGE, LBS_NOTIFY, LR_DEFAULTCOLOR, LoadCursorW, LoadIconW,
+    LoadImageW, MF_SEPARATOR, MF_STRING, MSG, PostQuitMessage, RegisterClassW, SM_CXSCREEN,
+    SM_CXSMICON, SM_CYSCREEN, SM_CYSMICON, SW_HIDE, SW_RESTORE, SW_SHOW, SendMessageW,
+    SetForegroundWindow, SetTimer, SetWindowLongPtrW, SetWindowTextW, ShowWindow, TPM_RIGHTBUTTON,
+    TrackPopupMenu, TranslateMessage, WINDOW_EX_STYLE, WINDOW_STYLE, WM_APP, WM_CLOSE, WM_COMMAND,
+    WM_CREATE, WM_CTLCOLORBTN, WM_CTLCOLOREDIT, WM_CTLCOLORLISTBOX, WM_CTLCOLORSTATIC, WM_DESTROY,
+    WM_LBUTTONDBLCLK, WM_MOVE, WM_NCCREATE, WM_NCDESTROY, WM_PAINT, WM_RBUTTONUP, WM_SETFONT,
+    WM_SETICON, WM_TIMER, WNDCLASSW, WS_BORDER, WS_CHILD, WS_EX_CLIENTEDGE, WS_OVERLAPPEDWINDOW,
+    WS_TABSTOP, WS_VISIBLE, WS_VSCROLL,
 };
 use windows::core::{PCWSTR, w};
 
@@ -67,11 +69,13 @@ const ID_HIDE: i32 = 1014;
 const ID_QUIT: i32 = 1015;
 const ID_SHOW: i32 = 1016;
 const ID_OPEN_CONFIG: i32 = 1017;
+const ID_TOGGLE_PROCESS_DETAILS: i32 = 1018;
 const ID_LANGUAGE_PROMPT_COMBO: i32 = 2001;
 const ID_LANGUAGE_PROMPT_OK: i32 = 2002;
 
 const PAGE_COLOR: COLORREF = rgb(245, 247, 250);
 const PANEL_COLOR: COLORREF = rgb(255, 255, 255);
+const PANEL_BORDER_COLOR: COLORREF = rgb(228, 232, 238);
 const TEXT_COLOR: COLORREF = rgb(25, 33, 45);
 const SUBTLE_TEXT_COLOR: COLORREF = rgb(85, 96, 112);
 
@@ -326,12 +330,14 @@ fn centered_position(width: i32, height: i32) -> WindowPosition {
 
 struct AppTheme {
     panel_brush: HBRUSH,
+    border_brush: HBRUSH,
 }
 
 impl AppTheme {
     fn new() -> Self {
         Self {
             panel_brush: unsafe { CreateSolidBrush(PANEL_COLOR) },
+            border_brush: unsafe { CreateSolidBrush(PANEL_BORDER_COLOR) },
         }
     }
 }
@@ -340,6 +346,7 @@ impl Drop for AppTheme {
     fn drop(&mut self) {
         unsafe {
             let _ = DeleteObject(HGDIOBJ(self.panel_brush.0));
+            let _ = DeleteObject(HGDIOBJ(self.border_brush.0));
         }
     }
 }
@@ -351,9 +358,11 @@ struct AppWindow {
     strings: Strings,
     audio: Option<AudioController>,
     running_processes: Vec<ProcessInfo>,
+    process_choices: Vec<ProcessChoice>,
     foreground: Option<ProcessInfo>,
     muted_by_app: HashSet<u32>,
     paused: bool,
+    show_process_details: bool,
     tray_added: bool,
     theme: AppTheme,
     icon: HICON,
@@ -370,9 +379,11 @@ impl AppWindow {
             strings,
             audio: AudioController::new().ok(),
             running_processes: Vec::new(),
+            process_choices: Vec::new(),
             foreground: None,
             muted_by_app: HashSet::new(),
             paused: false,
+            show_process_details: false,
             tray_added: false,
             theme: AppTheme::new(),
             icon,
@@ -424,7 +435,6 @@ impl AppWindow {
         let child = WS_CHILD | WS_VISIBLE;
         let tab_child = child | WS_TABSTOP;
 
-        self.controls.header_panel = unsafe { create_panel(self.hwnd, instance, 16, 16, 888, 96)? };
         self.controls.title_label = unsafe {
             create_control(
                 self.hwnd,
@@ -486,8 +496,6 @@ impl AppWindow {
             )?
         };
 
-        self.controls.targets_panel =
-            unsafe { create_panel(self.hwnd, instance, 16, 128, 432, 372)? };
         self.controls.targets_label = unsafe {
             create_control(
                 self.hwnd,
@@ -536,7 +544,6 @@ impl AppWindow {
         self.controls.remove_button =
             unsafe { create_button(self.hwnd, instance, "", 36, 452, 150, 34, ID_REMOVE)? };
 
-        self.controls.add_panel = unsafe { create_panel(self.hwnd, instance, 464, 128, 440, 236)? };
         self.controls.add_label = unsafe {
             create_control(
                 self.hwnd,
@@ -588,17 +595,29 @@ impl AppWindow {
                 instance,
                 w!("COMBOBOX"),
                 "",
-                tab_child | WINDOW_STYLE(CBS_DROPDOWNLIST as u32),
+                tab_child | WS_VSCROLL | WINDOW_STYLE(CBS_DROPDOWNLIST as u32),
                 WS_EX_CLIENTEDGE,
                 484,
                 236,
                 280,
-                220,
+                340,
                 ID_RUNNING,
             )?
         };
         self.controls.refresh_button =
             unsafe { create_button(self.hwnd, instance, "", 776, 234, 108, 34, ID_REFRESH)? };
+        self.controls.toggle_process_details_button = unsafe {
+            create_button(
+                self.hwnd,
+                instance,
+                "",
+                654,
+                282,
+                110,
+                36,
+                ID_TOGGLE_PROCESS_DETAILS,
+            )?
+        };
         self.controls.add_selected_button = unsafe {
             create_primary_button(self.hwnd, instance, "", 484, 282, 160, 36, ID_ADD_SELECTED)?
         };
@@ -635,8 +654,6 @@ impl AppWindow {
         self.controls.add_manual_button =
             unsafe { create_button(self.hwnd, instance, "", 776, 322, 108, 34, ID_ADD_MANUAL)? };
 
-        self.controls.settings_panel =
-            unsafe { create_panel(self.hwnd, instance, 464, 380, 440, 148)? };
         self.controls.settings_label = unsafe {
             create_control(
                 self.hwnd,
@@ -713,11 +730,11 @@ impl AppWindow {
             unsafe { create_button(self.hwnd, instance, "", 720, 484, 164, 34, ID_OPEN_CONFIG)? };
 
         self.controls.pause_button =
-            unsafe { create_button(self.hwnd, instance, "", 464, 552, 132, 38, ID_PAUSE)? };
+            unsafe { create_button(self.hwnd, instance, "", 448, 552, 132, 38, ID_PAUSE)? };
         self.controls.hide_button =
-            unsafe { create_button(self.hwnd, instance, "", 610, 552, 132, 38, ID_HIDE)? };
+            unsafe { create_button(self.hwnd, instance, "", 596, 552, 132, 38, ID_HIDE)? };
         self.controls.quit_button =
-            unsafe { create_button(self.hwnd, instance, "", 756, 552, 148, 38, ID_QUIT)? };
+            unsafe { create_button(self.hwnd, instance, "", 744, 552, 140, 38, ID_QUIT)? };
 
         self.apply_default_font();
         Ok(())
@@ -745,6 +762,14 @@ impl AppWindow {
             set_text(self.controls.add_manual_button, self.strings.add_manual);
             set_text(self.controls.remove_button, self.strings.remove_selected);
             set_text(self.controls.refresh_button, self.strings.refresh);
+            set_text(
+                self.controls.toggle_process_details_button,
+                if self.show_process_details {
+                    self.strings.hide_pid_details
+                } else {
+                    self.strings.show_pid_details
+                },
+            );
             set_text(
                 self.controls.start_minimized_check,
                 self.strings.start_minimized,
@@ -823,7 +848,7 @@ impl AppWindow {
         unsafe {
             SendMessageW(self.controls.target_list, LB_RESETCONTENT, None, None);
             for target in &self.config.targets {
-                add_list_item(self.controls.target_list, &target.name);
+                add_list_item(self.controls.target_list, &target.display_name());
             }
         }
         self.update_target_summary();
@@ -832,13 +857,11 @@ impl AppWindow {
 
     fn refresh_processes(&mut self) {
         self.running_processes = process::running_processes();
+        self.process_choices = self.build_process_choices();
         unsafe {
             SendMessageW(self.controls.running_combo, CB_RESETCONTENT, None, None);
-            for process in &self.running_processes {
-                add_combo_item(
-                    self.controls.running_combo,
-                    &format!("{} ({})", process.name, process.pid),
-                );
+            for choice in &self.process_choices {
+                add_combo_item(self.controls.running_combo, &choice.display_name());
             }
             SendMessageW(
                 self.controls.running_combo,
@@ -847,6 +870,34 @@ impl AppWindow {
                 None,
             );
         }
+    }
+
+    fn build_process_choices(&self) -> Vec<ProcessChoice> {
+        if self.show_process_details {
+            return self
+                .running_processes
+                .iter()
+                .map(|process| ProcessChoice {
+                    name: process.name.clone(),
+                    pid: Some(process.pid),
+                    count: 1,
+                })
+                .collect();
+        }
+
+        let mut counts = BTreeMap::<String, usize>::new();
+        for process in &self.running_processes {
+            *counts.entry(process.name.clone()).or_default() += 1;
+        }
+
+        counts
+            .into_iter()
+            .map(|(name, count)| ProcessChoice {
+                name,
+                pid: None,
+                count,
+            })
+            .collect()
     }
 
     fn tick(&mut self) {
@@ -933,6 +984,7 @@ impl AppWindow {
             ID_ADD_MANUAL => self.add_manual_target(),
             ID_REMOVE => self.remove_selected_target(),
             ID_REFRESH => self.refresh_processes(),
+            ID_TOGGLE_PROCESS_DETAILS => self.toggle_process_details(),
             ID_OPEN_CONFIG => self.open_config_file(),
             ID_PAUSE => self.toggle_pause(),
             ID_HIDE => unsafe {
@@ -958,11 +1010,37 @@ impl AppWindow {
         if index < 0 {
             return;
         }
-        let Some(process) = self.running_processes.get(index as usize) else {
+        let Some(choice) = self.process_choices.get(index as usize) else {
             return;
         };
-        if self.config.add_target(&process.name) {
+        let added = if let Some(pid) = choice.pid {
+            self.config.add_pid_target(&choice.name, pid)
+        } else {
+            self.config.add_target(&choice.name)
+        };
+        if added {
             self.finish_target_change();
+        }
+    }
+
+    fn toggle_process_details(&mut self) {
+        self.show_process_details = !self.show_process_details;
+        self.refresh_processes();
+        unsafe {
+            set_text(
+                self.controls.toggle_process_details_button,
+                if self.show_process_details {
+                    self.strings.hide_pid_details
+                } else {
+                    self.strings.show_pid_details
+                },
+            );
+            SendMessageW(
+                self.controls.running_combo,
+                CB_SHOWDROPDOWN,
+                Some(WPARAM(1)),
+                None,
+            );
         }
     }
 
@@ -981,11 +1059,7 @@ impl AppWindow {
         if index < 0 {
             return;
         }
-        let Some(target) = self.config.targets.get(index as usize) else {
-            return;
-        };
-        let target_name = target.name.clone();
-        if self.config.remove_target(&target_name) {
+        if self.config.remove_target_at(index as usize) {
             let _ = self.config.save();
             self.refresh_targets();
         }
@@ -1178,6 +1252,45 @@ impl AppWindow {
         }
     }
 
+    fn paint(&self, hwnd: HWND) {
+        let mut paint = PAINTSTRUCT::default();
+        let hdc = unsafe { BeginPaint(hwnd, &mut paint) };
+        for rect in [
+            RECT {
+                left: 16,
+                top: 16,
+                right: 904,
+                bottom: 112,
+            },
+            RECT {
+                left: 16,
+                top: 128,
+                right: 448,
+                bottom: 500,
+            },
+            RECT {
+                left: 464,
+                top: 128,
+                right: 904,
+                bottom: 364,
+            },
+            RECT {
+                left: 464,
+                top: 380,
+                right: 904,
+                bottom: 528,
+            },
+        ] {
+            unsafe {
+                let _ = FillRect(hdc, &rect, self.theme.panel_brush);
+                let _ = FrameRect(hdc, &rect, self.theme.border_brush);
+            }
+        }
+        unsafe {
+            let _ = EndPaint(hwnd, &paint);
+        }
+    }
+
     fn apply_default_font(&self) {
         unsafe {
             let font = GetStockObject(DEFAULT_GUI_FONT);
@@ -1195,29 +1308,43 @@ impl AppWindow {
     }
 }
 
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct ProcessChoice {
+    name: String,
+    pid: Option<u32>,
+    count: usize,
+}
+
+impl ProcessChoice {
+    fn display_name(&self) -> String {
+        match self.pid {
+            Some(pid) => format!("{} (PID {pid})", self.name),
+            None if self.count > 1 => format!("{} ({} PID)", self.name, self.count),
+            None => self.name.clone(),
+        }
+    }
+}
+
 #[derive(Clone, Copy, Default)]
 struct Controls {
-    header_panel: HWND,
     title_label: HWND,
     subtitle_label: HWND,
     status: HWND,
     status_detail: HWND,
-    targets_panel: HWND,
     targets_label: HWND,
     target_summary: HWND,
     target_list: HWND,
     remove_button: HWND,
-    add_panel: HWND,
     add_label: HWND,
     running_label: HWND,
     running_hint: HWND,
     running_combo: HWND,
     refresh_button: HWND,
+    toggle_process_details_button: HWND,
     add_selected_button: HWND,
     manual_label: HWND,
     manual_edit: HWND,
     add_manual_button: HWND,
-    settings_panel: HWND,
     settings_label: HWND,
     start_minimized_check: HWND,
     launch_startup_check: HWND,
@@ -1231,29 +1358,26 @@ struct Controls {
 }
 
 impl Controls {
-    fn all(self) -> [HWND; 31] {
+    fn all(self) -> [HWND; 28] {
         [
-            self.header_panel,
             self.title_label,
             self.subtitle_label,
             self.status,
             self.status_detail,
-            self.targets_panel,
             self.targets_label,
             self.target_summary,
             self.target_list,
             self.remove_button,
-            self.add_panel,
             self.add_label,
             self.running_label,
             self.running_hint,
             self.running_combo,
             self.refresh_button,
+            self.toggle_process_details_button,
             self.add_selected_button,
             self.manual_label,
             self.manual_edit,
             self.add_manual_button,
-            self.settings_panel,
             self.settings_label,
             self.start_minimized_check,
             self.launch_startup_check,
@@ -1315,6 +1439,10 @@ unsafe extern "system" fn window_proc(
             }
             WM_TIMER => {
                 app.tick();
+                return LRESULT(0);
+            }
+            WM_PAINT => {
+                app.paint(hwnd);
                 return LRESULT(0);
             }
             WM_MOVE => {
@@ -1599,31 +1727,6 @@ unsafe fn create_checkbox(
             width,
             height,
             id,
-        )
-    }
-}
-
-unsafe fn create_panel(
-    parent: HWND,
-    instance: HINSTANCE,
-    x: i32,
-    y: i32,
-    width: i32,
-    height: i32,
-) -> Result<HWND> {
-    unsafe {
-        create_control(
-            parent,
-            instance,
-            w!("STATIC"),
-            "",
-            WS_CHILD | WS_VISIBLE,
-            WINDOW_EX_STYLE(0),
-            x,
-            y,
-            width,
-            height,
-            0,
         )
     }
 }
