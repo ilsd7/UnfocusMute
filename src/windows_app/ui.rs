@@ -78,6 +78,7 @@ const ID_OPEN_CONFIG: i32 = 1017;
 const ID_TOGGLE_PROCESS_DETAILS: i32 = 1018;
 const ID_LANGUAGE_PROMPT_COMBO: i32 = 2001;
 const ID_LANGUAGE_PROMPT_OK: i32 = 2002;
+const ID_LANGUAGE_PROMPT_STARTUP: i32 = 2003;
 const ID_LANGUAGE_MENU_BASE: i32 = 3000;
 const PAGE_COLOR: COLORREF = rgb(245, 247, 250);
 const PANEL_COLOR: COLORREF = rgb(255, 255, 255);
@@ -134,9 +135,11 @@ unsafe fn run_window() -> Result<()> {
     let first_run = !config_file_exists();
     let mut config = AppConfig::load_or_default().unwrap_or_default();
     if first_run {
-        if let Some(language) = unsafe { prompt_initial_language(instance, icon, config.language)? }
-        {
-            config.language = language;
+        if let Some(preferences) = unsafe {
+            prompt_initial_language(instance, icon, config.language, config.launch_on_startup)?
+        } {
+            config.language = preferences.language;
+            config.launch_on_startup = preferences.launch_on_startup;
         }
         let _ = config.save();
     }
@@ -221,7 +224,8 @@ unsafe fn bring_existing_window_to_front() {
 }
 
 fn sync_startup_setting(config: &mut AppConfig) {
-    if config.launch_on_startup && startup::set_launch_on_startup(true).is_err() {
+    let result = startup::set_launch_on_startup(config.launch_on_startup);
+    if result.is_err() && config.launch_on_startup {
         config.launch_on_startup = false;
         let _ = config.save();
     }
@@ -233,19 +237,29 @@ fn should_start_hidden(first_run: bool, forced_minimized: bool, start_minimized:
 
 struct LanguagePrompt {
     combo: HWND,
+    launch_on_startup_check: HWND,
     done: bool,
-    selected: Option<Language>,
+    selected: Option<InitialPreferences>,
     current: Language,
+    launch_on_startup: bool,
     brush: HBRUSH,
 }
 
+#[derive(Clone, Copy)]
+struct InitialPreferences {
+    language: Language,
+    launch_on_startup: bool,
+}
+
 impl LanguagePrompt {
-    fn new(current: Language) -> Self {
+    fn new(current: Language, launch_on_startup: bool) -> Self {
         Self {
             combo: HWND::default(),
+            launch_on_startup_check: HWND::default(),
             done: false,
             selected: None,
             current,
+            launch_on_startup,
             brush: unsafe { CreateSolidBrush(PAGE_COLOR) },
         }
     }
@@ -263,7 +277,8 @@ unsafe fn prompt_initial_language(
     instance: HINSTANCE,
     icon: HICON,
     current: Language,
-) -> Result<Option<Language>> {
+    launch_on_startup: bool,
+) -> Result<Option<InitialPreferences>> {
     let cursor = unsafe { LoadCursorW(None, IDC_ARROW).context("load language prompt cursor")? };
     let background = unsafe { CreateSolidBrush(PAGE_COLOR) };
     let class = WNDCLASSW {
@@ -282,10 +297,10 @@ unsafe fn prompt_initial_language(
         RegisterClassW(&class);
     }
 
-    let mut state = Box::new(LanguagePrompt::new(current));
+    let mut state = Box::new(LanguagePrompt::new(current, launch_on_startup));
     let state_ptr = state.as_mut() as *mut LanguagePrompt;
     let title = to_wide("Select language");
-    let position = centered_position(420, 220);
+    let position = centered_position(420, 260);
     let hwnd = unsafe {
         CreateWindowExW(
             WINDOW_EX_STYLE(0),
@@ -295,7 +310,7 @@ unsafe fn prompt_initial_language(
             position.x,
             position.y,
             420,
-            220,
+            260,
             None,
             None,
             Some(instance),
@@ -1781,13 +1796,25 @@ impl LanguagePrompt {
                 ID_LANGUAGE_PROMPT_COMBO,
             )?
         };
+        self.launch_on_startup_check = unsafe {
+            create_checkbox(
+                hwnd,
+                instance,
+                "Run at Windows sign-in",
+                32,
+                136,
+                280,
+                26,
+                ID_LANGUAGE_PROMPT_STARTUP,
+            )?
+        };
         let ok = unsafe {
             create_primary_button(
                 hwnd,
                 instance,
                 "Start",
                 270,
-                90,
+                174,
                 96,
                 34,
                 ID_LANGUAGE_PROMPT_OK,
@@ -1796,7 +1823,13 @@ impl LanguagePrompt {
 
         unsafe {
             let font = GetStockObject(DEFAULT_GUI_FONT);
-            for control in [title, subtitle, self.combo, ok] {
+            for control in [
+                title,
+                subtitle,
+                self.combo,
+                self.launch_on_startup_check,
+                ok,
+            ] {
                 SendMessageW(
                     control,
                     WM_SETFONT,
@@ -1818,6 +1851,7 @@ impl LanguagePrompt {
                 .position(|language| *language == self.current)
                 .unwrap_or(0);
             SendMessageW(self.combo, CB_SETCURSEL, Some(WPARAM(index)), None);
+            set_checkbox(self.launch_on_startup_check, self.launch_on_startup);
         }
 
         Ok(())
@@ -1825,7 +1859,14 @@ impl LanguagePrompt {
 
     fn accept(&mut self) {
         let index = unsafe { SendMessageW(self.combo, CB_GETCURSEL, None, None).0 };
-        self.selected = Language::ALL.get(index as usize).copied();
+        self.selected =
+            Language::ALL
+                .get(index as usize)
+                .copied()
+                .map(|language| InitialPreferences {
+                    language,
+                    launch_on_startup: unsafe { is_checked(self.launch_on_startup_check) },
+                });
         self.done = true;
     }
 }

@@ -4,12 +4,16 @@ on:
   push:
   pull_request:
 
+permissions:
+  contents: read
+
 jobs:
   linux:
     name: Linux core checks
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - run: rustup toolchain install stable --profile minimal
       - run: cargo fmt --check
       - run: cargo test
@@ -18,13 +22,14 @@ jobs:
   windows:
     name: Windows app checks
     runs-on: windows-latest
+    timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - run: rustup toolchain install stable --profile minimal --target x86_64-pc-windows-msvc
       - run: cargo fmt --check
       - run: cargo clippy --target x86_64-pc-windows-msvc --all-targets -- -D warnings
       - run: cargo build --release --target x86_64-pc-windows-msvc
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v6
         with:
           name: UnfocusMute-windows-x64
           path: target/x86_64-pc-windows-msvc/release/unfocusmute.exe

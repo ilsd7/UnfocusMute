@@ -72,7 +72,7 @@ impl Default for AppConfig {
             language: Language::default(),
             window_position: None,
             polling_interval_ms: DEFAULT_POLLING_INTERVAL_MS,
-            launch_on_startup: true,
+            launch_on_startup: false,
             start_minimized: true,
             restore_muted_on_exit: true,
             targets: Vec::new(),
@@ -270,7 +270,7 @@ mod tests {
     fn default_startup_preferences_match_release_defaults() {
         let config = AppConfig::default();
 
-        assert!(config.launch_on_startup);
+        assert!(!config.launch_on_startup);
         assert!(config.start_minimized);
         assert!(config.restore_muted_on_exit);
     }
