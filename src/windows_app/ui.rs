@@ -729,7 +729,7 @@ impl AppWindow {
                 instance,
                 "",
                 484,
-                460,
+                456,
                 380,
                 26,
                 ID_LAUNCH_STARTUP,
