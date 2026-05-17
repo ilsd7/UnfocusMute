@@ -82,7 +82,7 @@ impl Language {
                 first_run_language_title: "언어를 선택하세요.",
                 first_run_language_subtitle: "나중에 UnfocusMute 안에서 언제든 바꿀 수 있습니다.",
                 first_run_start: "시작",
-                unsupported_os: "UnfocusMute는 Windows 11용 앱입니다. 이 환경에서는 코어 테스트와 문서 작업만 실행할 수 있습니다.",
+                unsupported_os: "UnfocusMute는 Windows용 앱입니다. 이 환경에서는 코어 테스트와 문서 작업만 실행할 수 있습니다.",
             },
             Language::En => Strings {
                 app_title: "UnfocusMute",
@@ -120,7 +120,7 @@ impl Language {
                 first_run_language_title: "Choose your language.",
                 first_run_language_subtitle: "You can change it later in UnfocusMute.",
                 first_run_start: "Start",
-                unsupported_os: "UnfocusMute is a Windows 11 app. This environment can run only core tests and documentation tasks.",
+                unsupported_os: "UnfocusMute is a Windows app. This environment can run only core tests and documentation tasks.",
             },
             Language::Ja => Strings {
                 app_title: "UnfocusMute",
@@ -158,7 +158,7 @@ impl Language {
                 first_run_language_title: "言語を選択してください。",
                 first_run_language_subtitle: "あとでUnfocusMute内から変更できます。",
                 first_run_start: "開始",
-                unsupported_os: "UnfocusMuteはWindows 11向けアプリです。この環境ではコアテストとドキュメント作業のみ実行できます。",
+                unsupported_os: "UnfocusMuteはWindows向けアプリです。この環境ではコアテストとドキュメント作業のみ実行できます。",
             },
             Language::ZhHans => Strings {
                 app_title: "UnfocusMute",
@@ -196,7 +196,7 @@ impl Language {
                 first_run_language_title: "选择语言。",
                 first_run_language_subtitle: "之后可在 UnfocusMute 中随时更改。",
                 first_run_start: "开始",
-                unsupported_os: "UnfocusMute 是 Windows 11 应用。此环境只能运行核心测试和文档任务。",
+                unsupported_os: "UnfocusMute 是 Windows 应用。此环境只能运行核心测试和文档任务。",
             },
             Language::Es => Strings {
                 app_title: "UnfocusMute",
@@ -234,7 +234,7 @@ impl Language {
                 first_run_language_title: "Elige tu idioma.",
                 first_run_language_subtitle: "Puedes cambiarlo más tarde en UnfocusMute.",
                 first_run_start: "Empezar",
-                unsupported_os: "UnfocusMute es una app para Windows 11. En este entorno solo se pueden ejecutar pruebas del núcleo y tareas de documentación.",
+                unsupported_os: "UnfocusMute es una app para Windows. En este entorno solo se pueden ejecutar pruebas del núcleo y tareas de documentación.",
             },
             Language::Fr => Strings {
                 app_title: "UnfocusMute",
@@ -272,7 +272,7 @@ impl Language {
                 first_run_language_title: "Choisissez votre langue.",
                 first_run_language_subtitle: "Vous pourrez la modifier plus tard dans UnfocusMute.",
                 first_run_start: "Commencer",
-                unsupported_os: "UnfocusMute est une application pour Windows 11. Cet environnement ne peut exécuter que les tests du cœur et les tâches de documentation.",
+                unsupported_os: "UnfocusMute est une application pour Windows. Cet environnement ne peut exécuter que les tests du cœur et les tâches de documentation.",
             },
             Language::Pt => Strings {
                 app_title: "UnfocusMute",
@@ -310,7 +310,7 @@ impl Language {
                 first_run_language_title: "Escolha seu idioma.",
                 first_run_language_subtitle: "Você pode mudar isso depois no UnfocusMute.",
                 first_run_start: "Começar",
-                unsupported_os: "UnfocusMute é um app para Windows 11. Neste ambiente, só é possível executar testes principais e tarefas de documentação.",
+                unsupported_os: "UnfocusMute é um app para Windows. Neste ambiente, só é possível executar testes principais e tarefas de documentação.",
             },
             Language::Hi => Strings {
                 app_title: "UnfocusMute",
@@ -348,7 +348,7 @@ impl Language {
                 first_run_language_title: "अपनी भाषा चुनें।",
                 first_run_language_subtitle: "इसे बाद में UnfocusMute में बदला जा सकता है।",
                 first_run_start: "शुरू करें",
-                unsupported_os: "UnfocusMute Windows 11 ऐप है। इस वातावरण में केवल कोर टेस्ट और दस्तावेज़ कार्य चल सकते हैं।",
+                unsupported_os: "UnfocusMute Windows ऐप है। इस वातावरण में केवल कोर टेस्ट और दस्तावेज़ कार्य चल सकते हैं।",
             },
             Language::Ar => Strings {
                 app_title: "UnfocusMute",
@@ -386,7 +386,7 @@ impl Language {
                 first_run_language_title: "اختر لغتك.",
                 first_run_language_subtitle: "يمكنك تغييرها لاحقًا داخل UnfocusMute.",
                 first_run_start: "ابدأ",
-                unsupported_os: "UnfocusMute تطبيق لنظام Windows 11. في هذه البيئة يمكن تشغيل الاختبارات الأساسية وأعمال التوثيق فقط.",
+                unsupported_os: "UnfocusMute تطبيق لنظام Windows. في هذه البيئة يمكن تشغيل الاختبارات الأساسية وأعمال التوثيق فقط.",
             },
         }
     }

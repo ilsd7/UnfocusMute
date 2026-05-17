@@ -1,6 +1,7 @@
-use crate::engine::AudioSessionSnapshot;
+use crate::engine::{AudioSessionSnapshot, MuteAction};
 use crate::windows_app::process;
 use anyhow::{Context, Result};
+use std::collections::{HashMap, HashSet, hash_map::Entry};
 use windows::Win32::Media::Audio::{
     IAudioSessionControl2, IAudioSessionManager2, IMMDeviceEnumerator, ISimpleAudioVolume,
     MMDeviceEnumerator, eMultimedia, eRender,
@@ -36,6 +37,7 @@ impl AudioController {
                 .context("get audio session enumerator")?;
             let count = enumerator.GetCount().context("get audio session count")?;
             let mut sessions = Vec::new();
+            let mut process_names = HashMap::<u32, Option<String>>::new();
 
             for index in 0..count {
                 let Ok(control) = enumerator.GetSession(index) else {
@@ -50,7 +52,15 @@ impl AudioController {
                 if pid == 0 {
                     continue;
                 }
-                let Some(info) = process::process_info(pid) else {
+                let name = match process_names.entry(pid) {
+                    Entry::Occupied(entry) => entry.get().clone(),
+                    Entry::Vacant(entry) => {
+                        let name = process::process_info(pid).map(|info| info.name);
+                        entry.insert(name.clone());
+                        name
+                    }
+                };
+                let Some(process_name) = name else {
                     continue;
                 };
                 let Ok(volume) = control.cast::<ISimpleAudioVolume>() else {
@@ -63,13 +73,55 @@ impl AudioController {
 
                 sessions.push(AudioSessionSnapshot {
                     pid,
-                    process_name: info.name,
+                    process_name,
                     muted,
                 });
             }
 
             Ok(sessions)
         }
+    }
+
+    pub fn set_mutes(&self, actions: &[MuteAction]) -> Result<HashSet<u32>> {
+        if actions.is_empty() {
+            return Ok(HashSet::new());
+        }
+
+        let desired_mutes = actions
+            .iter()
+            .map(|action| (action.pid, action.mute))
+            .collect::<HashMap<_, _>>();
+        let mut changed_pids = HashSet::new();
+
+        unsafe {
+            let enumerator = self
+                .manager
+                .GetSessionEnumerator()
+                .context("get audio session enumerator")?;
+            let count = enumerator.GetCount().context("get audio session count")?;
+
+            for index in 0..count {
+                let Ok(control) = enumerator.GetSession(index) else {
+                    continue;
+                };
+                let Ok(control2) = control.cast::<IAudioSessionControl2>() else {
+                    continue;
+                };
+                let pid = control2.GetProcessId().unwrap_or(0);
+                let Some(mute) = desired_mutes.get(&pid).copied() else {
+                    continue;
+                };
+                let volume = control
+                    .cast::<ISimpleAudioVolume>()
+                    .context("get simple audio volume")?;
+                volume
+                    .SetMute(mute, std::ptr::null())
+                    .context("set session mute")?;
+                changed_pids.insert(pid);
+            }
+        }
+
+        Ok(changed_pids)
     }
 
     pub fn set_mute(&self, pid: u32, mute: bool) -> Result<()> {

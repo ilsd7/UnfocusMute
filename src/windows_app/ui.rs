@@ -7,7 +7,7 @@ use crate::windows_app::startup;
 use anyhow::{Context, Result};
 use std::collections::{BTreeMap, HashSet};
 use std::ffi::c_void;
-use std::mem::size_of;
+use std::mem::{self, size_of};
 use windows::Win32::Foundation::{
     COLORREF, CloseHandle, ERROR_ALREADY_EXISTS, GetLastError, HANDLE, HINSTANCE, HWND, LPARAM,
     LRESULT, POINT, RECT, SIZE, WPARAM,
@@ -1182,8 +1182,9 @@ impl AppWindow {
             &sessions,
         );
 
+        let changed_pids = audio.set_mutes(&actions).unwrap_or_default();
         for action in actions {
-            if audio.set_mute(action.pid, action.mute).is_ok() {
+            if changed_pids.contains(&action.pid) {
                 if action.mute {
                     self.muted_by_app.insert(action.pid);
                 } else {
@@ -1272,16 +1273,11 @@ impl AppWindow {
     }
 
     fn add_selected_process(&mut self) {
-        let index =
-            unsafe { SendMessageW(self.controls.running_combo, CB_GETCURSEL, None, None).0 };
-        let choice = if index >= 0 {
-            self.process_choices.get(index as usize).cloned()
-        } else if self.process_query.trim().is_empty() {
-            None
-        } else {
-            self.process_choices.first().cloned()
-        };
+        let choice = self.selected_process_choice().cloned();
         let Some(choice) = choice else { return };
+        if !self.can_add_process_choice(&choice) {
+            return;
+        }
         let added = if let Some(pid) = choice.pid {
             self.config.add_pid_target(&choice.name, pid)
         } else {
@@ -1376,13 +1372,31 @@ impl AppWindow {
     fn update_action_buttons(&self) {
         let has_selected_target =
             unsafe { SendMessageW(self.controls.target_list, LB_GETCURSEL, None, None).0 >= 0 };
+        let can_add_selected = self
+            .selected_process_choice()
+            .is_some_and(|choice| self.can_add_process_choice(choice));
         unsafe {
             let _ = EnableWindow(self.controls.remove_button, has_selected_target);
-            let _ = EnableWindow(
-                self.controls.add_selected_button,
-                !self.process_choices.is_empty(),
-            );
+            let _ = EnableWindow(self.controls.add_selected_button, can_add_selected);
         }
+    }
+
+    fn selected_process_choice(&self) -> Option<&ProcessChoice> {
+        let index =
+            unsafe { SendMessageW(self.controls.running_combo, CB_GETCURSEL, None, None).0 };
+        if index >= 0 {
+            self.process_choices.get(index as usize)
+        } else if self.process_query.trim().is_empty() {
+            None
+        } else {
+            self.process_choices.first()
+        }
+    }
+
+    fn can_add_process_choice(&self, choice: &ProcessChoice) -> bool {
+        self.config.targets.iter().all(|target| {
+            !target.name.eq_ignore_ascii_case(&choice.name) || target.pid != choice.pid
+        })
     }
 
     fn finish_target_change(&mut self) {
@@ -1522,7 +1536,7 @@ impl AppWindow {
         if self.config.restore_muted_on_exit
             && let Some(audio) = &self.audio
         {
-            for pid in self.muted_by_app.drain().collect::<Vec<_>>() {
+            for pid in mem::take(&mut self.muted_by_app) {
                 let _ = audio.set_mute(pid, false);
             }
         }

@@ -6,7 +6,7 @@ use std::collections::BTreeSet;
 use std::env;
 use std::fs;
 use std::io;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 const CONFIG_VERSION: u32 = 1;
 const DEFAULT_POLLING_INTERVAL_MS: u64 = 350;
@@ -102,7 +102,7 @@ impl AppConfig {
         let temp_path = path.with_extension("json.tmp");
         let json = serde_json::to_string_pretty(self).map_err(io::Error::other)?;
         fs::write(&temp_path, json)?;
-        fs::rename(temp_path, path)
+        replace_file(&temp_path, &path)
     }
 
     pub fn add_target(&mut self, name: impl AsRef<str>) -> bool {
@@ -156,6 +156,23 @@ impl AppConfig {
                 .cmp(&right.name)
                 .then_with(|| left.pid.unwrap_or(0).cmp(&right.pid.unwrap_or(0)))
         });
+    }
+}
+
+fn replace_file(temp_path: &Path, destination: &Path) -> io::Result<()> {
+    match fs::rename(temp_path, destination) {
+        Ok(()) => Ok(()),
+        Err(error) => {
+            if !(cfg!(windows) && destination.exists()) {
+                let _ = fs::remove_file(temp_path);
+                return Err(error);
+            }
+
+            fs::remove_file(destination)?;
+            fs::rename(temp_path, destination).inspect_err(|_| {
+                let _ = fs::remove_file(temp_path);
+            })
+        }
     }
 }
 
@@ -280,5 +297,20 @@ mod tests {
         let config = AppConfig::default();
 
         assert_eq!(config.language, Language::En);
+    }
+
+    #[test]
+    fn replace_file_replaces_existing_destination() {
+        let dir = tempfile::tempdir().unwrap();
+        let destination = dir.path().join("config.json");
+        let temp_path = dir.path().join("config.json.tmp");
+
+        fs::write(&destination, "old").unwrap();
+        fs::write(&temp_path, "new").unwrap();
+
+        replace_file(&temp_path, &destination).unwrap();
+
+        assert_eq!(fs::read_to_string(&destination).unwrap(), "new");
+        assert!(!temp_path.exists());
     }
 }
