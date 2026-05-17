@@ -30,7 +30,7 @@ It is especially useful when you Alt+Tab from a game to a browser, chat app, or 
 - Restores audio only for sessions muted by UnfocusMute.
 - Adds targets from the running app list or by typing an executable name such as `game.exe`.
 - Supports grouped `.exe` registration and per-PID registration.
-- Tray resident operation, pause, config file shortcut, and single-instance protection.
+- Tray resident operation, pause, config folder shortcut, and single-instance protection.
 - First-run language selection and in-app switching between English, Korean, Japanese, Simplified Chinese, Spanish, French, Portuguese, Hindi, and Arabic.
 - Local config at `%APPDATA%\UnfocusMute\config.json`.
 
@@ -85,8 +85,16 @@ Create a distribution ZIP:
 powershell -ExecutionPolicy Bypass -File scripts\package-windows.ps1
 ```
 
-The package is created under `dist\UnfocusMute-<version>-windows-x64.zip` and includes the executable, `LICENSE`, root-level `README_ko.md` and `README_en.md`, plus the other localized docs under `docs`.
+Refresh third-party license notices:
+
+```powershell
+cargo about generate --frozen --fail -o THIRD_PARTY_NOTICES.md about.hbs
+```
+
+The package is created under `dist\UnfocusMute-<version>-windows-x64.zip` and includes the executable, `LICENSE`, `THIRD_PARTY_NOTICES.md`, root-level `README_ko.md` and `README_en.md`, plus the other localized docs under `docs`.
 
 ## License
 
 Apache License 2.0. See [LICENSE](LICENSE).
+
+See [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) for third-party Rust crate license notices.

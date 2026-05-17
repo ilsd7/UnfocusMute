@@ -18,7 +18,7 @@ pub struct ProcessInfo {
     pub path: Option<String>,
 }
 
-pub fn foreground_process() -> Option<ProcessInfo> {
+pub fn foreground_pid() -> Option<u32> {
     unsafe {
         let hwnd = GetForegroundWindow();
         if hwnd == HWND::default() {
@@ -31,7 +31,7 @@ pub fn foreground_process() -> Option<ProcessInfo> {
             return None;
         }
 
-        process_info(pid)
+        Some(pid)
     }
 }
 

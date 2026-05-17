@@ -1,5 +1,5 @@
-use crate::config::{AppConfig, WindowPosition, config_file_exists, config_file_path};
-use crate::engine::{TargetMatcher, plan_mute_actions_with_matcher};
+use crate::config::{AppConfig, WindowPosition, config_dir, config_file_exists};
+use crate::engine::{AudioSessionKey, TargetMatcher, plan_mute_actions_with_matcher};
 use crate::i18n::{Language, Strings};
 use crate::windows_app::audio::AudioController;
 use crate::windows_app::process::{self, ProcessInfo};
@@ -466,8 +466,7 @@ struct AppWindow {
     process_choices: Vec<ProcessChoice>,
     process_query: String,
     updating_process_combo: bool,
-    foreground: Option<ProcessInfo>,
-    muted_by_app: HashSet<u32>,
+    muted_by_app: HashSet<AudioSessionKey>,
     paused: bool,
     show_process_details: bool,
     tray_added: bool,
@@ -492,7 +491,6 @@ impl AppWindow {
             process_choices: Vec::new(),
             process_query: String::new(),
             updating_process_combo: false,
-            foreground: None,
             muted_by_app: HashSet::new(),
             paused: false,
             show_process_details: false,
@@ -1155,9 +1153,12 @@ impl AppWindow {
     }
 
     fn tick(&mut self) {
-        self.foreground = process::foreground_process();
-
         if self.paused {
+            self.update_status();
+            return;
+        }
+
+        if self.target_matcher.is_empty() && self.muted_by_app.is_empty() {
             self.update_status();
             return;
         }
@@ -1174,7 +1175,14 @@ impl AppWindow {
             self.update_status();
             return;
         };
-        let foreground_pid = self.foreground.as_ref().map(|process| process.pid);
+        let active_sessions = sessions
+            .iter()
+            .map(|session| session.key.clone())
+            .collect::<HashSet<_>>();
+        self.muted_by_app
+            .retain(|session| active_sessions.contains(session));
+
+        let foreground_pid = process::foreground_pid();
         let actions = plan_mute_actions_with_matcher(
             &self.target_matcher,
             foreground_pid,
@@ -1182,13 +1190,13 @@ impl AppWindow {
             &sessions,
         );
 
-        let changed_pids = audio.set_mutes(&actions).unwrap_or_default();
+        let changed_sessions = audio.set_mutes(&actions).unwrap_or_default();
         for action in actions {
-            if changed_pids.contains(&action.pid) {
+            if changed_sessions.contains(&action.key) {
                 if action.mute {
-                    self.muted_by_app.insert(action.pid);
+                    self.muted_by_app.insert(action.key);
                 } else {
-                    self.muted_by_app.remove(&action.pid);
+                    self.muted_by_app.remove(&action.key);
                 }
             }
         }
@@ -1253,7 +1261,7 @@ impl AppWindow {
             ID_RUNNING if notification == CBN_CLOSEUP as u16 => {
                 self.release_running_process_focus()
             }
-            ID_OPEN_CONFIG => self.open_config_file(),
+            ID_OPEN_CONFIG => self.open_config_folder(),
             ID_PAUSE => self.toggle_pause(),
             ID_HIDE => unsafe {
                 self.save_window_position();
@@ -1405,9 +1413,9 @@ impl AppWindow {
         self.refresh_text();
     }
 
-    fn open_config_file(&mut self) {
+    fn open_config_folder(&mut self) {
         let _ = self.config.save();
-        let Ok(path) = config_file_path() else {
+        let Ok(path) = config_dir() else {
             return;
         };
         let path = path.to_string_lossy();
@@ -1536,8 +1544,8 @@ impl AppWindow {
         if self.config.restore_muted_on_exit
             && let Some(audio) = &self.audio
         {
-            for pid in mem::take(&mut self.muted_by_app) {
-                let _ = audio.set_mute(pid, false);
+            for session in mem::take(&mut self.muted_by_app) {
+                let _ = audio.set_mute(&session, false);
             }
         }
         if self.tray_added {

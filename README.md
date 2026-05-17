@@ -37,7 +37,7 @@ UnfocusMute는 Rust로 만든 포터블 앱입니다. 등록한 앱이 전면에
 - 앱이 다시 전면으로 오면 UnfocusMute가 음소거한 세션만 자동 해제
 - 실행 중인 앱 목록에서 선택 추가 또는 `game.exe` 형식의 직접 입력 지원
 - `.exe` 그룹 등록과 개별 PID 등록 지원
-- 트레이 상주, 일시 중지, 설정 파일 열기, 중복 실행 방지
+- 트레이 상주, 일시 중지, 설정 폴더 열기, 중복 실행 방지
 - 첫 실행 시 언어 선택, 이후 앱 안에서 English/한국어/日本語/简体中文/Español/Français/Português/हिन्दी/العربية 즉시 전환
 - 설정은 `%APPDATA%\UnfocusMute\config.json`에 로컬 저장
 
@@ -71,7 +71,7 @@ Windows 10/11용 배포 ZIP을 받은 뒤 압축을 풀고 `UnfocusMute.exe`를 
 
 앱의 `언어` 항목을 누르면 English, 한국어, 日本語, 简体中文, Español, Français, Português, हिन्दी, العربية 중 하나를 바로 선택할 수 있습니다. 변경 사항은 즉시 UI에 반영되고 설정 파일에 저장됩니다.
 
-설정 파일을 직접 확인하거나 백업해야 하는 경우 앱 안의 `설정 파일 열기` 버튼을 사용하세요.
+설정 파일을 직접 확인하거나 백업 파일을 관리해야 하는 경우 앱 안의 `설정 폴더 열기` 버튼을 사용하세요.
 
 ## 개발자 빌드
 
@@ -100,8 +100,16 @@ target\x86_64-pc-windows-msvc\release\unfocusmute.exe
 powershell -ExecutionPolicy Bypass -File scripts\package-windows.ps1
 ```
 
-결과물은 `dist\UnfocusMute-<version>-windows-x64.zip`에 생성되며, 실행 파일, `LICENSE`, 루트의 `README_ko.md`와 `README_en.md`, `docs` 폴더의 기타 언어 문서가 포함됩니다.
+서드파티 라이선스 고지 갱신:
+
+```powershell
+cargo about generate --frozen --fail -o THIRD_PARTY_NOTICES.md about.hbs
+```
+
+결과물은 `dist\UnfocusMute-<version>-windows-x64.zip`에 생성되며, 실행 파일, `LICENSE`, `THIRD_PARTY_NOTICES.md`, 루트의 `README_ko.md`와 `README_en.md`, `docs` 폴더의 기타 언어 문서가 포함됩니다.
 
 ## 라이선스
 
 Apache License 2.0. 자세한 내용은 [LICENSE](LICENSE)를 확인하세요.
+
+서드파티 Rust crate 라이선스 고지는 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)를 확인하세요.

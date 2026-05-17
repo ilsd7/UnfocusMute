@@ -30,7 +30,7 @@ UnfocusMute Windows ट्रे के लिए एक छोटा और ह
 - केवल UnfocusMute द्वारा म्यूट किए गए सेशन ही वापस अनम्यूट करता है।
 - चल रहे ऐप्स की सूची से लक्ष्य जोड़ें या `game.exe` जैसा executable नाम टाइप करें।
 - `.exe` group registration और per-PID registration, दोनों सपोर्ट करता है।
-- ट्रे में चलता है, pause, config file shortcut और single-instance protection देता है।
+- ट्रे में चलता है, pause, config folder shortcut और single-instance protection देता है।
 - पहली बार भाषा चुनने और ऐप में तुरंत English, 한국어, 日本語, 简体中文, Español, Français, Português, हिन्दी और العربية में बदलने की सुविधा।
 - लोकल config `%APPDATA%\UnfocusMute\config.json` में सेव होती है।
 
@@ -79,8 +79,10 @@ Distribution ZIP बनाएं:
 powershell -ExecutionPolicy Bypass -File scripts\package-windows.ps1
 ```
 
-पैकेज `dist\UnfocusMute-<version>-windows-x64.zip` में बनता है और इसमें executable फ़ाइल, `LICENSE`, root में `README_ko.md` और `README_en.md`, और `docs` में बाकी स्थानीयकृत दस्तावेज़ शामिल होते हैं।
+पैकेज `dist\UnfocusMute-<version>-windows-x64.zip` में बनता है और इसमें executable फ़ाइल, `LICENSE`, `THIRD_PARTY_NOTICES.md`, root में `README_ko.md` और `README_en.md`, और `docs` में बाकी स्थानीयकृत दस्तावेज़ शामिल होते हैं।
 
 ## लाइसेंस
 
 Apache License 2.0. [LICENSE](../LICENSE) देखें।
+
+Third-party Rust crate license notices के लिए [THIRD_PARTY_NOTICES.md](../THIRD_PARTY_NOTICES.md) देखें।

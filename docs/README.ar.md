@@ -30,7 +30,7 @@ UnfocusMute تطبيق صغير وخفيف لعلبة نظام Windows. يكتم
 - يعيد الصوت فقط للجلسات التي كتمها UnfocusMute.
 - إضافة الأهداف من قائمة التطبيقات قيد التشغيل أو بكتابة اسم تنفيذي مثل `game.exe`.
 - يدعم التسجيل المجمع حسب `.exe` والتسجيل حسب PID.
-- يعمل من علبة النظام مع الإيقاف المؤقت، واختصار ملف الإعدادات، ومنع تشغيل أكثر من نسخة.
+- يعمل من علبة النظام مع الإيقاف المؤقت، واختصار مجلد الإعدادات، ومنع تشغيل أكثر من نسخة.
 - اختيار اللغة عند أول تشغيل والتبديل الفوري داخل التطبيق بين English و한국어 و日本語 و简体中文 وEspañol وFrançais وPortuguês وहिन्दी والعربية.
 - الإعدادات محفوظة محليًا في `%APPDATA%\UnfocusMute\config.json`.
 
@@ -79,8 +79,10 @@ cargo build --release --target x86_64-pc-windows-msvc
 powershell -ExecutionPolicy Bypass -File scripts\package-windows.ps1
 ```
 
-يتم إنشاء الحزمة في `dist\UnfocusMute-<version>-windows-x64.zip` وتتضمن الملف التنفيذي و`LICENSE` و`README_ko.md` و`README_en.md` في الجذر، وبقية الوثائق المترجمة داخل `docs`.
+يتم إنشاء الحزمة في `dist\UnfocusMute-<version>-windows-x64.zip` وتتضمن الملف التنفيذي و`LICENSE` و`THIRD_PARTY_NOTICES.md` و`README_ko.md` و`README_en.md` في الجذر، وبقية الوثائق المترجمة داخل `docs`.
 
 ## الترخيص
 
 Apache License 2.0. راجع [LICENSE](../LICENSE).
+
+راجع [THIRD_PARTY_NOTICES.md](../THIRD_PARTY_NOTICES.md) لإشعارات تراخيص crates Rust التابعة لأطراف ثالثة.

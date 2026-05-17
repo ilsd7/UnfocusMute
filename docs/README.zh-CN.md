@@ -30,7 +30,7 @@ UnfocusMute 是一款小巧轻量的 Windows 托盘工具，会在游戏或应�
 - 只恢复 UnfocusMute 自己静音的会话
 - 从正在运行的应用列表添加，或手动输入 `game.exe`
 - 支持 `.exe` 分组注册和单个 PID 注册
-- 托盘常驻、暂停、打开配置文件、阻止重复运行
+- 托盘常驻、暂停、打开配置文件夹、阻止重复运行
 - 首次运行时选择语言，并可在应用内切换英语、韩语、日语、简体中文、西班牙语、法语、葡萄牙语、印地语、阿拉伯语
 - 配置保存在 `%APPDATA%\UnfocusMute\config.json`
 
@@ -79,8 +79,10 @@ cargo build --release --target x86_64-pc-windows-msvc
 powershell -ExecutionPolicy Bypass -File scripts\package-windows.ps1
 ```
 
-生成的包位于 `dist\UnfocusMute-<version>-windows-x64.zip`，包含可执行文件、`LICENSE`、根目录的 `README_ko.md` 和 `README_en.md`，以及 `docs` 下的其他本地化文档。
+生成的包位于 `dist\UnfocusMute-<version>-windows-x64.zip`，包含可执行文件、`LICENSE`、`THIRD_PARTY_NOTICES.md`、根目录的 `README_ko.md` 和 `README_en.md`，以及 `docs` 下的其他本地化文档。
 
 ## 许可证
 
 Apache License 2.0。请参阅 [LICENSE](../LICENSE)。
+
+第三方 Rust crate 许可证通知请参阅 [THIRD_PARTY_NOTICES.md](../THIRD_PARTY_NOTICES.md)。

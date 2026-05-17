@@ -3,47 +3,65 @@
 use crate::config::{TargetProcess, normalize_process_name};
 use std::collections::{HashMap, HashSet};
 
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct AudioSessionSnapshot {
+#[derive(Clone, Debug, Eq, Hash, PartialEq)]
+pub struct AudioSessionKey {
     pub pid: u32,
     pub process_name: String,
+    pub instance_id: Option<String>,
+}
+
+impl AudioSessionKey {
+    pub fn new(
+        pid: u32,
+        process_name: impl AsRef<str>,
+        instance_id: Option<String>,
+    ) -> Option<Self> {
+        let process_name = normalize_process_name(process_name.as_ref())?;
+        Some(Self {
+            pid,
+            process_name,
+            instance_id,
+        })
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct AudioSessionSnapshot {
+    pub key: AudioSessionKey,
     pub muted: bool,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct MuteAction {
-    pub pid: u32,
-    pub process_name: String,
+    pub key: AudioSessionKey,
     pub mute: bool,
 }
 
 pub fn plan_mute_actions_with_matcher(
     matcher: &TargetMatcher,
     foreground_pid: Option<u32>,
-    managed_muted_pids: &HashSet<u32>,
+    managed_muted_sessions: &HashSet<AudioSessionKey>,
     sessions: &[AudioSessionSnapshot],
 ) -> Vec<MuteAction> {
     let mut actions = Vec::new();
 
     for session in sessions {
-        let Some(name) = normalize_process_name(&session.process_name) else {
-            continue;
-        };
-        if !matcher.matches(&name, session.pid) {
+        let managed = managed_muted_sessions.contains(&session.key);
+        let matched = matcher.matches(&session.key.process_name, session.key.pid);
+        if !matched && !managed {
             continue;
         }
 
-        let should_mute = foreground_pid != Some(session.pid);
+        let should_mute = matched && foreground_pid != Some(session.key.pid);
         let should_change = if should_mute {
             !session.muted
         } else {
-            session.muted && managed_muted_pids.contains(&session.pid)
+            session.muted && managed
         };
 
         if should_change {
             actions.push(MuteAction {
-                pid: session.pid,
-                process_name: name,
+                key: session.key.clone(),
                 mute: should_mute,
             });
         }
@@ -80,6 +98,10 @@ impl TargetMatcher {
         }
     }
 
+    pub fn is_empty(&self) -> bool {
+        self.names.is_empty() && self.names_by_pid.is_empty()
+    }
+
     fn matches(&self, name: &str, pid: u32) -> bool {
         self.names.contains(name)
             || self
@@ -97,27 +119,29 @@ mod tests {
     fn plan_mute_actions(
         targets: &[TargetProcess],
         foreground_pid: Option<u32>,
-        managed_muted_pids: &HashSet<u32>,
+        managed_muted_sessions: &HashSet<AudioSessionKey>,
         sessions: &[AudioSessionSnapshot],
     ) -> Vec<MuteAction> {
         let matcher = TargetMatcher::new(targets);
-        plan_mute_actions_with_matcher(&matcher, foreground_pid, managed_muted_pids, sessions)
+        plan_mute_actions_with_matcher(&matcher, foreground_pid, managed_muted_sessions, sessions)
+    }
+
+    fn session(pid: u32, process_name: &str, muted: bool) -> AudioSessionSnapshot {
+        AudioSessionSnapshot {
+            key: AudioSessionKey::new(pid, process_name, None).unwrap(),
+            muted,
+        }
     }
 
     #[test]
     fn mutes_target_sessions_that_are_not_foreground() {
         let targets = vec![TargetProcess::new("game.exe").unwrap()];
-        let sessions = vec![AudioSessionSnapshot {
-            pid: 10,
-            process_name: "game.exe".to_owned(),
-            muted: false,
-        }];
+        let sessions = vec![session(10, "game.exe", false)];
 
         assert_eq!(
             plan_mute_actions(&targets, Some(20), &HashSet::new(), &sessions),
             vec![MuteAction {
-                pid: 10,
-                process_name: "game.exe".to_owned(),
+                key: AudioSessionKey::new(10, "game.exe", None).unwrap(),
                 mute: true,
             }]
         );
@@ -126,17 +150,17 @@ mod tests {
     #[test]
     fn unmutes_target_session_when_it_returns_to_foreground() {
         let targets = vec![TargetProcess::new("game.exe").unwrap()];
-        let sessions = vec![AudioSessionSnapshot {
-            pid: 10,
-            process_name: "game.exe".to_owned(),
-            muted: true,
-        }];
+        let sessions = vec![session(10, "game.exe", true)];
 
         assert_eq!(
-            plan_mute_actions(&targets, Some(10), &HashSet::from([10]), &sessions),
+            plan_mute_actions(
+                &targets,
+                Some(10),
+                &HashSet::from([AudioSessionKey::new(10, "game.exe", None).unwrap()]),
+                &sessions
+            ),
             vec![MuteAction {
-                pid: 10,
-                process_name: "game.exe".to_owned(),
+                key: AudioSessionKey::new(10, "game.exe", None).unwrap(),
                 mute: false,
             }]
         );
@@ -145,11 +169,7 @@ mod tests {
     #[test]
     fn ignores_unregistered_processes() {
         let targets = vec![TargetProcess::new("game.exe").unwrap()];
-        let sessions = vec![AudioSessionSnapshot {
-            pid: 10,
-            process_name: "browser.exe".to_owned(),
-            muted: false,
-        }];
+        let sessions = vec![session(10, "browser.exe", false)];
 
         assert!(plan_mute_actions(&targets, Some(20), &HashSet::new(), &sessions).is_empty());
     }
@@ -157,11 +177,7 @@ mod tests {
     #[test]
     fn does_not_unmute_a_session_that_the_user_muted_manually() {
         let targets = vec![TargetProcess::new("game.exe").unwrap()];
-        let sessions = vec![AudioSessionSnapshot {
-            pid: 10,
-            process_name: "game.exe".to_owned(),
-            muted: true,
-        }];
+        let sessions = vec![session(10, "game.exe", true)];
 
         assert!(plan_mute_actions(&targets, Some(10), &HashSet::new(), &sessions).is_empty());
     }
@@ -170,24 +186,67 @@ mod tests {
     fn pid_target_matches_only_that_process_instance() {
         let targets = vec![TargetProcess::for_pid("browser.exe", 20).unwrap()];
         let sessions = vec![
-            AudioSessionSnapshot {
-                pid: 10,
-                process_name: "browser.exe".to_owned(),
-                muted: false,
-            },
-            AudioSessionSnapshot {
-                pid: 20,
-                process_name: "browser.exe".to_owned(),
-                muted: false,
-            },
+            session(10, "browser.exe", false),
+            session(20, "browser.exe", false),
         ];
 
         assert_eq!(
             plan_mute_actions(&targets, Some(30), &HashSet::new(), &sessions),
             vec![MuteAction {
-                pid: 20,
-                process_name: "browser.exe".to_owned(),
+                key: AudioSessionKey::new(20, "browser.exe", None).unwrap(),
                 mute: true,
+            }]
+        );
+    }
+
+    #[test]
+    fn session_instance_id_keeps_same_pid_sessions_separate() {
+        let targets = vec![TargetProcess::new("game.exe").unwrap()];
+        let session_a = AudioSessionKey::new(10, "game.exe", Some("a".to_owned())).unwrap();
+        let session_b = AudioSessionKey::new(10, "game.exe", Some("b".to_owned())).unwrap();
+        let sessions = vec![
+            AudioSessionSnapshot {
+                key: session_a.clone(),
+                muted: true,
+            },
+            AudioSessionSnapshot {
+                key: session_b.clone(),
+                muted: true,
+            },
+        ];
+
+        assert_eq!(
+            plan_mute_actions(
+                &targets,
+                Some(10),
+                &HashSet::from([session_a.clone()]),
+                &sessions
+            ),
+            vec![MuteAction {
+                key: session_a,
+                mute: false,
+            }]
+        );
+    }
+
+    #[test]
+    fn unmutes_managed_session_after_target_is_removed() {
+        let session_key = AudioSessionKey::new(10, "game.exe", None).unwrap();
+        let sessions = vec![AudioSessionSnapshot {
+            key: session_key.clone(),
+            muted: true,
+        }];
+
+        assert_eq!(
+            plan_mute_actions(
+                &[],
+                Some(20),
+                &HashSet::from([session_key.clone()]),
+                &sessions
+            ),
+            vec![MuteAction {
+                key: session_key,
+                mute: false,
             }]
         );
     }

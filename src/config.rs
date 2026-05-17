@@ -7,6 +7,7 @@ use std::env;
 use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
+use std::time::{SystemTime, UNIX_EPOCH};
 
 const CONFIG_VERSION: u32 = 1;
 const DEFAULT_POLLING_INTERVAL_MS: u64 = 350;
@@ -87,10 +88,17 @@ impl AppConfig {
             return Ok(Self::default());
         }
 
-        let raw = fs::read_to_string(path)?;
-        let mut config = serde_json::from_str::<Self>(&raw).unwrap_or_default();
-        config.deduplicate_targets();
-        Ok(config)
+        let raw = fs::read_to_string(&path)?;
+        match serde_json::from_str::<Self>(&raw) {
+            Ok(mut config) => {
+                config.deduplicate_targets();
+                Ok(config)
+            }
+            Err(_) => {
+                let _ = backup_invalid_config(&path);
+                Ok(Self::default())
+            }
+        }
     }
 
     pub fn save(&self) -> io::Result<()> {
@@ -174,6 +182,33 @@ fn replace_file(temp_path: &Path, destination: &Path) -> io::Result<()> {
             })
         }
     }
+}
+
+fn backup_invalid_config(path: &Path) -> io::Result<PathBuf> {
+    let parent = path.parent().unwrap_or_else(|| Path::new("."));
+    let timestamp = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|duration| duration.as_secs())
+        .unwrap_or(0);
+
+    for index in 0..100 {
+        let file_name = if index == 0 {
+            format!("config.invalid-{timestamp}.json")
+        } else {
+            format!("config.invalid-{timestamp}-{index}.json")
+        };
+        let backup_path = parent.join(file_name);
+        if backup_path.exists() {
+            continue;
+        }
+        fs::copy(path, &backup_path)?;
+        return Ok(backup_path);
+    }
+
+    Err(io::Error::new(
+        io::ErrorKind::AlreadyExists,
+        "could not create a unique invalid config backup path",
+    ))
 }
 
 pub fn normalize_process_name(input: &str) -> Option<String> {
@@ -312,5 +347,18 @@ mod tests {
 
         assert_eq!(fs::read_to_string(&destination).unwrap(), "new");
         assert!(!temp_path.exists());
+    }
+
+    #[test]
+    fn invalid_config_backup_preserves_original_contents() {
+        let dir = tempfile::tempdir().unwrap();
+        let config_path = dir.path().join("config.json");
+        fs::write(&config_path, "{not valid json").unwrap();
+
+        let backup_path = backup_invalid_config(&config_path).unwrap();
+
+        assert_ne!(backup_path, config_path);
+        assert_eq!(fs::read_to_string(backup_path).unwrap(), "{not valid json");
+        assert_eq!(fs::read_to_string(config_path).unwrap(), "{not valid json");
     }
 }

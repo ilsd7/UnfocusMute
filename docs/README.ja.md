@@ -30,7 +30,7 @@ Rustで作られたポータブルアプリで、登録したアプリのオー�
 - UnfocusMuteがミュートしたセッションだけを自動解除
 - 実行中アプリ一覧からの追加、または `game.exe` 形式の手動入力
 - `.exe` グループ登録と個別PID登録に対応
-- トレイ常駐、一時停止、設定ファイルを開く、二重起動防止
+- トレイ常駐、一時停止、設定フォルダーを開く、二重起動防止
 - 初回起動時の言語選択と、アプリ内での英語/韓国語/日本語/簡体字中国語/スペイン語/フランス語/ポルトガル語/ヒンディー語/アラビア語の切り替え
 - 設定は `%APPDATA%\UnfocusMute\config.json` にローカル保存
 
@@ -79,8 +79,10 @@ cargo build --release --target x86_64-pc-windows-msvc
 powershell -ExecutionPolicy Bypass -File scripts\package-windows.ps1
 ```
 
-パッケージは `dist\UnfocusMute-<version>-windows-x64.zip` に作成され、実行ファイル、`LICENSE`、ルートの `README_ko.md` と `README_en.md`、`docs` 配下のその他の言語ドキュメントが含まれます。
+パッケージは `dist\UnfocusMute-<version>-windows-x64.zip` に作成され、実行ファイル、`LICENSE`、`THIRD_PARTY_NOTICES.md`、ルートの `README_ko.md` と `README_en.md`、`docs` 配下のその他の言語ドキュメントが含まれます。
 
 ## ライセンス
 
 Apache License 2.0。詳しくは [LICENSE](../LICENSE) を参照してください。
+
+サードパーティRust crateのライセンス通知は [THIRD_PARTY_NOTICES.md](../THIRD_PARTY_NOTICES.md) を参照してください。

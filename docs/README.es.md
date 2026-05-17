@@ -30,7 +30,7 @@ Resulta especialmente útil cuando sales de un juego con Alt+Tab para usar un na
 - Restaura el audio solo para sesiones silenciadas por UnfocusMute.
 - Añade objetivos desde la lista de apps en ejecución o escribiendo un ejecutable como `game.exe`.
 - Soporta registro agrupado por `.exe` y registro por PID.
-- Funcionamiento en bandeja, pausa, acceso al archivo de configuración y protección contra doble ejecución.
+- Funcionamiento en bandeja, pausa, acceso a la carpeta de configuración y protección contra doble ejecución.
 - Selección de idioma en el primer inicio y cambio entre English, 한국어, 日本語, 简体中文, Español, Français, Português, हिन्दी y العربية.
 - Configuración local en `%APPDATA%\UnfocusMute\config.json`.
 
@@ -79,8 +79,10 @@ Crear un ZIP de distribución:
 powershell -ExecutionPolicy Bypass -File scripts\package-windows.ps1
 ```
 
-El paquete se crea en `dist\UnfocusMute-<version>-windows-x64.zip` e incluye el ejecutable, `LICENSE`, `README_ko.md` y `README_en.md` en la raíz, además del resto de documentación localizada en `docs`.
+El paquete se crea en `dist\UnfocusMute-<version>-windows-x64.zip` e incluye el ejecutable, `LICENSE`, `THIRD_PARTY_NOTICES.md`, `README_ko.md` y `README_en.md` en la raíz, además del resto de documentación localizada en `docs`.
 
 ## Licencia
 
 Apache License 2.0. Consulta [LICENSE](../LICENSE).
+
+Consulta [THIRD_PARTY_NOTICES.md](../THIRD_PARTY_NOTICES.md) para los avisos de licencia de crates Rust de terceros.

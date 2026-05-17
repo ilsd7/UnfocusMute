@@ -30,7 +30,7 @@ Elle est particulièrement utile lorsque vous quittez un jeu avec Alt+Tab pour p
 - Réactive l’audio seulement pour les sessions coupées par UnfocusMute.
 - Ajoute des cibles depuis la liste des applications en cours ou en saisissant un exécutable comme `game.exe`.
 - Prend en charge l’enregistrement groupé par `.exe` et l’enregistrement par PID.
-- Fonctionne dans la zone de notification, avec pause, raccourci vers le fichier de configuration et protection contre les doubles lancements.
+- Fonctionne dans la zone de notification, avec pause, raccourci vers le dossier de configuration et protection contre les doubles lancements.
 - Sélection de la langue au premier lancement et changement immédiat entre English, 한국어, 日本語, 简体中文, Español, Français, Português, हिन्दी et العربية.
 - Configuration locale dans `%APPDATA%\UnfocusMute\config.json`.
 
@@ -79,8 +79,10 @@ Créer un ZIP de distribution :
 powershell -ExecutionPolicy Bypass -File scripts\package-windows.ps1
 ```
 
-Le paquet est créé dans `dist\UnfocusMute-<version>-windows-x64.zip` et contient l’exécutable, `LICENSE`, `README_ko.md` et `README_en.md` à la racine, ainsi que les autres documents localisés dans `docs`.
+Le paquet est créé dans `dist\UnfocusMute-<version>-windows-x64.zip` et contient l’exécutable, `LICENSE`, `THIRD_PARTY_NOTICES.md`, `README_ko.md` et `README_en.md` à la racine, ainsi que les autres documents localisés dans `docs`.
 
 ## Licence
 
 Apache License 2.0. Consultez [LICENSE](../LICENSE).
+
+Consultez [THIRD_PARTY_NOTICES.md](../THIRD_PARTY_NOTICES.md) pour les avis de licence des crates Rust tiers.
