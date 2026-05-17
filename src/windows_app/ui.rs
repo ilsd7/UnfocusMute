@@ -28,20 +28,21 @@ use windows::Win32::UI::Shell::{
 };
 use windows::Win32::UI::WindowsAndMessaging::{
     AppendMenuW, BM_GETCHECK, BM_SETCHECK, BS_AUTOCHECKBOX, BS_DEFPUSHBUTTON, BS_PUSHBUTTON,
-    CB_ADDSTRING, CB_GETCURSEL, CB_RESETCONTENT, CB_SETCURSEL, CB_SHOWDROPDOWN, CBN_SELCHANGE,
-    CBS_DROPDOWNLIST, CREATESTRUCTW, CreatePopupMenu, CreateWindowExW, DefWindowProcW, DestroyMenu,
-    DestroyWindow, DispatchMessageW, ES_AUTOHSCROLL, FindWindowW, GWLP_USERDATA, GetCursorPos,
-    GetMessageW, GetSystemMetrics, GetWindowRect, HICON, HMENU, ICON_BIG, ICON_SMALL, IDC_ARROW,
+    CB_ADDSTRING, CB_GETCURSEL, CB_RESETCONTENT, CB_SETCURSEL, CB_SHOWDROPDOWN, CBS_DROPDOWNLIST,
+    CREATESTRUCTW, CreatePopupMenu, CreateWindowExW, DefWindowProcW, DestroyMenu, DestroyWindow,
+    DispatchMessageW, ES_AUTOHSCROLL, FindWindowW, GWLP_USERDATA, GetCursorPos, GetMessageW,
+    GetSystemMetrics, GetWindowRect, HICON, HMENU, ICON_BIG, ICON_SMALL, IDC_ARROW,
     IDI_APPLICATION, IMAGE_ICON, LB_ADDSTRING, LB_GETCURSEL, LB_RESETCONTENT, LBN_SELCHANGE,
     LBS_NOTIFY, LR_DEFAULTCOLOR, LoadCursorW, LoadIconW, LoadImageW, MF_SEPARATOR, MF_STRING, MSG,
     PostQuitMessage, RegisterClassW, SM_CXICON, SM_CXSCREEN, SM_CXSMICON, SM_CYICON, SM_CYSCREEN,
     SM_CYSMICON, SW_HIDE, SW_RESTORE, SW_SHOW, SendMessageW, SetForegroundWindow, SetTimer,
-    SetWindowLongPtrW, SetWindowTextW, ShowWindow, TPM_RIGHTBUTTON, TrackPopupMenu,
-    TranslateMessage, WINDOW_EX_STYLE, WINDOW_STYLE, WM_APP, WM_CLOSE, WM_COMMAND, WM_CREATE,
-    WM_CTLCOLOREDIT, WM_CTLCOLORLISTBOX, WM_CTLCOLORSTATIC, WM_DESTROY, WM_LBUTTONDBLCLK, WM_MOVE,
-    WM_NCCREATE, WM_NCDESTROY, WM_PAINT, WM_RBUTTONUP, WM_SETFONT, WM_SETICON, WM_TIMER, WNDCLASSW,
-    WS_BORDER, WS_CHILD, WS_CLIPCHILDREN, WS_CLIPSIBLINGS, WS_EX_CLIENTEDGE, WS_OVERLAPPEDWINDOW,
-    WS_TABSTOP, WS_VISIBLE, WS_VSCROLL,
+    SetWindowLongPtrW, SetWindowTextW, ShowWindow, TPM_NONOTIFY, TPM_RETURNCMD, TPM_RIGHTBUTTON,
+    TRACK_POPUP_MENU_FLAGS, TrackPopupMenu, TranslateMessage, WINDOW_EX_STYLE, WINDOW_STYLE,
+    WM_APP, WM_CLOSE, WM_COMMAND, WM_CREATE, WM_CTLCOLOREDIT, WM_CTLCOLORLISTBOX,
+    WM_CTLCOLORSTATIC, WM_DESTROY, WM_LBUTTONDBLCLK, WM_MOVE, WM_NCCREATE, WM_NCDESTROY, WM_PAINT,
+    WM_RBUTTONUP, WM_SETFONT, WM_SETICON, WM_TIMER, WNDCLASSW, WS_BORDER, WS_CHILD,
+    WS_CLIPCHILDREN, WS_CLIPSIBLINGS, WS_EX_CLIENTEDGE, WS_OVERLAPPEDWINDOW, WS_TABSTOP,
+    WS_VISIBLE, WS_VSCROLL,
 };
 use windows::core::{PCWSTR, w};
 
@@ -73,7 +74,7 @@ const ID_OPEN_CONFIG: i32 = 1017;
 const ID_TOGGLE_PROCESS_DETAILS: i32 = 1018;
 const ID_LANGUAGE_PROMPT_COMBO: i32 = 2001;
 const ID_LANGUAGE_PROMPT_OK: i32 = 2002;
-
+const ID_LANGUAGE_MENU_BASE: i32 = 3000;
 const PAGE_COLOR: COLORREF = rgb(245, 247, 250);
 const PANEL_COLOR: COLORREF = rgb(255, 255, 255);
 const PANEL_BORDER_COLOR: COLORREF = rgb(228, 232, 238);
@@ -414,7 +415,7 @@ impl AppWindow {
         }
         self.refresh_processes();
         self.refresh_targets();
-        self.refresh_language_combo();
+        self.refresh_language_button();
         self.refresh_checkboxes();
         self.refresh_text();
         self.update_status();
@@ -474,9 +475,9 @@ impl AppWindow {
                 "",
                 child,
                 WINDOW_EX_STYLE(0),
-                646,
+                600,
                 34,
-                218,
+                284,
                 24,
                 0,
             )?
@@ -489,9 +490,9 @@ impl AppWindow {
                 "",
                 child,
                 WINDOW_EX_STYLE(0),
-                646,
+                600,
                 64,
-                218,
+                284,
                 24,
                 0,
             )?
@@ -613,14 +614,14 @@ impl AppWindow {
                 instance,
                 "",
                 654,
-                282,
+                274,
                 110,
                 36,
                 ID_TOGGLE_PROCESS_DETAILS,
             )?
         };
         self.controls.add_selected_button = unsafe {
-            create_primary_button(self.hwnd, instance, "", 484, 282, 160, 36, ID_ADD_SELECTED)?
+            create_primary_button(self.hwnd, instance, "", 484, 274, 160, 36, ID_ADD_SELECTED)?
         };
         self.controls.manual_label = unsafe {
             create_control(
@@ -646,9 +647,9 @@ impl AppWindow {
                 tab_child | WS_BORDER | WINDOW_STYLE(ES_AUTOHSCROLL as u32),
                 WS_EX_CLIENTEDGE,
                 594,
-                324,
+                326,
                 170,
-                30,
+                24,
                 ID_MANUAL,
             )?
         };
@@ -707,26 +708,13 @@ impl AppWindow {
                 WINDOW_EX_STYLE(0),
                 682,
                 402,
-                80,
+                42,
                 22,
                 0,
             )?
         };
-        self.controls.language_combo = unsafe {
-            create_control(
-                self.hwnd,
-                instance,
-                w!("COMBOBOX"),
-                "",
-                tab_child | WINDOW_STYLE(CBS_DROPDOWNLIST as u32),
-                WS_EX_CLIENTEDGE,
-                734,
-                398,
-                150,
-                34,
-                ID_LANGUAGE,
-            )?
-        };
+        self.controls.language_button =
+            unsafe { create_button(self.hwnd, instance, "", 734, 398, 176, 34, ID_LANGUAGE)? };
         self.controls.open_config_button =
             unsafe { create_button(self.hwnd, instance, "", 720, 484, 164, 34, ID_OPEN_CONFIG)? };
 
@@ -742,12 +730,6 @@ impl AppWindow {
                 self.controls.running_combo,
                 CB_SETMINVISIBLE,
                 Some(WPARAM(12)),
-                None,
-            );
-            SendMessageW(
-                self.controls.language_combo,
-                CB_SETMINVISIBLE,
-                Some(WPARAM(Language::ALL.len())),
                 None,
             );
         }
@@ -799,6 +781,10 @@ impl AppWindow {
             );
             set_text(self.controls.language_label, self.strings.language);
             set_text(
+                self.controls.language_button,
+                &language_button_text(self.config.language),
+            );
+            set_text(
                 self.controls.pause_button,
                 if self.paused {
                     self.strings.resume
@@ -823,21 +809,11 @@ impl AppWindow {
         self.add_tray_icon();
     }
 
-    fn refresh_language_combo(&self) {
+    fn refresh_language_button(&self) {
         unsafe {
-            SendMessageW(self.controls.language_combo, CB_RESETCONTENT, None, None);
-            for language in Language::ALL {
-                add_combo_item(self.controls.language_combo, language.native_name());
-            }
-            let index = Language::ALL
-                .iter()
-                .position(|language| *language == self.config.language)
-                .unwrap_or(0);
-            SendMessageW(
-                self.controls.language_combo,
-                CB_SETCURSEL,
-                Some(WPARAM(index)),
-                None,
+            set_text(
+                self.controls.language_button,
+                &language_button_text(self.config.language),
             );
         }
     }
@@ -957,23 +933,26 @@ impl AppWindow {
     }
 
     fn update_status(&self) {
+        let interval =
+            format_polling_interval(self.config.polling_interval_ms, self.config.language);
+        let status = format!(
+            "{} · {}",
+            if self.paused {
+                self.strings.status_paused
+            } else {
+                self.strings.status_running
+            },
+            interval
+        );
         let detail = format!(
-            "{} {} · {} {} · {} ms",
+            "{} {} · {} {}",
             self.strings.target_count,
             self.config.targets.len(),
             self.strings.muted_count,
-            self.muted_by_app.len(),
-            self.config.polling_interval_ms
+            self.muted_by_app.len()
         );
         unsafe {
-            set_text(
-                self.controls.status,
-                if self.paused {
-                    self.strings.status_paused
-                } else {
-                    self.strings.status_running
-                },
-            );
+            set_text(self.controls.status, &status);
             set_text(self.controls.status_detail, &detail);
         }
     }
@@ -1013,7 +992,7 @@ impl AppWindow {
             ID_START_MINIMIZED => self.update_bool_setting(id),
             ID_LAUNCH_STARTUP => self.update_bool_setting(id),
             ID_RESTORE_EXIT => self.update_bool_setting(id),
-            ID_LANGUAGE if notification == CBN_SELCHANGE as u16 => self.update_language(),
+            ID_LANGUAGE => self.choose_language_menu(),
             ID_TARGETS if notification == LBN_SELCHANGE as u16 => {}
             _ => {}
         }
@@ -1148,12 +1127,50 @@ impl AppWindow {
         let _ = self.config.save();
     }
 
-    fn update_language(&mut self) {
-        let index =
-            unsafe { SendMessageW(self.controls.language_combo, CB_GETCURSEL, None, None).0 };
-        let Some(language) = Language::ALL.get(index as usize).copied() else {
+    fn choose_language_menu(&mut self) {
+        let Some(language) = (unsafe { self.pick_language_from_menu() }) else {
             return;
         };
+        self.set_language(language);
+    }
+
+    unsafe fn pick_language_from_menu(&self) -> Option<Language> {
+        let Ok(menu) = (unsafe { CreatePopupMenu() }) else {
+            return None;
+        };
+        for (index, language) in Language::ALL.iter().enumerate() {
+            let text = to_wide(language.native_name());
+            unsafe {
+                let _ = AppendMenuW(
+                    menu,
+                    MF_STRING,
+                    (ID_LANGUAGE_MENU_BASE + index as i32) as usize,
+                    PCWSTR(text.as_ptr()),
+                );
+            }
+        }
+
+        let mut rect = RECT::default();
+        let selected = if unsafe { GetWindowRect(self.controls.language_button, &mut rect) }.is_ok()
+        {
+            let flags =
+                TRACK_POPUP_MENU_FLAGS(TPM_RIGHTBUTTON.0 | TPM_RETURNCMD.0 | TPM_NONOTIFY.0);
+            unsafe {
+                let _ = SetForegroundWindow(self.hwnd);
+                TrackPopupMenu(menu, flags, rect.left, rect.bottom, None, self.hwnd, None).0
+            }
+        } else {
+            0
+        };
+        unsafe {
+            let _ = DestroyMenu(menu);
+        }
+
+        let index = selected - ID_LANGUAGE_MENU_BASE;
+        Language::ALL.get(index as usize).copied()
+    }
+
+    fn set_language(&mut self, language: Language) {
         self.config.language = language;
         let _ = self.config.save();
         self.refresh_text();
@@ -1339,6 +1356,28 @@ impl ProcessChoice {
     }
 }
 
+fn language_button_text(language: Language) -> String {
+    language.native_name().to_owned()
+}
+
+fn format_polling_interval(milliseconds: u64, language: Language) -> String {
+    let seconds = milliseconds as f64 / 1000.0;
+    let value = if seconds.fract().abs() < f64::EPSILON {
+        format!("{seconds:.0}")
+    } else {
+        format!("{seconds:.2}")
+            .trim_end_matches('0')
+            .trim_end_matches('.')
+            .to_owned()
+    };
+    match language {
+        Language::Ko => format!("{value}초"),
+        Language::En => format!("{value} s"),
+        Language::Ja => format!("{value}秒"),
+        Language::ZhHans => format!("{value} 秒"),
+    }
+}
+
 #[derive(Clone, Copy, Default)]
 struct Controls {
     title_label: HWND,
@@ -1364,7 +1403,7 @@ struct Controls {
     launch_startup_check: HWND,
     restore_exit_check: HWND,
     language_label: HWND,
-    language_combo: HWND,
+    language_button: HWND,
     open_config_button: HWND,
     pause_button: HWND,
     hide_button: HWND,
@@ -1397,7 +1436,7 @@ impl Controls {
             self.launch_startup_check,
             self.restore_exit_check,
             self.language_label,
-            self.language_combo,
+            self.language_button,
             self.open_config_button,
             self.pause_button,
             self.hide_button,

@@ -74,7 +74,7 @@ impl Default for AppConfig {
             polling_interval_ms: DEFAULT_POLLING_INTERVAL_MS,
             launch_on_startup: true,
             start_minimized: true,
-            restore_muted_on_exit: false,
+            restore_muted_on_exit: true,
             targets: Vec::new(),
         }
     }
@@ -244,6 +244,6 @@ mod tests {
 
         assert!(config.launch_on_startup);
         assert!(config.start_minimized);
-        assert!(!config.restore_muted_on_exit);
+        assert!(config.restore_muted_on_exit);
     }
 }
