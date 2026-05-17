@@ -63,7 +63,7 @@ target\x86_64-pc-windows-msvc\release\unfocusmute.exe
 powershell -ExecutionPolicy Bypass -File scripts\package-windows.ps1
 ```
 
-결과물은 `dist\UnfocusMute-<version>-windows-x64.zip`에 생성되며, 실행 파일, `README.md`, `LICENSE`가 포함됩니다. `newicon.png`는 빌드 시 실행 파일 리소스에 포함되므로 ZIP에는 원본 PNG를 넣지 않습니다.
+결과물은 `dist\UnfocusMute-<version>-windows-x64.zip`에 생성되며, 실행 파일, `README.md`, `LICENSE`가 포함됩니다. `assets/app-icon.png`는 빌드 시 실행 파일 리소스에 포함되므로 ZIP에는 원본 PNG를 넣지 않습니다.
 
 ## windows-msvc와 windows-gnu
 

@@ -1,5 +1,5 @@
 use crate::config::{AppConfig, WindowPosition, config_file_exists, config_file_path};
-use crate::engine::plan_mute_actions;
+use crate::engine::{TargetMatcher, plan_mute_actions_with_matcher};
 use crate::i18n::{Language, Strings};
 use crate::windows_app::audio::AudioController;
 use crate::windows_app::process::{self, ProcessInfo};
@@ -24,7 +24,7 @@ use windows::Win32::UI::Controls::{
     BST_CHECKED, BST_UNCHECKED, CB_SETCUEBANNER, CB_SETMINVISIBLE, EM_SETCUEBANNER,
 };
 use windows::Win32::UI::HiDpi::{GetDpiForSystem, GetSystemMetricsForDpi};
-use windows::Win32::UI::Input::KeyboardAndMouse::SetFocus;
+use windows::Win32::UI::Input::KeyboardAndMouse::{EnableWindow, SetFocus};
 use windows::Win32::UI::Shell::{
     NIF_ICON, NIF_MESSAGE, NIF_TIP, NIM_ADD, NIM_DELETE, NIM_MODIFY, NOTIFYICONDATAW,
     Shell_NotifyIconW, ShellExecuteW,
@@ -32,15 +32,15 @@ use windows::Win32::UI::Shell::{
 use windows::Win32::UI::WindowsAndMessaging::{
     AppendMenuW, BM_GETCHECK, BM_SETCHECK, BS_AUTOCHECKBOX, BS_DEFPUSHBUTTON, BS_PUSHBUTTON,
     CB_ADDSTRING, CB_GETCURSEL, CB_RESETCONTENT, CB_SETCURSEL, CB_SETEDITSEL, CB_SHOWDROPDOWN,
-    CBN_CLOSEUP, CBN_EDITCHANGE, CBN_SETFOCUS, CBS_DROPDOWN, CBS_DROPDOWNLIST, CREATESTRUCTW,
-    CreatePopupMenu, CreateWindowExW, DefWindowProcW, DestroyMenu, DestroyWindow, DispatchMessageW,
-    ES_AUTOHSCROLL, FindWindowW, GWLP_USERDATA, GetCursorPos, GetMessageW, GetSystemMetrics,
-    GetWindowRect, HICON, HMENU, ICON_BIG, ICON_SMALL, IDC_ARROW, IDI_APPLICATION, IMAGE_ICON,
-    LB_ADDSTRING, LB_GETCURSEL, LB_RESETCONTENT, LBN_SELCHANGE, LBS_NOTIFY, LR_DEFAULTCOLOR,
-    LoadCursorW, LoadIconW, LoadImageW, MF_SEPARATOR, MF_STRING, MSG, PostQuitMessage,
-    RegisterClassW, SM_CXICON, SM_CXSCREEN, SM_CXSMICON, SM_CYICON, SM_CYSCREEN, SM_CYSMICON,
-    SW_HIDE, SW_RESTORE, SW_SHOW, SendMessageW, SetForegroundWindow, SetTimer, SetWindowLongPtrW,
-    SetWindowTextW, ShowWindow, TPM_NONOTIFY, TPM_RETURNCMD, TPM_RIGHTBUTTON,
+    CBN_CLOSEUP, CBN_EDITCHANGE, CBN_SELCHANGE, CBN_SELENDOK, CBN_SETFOCUS, CBS_DROPDOWN,
+    CBS_DROPDOWNLIST, CREATESTRUCTW, CreatePopupMenu, CreateWindowExW, DefWindowProcW, DestroyMenu,
+    DestroyWindow, DispatchMessageW, ES_AUTOHSCROLL, FindWindowW, GWLP_USERDATA, GetCursorPos,
+    GetMessageW, GetSystemMetrics, GetWindowRect, HICON, HMENU, ICON_BIG, ICON_SMALL, IDC_ARROW,
+    IDI_APPLICATION, IMAGE_ICON, LB_ADDSTRING, LB_GETCURSEL, LB_RESETCONTENT, LBN_SELCHANGE,
+    LBS_NOTIFY, LR_DEFAULTCOLOR, LoadCursorW, LoadIconW, LoadImageW, MF_SEPARATOR, MF_STRING, MSG,
+    PostQuitMessage, RegisterClassW, SM_CXICON, SM_CXSCREEN, SM_CXSMICON, SM_CYICON, SM_CYSCREEN,
+    SM_CYSMICON, SW_HIDE, SW_RESTORE, SW_SHOW, SendMessageW, SetForegroundWindow, SetTimer,
+    SetWindowLongPtrW, SetWindowTextW, ShowWindow, TPM_NONOTIFY, TPM_RETURNCMD, TPM_RIGHTBUTTON,
     TRACK_POPUP_MENU_FLAGS, TrackPopupMenu, TranslateMessage, WINDOW_EX_STYLE, WINDOW_STYLE,
     WM_APP, WM_CLOSE, WM_COMMAND, WM_CREATE, WM_CTLCOLOREDIT, WM_CTLCOLORLISTBOX,
     WM_CTLCOLORSTATIC, WM_DESTROY, WM_LBUTTONDBLCLK, WM_MOVE, WM_NCCREATE, WM_NCDESTROY, WM_PAINT,
@@ -366,6 +366,7 @@ struct AppWindow {
     hwnd: HWND,
     controls: Controls,
     config: AppConfig,
+    target_matcher: TargetMatcher,
     strings: Strings,
     audio: Option<AudioController>,
     running_processes: Vec<ProcessInfo>,
@@ -389,6 +390,7 @@ impl AppWindow {
         Ok(Self {
             hwnd: HWND::default(),
             controls: Controls::default(),
+            target_matcher: TargetMatcher::new(&config.targets),
             config,
             strings,
             audio: AudioController::new().ok(),
@@ -857,7 +859,8 @@ impl AppWindow {
         }
     }
 
-    fn refresh_targets(&self) {
+    fn refresh_targets(&mut self) {
+        self.target_matcher = TargetMatcher::new(&self.config.targets);
         unsafe {
             SendMessageW(self.controls.target_list, LB_RESETCONTENT, None, None);
             for target in &self.config.targets {
@@ -866,6 +869,7 @@ impl AppWindow {
         }
         self.update_target_summary();
         self.update_status();
+        self.update_action_buttons();
     }
 
     fn refresh_processes(&mut self) {
@@ -890,7 +894,7 @@ impl AppWindow {
             self.updating_process_combo = true;
             SendMessageW(self.controls.running_combo, CB_RESETCONTENT, None, None);
             for choice in &self.process_choices {
-                add_combo_item(self.controls.running_combo, &choice.display_name());
+                add_combo_item(self.controls.running_combo, choice.display_name());
             }
             SendMessageW(
                 self.controls.running_combo,
@@ -904,6 +908,7 @@ impl AppWindow {
             }
             self.updating_process_combo = false;
         }
+        self.update_action_buttons();
     }
 
     fn build_process_choices(&self) -> Vec<ProcessChoice> {
@@ -911,11 +916,7 @@ impl AppWindow {
             return self
                 .running_processes
                 .iter()
-                .map(|process| ProcessChoice {
-                    name: process.name.clone(),
-                    pid: Some(process.pid),
-                    count: 1,
-                })
+                .map(|process| ProcessChoice::new(process.name.clone(), Some(process.pid), 1))
                 .collect();
         }
 
@@ -926,11 +927,7 @@ impl AppWindow {
 
         counts
             .into_iter()
-            .map(|(name, count)| ProcessChoice {
-                name,
-                pid: None,
-                count,
-            })
+            .map(|(name, count)| ProcessChoice::new(name, None, count))
             .collect()
     }
 
@@ -955,8 +952,8 @@ impl AppWindow {
             return;
         };
         let foreground_pid = self.foreground.as_ref().map(|process| process.pid);
-        let actions = plan_mute_actions(
-            &self.config.targets,
+        let actions = plan_mute_actions_with_matcher(
+            &self.target_matcher,
             foreground_pid,
             &self.muted_by_app,
             &sessions,
@@ -1024,6 +1021,11 @@ impl AppWindow {
             ID_TOGGLE_PROCESS_DETAILS => self.toggle_process_details(),
             ID_RUNNING if notification == CBN_EDITCHANGE as u16 => self.search_running_processes(),
             ID_RUNNING if notification == CBN_SETFOCUS as u16 => self.open_running_process_picker(),
+            ID_RUNNING
+                if notification == CBN_SELCHANGE as u16 || notification == CBN_SELENDOK as u16 =>
+            {
+                self.update_action_buttons()
+            }
             ID_RUNNING if notification == CBN_CLOSEUP as u16 => {
                 self.release_running_process_focus()
             }
@@ -1041,7 +1043,7 @@ impl AppWindow {
             ID_LAUNCH_STARTUP => self.update_bool_setting(id),
             ID_RESTORE_EXIT => self.update_bool_setting(id),
             ID_LANGUAGE => self.choose_language_menu(),
-            ID_TARGETS if notification == LBN_SELCHANGE as u16 => {}
+            ID_TARGETS if notification == LBN_SELCHANGE as u16 => self.update_action_buttons(),
             _ => {}
         }
     }
@@ -1145,6 +1147,18 @@ impl AppWindow {
         if self.config.remove_target_at(index as usize) {
             let _ = self.config.save();
             self.refresh_targets();
+        }
+    }
+
+    fn update_action_buttons(&self) {
+        let has_selected_target =
+            unsafe { SendMessageW(self.controls.target_list, LB_GETCURSEL, None, None).0 >= 0 };
+        unsafe {
+            let _ = EnableWindow(self.controls.remove_button, has_selected_target);
+            let _ = EnableWindow(
+                self.controls.add_selected_button,
+                !self.process_choices.is_empty(),
+            );
         }
     }
 
@@ -1432,24 +1446,36 @@ impl AppWindow {
 struct ProcessChoice {
     name: String,
     pid: Option<u32>,
-    count: usize,
+    display_name: String,
+    search_text: String,
 }
 
 impl ProcessChoice {
-    fn display_name(&self) -> String {
-        match self.pid {
-            Some(pid) => format!("{} (PID {pid})", self.name),
-            None if self.count > 1 => format!("{} ({} PID)", self.name, self.count),
-            None => self.name.clone(),
+    fn new(name: String, pid: Option<u32>, count: usize) -> Self {
+        let display_name = match pid {
+            Some(pid) => format!("{name} (PID {pid})"),
+            None if count > 1 => format!("{name} ({count} PID)"),
+            None => name.clone(),
+        };
+        let search_text = match pid {
+            Some(pid) => format!("{name} {display_name} {pid}").to_lowercase(),
+            None => format!("{name} {display_name}").to_lowercase(),
+        };
+
+        Self {
+            name,
+            pid,
+            display_name,
+            search_text,
         }
     }
 
+    fn display_name(&self) -> &str {
+        &self.display_name
+    }
+
     fn matches_search(&self, terms: &[String]) -> bool {
-        let mut text = format!("{} {}", self.name, self.display_name()).to_lowercase();
-        if let Some(pid) = self.pid {
-            text.push_str(&format!(" {pid}"));
-        }
-        terms.iter().all(|term| text.contains(term))
+        terms.iter().all(|term| self.search_text.contains(term))
     }
 }
 

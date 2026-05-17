@@ -140,18 +140,22 @@ impl AppConfig {
 
     pub fn deduplicate_targets(&mut self) {
         let mut names = BTreeSet::new();
-        self.targets.retain(|target| {
+        self.targets.retain_mut(|target| {
             let Some(name) = normalize_process_name(&target.name) else {
                 return false;
             };
-            names.insert((name, target.pid))
+            target.name = name;
+            names.insert((target.name.clone(), target.pid))
         });
         self.sort_targets();
     }
 
     fn sort_targets(&mut self) {
-        self.targets
-            .sort_by_key(|target| (target.name.clone(), target.pid.unwrap_or(0)));
+        self.targets.sort_by(|left, right| {
+            left.name
+                .cmp(&right.name)
+                .then_with(|| left.pid.unwrap_or(0).cmp(&right.pid.unwrap_or(0)))
+        });
     }
 }
 
@@ -236,6 +240,30 @@ mod tests {
         assert_eq!(config.targets[1].display_name(), "browser.exe (PID 42)");
         assert!(config.remove_target_at(1));
         assert_eq!(config.targets.len(), 1);
+    }
+
+    #[test]
+    fn loaded_targets_are_normalized_and_deduplicated() {
+        let mut config = AppConfig {
+            targets: vec![
+                TargetProcess {
+                    name: r#"C:\Games\Game.EXE"#.to_owned(),
+                    pid: None,
+                    enabled: true,
+                },
+                TargetProcess {
+                    name: "game.exe".to_owned(),
+                    pid: None,
+                    enabled: true,
+                },
+            ],
+            ..AppConfig::default()
+        };
+
+        config.deduplicate_targets();
+
+        assert_eq!(config.targets.len(), 1);
+        assert_eq!(config.targets[0].name, "game.exe");
     }
 
     #[test]

@@ -3,7 +3,7 @@ use std::fs::File;
 use std::io;
 use std::path::{Path, PathBuf};
 
-const APP_ICON_PNG: &str = "newicon.png";
+const APP_ICON_PNG: &str = "assets/app-icon.png";
 
 fn main() {
     println!("cargo:rerun-if-changed={APP_ICON_PNG}");
