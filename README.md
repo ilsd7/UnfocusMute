@@ -23,7 +23,7 @@ UnfocusMute는 Windows 11에서 등록한 게임이나 앱이 백그라운드로
 - `src/engine.rs`: 전면 PID와 오디오 세션 상태를 기반으로 음소거 작업 계획
 - `src/i18n.rs`: UI 다국어 문자열
 - `src/windows_app/`: Win32 UI, 트레이, 프로세스 감지, CoreAudio 세션 제어, 시작 프로그램 등록
-- `build.rs`: 루트의 `icon.png`를 여러 크기의 Windows 아이콘 리소스로 만들고 시각 스타일 매니페스트를 포함
+- `build.rs`: 루트의 `newicon.png`를 여러 크기의 Windows 아이콘 리소스로 만들고 시각 스타일 매니페스트를 포함
 
 ## 사용 방법
 
@@ -68,7 +68,7 @@ powershell -ExecutionPolicy Bypass -File scripts\package-windows.ps1
 
 결과물은 `dist\UnfocusMute-<version>-windows-x64.zip`에 생성됩니다. ZIP에는 실행 파일, `README.md`, `LICENSE`가 포함됩니다.
 
-`icon.png`는 빌드 시 실행 파일 아이콘 리소스로 포함되므로 배포 ZIP에는 원본 PNG를 넣지 않습니다.
+`newicon.png`는 빌드 시 실행 파일 아이콘 리소스로 포함되므로 배포 ZIP에는 원본 PNG를 넣지 않습니다.
 
 ### windows-msvc와 windows-gnu 차이
 
@@ -86,7 +86,7 @@ CARGO_HOME="$PWD/.cargo-home" cargo clippy --all-targets -- -D warnings
 CARGO_HOME="$PWD/.cargo-home" cargo check --target x86_64-pc-windows-gnu
 ```
 
-WSL에 Windows 리소스 컴파일러가 없으면 리소스 컴파일 경고가 표시될 수 있습니다. Windows MSVC 환경에서는 `icon.png`가 실행 파일 리소스로 포함됩니다.
+WSL에 Windows 리소스 컴파일러가 없으면 리소스 컴파일 경고가 표시될 수 있습니다. Windows MSVC 환경에서는 `newicon.png`가 실행 파일 리소스로 포함됩니다.
 
 ## 다국어 변경
 

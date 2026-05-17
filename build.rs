@@ -3,17 +3,19 @@ use std::fs::File;
 use std::io;
 use std::path::{Path, PathBuf};
 
+const APP_ICON_PNG: &str = "newicon.png";
+
 fn main() {
-    println!("cargo:rerun-if-changed=icon.png");
+    println!("cargo:rerun-if-changed={APP_ICON_PNG}");
 
     if env::var_os("CARGO_CFG_WINDOWS").is_none() {
         return;
     }
 
-    let icon_path = match build_ico_from_png(Path::new("icon.png")) {
+    let icon_path = match build_ico_from_png(Path::new(APP_ICON_PNG)) {
         Ok(path) => path,
         Err(error) => {
-            println!("cargo:warning=failed to prepare Windows icon from icon.png: {error}");
+            println!("cargo:warning=failed to prepare Windows icon from {APP_ICON_PNG}: {error}");
             return;
         }
     };
@@ -60,7 +62,7 @@ fn build_ico_from_png(source: &Path) -> io::Result<PathBuf> {
     let mut icon_dir = ico::IconDir::new(ico::ResourceType::Icon);
     for size in [16, 20, 24, 32, 40, 48, 64, 128, 256] {
         let resized = resize_icon_for_shell(&image, size);
-        icon_dir.add_entry(ico::IconDirEntry::encode(&resized)?);
+        icon_dir.add_entry(ico::IconDirEntry::encode_as_png(&resized)?);
     }
 
     let mut ico_file = File::create(&destination)?;
@@ -70,7 +72,7 @@ fn build_ico_from_png(source: &Path) -> io::Result<PathBuf> {
 
 fn resize_icon_for_shell(source: &ico::IconImage, size: u32) -> ico::IconImage {
     let (left, top, width, height) = alpha_bounds(source);
-    let padding = if size <= 24 { 0 } else { (size / 24).min(4) };
+    let padding = icon_padding(size);
     let target = size.saturating_sub(padding * 2).max(1);
     let scale = (target as f32 / width as f32).min(target as f32 / height as f32);
     let draw_width = ((width as f32 * scale).round() as u32).clamp(1, target);
@@ -81,48 +83,79 @@ fn resize_icon_for_shell(source: &ico::IconImage, size: u32) -> ico::IconImage {
     let mut rgba = vec![0u8; (size * size * 4) as usize];
     for y in 0..draw_height {
         for x in 0..draw_width {
-            let src_x = left as f32 + (x as f32 + 0.5) * width as f32 / draw_width as f32 - 0.5;
-            let src_y = top as f32 + (y as f32 + 0.5) * height as f32 / draw_height as f32 - 0.5;
+            let src_left = left as f64 + x as f64 * width as f64 / draw_width as f64;
+            let src_top = top as f64 + y as f64 * height as f64 / draw_height as f64;
+            let src_right = left as f64 + (x + 1) as f64 * width as f64 / draw_width as f64;
+            let src_bottom = top as f64 + (y + 1) as f64 * height as f64 / draw_height as f64;
             let dst_index = (((offset_y + y) * size + offset_x + x) * 4) as usize;
-            rgba[dst_index..dst_index + 4].copy_from_slice(&sample_bilinear(source, src_x, src_y));
+            rgba[dst_index..dst_index + 4].copy_from_slice(&sample_area(
+                source, src_left, src_top, src_right, src_bottom,
+            ));
         }
     }
 
     ico::IconImage::from_rgba_data(size, size, rgba)
 }
 
-fn sample_bilinear(image: &ico::IconImage, x: f32, y: f32) -> [u8; 4] {
-    let x0 = x.floor().clamp(0.0, (image.width() - 1) as f32) as u32;
-    let y0 = y.floor().clamp(0.0, (image.height() - 1) as f32) as u32;
-    let x1 = (x0 + 1).min(image.width() - 1);
-    let y1 = (y0 + 1).min(image.height() - 1);
-    let wx = x - x.floor();
-    let wy = y - y.floor();
-
-    let top = mix_pixel(pixel(image, x0, y0), pixel(image, x1, y0), wx);
-    let bottom = mix_pixel(pixel(image, x0, y1), pixel(image, x1, y1), wx);
-    unpremultiply(mix_pixel(top, bottom, wy))
+fn icon_padding(size: u32) -> u32 {
+    match size {
+        0..=24 => 1,
+        25..=64 => 2,
+        65..=128 => 3,
+        _ => 4,
+    }
 }
 
-fn pixel(image: &ico::IconImage, x: u32, y: u32) -> [f32; 4] {
+fn sample_area(image: &ico::IconImage, left: f64, top: f64, right: f64, bottom: f64) -> [u8; 4] {
+    let mut total = [0.0; 4];
+    let mut weight_total = 0.0;
+    let x_start = left.floor().max(0.0) as u32;
+    let y_start = top.floor().max(0.0) as u32;
+    let x_end = right.ceil().min(image.width() as f64) as u32;
+    let y_end = bottom.ceil().min(image.height() as f64) as u32;
+
+    for y in y_start..y_end {
+        let y_overlap = overlap(top, bottom, y as f64, y as f64 + 1.0);
+        if y_overlap <= 0.0 {
+            continue;
+        }
+        for x in x_start..x_end {
+            let x_overlap = overlap(left, right, x as f64, x as f64 + 1.0);
+            if x_overlap <= 0.0 {
+                continue;
+            }
+            let weight = x_overlap * y_overlap;
+            let pixel = premultiplied_pixel(image, x, y);
+            for channel in 0..4 {
+                total[channel] += pixel[channel] * weight;
+            }
+            weight_total += weight;
+        }
+    }
+
+    if weight_total <= f64::EPSILON {
+        return [0, 0, 0, 0];
+    }
+    for value in &mut total {
+        *value /= weight_total;
+    }
+    unpremultiply(total)
+}
+
+fn overlap(left: f64, right: f64, pixel_left: f64, pixel_right: f64) -> f64 {
+    right.min(pixel_right) - left.max(pixel_left)
+}
+
+fn premultiplied_pixel(image: &ico::IconImage, x: u32, y: u32) -> [f64; 4] {
     let index = ((y * image.width() + x) * 4) as usize;
-    let red = image.rgba_data()[index] as f32;
-    let green = image.rgba_data()[index + 1] as f32;
-    let blue = image.rgba_data()[index + 2] as f32;
-    let alpha = image.rgba_data()[index + 3] as f32 / 255.0;
+    let red = image.rgba_data()[index] as f64;
+    let green = image.rgba_data()[index + 1] as f64;
+    let blue = image.rgba_data()[index + 2] as f64;
+    let alpha = image.rgba_data()[index + 3] as f64 / 255.0;
     [red * alpha, green * alpha, blue * alpha, alpha]
 }
 
-fn mix_pixel(left: [f32; 4], right: [f32; 4], amount: f32) -> [f32; 4] {
-    [
-        left[0] + (right[0] - left[0]) * amount,
-        left[1] + (right[1] - left[1]) * amount,
-        left[2] + (right[2] - left[2]) * amount,
-        left[3] + (right[3] - left[3]) * amount,
-    ]
-}
-
-fn unpremultiply(pixel: [f32; 4]) -> [u8; 4] {
+fn unpremultiply(pixel: [f64; 4]) -> [u8; 4] {
     let alpha = pixel[3].clamp(0.0, 1.0);
     if alpha <= 0.0 {
         return [0, 0, 0, 0];
@@ -146,7 +179,7 @@ fn alpha_bounds(image: &ico::IconImage) -> (u32, u32, u32, u32) {
     for y in 0..image.height() {
         for x in 0..image.width() {
             let alpha = image.rgba_data()[((y * image.width() + x) * 4 + 3) as usize];
-            if alpha > 8 {
+            if alpha > 0 {
                 min_x = min_x.min(x);
                 min_y = min_y.min(y);
                 max_x = max_x.max(x);

@@ -20,26 +20,27 @@ use windows::Win32::Graphics::Gdi::{
 use windows::Win32::System::Com::{COINIT_APARTMENTTHREADED, CoInitializeEx, CoUninitialize};
 use windows::Win32::System::LibraryLoader::GetModuleHandleW;
 use windows::Win32::System::Threading::CreateMutexW;
-use windows::Win32::UI::Controls::{BST_CHECKED, BST_UNCHECKED, EM_SETCUEBANNER};
+use windows::Win32::UI::Controls::{BST_CHECKED, BST_UNCHECKED, CB_SETMINVISIBLE, EM_SETCUEBANNER};
+use windows::Win32::UI::HiDpi::{GetDpiForSystem, GetSystemMetricsForDpi};
 use windows::Win32::UI::Shell::{
     NIF_ICON, NIF_MESSAGE, NIF_TIP, NIM_ADD, NIM_DELETE, NIM_MODIFY, NOTIFYICONDATAW,
     Shell_NotifyIconW, ShellExecuteW,
 };
 use windows::Win32::UI::WindowsAndMessaging::{
-    AppendMenuW, BM_GETCHECK, BM_SETCHECK, BS_AUTOCHECKBOX, BS_DEFPUSHBUTTON, BS_FLAT,
-    BS_PUSHBUTTON, CB_ADDSTRING, CB_GETCURSEL, CB_RESETCONTENT, CB_SETCURSEL, CB_SHOWDROPDOWN,
-    CBN_SELCHANGE, CBS_DROPDOWNLIST, CREATESTRUCTW, CreatePopupMenu, CreateWindowExW,
-    DefWindowProcW, DestroyMenu, DestroyWindow, DispatchMessageW, ES_AUTOHSCROLL, FindWindowW,
-    GWLP_USERDATA, GetCursorPos, GetMessageW, GetSystemMetrics, GetWindowRect, HICON, HMENU,
-    ICON_BIG, ICON_SMALL, IDC_ARROW, IDI_APPLICATION, IMAGE_ICON, LB_ADDSTRING, LB_GETCURSEL,
-    LB_RESETCONTENT, LBN_SELCHANGE, LBS_NOTIFY, LR_DEFAULTCOLOR, LoadCursorW, LoadIconW,
-    LoadImageW, MF_SEPARATOR, MF_STRING, MSG, PostQuitMessage, RegisterClassW, SM_CXSCREEN,
-    SM_CXSMICON, SM_CYSCREEN, SM_CYSMICON, SW_HIDE, SW_RESTORE, SW_SHOW, SendMessageW,
-    SetForegroundWindow, SetTimer, SetWindowLongPtrW, SetWindowTextW, ShowWindow, TPM_RIGHTBUTTON,
-    TrackPopupMenu, TranslateMessage, WINDOW_EX_STYLE, WINDOW_STYLE, WM_APP, WM_CLOSE, WM_COMMAND,
-    WM_CREATE, WM_CTLCOLORBTN, WM_CTLCOLOREDIT, WM_CTLCOLORLISTBOX, WM_CTLCOLORSTATIC, WM_DESTROY,
-    WM_LBUTTONDBLCLK, WM_MOVE, WM_NCCREATE, WM_NCDESTROY, WM_PAINT, WM_RBUTTONUP, WM_SETFONT,
-    WM_SETICON, WM_TIMER, WNDCLASSW, WS_BORDER, WS_CHILD, WS_EX_CLIENTEDGE, WS_OVERLAPPEDWINDOW,
+    AppendMenuW, BM_GETCHECK, BM_SETCHECK, BS_AUTOCHECKBOX, BS_DEFPUSHBUTTON, BS_PUSHBUTTON,
+    CB_ADDSTRING, CB_GETCURSEL, CB_RESETCONTENT, CB_SETCURSEL, CB_SHOWDROPDOWN, CBN_SELCHANGE,
+    CBS_DROPDOWNLIST, CREATESTRUCTW, CreatePopupMenu, CreateWindowExW, DefWindowProcW, DestroyMenu,
+    DestroyWindow, DispatchMessageW, ES_AUTOHSCROLL, FindWindowW, GWLP_USERDATA, GetCursorPos,
+    GetMessageW, GetSystemMetrics, GetWindowRect, HICON, HMENU, ICON_BIG, ICON_SMALL, IDC_ARROW,
+    IDI_APPLICATION, IMAGE_ICON, LB_ADDSTRING, LB_GETCURSEL, LB_RESETCONTENT, LBN_SELCHANGE,
+    LBS_NOTIFY, LR_DEFAULTCOLOR, LoadCursorW, LoadIconW, LoadImageW, MF_SEPARATOR, MF_STRING, MSG,
+    PostQuitMessage, RegisterClassW, SM_CXICON, SM_CXSCREEN, SM_CXSMICON, SM_CYICON, SM_CYSCREEN,
+    SM_CYSMICON, SW_HIDE, SW_RESTORE, SW_SHOW, SendMessageW, SetForegroundWindow, SetTimer,
+    SetWindowLongPtrW, SetWindowTextW, ShowWindow, TPM_RIGHTBUTTON, TrackPopupMenu,
+    TranslateMessage, WINDOW_EX_STYLE, WINDOW_STYLE, WM_APP, WM_CLOSE, WM_COMMAND, WM_CREATE,
+    WM_CTLCOLOREDIT, WM_CTLCOLORLISTBOX, WM_CTLCOLORSTATIC, WM_DESTROY, WM_LBUTTONDBLCLK, WM_MOVE,
+    WM_NCCREATE, WM_NCDESTROY, WM_PAINT, WM_RBUTTONUP, WM_SETFONT, WM_SETICON, WM_TIMER, WNDCLASSW,
+    WS_BORDER, WS_CHILD, WS_CLIPCHILDREN, WS_CLIPSIBLINGS, WS_EX_CLIENTEDGE, WS_OVERLAPPEDWINDOW,
     WS_TABSTOP, WS_VISIBLE, WS_VSCROLL,
 };
 use windows::core::{PCWSTR, w};
@@ -147,7 +148,7 @@ unsafe fn run_window() -> Result<()> {
             WINDOW_EX_STYLE(0),
             CLASS_NAME,
             PCWSTR(title.as_ptr()),
-            WS_OVERLAPPEDWINDOW,
+            WS_OVERLAPPEDWINDOW | WS_CLIPCHILDREN,
             x,
             y,
             WINDOW_WIDTH,
@@ -404,7 +405,7 @@ impl AppWindow {
                 hwnd,
                 WM_SETICON,
                 Some(WPARAM(ICON_SMALL as usize)),
-                Some(LPARAM(self.icon.0 as isize)),
+                Some(LPARAM(self.tray_icon.0 as isize)),
             );
         }
 
@@ -600,7 +601,7 @@ impl AppWindow {
                 484,
                 236,
                 280,
-                340,
+                34,
                 ID_RUNNING,
             )?
         };
@@ -676,7 +677,7 @@ impl AppWindow {
                 "",
                 484,
                 430,
-                300,
+                220,
                 26,
                 ID_START_MINIMIZED,
             )?
@@ -688,13 +689,13 @@ impl AppWindow {
                 "",
                 484,
                 460,
-                300,
+                220,
                 26,
                 ID_LAUNCH_STARTUP,
             )?
         };
         self.controls.restore_exit_check = unsafe {
-            create_checkbox(self.hwnd, instance, "", 484, 490, 300, 26, ID_RESTORE_EXIT)?
+            create_checkbox(self.hwnd, instance, "", 484, 490, 220, 26, ID_RESTORE_EXIT)?
         };
         self.controls.language_label = unsafe {
             create_control(
@@ -722,7 +723,7 @@ impl AppWindow {
                 734,
                 398,
                 150,
-                180,
+                34,
                 ID_LANGUAGE,
             )?
         };
@@ -736,6 +737,20 @@ impl AppWindow {
         self.controls.quit_button =
             unsafe { create_button(self.hwnd, instance, "", 744, 552, 140, 38, ID_QUIT)? };
 
+        unsafe {
+            SendMessageW(
+                self.controls.running_combo,
+                CB_SETMINVISIBLE,
+                Some(WPARAM(12)),
+                None,
+            );
+            SendMessageW(
+                self.controls.language_combo,
+                CB_SETMINVISIBLE,
+                Some(WPARAM(Language::ALL.len())),
+                None,
+            );
+        }
         self.apply_default_font();
         Ok(())
     }
@@ -1243,7 +1258,6 @@ impl AppWindow {
                     let _ = SetBkColor(hdc, PANEL_COLOR);
                     LRESULT(self.theme.panel_brush.0 as isize)
                 }
-                WM_CTLCOLORBTN => LRESULT(self.theme.panel_brush.0 as isize),
                 _ => {
                     let _ = SetTextColor(hdc, SUBTLE_TEXT_COLOR);
                     LRESULT(self.theme.panel_brush.0 as isize)
@@ -1456,7 +1470,7 @@ unsafe extern "system" fn window_proc(
                 }
                 return LRESULT(0);
             }
-            WM_CTLCOLORSTATIC | WM_CTLCOLOREDIT | WM_CTLCOLORLISTBOX | WM_CTLCOLORBTN => {
+            WM_CTLCOLORSTATIC | WM_CTLCOLOREDIT | WM_CTLCOLORLISTBOX => {
                 return app.control_color(wparam, message);
             }
             WM_TRAY_ICON => {
@@ -1536,7 +1550,7 @@ unsafe extern "system" fn language_prompt_proc(
                 }
                 return LRESULT(0);
             }
-            WM_CTLCOLORSTATIC | WM_CTLCOLORBTN => {
+            WM_CTLCOLORSTATIC => {
                 let hdc = HDC(wparam.0 as *mut c_void);
                 unsafe {
                     let _ = SetBkMode(hdc, TRANSPARENT);
@@ -1600,7 +1614,7 @@ impl LanguagePrompt {
                 32,
                 92,
                 220,
-                180,
+                34,
                 ID_LANGUAGE_PROMPT_COMBO,
             )?
         };
@@ -1630,6 +1644,12 @@ impl LanguagePrompt {
             for language in Language::ALL {
                 add_combo_item(self.combo, language.native_name());
             }
+            SendMessageW(
+                self.combo,
+                CB_SETMINVISIBLE,
+                Some(WPARAM(Language::ALL.len())),
+                None,
+            );
             let index = Language::ALL
                 .iter()
                 .position(|language| *language == self.current)
@@ -1664,7 +1684,7 @@ unsafe fn create_button(
             instance,
             w!("BUTTON"),
             text,
-            WS_CHILD | WS_VISIBLE | WS_TABSTOP | WINDOW_STYLE((BS_PUSHBUTTON | BS_FLAT) as u32),
+            WS_CHILD | WS_VISIBLE | WS_TABSTOP | WINDOW_STYLE(BS_PUSHBUTTON as u32),
             WINDOW_EX_STYLE(0),
             x,
             y,
@@ -1692,7 +1712,7 @@ unsafe fn create_primary_button(
             instance,
             w!("BUTTON"),
             text,
-            WS_CHILD | WS_VISIBLE | WS_TABSTOP | WINDOW_STYLE((BS_DEFPUSHBUTTON | BS_FLAT) as u32),
+            WS_CHILD | WS_VISIBLE | WS_TABSTOP | WINDOW_STYLE(BS_DEFPUSHBUTTON as u32),
             WINDOW_EX_STYLE(0),
             x,
             y,
@@ -1720,7 +1740,11 @@ unsafe fn create_checkbox(
             instance,
             w!("BUTTON"),
             text,
-            WS_CHILD | WS_VISIBLE | WS_TABSTOP | WINDOW_STYLE(BS_AUTOCHECKBOX as u32),
+            WS_CHILD
+                | WS_VISIBLE
+                | WS_TABSTOP
+                | WS_CLIPSIBLINGS
+                | WINDOW_STYLE(BS_AUTOCHECKBOX as u32),
             WINDOW_EX_STYLE(0),
             x,
             y,
@@ -1751,7 +1775,7 @@ unsafe fn create_control(
             ex_style,
             class,
             PCWSTR(text.as_ptr()),
-            style,
+            style | WS_CLIPSIBLINGS,
             x,
             y,
             width,
@@ -1820,15 +1844,19 @@ unsafe fn is_checked(hwnd: HWND) -> bool {
 }
 
 unsafe fn load_app_icon(instance: HINSTANCE) -> HICON {
+    let size = unsafe { GetSystemMetrics(SM_CXICON).max(GetSystemMetrics(SM_CYICON)) };
     unsafe {
-        LoadIconW(Some(instance), int_resource(1))
-            .or_else(|_| LoadIconW(None, IDI_APPLICATION))
-            .unwrap_or_default()
+        load_sized_app_icon(instance, size)
+            .or_else(|| LoadIconW(Some(instance), int_resource(1)).ok())
+            .unwrap_or_else(|| LoadIconW(None, IDI_APPLICATION).unwrap_or_default())
     }
 }
 
 unsafe fn load_tray_icon(instance: HINSTANCE) -> HICON {
-    let size = unsafe { GetSystemMetrics(SM_CXSMICON).max(GetSystemMetrics(SM_CYSMICON)) };
+    let size = unsafe {
+        let dpi = GetDpiForSystem();
+        GetSystemMetricsForDpi(SM_CXSMICON, dpi).max(GetSystemMetricsForDpi(SM_CYSMICON, dpi))
+    };
     unsafe { load_sized_app_icon(instance, size).unwrap_or_else(|| load_app_icon(instance)) }
 }
 
