@@ -34,6 +34,19 @@ function Remove-ReadmeLanguageLinks {
     )
 }
 
+function Remove-ReadmeScreenshotBlock {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$Content
+    )
+
+    return [System.Text.RegularExpressions.Regex]::Replace(
+        $Content,
+        '(?ms)^[ \t]*<p align="center">\s*<img src="(?:\.\./)?assets/screenshot\.png"[^>]*>\s*</p>\s*',
+        ''
+    )
+}
+
 Push-Location $RepoRoot
 try {
     cargo build --release --target $Target
@@ -44,19 +57,15 @@ try {
     Copy-Item "LICENSE" $Stage
     Copy-Item "THIRD_PARTY_NOTICES.md" $Stage
 
-    if (Test-Path "assets\screenshot.png") {
-        $AssetsStage = Join-Path $Stage "assets"
-        New-Item -ItemType Directory -Force -Path $AssetsStage | Out-Null
-        Copy-Item "assets\screenshot.png" $AssetsStage
-    }
-
     $ReadmeKo = [System.IO.File]::ReadAllText((Join-Path $RepoRoot "README.md"), [System.Text.Encoding]::UTF8)
     $ReadmeKo = [System.Text.RegularExpressions.Regex]::Replace($ReadmeKo, '^\s*<p align="center">[\s\S]*?</p>\s*', '')
     $ReadmeKo = Remove-ReadmeLanguageLinks $ReadmeKo
+    $ReadmeKo = Remove-ReadmeScreenshotBlock $ReadmeKo
     [System.IO.File]::WriteAllText((Join-Path $Stage "README_ko.md"), $ReadmeKo, $Utf8NoBom)
 
     $ReadmeEn = [System.IO.File]::ReadAllText((Join-Path $RepoRoot "README_en.md"), [System.Text.Encoding]::UTF8)
     $ReadmeEn = Remove-ReadmeLanguageLinks $ReadmeEn
+    $ReadmeEn = Remove-ReadmeScreenshotBlock $ReadmeEn
     [System.IO.File]::WriteAllText((Join-Path $Stage "README_en.md"), $ReadmeEn, $Utf8NoBom)
 
     if (Test-Path "docs") {
@@ -67,6 +76,7 @@ try {
             ForEach-Object {
                 $Readme = [System.IO.File]::ReadAllText($_.FullName, [System.Text.Encoding]::UTF8)
                 $Readme = Remove-ReadmeLanguageLinks $Readme
+                $Readme = Remove-ReadmeScreenshotBlock $Readme
                 [System.IO.File]::WriteAllText((Join-Path $DocsStage $_.Name), $Readme, $Utf8NoBom)
             }
     }

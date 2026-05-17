@@ -83,7 +83,7 @@ cargo build --release --target x86_64-pc-windows-msvc
 powershell -ExecutionPolicy Bypass -File scripts\package-windows.ps1
 ```
 
-パッケージは `dist\UnfocusMute-<version>-windows-x64.zip` に作成され、実行ファイル、`LICENSE`、`THIRD_PARTY_NOTICES.md`、`assets/screenshot.png`、ルートの `README_ko.md` と `README_en.md`、`docs` 配下のその他の言語ドキュメントが含まれます。
+パッケージは `dist\UnfocusMute-<version>-windows-x64.zip` に作成され、実行ファイル、`LICENSE`、`THIRD_PARTY_NOTICES.md`、ルートの `README_ko.md` と `README_en.md`、`docs` 配下のその他の言語ドキュメントが含まれます。
 
 ## ライセンス
 

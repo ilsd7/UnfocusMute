@@ -83,7 +83,7 @@ Distribution ZIP बनाएं:
 powershell -ExecutionPolicy Bypass -File scripts\package-windows.ps1
 ```
 
-पैकेज `dist\UnfocusMute-<version>-windows-x64.zip` में बनता है और इसमें executable फ़ाइल, `LICENSE`, `THIRD_PARTY_NOTICES.md`, `assets/screenshot.png`, root में `README_ko.md` और `README_en.md`, और `docs` में बाकी स्थानीयकृत दस्तावेज़ शामिल होते हैं।
+पैकेज `dist\UnfocusMute-<version>-windows-x64.zip` में बनता है और इसमें executable फ़ाइल, `LICENSE`, `THIRD_PARTY_NOTICES.md`, root में `README_ko.md` और `README_en.md`, और `docs` में बाकी स्थानीयकृत दस्तावेज़ शामिल होते हैं।
 
 ## लाइसेंस
 

@@ -95,7 +95,7 @@ Refresh third-party license notices:
 cargo about generate --frozen --fail -o THIRD_PARTY_NOTICES.md about.hbs
 ```
 
-The package is created under `dist\UnfocusMute-<version>-windows-x64.zip` and includes the executable, `LICENSE`, `THIRD_PARTY_NOTICES.md`, `assets/screenshot.png`, root-level `README_ko.md` and `README_en.md`, plus the other localized docs under `docs`.
+The package is created under `dist\UnfocusMute-<version>-windows-x64.zip` and includes the executable, `LICENSE`, `THIRD_PARTY_NOTICES.md`, root-level `README_ko.md` and `README_en.md`, plus the other localized docs under `docs`.
 
 ## License
 

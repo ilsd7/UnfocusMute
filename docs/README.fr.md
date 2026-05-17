@@ -83,7 +83,7 @@ Créer un ZIP de distribution :
 powershell -ExecutionPolicy Bypass -File scripts\package-windows.ps1
 ```
 
-Le paquet est créé dans `dist\UnfocusMute-<version>-windows-x64.zip` et contient l’exécutable, `LICENSE`, `THIRD_PARTY_NOTICES.md`, `assets/screenshot.png`, `README_ko.md` et `README_en.md` à la racine, ainsi que les autres documents localisés dans `docs`.
+Le paquet est créé dans `dist\UnfocusMute-<version>-windows-x64.zip` et contient l’exécutable, `LICENSE`, `THIRD_PARTY_NOTICES.md`, `README_ko.md` et `README_en.md` à la racine, ainsi que les autres documents localisés dans `docs`.
 
 ## Licence
 

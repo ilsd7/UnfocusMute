@@ -83,7 +83,7 @@ cargo build --release --target x86_64-pc-windows-msvc
 powershell -ExecutionPolicy Bypass -File scripts\package-windows.ps1
 ```
 
-يتم إنشاء الحزمة في `dist\UnfocusMute-<version>-windows-x64.zip` وتتضمن الملف التنفيذي و`LICENSE` و`THIRD_PARTY_NOTICES.md` و`assets/screenshot.png` و`README_ko.md` و`README_en.md` في الجذر، وبقية الوثائق المترجمة داخل `docs`.
+يتم إنشاء الحزمة في `dist\UnfocusMute-<version>-windows-x64.zip` وتتضمن الملف التنفيذي و`LICENSE` و`THIRD_PARTY_NOTICES.md` و`README_ko.md` و`README_en.md` في الجذر، وبقية الوثائق المترجمة داخل `docs`.
 
 ## الترخيص
 

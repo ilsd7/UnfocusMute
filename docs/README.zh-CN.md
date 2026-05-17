@@ -83,7 +83,7 @@ cargo build --release --target x86_64-pc-windows-msvc
 powershell -ExecutionPolicy Bypass -File scripts\package-windows.ps1
 ```
 
-生成的包位于 `dist\UnfocusMute-<version>-windows-x64.zip`，包含可执行文件、`LICENSE`、`THIRD_PARTY_NOTICES.md`、`assets/screenshot.png`、根目录的 `README_ko.md` 和 `README_en.md`，以及 `docs` 下的其他本地化文档。
+生成的包位于 `dist\UnfocusMute-<version>-windows-x64.zip`，包含可执行文件、`LICENSE`、`THIRD_PARTY_NOTICES.md`、根目录的 `README_ko.md` 和 `README_en.md`，以及 `docs` 下的其他本地化文档。
 
 ## 许可证
 
