@@ -2,6 +2,10 @@
 
 [한국어](README.md) | English | [日本語](docs/README.ja.md) | [简体中文](docs/README.zh-CN.md) | [Español](docs/README.es.md) | [Français](docs/README.fr.md) | [Português](docs/README.pt.md) | [हिन्दी](docs/README.hi.md) | [العربية](docs/README.ar.md)
 
+<p align="center">
+  <img src="assets/screenshot.png" alt="UnfocusMute app window" width="760">
+</p>
+
 UnfocusMute is a small, lightweight Windows tray app that automatically quiets selected games or apps when they move to the background.
 
 Built as a native Rust app, it runs without a separate runtime. The current Windows executable is about 676 KB, under 1 MB.
@@ -27,7 +31,7 @@ It is especially useful when you Alt+Tab from a game to a browser, chat app, or 
 
 - Foreground detection with automatic mute and restore for registered audio sessions.
 - Adds targets from the running app list or by typing an executable name such as `game.exe`.
-- Supports grouped `.exe` targets, individual PID targets, and `Show PIDs`.
+- Supports grouped `.exe` targets, current-instance PID targets, and `Show PIDs`.
 - Tray resident operation, pause, config folder shortcut, and single-instance protection.
 - First-run language selection and in-app switching between English, Korean, Japanese, Simplified Chinese, Spanish, French, Portuguese, Hindi, and Arabic.
 - Local config at `%APPDATA%\UnfocusMute\config.json`.
@@ -40,7 +44,7 @@ UnfocusMute is a small background utility, so startup speed, memory use, and sim
 
 UnfocusMute is local-first. It stores only registered process names, optional PIDs, UI language, window position, and startup preferences in a local config file.
 
-Audio session detection and mute control are handled on your PC through Windows CoreAudio APIs. There are no network requests, accounts, telemetry, analytics, crash reporting, remote logging, or separate app log files.
+Audio session detection and mute control are handled on your PC through Windows CoreAudio APIs. There are no network requests, accounts, telemetry, analytics, crash reporting, or remote logging, and UnfocusMute does not create separate app log files.
 
 ## Download and Run
 
@@ -53,7 +57,7 @@ Download the Windows 10/11 ZIP, extract it, and run `UnfocusMute.exe`. It is por
 3. Start the game or app you want to manage.
 4. Refresh the running app list, select an item, and click `Add selected`.
 5. Duplicate `.exe` entries are grouped by default.
-6. Use `Show PIDs` only when you need to register one specific process instance.
+6. Use `Show PIDs` only when you need to register one specific process instance. A PID target applies only to the currently running instance, so choose it again if the app restarts with a different PID.
 7. Closing the window keeps UnfocusMute running in the tray. Use `Quit` to fully exit.
 
 ## Defaults
@@ -77,6 +81,8 @@ rustup target add x86_64-pc-windows-msvc
 cargo build --release --target x86_64-pc-windows-msvc
 ```
 
+Release builds are configured for small output size. The `Cargo.toml` release profile strips symbols, enables LTO, uses one codegen unit, sets `panic = "abort"`, and optimizes for size.
+
 Create a distribution ZIP:
 
 ```powershell
@@ -89,7 +95,7 @@ Refresh third-party license notices:
 cargo about generate --frozen --fail -o THIRD_PARTY_NOTICES.md about.hbs
 ```
 
-The package is created under `dist\UnfocusMute-<version>-windows-x64.zip` and includes the executable, `LICENSE`, `THIRD_PARTY_NOTICES.md`, root-level `README_ko.md` and `README_en.md`, plus the other localized docs under `docs`.
+The package is created under `dist\UnfocusMute-<version>-windows-x64.zip` and includes the executable, `LICENSE`, `THIRD_PARTY_NOTICES.md`, `assets/screenshot.png`, root-level `README_ko.md` and `README_en.md`, plus the other localized docs under `docs`.
 
 ## License
 

@@ -2,6 +2,10 @@
 
 [한국어](../README.md) | [English](../README_en.md) | [日本語](README.ja.md) | 简体中文 | [Español](README.es.md) | [Français](README.fr.md) | [Português](README.pt.md) | [हिन्दी](README.hi.md) | [العربية](README.ar.md)
 
+<p align="center">
+  <img src="../assets/screenshot.png" alt="UnfocusMute 应用窗口" width="760">
+</p>
+
 UnfocusMute 是一款小巧轻量的 Windows 托盘工具，会在游戏或应用进入后台时自动静音它们。
 
 它构建为 Rust 原生应用，无需额外运行时即可直接运行。当前 Windows 可执行文件约 676KB，小于 1MB。
@@ -27,7 +31,7 @@ UnfocusMute 是一款小巧轻量的 Windows 托盘工具，会在游戏或应�
 
 - 基于前台状态自动静音和恢复已注册应用的音频会话
 - 从正在运行的应用列表添加，或手动输入 `game.exe`
-- 支持 `.exe` 分组、单个 PID 注册和 `显示 PID`
+- 支持 `.exe` 分组、当前运行实例的单个 PID 注册和 `显示 PID`
 - 托盘常驻、暂停、打开配置文件夹、阻止重复运行
 - 首次运行时选择语言，并可在应用内切换英语、韩语、日语、简体中文、西班牙语、法语、葡萄牙语、印地语、阿拉伯语
 - 配置保存在 `%APPDATA%\UnfocusMute\config.json`
@@ -40,7 +44,7 @@ UnfocusMute 是常驻后台的小工具，因此启动速度、内存占用和�
 
 UnfocusMute 以本地优先方式工作。它只在本地配置文件中保存已注册的进程名、可选 PID、界面语言、窗口位置和启动偏好。
 
-音频会话检测和静音控制通过 Windows CoreAudio API 在本机完成。它不包含网络请求、账号、遥测、分析工具、崩溃报告、远程日志或单独应用日志文件。
+音频会话检测和静音控制通过 Windows CoreAudio API 在本机完成。它不包含网络请求、账号、遥测、分析工具、崩溃报告或远程日志，也不会创建单独的应用日志文件。
 
 ## 下载与运行
 
@@ -53,7 +57,7 @@ UnfocusMute 以本地优先方式工作。它只在本地配置文件中保存�
 3. 启动要管理的游戏或应用。
 4. 刷新正在运行的应用列表，选择目标并点击 `添加所选`。
 5. 相同 `.exe` 的多个进程默认会合并注册。
-6. 如果只需要注册某个 PID，请使用 `显示 PID`。
+6. 如果只需要注册某个 PID，请使用 `显示 PID`。PID 目标只适用于当前运行的进程实例；如果应用重启后 PID 变化，请重新选择。
 7. 关闭窗口后应用会继续在托盘运行。要完全退出，请点击 `退出`。
 
 ## 默认设置
@@ -71,13 +75,15 @@ rustup target add x86_64-pc-windows-msvc
 cargo build --release --target x86_64-pc-windows-msvc
 ```
 
+发布构建已按更小输出体积配置。`Cargo.toml` 的 release profile 会移除符号、启用 LTO、使用单个 codegen unit、设置 `panic = "abort"`，并优先做体积优化。
+
 创建发布 ZIP：
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File scripts\package-windows.ps1
 ```
 
-生成的包位于 `dist\UnfocusMute-<version>-windows-x64.zip`，包含可执行文件、`LICENSE`、`THIRD_PARTY_NOTICES.md`、根目录的 `README_ko.md` 和 `README_en.md`，以及 `docs` 下的其他本地化文档。
+生成的包位于 `dist\UnfocusMute-<version>-windows-x64.zip`，包含可执行文件、`LICENSE`、`THIRD_PARTY_NOTICES.md`、`assets/screenshot.png`、根目录的 `README_ko.md` 和 `README_en.md`，以及 `docs` 下的其他本地化文档。
 
 ## 许可证
 

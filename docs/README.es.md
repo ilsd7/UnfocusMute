@@ -2,6 +2,10 @@
 
 [한국어](../README.md) | [English](../README_en.md) | [日本語](README.ja.md) | [简体中文](README.zh-CN.md) | Español | [Français](README.fr.md) | [Português](README.pt.md) | [हिन्दी](README.hi.md) | [العربية](README.ar.md)
 
+<p align="center">
+  <img src="../assets/screenshot.png" alt="Ventana de UnfocusMute" width="760">
+</p>
+
 UnfocusMute es una pequeña app de bandeja para Windows, ligera y portable, que silencia automáticamente juegos o apps seleccionadas cuando quedan en segundo plano.
 
 Al estar compilada como app nativa en Rust, se ejecuta sin un runtime adicional. El ejecutable actual para Windows ocupa unos 676 KB, menos de 1 MB.
@@ -27,7 +31,7 @@ Resulta especialmente útil cuando sales de un juego con Alt+Tab para usar un na
 
 - Detección de primer plano con silencio y restauración automáticos para sesiones registradas.
 - Añade objetivos desde la lista de apps en ejecución o escribiendo un ejecutable como `game.exe`.
-- Registro agrupado por `.exe`, registro por PID y `Ver PID`.
+- Registro agrupado por `.exe`, registro por PID de la instancia actual y `Ver PID`.
 - Funcionamiento en bandeja, pausa, acceso a la carpeta de configuración y protección contra doble ejecución.
 - Selección de idioma en el primer inicio y cambio entre English, 한국어, 日本語, 简体中文, Español, Français, Português, हिन्दी y العربية.
 - Configuración local en `%APPDATA%\UnfocusMute\config.json`.
@@ -40,7 +44,7 @@ UnfocusMute es una utilidad pequeña que permanece en segundo plano, así que im
 
 UnfocusMute funciona con un enfoque local. Solo guarda nombres de procesos registrados, PID opcionales, idioma de la UI, posición de ventana y preferencias de inicio en un archivo de configuración local.
 
-La detección de sesiones de audio y el control de silencio se procesan en tu PC con las API Windows CoreAudio. No incluye red, cuentas, telemetría, analíticas, reportes de fallos, logging remoto ni archivos de log separados.
+La detección de sesiones de audio y el control de silencio se procesan en tu PC con las API Windows CoreAudio. No incluye red, cuentas, telemetría, analíticas, reportes de fallos ni logging remoto, y tampoco crea archivos de log de la app.
 
 ## Descargar y Ejecutar
 
@@ -53,7 +57,7 @@ Descarga el ZIP para Windows 10/11, extráelo y ejecuta `UnfocusMute.exe`. Es po
 3. Abre el juego o app que quieras gestionar.
 4. Actualiza la lista de apps en ejecución, selecciona un elemento y pulsa `Añadir selección`.
 5. Los procesos con el mismo `.exe` se agrupan por defecto.
-6. Usa `Ver PID` solo cuando necesites registrar una instancia concreta.
+6. Usa `Ver PID` solo cuando necesites registrar una instancia concreta. Un objetivo PID solo se aplica a la instancia que está en ejecución; si la app se reinicia con otro PID, selecciónalo de nuevo.
 7. Al cerrar la ventana, UnfocusMute sigue en la bandeja. Usa `Salir` para cerrarla por completo.
 
 ## Valores Predeterminados
@@ -71,13 +75,15 @@ rustup target add x86_64-pc-windows-msvc
 cargo build --release --target x86_64-pc-windows-msvc
 ```
 
+Las builds de release están configuradas para reducir el tamaño de salida. El release profile de `Cargo.toml` elimina símbolos, activa LTO, usa una sola codegen unit, define `panic = "abort"` y optimiza para tamaño.
+
 Crear un ZIP de distribución:
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File scripts\package-windows.ps1
 ```
 
-El paquete se crea en `dist\UnfocusMute-<version>-windows-x64.zip` e incluye el ejecutable, `LICENSE`, `THIRD_PARTY_NOTICES.md`, `README_ko.md` y `README_en.md` en la raíz, además del resto de documentación localizada en `docs`.
+El paquete se crea en `dist\UnfocusMute-<version>-windows-x64.zip` e incluye el ejecutable, `LICENSE`, `THIRD_PARTY_NOTICES.md`, `assets/screenshot.png`, `README_ko.md` y `README_en.md` en la raíz, además del resto de documentación localizada en `docs`.
 
 ## Licencia
 

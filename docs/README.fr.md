@@ -2,6 +2,10 @@
 
 [한국어](../README.md) | [English](../README_en.md) | [日本語](README.ja.md) | [简体中文](README.zh-CN.md) | [Español](README.es.md) | Français | [Português](README.pt.md) | [हिन्दी](README.hi.md) | [العربية](README.ar.md)
 
+<p align="center">
+  <img src="../assets/screenshot.png" alt="Fenêtre de l’application UnfocusMute" width="760">
+</p>
+
 UnfocusMute est une petite application légère pour la zone de notification Windows. Elle coupe automatiquement le son des jeux ou applications sélectionnés lorsqu’ils passent en arrière-plan.
 
 Compilée comme application native Rust, elle s’exécute sans runtime séparé. L’exécutable Windows actuel pèse environ 676 Ko, soit moins de 1 Mo.
@@ -27,7 +31,7 @@ Elle est particulièrement utile lorsque vous quittez un jeu avec Alt+Tab pour p
 
 - Détection du premier plan avec coupure et réactivation automatiques des sessions enregistrées.
 - Ajoute des cibles depuis la liste des applications en cours ou en saisissant un exécutable comme `game.exe`.
-- Enregistrement groupé par `.exe`, enregistrement par PID et `Afficher les PID`.
+- Enregistrement groupé par `.exe`, enregistrement par PID de l’instance en cours et `Afficher les PID`.
 - Fonctionne dans la zone de notification, avec pause, raccourci vers le dossier de configuration et protection contre les doubles lancements.
 - Sélection de la langue au premier lancement et changement immédiat entre English, 한국어, 日本語, 简体中文, Español, Français, Português, हिन्दी et العربية.
 - Configuration locale dans `%APPDATA%\UnfocusMute\config.json`.
@@ -40,7 +44,7 @@ UnfocusMute est un petit outil qui reste actif en arrière-plan. La rapidité de
 
 UnfocusMute fonctionne d’abord en local. Il stocke uniquement les noms de processus enregistrés, les PID facultatifs, la langue de l’interface, la position de la fenêtre et les préférences de démarrage dans un fichier de configuration local.
 
-La détection des sessions audio et le contrôle du son sont traités sur votre PC avec les API Windows CoreAudio. Il n’y a aucune requête réseau, aucun compte, aucune télémétrie, aucune analyse, aucun rapport de plantage, aucun journal distant et aucun fichier journal séparé.
+La détection des sessions audio et le contrôle du son sont traités sur votre PC avec les API Windows CoreAudio. Il n’y a aucune requête réseau, aucun compte, aucune télémétrie, aucune analyse, aucun rapport de plantage ni aucun journal distant, et l’application ne crée pas de fichier journal séparé.
 
 ## Télécharger et Lancer
 
@@ -53,7 +57,7 @@ Téléchargez le ZIP pour Windows 10/11, extrayez-le, puis lancez `UnfocusMute.e
 3. Ouvrez le jeu ou l’application à gérer.
 4. Actualisez la liste des applications en cours, sélectionnez un élément, puis cliquez sur `Ajouter la sélection`.
 5. Les entrées avec le même `.exe` sont regroupées par défaut.
-6. Utilisez `Afficher les PID` uniquement si vous devez enregistrer une instance précise.
+6. Utilisez `Afficher les PID` uniquement si vous devez enregistrer une instance précise. Une cible PID ne s’applique qu’à l’instance en cours ; si l’application redémarre avec un autre PID, sélectionnez-la à nouveau.
 7. Fermer la fenêtre laisse UnfocusMute actif dans la zone de notification. Utilisez `Quitter` pour l’arrêter complètement.
 
 ## Réglages Par Défaut
@@ -71,13 +75,15 @@ rustup target add x86_64-pc-windows-msvc
 cargo build --release --target x86_64-pc-windows-msvc
 ```
 
+Les builds de publication sont configurées pour réduire la taille de sortie. Le release profile de `Cargo.toml` supprime les symboles, active LTO, utilise une seule codegen unit, définit `panic = "abort"` et optimise pour la taille.
+
 Créer un ZIP de distribution :
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File scripts\package-windows.ps1
 ```
 
-Le paquet est créé dans `dist\UnfocusMute-<version>-windows-x64.zip` et contient l’exécutable, `LICENSE`, `THIRD_PARTY_NOTICES.md`, `README_ko.md` et `README_en.md` à la racine, ainsi que les autres documents localisés dans `docs`.
+Le paquet est créé dans `dist\UnfocusMute-<version>-windows-x64.zip` et contient l’exécutable, `LICENSE`, `THIRD_PARTY_NOTICES.md`, `assets/screenshot.png`, `README_ko.md` et `README_en.md` à la racine, ainsi que les autres documents localisés dans `docs`.
 
 ## Licence
 

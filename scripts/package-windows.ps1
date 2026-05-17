@@ -44,6 +44,12 @@ try {
     Copy-Item "LICENSE" $Stage
     Copy-Item "THIRD_PARTY_NOTICES.md" $Stage
 
+    if (Test-Path "assets\screenshot.png") {
+        $AssetsStage = Join-Path $Stage "assets"
+        New-Item -ItemType Directory -Force -Path $AssetsStage | Out-Null
+        Copy-Item "assets\screenshot.png" $AssetsStage
+    }
+
     $ReadmeKo = [System.IO.File]::ReadAllText((Join-Path $RepoRoot "README.md"), [System.Text.Encoding]::UTF8)
     $ReadmeKo = [System.Text.RegularExpressions.Regex]::Replace($ReadmeKo, '^\s*<p align="center">[\s\S]*?</p>\s*', '')
     $ReadmeKo = Remove-ReadmeLanguageLinks $ReadmeKo

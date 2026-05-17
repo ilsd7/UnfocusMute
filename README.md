@@ -12,6 +12,10 @@ Rust 네이티브 앱으로 빌드해 별도 런타임 없이 바로 실행됩�
 
 한국어 | [English](README_en.md) | [日本語](docs/README.ja.md) | [简体中文](docs/README.zh-CN.md) | [Español](docs/README.es.md) | [Français](docs/README.fr.md) | [Português](docs/README.pt.md) | [हिन्दी](docs/README.hi.md) | [العربية](docs/README.ar.md)
 
+<p align="center">
+  <img src="assets/screenshot.png" alt="UnfocusMute 앱 화면" width="760">
+</p>
+
 등록한 앱이 전면에 있지 않을 때 해당 앱의 오디오 세션만 음소거하고, 앱이 다시 전면으로 돌아오면 UnfocusMute가 직접 음소거했던 세션만 되돌립니다. 사용자가 직접 음소거한 상태는 건드리지 않습니다.
 
 게임을 켜 둔 채 알트탭(Alt+Tab)으로 브라우저, 메신저, 작업 창을 오갈 때 특히 유용합니다. Windows 볼륨 믹서를 반복해서 열지 않고도 필요한 앱의 백그라운드 음소거를 유지할 수 있습니다.
@@ -33,7 +37,7 @@ Rust 네이티브 앱으로 빌드해 별도 런타임 없이 바로 실행됩�
 
 - 전면 상태 감지 기반 등록 앱 오디오 세션 자동 음소거 및 복원
 - 실행 중인 앱 목록에서 선택 추가 또는 `game.exe` 형식의 직접 입력 지원
-- `.exe` 그룹 등록, 개별 PID 등록, `세부 PID 보기` 지원
+- `.exe` 그룹 등록, 현재 실행 중인 인스턴스용 개별 PID 등록, `세부 PID 보기` 지원
 - 트레이 상주, 일시 중지, 설정 폴더 열기, 중복 실행 방지
 - 첫 실행 시 언어 선택, 이후 앱 안에서 English/한국어/日本語/简体中文/Español/Français/Português/हिन्दी/العربية 즉시 전환
 - 설정은 `%APPDATA%\UnfocusMute\config.json`에 로컬 저장
@@ -46,7 +50,7 @@ UnfocusMute는 백그라운드에서 계속 실행되는 작은 도구이므로 
 
 UnfocusMute는 로컬 우선 방식으로 동작합니다. 등록한 프로세스 이름, 선택적으로 등록한 PID, UI 언어, 창 위치, 시작 옵션만 로컬 설정 파일에 저장합니다.
 
-오디오 세션 감지와 음소거 제어는 Windows CoreAudio API로 현재 PC 안에서만 처리됩니다. 네트워크 요청, 계정, 텔레메트리, 분석 도구, 크래시 리포팅, 원격 로깅, 별도 앱 로그 파일을 포함하지 않습니다.
+오디오 세션 감지와 음소거 제어는 Windows CoreAudio API로 현재 PC 안에서만 처리됩니다. 네트워크 요청, 계정, 텔레메트리, 분석 도구, 크래시 리포팅, 원격 로깅을 포함하지 않으며, 별도 앱 로그 파일도 만들지 않습니다.
 
 ## 설치 및 실행
 
@@ -59,7 +63,7 @@ Windows 10/11용 배포 ZIP을 받은 뒤 압축을 풀고 `UnfocusMute.exe`를 
 3. 음소거 대상으로 등록할 게임이나 앱을 실행합니다.
 4. `실행 중인 앱` 목록을 새로 고친 뒤 항목을 선택하고 `선택 추가`를 누릅니다.
 5. 같은 `.exe`가 여러 개 보이는 앱은 기본 목록에서 한 번에 등록됩니다.
-6. 특정 PID만 등록해야 하면 `세부 PID 보기`를 눌러 개별 항목을 선택합니다.
+6. 특정 PID만 등록해야 하면 `세부 PID 보기`를 눌러 개별 항목을 선택합니다. PID 대상은 현재 실행 중인 인스턴스에만 해당하므로 앱을 다시 실행한 뒤 PID가 바뀌면 다시 선택하세요.
 7. 창을 닫으면 앱은 트레이에 남아 계속 감시합니다. 완전히 종료하려면 `종료`를 누릅니다.
 
 ## 기본 설정
@@ -85,6 +89,8 @@ rustup target add x86_64-pc-windows-msvc
 cargo build --release --target x86_64-pc-windows-msvc
 ```
 
+릴리스 빌드는 용량을 줄이도록 설정되어 있습니다. `Cargo.toml`의 release profile은 심볼 제거, LTO, 단일 codegen unit, `panic = "abort"`, 크기 우선 최적화를 사용합니다.
+
 실행 파일:
 
 ```text
@@ -103,7 +109,7 @@ powershell -ExecutionPolicy Bypass -File scripts\package-windows.ps1
 cargo about generate --frozen --fail -o THIRD_PARTY_NOTICES.md about.hbs
 ```
 
-결과물은 `dist\UnfocusMute-<version>-windows-x64.zip`에 생성되며, 실행 파일, `LICENSE`, `THIRD_PARTY_NOTICES.md`, 루트의 `README_ko.md`와 `README_en.md`, `docs` 폴더의 기타 언어 문서가 포함됩니다.
+결과물은 `dist\UnfocusMute-<version>-windows-x64.zip`에 생성되며, 실행 파일, `LICENSE`, `THIRD_PARTY_NOTICES.md`, `assets/screenshot.png`, 루트의 `README_ko.md`와 `README_en.md`, `docs` 폴더의 기타 언어 문서가 포함됩니다.
 
 ## 라이선스
 
