@@ -21,6 +21,19 @@ $Zip = Join-Path $Dist "$PackageName.zip"
 $TempZip = Join-Path $Dist "$PackageName.$PID.tmp.zip"
 $Utf8NoBom = [System.Text.UTF8Encoding]::new($false)
 
+function Remove-ReadmeLanguageLinks {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$Content
+    )
+
+    return [System.Text.RegularExpressions.Regex]::Replace(
+        $Content,
+        '(?m)^[ \t]*(?=[^\r\n]*\|)(?=[^\r\n]*README)(?=[^\r\n]*\.md)[^\r\n]*(?:\r?\n[ \t]*\r?\n|\r?\n|$)',
+        ''
+    )
+}
+
 Push-Location $RepoRoot
 try {
     cargo build --release --target $Target
@@ -33,10 +46,11 @@ try {
 
     $ReadmeKo = [System.IO.File]::ReadAllText((Join-Path $RepoRoot "README.md"), [System.Text.Encoding]::UTF8)
     $ReadmeKo = [System.Text.RegularExpressions.Regex]::Replace($ReadmeKo, '^\s*<p align="center">[\s\S]*?</p>\s*', '')
+    $ReadmeKo = Remove-ReadmeLanguageLinks $ReadmeKo
     [System.IO.File]::WriteAllText((Join-Path $Stage "README_ko.md"), $ReadmeKo, $Utf8NoBom)
 
     $ReadmeEn = [System.IO.File]::ReadAllText((Join-Path $RepoRoot "README_en.md"), [System.Text.Encoding]::UTF8)
-    $ReadmeEn = $ReadmeEn.Replace("[한국어](README.md)", "[한국어](README_ko.md)")
+    $ReadmeEn = Remove-ReadmeLanguageLinks $ReadmeEn
     [System.IO.File]::WriteAllText((Join-Path $Stage "README_en.md"), $ReadmeEn, $Utf8NoBom)
 
     if (Test-Path "docs") {
@@ -44,7 +58,11 @@ try {
         New-Item -ItemType Directory -Force -Path $DocsStage | Out-Null
         Get-ChildItem "docs" -File |
             Where-Object { $_.Name -ne "README.en.md" } |
-            Copy-Item -Destination $DocsStage
+            ForEach-Object {
+                $Readme = [System.IO.File]::ReadAllText($_.FullName, [System.Text.Encoding]::UTF8)
+                $Readme = Remove-ReadmeLanguageLinks $Readme
+                [System.IO.File]::WriteAllText((Join-Path $DocsStage $_.Name), $Readme, $Utf8NoBom)
+            }
     }
 
     if (Test-Path $TempZip) {

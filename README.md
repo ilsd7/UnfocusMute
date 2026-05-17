@@ -4,7 +4,7 @@
 
 # UnfocusMute
 
-Lightweight, portable Windows tray app that mutes selected background apps and restores only the audio it changed.
+> Lightweight, portable Windows tray app that mutes selected background apps and restores only the audio it changed.
 
 백그라운드로 내려간 게임이나 앱의 소리만 자동으로 조용히 만드는 작고 가벼운 Windows용 트레이 앱입니다.
 
