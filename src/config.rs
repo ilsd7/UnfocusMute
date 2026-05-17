@@ -246,4 +246,11 @@ mod tests {
         assert!(config.start_minimized);
         assert!(config.restore_muted_on_exit);
     }
+
+    #[test]
+    fn default_language_is_english() {
+        let config = AppConfig::default();
+
+        assert_eq!(config.language, Language::En);
+    }
 }

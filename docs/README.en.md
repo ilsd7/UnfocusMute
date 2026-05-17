@@ -1,6 +1,6 @@
 # UnfocusMute
 
-[한국어](../README.md) | English | [日本語](README.ja.md) | [简体中文](README.zh-CN.md)
+[한국어](../README.md) | English | [日本語](README.ja.md) | [简体中文](README.zh-CN.md) | [Español](README.es.md)
 
 UnfocusMute is a local-first Windows 11 desktop app that automatically mutes registered processes while they are in the background. When a process returns to the foreground, UnfocusMute only unmutes sessions it muted itself.
 
@@ -14,14 +14,14 @@ It is designed for cases like switching away from a game to a browser or messeng
 - Groups duplicate `.exe` processes by default, useful for browsers with many PIDs
 - Allows per-PID registration through `Show PIDs`
 - Tray resident operation, pause, config file shortcut, and single-instance protection
-- First-run language selection and in-app switching between Korean, English, Japanese, and Simplified Chinese
+- First-run language selection and in-app switching between English, Korean, Japanese, Simplified Chinese, and Spanish
 - Local config at `%APPDATA%\UnfocusMute\config.json`
 - No network requests, accounts, telemetry, or separate app logs
 
 ## Usage
 
 1. Launch UnfocusMute.
-2. Select a language on first run.
+2. Select a language on first run. English is selected by default.
 3. Start the game or app you want to manage.
 4. Refresh the running app list, select an item, and click `Add selected`.
 5. Duplicate `.exe` entries are grouped by default.
@@ -32,7 +32,7 @@ Default settings for new configs are: run at Windows sign-in enabled, start mini
 
 ## Language
 
-Click the `Language` field in the app to switch immediately between Korean, English, Japanese, and Simplified Chinese. The selected language is saved automatically.
+Click the `Language` field in the app to switch immediately between English, Korean, Japanese, Simplified Chinese, and Spanish. The selected language is saved automatically.
 
 ## Build
 

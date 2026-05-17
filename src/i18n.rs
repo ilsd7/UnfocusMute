@@ -5,15 +5,22 @@ use serde::{Deserialize, Serialize};
 #[derive(Clone, Copy, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum Language {
-    #[default]
     Ko,
+    #[default]
     En,
     Ja,
     ZhHans,
+    Es,
 }
 
 impl Language {
-    pub const ALL: [Language; 4] = [Language::Ko, Language::En, Language::Ja, Language::ZhHans];
+    pub const ALL: [Language; 5] = [
+        Language::En,
+        Language::Ko,
+        Language::Ja,
+        Language::ZhHans,
+        Language::Es,
+    ];
 
     pub fn native_name(self) -> &'static str {
         match self {
@@ -21,6 +28,7 @@ impl Language {
             Language::En => "English",
             Language::Ja => "日本語",
             Language::ZhHans => "简体中文",
+            Language::Es => "Español",
         }
     }
 
@@ -162,6 +170,40 @@ impl Language {
                 open_config: "打开配置文件",
                 unsupported_os: "UnfocusMute 是 Windows 11 应用。此环境只能运行核心测试和文档任务。",
             },
+            Language::Es => Strings {
+                app_title: "UnfocusMute",
+                status_running: "Vigilando",
+                status_paused: "En pausa",
+                app_subtitle: "Silencia automáticamente solo los procesos registrados cuando están en segundo plano.",
+                registered_processes: "Apps registradas",
+                running_processes: "Apps en ejecución",
+                add_process_section: "Añadir objetivo",
+                running_process_hint: "Haz clic y escribe para buscar. Los .exe duplicados se agrupan.",
+                process_search_placeholder: "Buscar proceso",
+                show_pid_details: "Ver PID",
+                hide_pid_details: "Agrupar por exe",
+                manual_process: "Nombre del proceso",
+                add_selected: "Añadir selección",
+                add_manual: "Añadir manualmente",
+                remove_selected: "Quitar selección",
+                pause: "Pausar",
+                resume: "Reanudar",
+                start_minimized: "Iniciar minimizado en bandeja",
+                launch_on_startup: "Ejecutar al iniciar Windows",
+                restore_on_exit: "Quitar silencio al salir",
+                language: "Idioma",
+                refresh: "Actualizar",
+                quit: "Salir",
+                show: "Abrir",
+                hide: "Ocultar en bandeja",
+                manual_placeholder: "Ejemplo: game.exe",
+                settings_title: "Comportamiento",
+                no_targets: "No hay apps registradas. Añade una app en ejecución a la derecha.",
+                target_count: "Apps registradas",
+                muted_count: "Silenciadas ahora",
+                open_config: "Abrir archivo de configuración",
+                unsupported_os: "UnfocusMute es una app para Windows 11. En este entorno solo se pueden ejecutar pruebas del núcleo y tareas de documentación.",
+            },
         }
     }
 }
@@ -212,5 +254,10 @@ mod tests {
             assert!(!language.strings().app_title.is_empty());
             assert!(!language.native_name().is_empty());
         }
+    }
+
+    #[test]
+    fn default_language_is_english() {
+        assert_eq!(Language::default(), Language::En);
     }
 }

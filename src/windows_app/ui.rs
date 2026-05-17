@@ -84,6 +84,7 @@ const PANEL_COLOR: COLORREF = rgb(255, 255, 255);
 const PANEL_BORDER_COLOR: COLORREF = rgb(228, 232, 238);
 const TEXT_COLOR: COLORREF = rgb(25, 33, 45);
 const SUBTLE_TEXT_COLOR: COLORREF = rgb(85, 96, 112);
+const SS_RIGHT_STYLE: WINDOW_STYLE = WINDOW_STYLE(2);
 
 const fn rgb(red: u8, green: u8, blue: u8) -> COLORREF {
     COLORREF((red as u32) | ((green as u32) << 8) | ((blue as u32) << 16))
@@ -147,7 +148,7 @@ unsafe fn run_window() -> Result<()> {
 
     let app = Box::new(AppWindow::new(config, icon, tray_icon)?);
     let app_ptr = Box::into_raw(app);
-    let title = to_wide(Language::Ko.strings().app_title);
+    let title = to_wide(Language::default().strings().app_title);
     let hwnd = unsafe {
         CreateWindowExW(
             WINDOW_EX_STYLE(0),
@@ -283,7 +284,7 @@ unsafe fn prompt_initial_language(
 
     let mut state = Box::new(LanguagePrompt::new(current));
     let state_ptr = state.as_mut() as *mut LanguagePrompt;
-    let title = to_wide("언어 선택");
+    let title = to_wide("Select language");
     let position = centered_position(420, 220);
     let hwnd = unsafe {
         CreateWindowExW(
@@ -718,7 +719,7 @@ impl AppWindow {
                 instance,
                 w!("STATIC"),
                 "",
-                child,
+                child | SS_RIGHT_STYLE,
                 WINDOW_EX_STYLE(0),
                 682,
                 407,
@@ -1471,6 +1472,7 @@ fn format_polling_interval(milliseconds: u64, language: Language) -> String {
         Language::En => format!("{value} s"),
         Language::Ja => format!("{value}秒"),
         Language::ZhHans => format!("{value} 秒"),
+        Language::Es => format!("{value} s"),
     }
 }
 
@@ -1713,7 +1715,7 @@ impl LanguagePrompt {
                 hwnd,
                 instance,
                 w!("STATIC"),
-                "언어를 선택하세요.",
+                "Choose your language.",
                 child,
                 WINDOW_EX_STYLE(0),
                 32,
@@ -1728,7 +1730,7 @@ impl LanguagePrompt {
                 hwnd,
                 instance,
                 w!("STATIC"),
-                "Select the language to use in UnfocusMute.",
+                "You can change it later in UnfocusMute.",
                 child,
                 WINDOW_EX_STYLE(0),
                 32,
@@ -1757,7 +1759,7 @@ impl LanguagePrompt {
             create_primary_button(
                 hwnd,
                 instance,
-                "시작",
+                "Start",
                 270,
                 90,
                 96,
