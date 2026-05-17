@@ -1,8 +1,10 @@
 # UnfocusMute
 
+> **English:** UnfocusMute is a lightweight, portable Windows tray app built with Rust. It automatically mutes selected background apps and restores only the audio it changed.
+
 백그라운드로 내려간 게임이나 앱의 소리만 자동으로 조용히 만드는 작고 가벼운 Windows용 트레이 앱입니다.
 
-한국어 | [English](docs/README.en.md) | [日本語](docs/README.ja.md) | [简体中文](docs/README.zh-CN.md) | [Español](docs/README.es.md)
+한국어 | [English](docs/README.en.md) | [日本語](docs/README.ja.md) | [简体中文](docs/README.zh-CN.md) | [Español](docs/README.es.md) | [Français](docs/README.fr.md) | [Português](docs/README.pt.md) | [हिन्दी](docs/README.hi.md) | [العربية](docs/README.ar.md)
 
 UnfocusMute는 Rust로 만든 포터블 앱입니다. 등록한 앱이 전면에 있지 않을 때 해당 앱의 오디오 세션만 음소거합니다. 앱이 다시 전면으로 돌아오면 UnfocusMute가 직접 음소거했던 세션만 되돌리므로, 사용자가 직접 음소거한 상태는 건드리지 않습니다.
 
@@ -23,7 +25,7 @@ UnfocusMute는 Rust로 만든 포터블 앱입니다. 등록한 앱이 전면에
 - 같은 `.exe`가 여러 PID로 실행되는 브라우저류 앱은 기본적으로 하나로 묶어 등록
 - 필요한 경우 `세부 PID 보기`로 개별 프로세스만 등록
 - 트레이 상주, 일시 중지, 설정 파일 열기, 중복 실행 방지
-- 첫 실행 시 언어 선택, 이후 앱 안에서 English/한국어/日本語/简体中文/Español 즉시 전환
+- 첫 실행 시 언어 선택, 이후 앱 안에서 English/한국어/日本語/简体中文/Español/Français/Português/हिन्दी/العربية 즉시 전환
 - 설정은 `%APPDATA%\UnfocusMute\config.json`에 로컬 저장
 - 네트워크, 계정, 텔레메트리, 별도 앱 로그 없음
 
@@ -45,7 +47,7 @@ Windows용 배포 ZIP을 받은 뒤 압축을 풀고 `UnfocusMute.exe`를 실행
 
 첫 실행에서 `Windows에 로그인하면 자동 실행` 여부를 선택할 수 있습니다. 새 설정의 기본값은 `Windows에 로그인하면 자동 실행` 꺼짐, `시작 시 트레이로 최소화` 켜짐, `종료 시 앱 음소거 해제` 켜짐입니다. 첫 실행에서는 언어 선택과 초기 확인을 위해 메인 창을 한 번 표시하고, 이후 실행부터 트레이 최소화 설정이 적용됩니다.
 
-앱의 `언어` 항목을 누르면 English, 한국어, 日本語, 简体中文, Español 중 하나를 바로 선택할 수 있습니다. 변경 사항은 즉시 UI에 반영되고 설정 파일에 저장됩니다.
+앱의 `언어` 항목을 누르면 English, 한국어, 日本語, 简体中文, Español, Français, Português, हिन्दी, العربية 중 하나를 바로 선택할 수 있습니다. 변경 사항은 즉시 UI에 반영되고 설정 파일에 저장됩니다.
 
 설정 파일을 직접 확인하거나 백업해야 하는 경우 앱 안의 `설정 파일 열기` 버튼을 사용하세요.
 

@@ -1,6 +1,6 @@
 # UnfocusMute
 
-[한국어](../README.md) | [English](README.en.md) | [日本語](README.ja.md) | [简体中文](README.zh-CN.md) | Español
+[한국어](../README.md) | [English](README.en.md) | [日本語](README.ja.md) | [简体中文](README.zh-CN.md) | Español | [Français](README.fr.md) | [Português](README.pt.md) | [हिन्दी](README.hi.md) | [العربية](README.ar.md)
 
 UnfocusMute es una pequeña app de bandeja para Windows, ligera y portable, que silencia automáticamente juegos o apps seleccionadas cuando quedan en segundo plano.
 
@@ -21,7 +21,7 @@ Está hecha con Rust y solo controla las sesiones de audio que registras. Cuando
 - Agrupa por defecto procesos `.exe` duplicados, útil para navegadores con muchos PID
 - Permite registrar un PID específico con `Ver PID`
 - Funcionamiento en bandeja, pausa, acceso al archivo de configuración y protección contra doble ejecución
-- Selección de idioma en el primer inicio y cambio entre English, 한국어, 日本語, 简体中文 y Español
+- Selección de idioma en el primer inicio y cambio entre English, 한국어, 日本語, 简体中文, Español, Français, Português, हिन्दी y العربية
 - Configuración local en `%APPDATA%\UnfocusMute\config.json`
 - Sin red, cuentas, telemetría ni logs separados de la app
 
@@ -43,7 +43,7 @@ Descarga el ZIP para Windows, extráelo y ejecuta `UnfocusMute.exe`. Es portable
 
 En el primer inicio puedes elegir si UnfocusMute se inicia automáticamente al entrar en Windows. La configuración nueva deja desactivado el inicio automático y activa iniciar minimizado en bandeja y quitar silencio al salir.
 
-Pulsa `Idioma` en la app para cambiar inmediatamente entre English, 한국어, 日本語, 简体中文 y Español. La selección se guarda automáticamente.
+Pulsa `Idioma` en la app para cambiar inmediatamente entre English, 한국어, 日本語, 简体中文, Español, Français, Português, हिन्दी y العربية. La selección se guarda automáticamente.
 
 ## Compilación para Desarrolladores
 

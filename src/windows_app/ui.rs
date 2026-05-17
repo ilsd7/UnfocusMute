@@ -308,7 +308,7 @@ unsafe fn prompt_initial_language(
     let mut state = Box::new(LanguagePrompt::new(current, launch_on_startup));
     let state_ptr = state.as_mut() as *mut LanguagePrompt;
     let title = to_wide(current.strings().first_run_window_title);
-    let position = centered_position(420, 260);
+    let position = centered_position(520, 270);
     let hwnd = unsafe {
         CreateWindowExW(
             WINDOW_EX_STYLE(0),
@@ -317,8 +317,8 @@ unsafe fn prompt_initial_language(
             WS_OVERLAPPEDWINDOW,
             position.x,
             position.y,
-            420,
-            260,
+            520,
+            270,
             None,
             None,
             Some(instance),
@@ -1522,6 +1522,10 @@ fn format_polling_interval(milliseconds: u64, language: Language) -> String {
         Language::Ja => format!("{value}秒"),
         Language::ZhHans => format!("{value} 秒"),
         Language::Es => format!("{value} s"),
+        Language::Fr => format!("{value} s"),
+        Language::Pt => format!("{value} s"),
+        Language::Hi => format!("{value} सेकंड"),
+        Language::Ar => format!("{value} ث"),
     }
 }
 
@@ -1776,7 +1780,7 @@ impl LanguagePrompt {
                 WINDOW_EX_STYLE(0),
                 32,
                 28,
-                340,
+                456,
                 24,
                 0,
             )?
@@ -1791,7 +1795,7 @@ impl LanguagePrompt {
                 WINDOW_EX_STYLE(0),
                 32,
                 56,
-                340,
+                456,
                 22,
                 0,
             )?
@@ -1807,7 +1811,7 @@ impl LanguagePrompt {
                 32,
                 92,
                 240,
-                34,
+                210,
                 ID_LANGUAGE_PROMPT_COMBO,
             )?
         };
@@ -1818,7 +1822,7 @@ impl LanguagePrompt {
                 strings.launch_on_startup,
                 32,
                 136,
-                340,
+                456,
                 26,
                 ID_LANGUAGE_PROMPT_STARTUP,
             )?
@@ -1828,7 +1832,7 @@ impl LanguagePrompt {
                 hwnd,
                 instance,
                 strings.first_run_start,
-                270,
+                390,
                 174,
                 96,
                 34,

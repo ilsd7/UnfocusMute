@@ -28,7 +28,7 @@ fn main() {
     resource.set_manifest(
         r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <assembly xmlns="urn:schemas-microsoft-com:asm.v1" manifestVersion="1.0">
-  <assemblyIdentity version="0.1.7.0" processorArchitecture="*" name="UnfocusMute" type="win32"/>
+  <assemblyIdentity version="0.1.8.0" processorArchitecture="*" name="UnfocusMute" type="win32"/>
   <description>UnfocusMute</description>
   <dependency>
     <dependentAssembly>

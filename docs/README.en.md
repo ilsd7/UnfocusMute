@@ -1,6 +1,6 @@
 # UnfocusMute
 
-[한국어](../README.md) | English | [日本語](README.ja.md) | [简体中文](README.zh-CN.md) | [Español](README.es.md)
+[한국어](../README.md) | English | [日本語](README.ja.md) | [简体中文](README.zh-CN.md) | [Español](README.es.md) | [Français](README.fr.md) | [Português](README.pt.md) | [हिन्दी](README.hi.md) | [العربية](README.ar.md)
 
 UnfocusMute is a small, lightweight Windows tray app that automatically quiets selected games or apps when they move to the background.
 
@@ -21,7 +21,7 @@ Built with Rust and shipped as a portable app, it mutes only the audio sessions 
 - Groups duplicate `.exe` processes by default, useful for browsers with many PIDs
 - Allows per-PID registration through `Show PIDs`
 - Tray resident operation, pause, config file shortcut, and single-instance protection
-- First-run language selection and in-app switching between English, Korean, Japanese, Simplified Chinese, and Spanish
+- First-run language selection and in-app switching between English, Korean, Japanese, Simplified Chinese, Spanish, French, Portuguese, Hindi, and Arabic
 - Local config at `%APPDATA%\UnfocusMute\config.json`
 - No network requests, accounts, telemetry, or separate app logs
 
@@ -43,7 +43,7 @@ Download the Windows ZIP, extract it, and run `UnfocusMute.exe`. It is portable,
 
 On first run, you can choose whether UnfocusMute auto-starts when you sign in to Windows. Default settings for new configs are: auto-start disabled, start minimized to tray enabled, and unmute apps on exit enabled.
 
-Click the `Language` field in the app to switch immediately between English, Korean, Japanese, Simplified Chinese, and Spanish. The selected language is saved automatically.
+Click the `Language` field in the app to switch immediately between English, Korean, Japanese, Simplified Chinese, Spanish, French, Portuguese, Hindi, and Arabic. The selected language is saved automatically.
 
 ## Developer Build
 

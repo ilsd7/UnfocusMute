@@ -1,6 +1,6 @@
 # UnfocusMute
 
-[한국어](../README.md) | [English](README.en.md) | [日本語](README.ja.md) | 简体中文 | [Español](README.es.md)
+[한국어](../README.md) | [English](README.en.md) | [日本語](README.ja.md) | 简体中文 | [Español](README.es.md) | [Français](README.fr.md) | [Português](README.pt.md) | [हिन्दी](README.hi.md) | [العربية](README.ar.md)
 
 UnfocusMute 是一款小巧轻量的 Windows 托盘工具，会在游戏或应用进入后台时自动静音它们。
 
@@ -21,7 +21,7 @@ UnfocusMute 是一款小巧轻量的 Windows 托盘工具，会在游戏或应�
 - 浏览器这类多 PID 的相同 `.exe` 默认合并为一项
 - 需要时可通过 `显示 PID` 注册单个进程实例
 - 托盘常驻、暂停、打开配置文件、阻止重复运行
-- 首次运行时选择语言，并可在应用内切换英语、韩语、日语、简体中文、西班牙语
+- 首次运行时选择语言，并可在应用内切换英语、韩语、日语、简体中文、西班牙语、法语、葡萄牙语、印地语、阿拉伯语
 - 配置保存在 `%APPDATA%\UnfocusMute\config.json`
 - 无网络请求、账号、遥测或单独应用日志
 
@@ -43,7 +43,7 @@ UnfocusMute 是一款小巧轻量的 Windows 托盘工具，会在游戏或应�
 
 首次运行时可以选择是否在登录 Windows 时自动启动 UnfocusMute。新配置默认关闭自动启动，并启用启动时最小化到托盘和退出时取消静音。
 
-点击应用中的 `语言` 项即可在 English、한국어、日本語、简体中文、Español 之间切换。选择会立即生效并自动保存。
+点击应用中的 `语言` 项即可在 English、한국어、日本語、简体中文、Español、Français、Português、हिन्दी、العربية 之间切换。选择会立即生效并自动保存。
 
 ## 开发者构建
 
