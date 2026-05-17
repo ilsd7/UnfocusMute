@@ -20,23 +20,27 @@ use windows::Win32::Graphics::Gdi::{
 use windows::Win32::System::Com::{COINIT_APARTMENTTHREADED, CoInitializeEx, CoUninitialize};
 use windows::Win32::System::LibraryLoader::GetModuleHandleW;
 use windows::Win32::System::Threading::CreateMutexW;
-use windows::Win32::UI::Controls::{BST_CHECKED, BST_UNCHECKED, CB_SETMINVISIBLE, EM_SETCUEBANNER};
+use windows::Win32::UI::Controls::{
+    BST_CHECKED, BST_UNCHECKED, CB_SETCUEBANNER, CB_SETMINVISIBLE, EM_SETCUEBANNER,
+};
 use windows::Win32::UI::HiDpi::{GetDpiForSystem, GetSystemMetricsForDpi};
+use windows::Win32::UI::Input::KeyboardAndMouse::SetFocus;
 use windows::Win32::UI::Shell::{
     NIF_ICON, NIF_MESSAGE, NIF_TIP, NIM_ADD, NIM_DELETE, NIM_MODIFY, NOTIFYICONDATAW,
     Shell_NotifyIconW, ShellExecuteW,
 };
 use windows::Win32::UI::WindowsAndMessaging::{
     AppendMenuW, BM_GETCHECK, BM_SETCHECK, BS_AUTOCHECKBOX, BS_DEFPUSHBUTTON, BS_PUSHBUTTON,
-    CB_ADDSTRING, CB_GETCURSEL, CB_RESETCONTENT, CB_SETCURSEL, CB_SHOWDROPDOWN, CBS_DROPDOWNLIST,
-    CREATESTRUCTW, CreatePopupMenu, CreateWindowExW, DefWindowProcW, DestroyMenu, DestroyWindow,
-    DispatchMessageW, ES_AUTOHSCROLL, FindWindowW, GWLP_USERDATA, GetCursorPos, GetMessageW,
-    GetSystemMetrics, GetWindowRect, HICON, HMENU, ICON_BIG, ICON_SMALL, IDC_ARROW,
-    IDI_APPLICATION, IMAGE_ICON, LB_ADDSTRING, LB_GETCURSEL, LB_RESETCONTENT, LBN_SELCHANGE,
-    LBS_NOTIFY, LR_DEFAULTCOLOR, LoadCursorW, LoadIconW, LoadImageW, MF_SEPARATOR, MF_STRING, MSG,
-    PostQuitMessage, RegisterClassW, SM_CXICON, SM_CXSCREEN, SM_CXSMICON, SM_CYICON, SM_CYSCREEN,
-    SM_CYSMICON, SW_HIDE, SW_RESTORE, SW_SHOW, SendMessageW, SetForegroundWindow, SetTimer,
-    SetWindowLongPtrW, SetWindowTextW, ShowWindow, TPM_NONOTIFY, TPM_RETURNCMD, TPM_RIGHTBUTTON,
+    CB_ADDSTRING, CB_GETCURSEL, CB_RESETCONTENT, CB_SETCURSEL, CB_SETEDITSEL, CB_SHOWDROPDOWN,
+    CBN_CLOSEUP, CBN_EDITCHANGE, CBN_SETFOCUS, CBS_DROPDOWN, CBS_DROPDOWNLIST, CREATESTRUCTW,
+    CreatePopupMenu, CreateWindowExW, DefWindowProcW, DestroyMenu, DestroyWindow, DispatchMessageW,
+    ES_AUTOHSCROLL, FindWindowW, GWLP_USERDATA, GetCursorPos, GetMessageW, GetSystemMetrics,
+    GetWindowRect, HICON, HMENU, ICON_BIG, ICON_SMALL, IDC_ARROW, IDI_APPLICATION, IMAGE_ICON,
+    LB_ADDSTRING, LB_GETCURSEL, LB_RESETCONTENT, LBN_SELCHANGE, LBS_NOTIFY, LR_DEFAULTCOLOR,
+    LoadCursorW, LoadIconW, LoadImageW, MF_SEPARATOR, MF_STRING, MSG, PostQuitMessage,
+    RegisterClassW, SM_CXICON, SM_CXSCREEN, SM_CXSMICON, SM_CYICON, SM_CYSCREEN, SM_CYSMICON,
+    SW_HIDE, SW_RESTORE, SW_SHOW, SendMessageW, SetForegroundWindow, SetTimer, SetWindowLongPtrW,
+    SetWindowTextW, ShowWindow, TPM_NONOTIFY, TPM_RETURNCMD, TPM_RIGHTBUTTON,
     TRACK_POPUP_MENU_FLAGS, TrackPopupMenu, TranslateMessage, WINDOW_EX_STYLE, WINDOW_STYLE,
     WM_APP, WM_CLOSE, WM_COMMAND, WM_CREATE, WM_CTLCOLOREDIT, WM_CTLCOLORLISTBOX,
     WM_CTLCOLORSTATIC, WM_DESTROY, WM_LBUTTONDBLCLK, WM_MOVE, WM_NCCREATE, WM_NCDESTROY, WM_PAINT,
@@ -364,7 +368,10 @@ struct AppWindow {
     strings: Strings,
     audio: Option<AudioController>,
     running_processes: Vec<ProcessInfo>,
+    all_process_choices: Vec<ProcessChoice>,
     process_choices: Vec<ProcessChoice>,
+    process_query: String,
+    updating_process_combo: bool,
     foreground: Option<ProcessInfo>,
     muted_by_app: HashSet<u32>,
     paused: bool,
@@ -385,7 +392,10 @@ impl AppWindow {
             strings,
             audio: AudioController::new().ok(),
             running_processes: Vec::new(),
+            all_process_choices: Vec::new(),
             process_choices: Vec::new(),
+            process_query: String::new(),
+            updating_process_combo: false,
             foreground: None,
             muted_by_app: HashSet::new(),
             paused: false,
@@ -538,7 +548,7 @@ impl AppWindow {
                 instance,
                 w!("LISTBOX"),
                 "",
-                child | WS_BORDER | WINDOW_STYLE(LBS_NOTIFY as u32),
+                child | WS_BORDER | WS_VSCROLL | WINDOW_STYLE(LBS_NOTIFY as u32),
                 WS_EX_CLIENTEDGE,
                 36,
                 210,
@@ -601,7 +611,7 @@ impl AppWindow {
                 instance,
                 w!("COMBOBOX"),
                 "",
-                tab_child | WS_VSCROLL | WINDOW_STYLE(CBS_DROPDOWNLIST as u32),
+                tab_child | WS_VSCROLL | WINDOW_STYLE(CBS_DROPDOWN as u32),
                 WS_EX_CLIENTEDGE,
                 484,
                 236,
@@ -807,6 +817,13 @@ impl AppWindow {
                 Some(WPARAM(0)),
                 Some(LPARAM(placeholder.as_ptr() as isize)),
             );
+            let process_placeholder = to_wide(self.strings.process_search_placeholder);
+            SendMessageW(
+                self.controls.running_combo,
+                CB_SETCUEBANNER,
+                Some(WPARAM(0)),
+                Some(LPARAM(process_placeholder.as_ptr() as isize)),
+            );
         }
         self.update_status();
         self.update_target_summary();
@@ -852,8 +869,24 @@ impl AppWindow {
 
     fn refresh_processes(&mut self) {
         self.running_processes = process::running_processes();
-        self.process_choices = self.build_process_choices();
+        self.all_process_choices = self.build_process_choices();
+        self.apply_process_filter();
+    }
+
+    fn apply_process_filter(&mut self) {
+        let terms = search_terms(&self.process_query);
+        self.process_choices = if terms.is_empty() {
+            self.all_process_choices.clone()
+        } else {
+            self.all_process_choices
+                .iter()
+                .filter(|choice| choice.matches_search(&terms))
+                .cloned()
+                .collect()
+        };
+
         unsafe {
+            self.updating_process_combo = true;
             SendMessageW(self.controls.running_combo, CB_RESETCONTENT, None, None);
             for choice in &self.process_choices {
                 add_combo_item(self.controls.running_combo, &choice.display_name());
@@ -861,9 +894,14 @@ impl AppWindow {
             SendMessageW(
                 self.controls.running_combo,
                 CB_SETCURSEL,
-                Some(WPARAM(0)),
+                Some(WPARAM(usize::MAX)),
                 None,
             );
+            set_text(self.controls.running_combo, &self.process_query);
+            if !self.process_query.is_empty() {
+                set_combo_edit_caret(self.controls.running_combo, self.process_query.len());
+            }
+            self.updating_process_combo = false;
         }
     }
 
@@ -983,6 +1021,11 @@ impl AppWindow {
             ID_REMOVE => self.remove_selected_target(),
             ID_REFRESH => self.refresh_processes(),
             ID_TOGGLE_PROCESS_DETAILS => self.toggle_process_details(),
+            ID_RUNNING if notification == CBN_EDITCHANGE as u16 => self.search_running_processes(),
+            ID_RUNNING if notification == CBN_SETFOCUS as u16 => self.open_running_process_picker(),
+            ID_RUNNING if notification == CBN_CLOSEUP as u16 => {
+                self.release_running_process_focus()
+            }
             ID_OPEN_CONFIG => self.open_config_file(),
             ID_PAUSE => self.toggle_pause(),
             ID_HIDE => unsafe {
@@ -1005,12 +1048,14 @@ impl AppWindow {
     fn add_selected_process(&mut self) {
         let index =
             unsafe { SendMessageW(self.controls.running_combo, CB_GETCURSEL, None, None).0 };
-        if index < 0 {
-            return;
-        }
-        let Some(choice) = self.process_choices.get(index as usize) else {
-            return;
+        let choice = if index >= 0 {
+            self.process_choices.get(index as usize).cloned()
+        } else if self.process_query.trim().is_empty() {
+            None
+        } else {
+            self.process_choices.first().cloned()
         };
+        let Some(choice) = choice else { return };
         let added = if let Some(pid) = choice.pid {
             self.config.add_pid_target(&choice.name, pid)
         } else {
@@ -1018,6 +1063,45 @@ impl AppWindow {
         };
         if added {
             self.finish_target_change();
+        }
+    }
+
+    fn search_running_processes(&mut self) {
+        if self.updating_process_combo {
+            return;
+        }
+        self.process_query = unsafe { window_text(self.controls.running_combo) };
+        self.apply_process_filter();
+        if !self.process_choices.is_empty() {
+            unsafe {
+                SendMessageW(
+                    self.controls.running_combo,
+                    CB_SHOWDROPDOWN,
+                    Some(WPARAM(1)),
+                    None,
+                );
+            }
+        }
+    }
+
+    fn open_running_process_picker(&mut self) {
+        if self.process_query.trim().is_empty() {
+            self.process_query.clear();
+            self.apply_process_filter();
+        }
+        unsafe {
+            SendMessageW(
+                self.controls.running_combo,
+                CB_SHOWDROPDOWN,
+                Some(WPARAM(1)),
+                None,
+            );
+        }
+    }
+
+    fn release_running_process_focus(&self) {
+        unsafe {
+            let _ = SetFocus(Some(self.hwnd));
         }
     }
 
@@ -1357,6 +1441,14 @@ impl ProcessChoice {
             None if self.count > 1 => format!("{} ({} PID)", self.name, self.count),
             None => self.name.clone(),
         }
+    }
+
+    fn matches_search(&self, terms: &[String]) -> bool {
+        let mut text = format!("{} {}", self.name, self.display_name()).to_lowercase();
+        if let Some(pid) = self.pid {
+            text.push_str(&format!(" {pid}"));
+        }
+        terms.iter().all(|term| text.contains(term))
     }
 }
 
@@ -1882,6 +1974,25 @@ unsafe fn set_checkbox(hwnd: HWND, checked: bool) {
     }
 }
 
+unsafe fn set_combo_edit_caret(hwnd: HWND, text_len: usize) {
+    let position = text_len.min(u16::MAX as usize) as u16;
+    unsafe {
+        set_combo_edit_selection(hwnd, position, position);
+    }
+}
+
+unsafe fn set_combo_edit_selection(hwnd: HWND, start: u16, end: u16) {
+    let selection = ((end as u32) << 16) | start as u32;
+    unsafe {
+        SendMessageW(
+            hwnd,
+            CB_SETEDITSEL,
+            Some(WPARAM(0)),
+            Some(LPARAM(selection as i32 as isize)),
+        );
+    }
+}
+
 unsafe fn is_checked(hwnd: HWND) -> bool {
     unsafe { SendMessageW(hwnd, BM_GETCHECK, None, None).0 as u32 == BST_CHECKED.0 }
 }
@@ -1934,6 +2045,14 @@ fn copy_wide_fixed(text: &str, destination: &mut [u16]) {
 
 fn to_wide(text: &str) -> Vec<u16> {
     text.encode_utf16().chain(std::iter::once(0)).collect()
+}
+
+fn search_terms(query: &str) -> Vec<String> {
+    query
+        .split_whitespace()
+        .map(str::to_lowercase)
+        .filter(|term| !term.is_empty())
+        .collect()
 }
 
 fn loword(value: u32) -> u16 {
