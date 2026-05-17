@@ -18,6 +18,10 @@ UnfocusMuteは、Windows 11で登録したプロセスがバックグラウン�
 - 設定は `%APPDATA%\UnfocusMute\config.json` にローカル保存
 - ネットワーク通信、アカウント、テレメトリ、個別ログファイルなし
 
+## ダウンロードと実行
+
+Windows向け配布ZIPにはポータブル実行ファイルが含まれています。ZIPを展開して `UnfocusMute.exe` を実行してください。利用者が別途ランタイム、Rust、Visual Studio Build Tools、MinGWなどの開発ツールをインストールする必要はありません。
+
 ## 使い方
 
 1. UnfocusMuteを起動します。
@@ -34,7 +38,7 @@ UnfocusMuteは、Windows 11で登録したプロセスがバックグラウン�
 
 アプリ内の `言語` 項目をクリックすると、English、한국어、日本語、简体中文、Españolをすぐに切り替えられます。選択した言語は自動保存されます。
 
-## ビルド
+## 開発者向けビルド
 
 推奨リリースターゲットは `x86_64-pc-windows-msvc` です。
 

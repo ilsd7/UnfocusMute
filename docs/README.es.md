@@ -18,6 +18,10 @@ Está pensada para cambiar temporalmente de un juego a un navegador, mensajería
 - Configuración local en `%APPDATA%\UnfocusMute\config.json`
 - Sin red, cuentas, telemetría ni logs separados de la app
 
+## Descargar y Ejecutar
+
+El ZIP de distribución para Windows contiene un ejecutable portátil. Extrae el archivo y ejecuta `UnfocusMute.exe`. Los usuarios no necesitan instalar un runtime aparte, Rust, Visual Studio Build Tools ni MinGW.
+
 ## Uso
 
 1. Inicia UnfocusMute.
@@ -34,7 +38,7 @@ La configuración nueva activa por defecto: ejecutar al iniciar Windows, iniciar
 
 Pulsa `Idioma` en la app para cambiar inmediatamente entre English, 한국어, 日本語, 简体中文 y Español. La selección se guarda automáticamente.
 
-## Compilación
+## Compilación para Desarrolladores
 
 El objetivo recomendado para publicar es `x86_64-pc-windows-msvc`.
 

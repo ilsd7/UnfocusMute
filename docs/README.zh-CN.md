@@ -18,6 +18,10 @@ UnfocusMute 是一款面向 Windows 11 的本地优先桌面应用。当已注�
 - 配置保存在 `%APPDATA%\UnfocusMute\config.json`
 - 无网络请求、账号、遥测或单独应用日志
 
+## 下载与运行
+
+Windows 发布 ZIP 包含可直接使用的便携式可执行文件。解压后运行 `UnfocusMute.exe` 即可。用户不需要额外安装运行时、Rust、Visual Studio Build Tools 或 MinGW。
+
 ## 使用方法
 
 1. 启动 UnfocusMute。
@@ -34,7 +38,7 @@ UnfocusMute 是一款面向 Windows 11 的本地优先桌面应用。当已注�
 
 点击应用中的 `语言` 项即可在 English、한국어、日本語、简体中文、Español 之间切换。选择会立即生效并自动保存。
 
-## 构建
+## 开发者构建
 
 推荐的发布目标是 `x86_64-pc-windows-msvc`。
 

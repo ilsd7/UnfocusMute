@@ -18,6 +18,10 @@ It is designed for cases like switching away from a game to a browser or messeng
 - Local config at `%APPDATA%\UnfocusMute\config.json`
 - No network requests, accounts, telemetry, or separate app logs
 
+## Download and Run
+
+The Windows distribution ZIP contains a portable executable. Extract the archive and run `UnfocusMute.exe`. Users do not need to install a separate runtime, Rust, Visual Studio Build Tools, or MinGW.
+
 ## Usage
 
 1. Launch UnfocusMute.
@@ -34,7 +38,7 @@ Default settings for new configs are: run at Windows sign-in enabled, start mini
 
 Click the `Language` field in the app to switch immediately between English, Korean, Japanese, Simplified Chinese, and Spanish. The selected language is saved automatically.
 
-## Build
+## Developer Build
 
 The recommended release target is `x86_64-pc-windows-msvc`.
 

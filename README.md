@@ -1,5 +1,7 @@
 # UnfocusMute
 
+A portable Windows app that automatically mutes selected background processes.
+
 한국어 | [English](docs/README.en.md) | [日本語](docs/README.ja.md) | [简体中文](docs/README.zh-CN.md) | [Español](docs/README.es.md)
 
 UnfocusMute는 Windows 11에서 게임이나 앱이 백그라운드로 전환될 때 등록한 프로세스만 자동으로 음소거하는 로컬 우선 데스크톱 앱입니다. 다시 전면으로 돌아온 프로세스는 UnfocusMute가 직접 음소거했던 경우에만 자동으로 음소거를 해제합니다.
@@ -17,6 +19,10 @@ UnfocusMute는 Windows 11에서 게임이나 앱이 백그라운드로 전환될
 - 첫 실행 시 언어 선택, 이후 앱 안에서 English/한국어/日本語/简体中文/Español 즉시 전환
 - 설정은 `%APPDATA%\UnfocusMute\config.json`에 로컬 저장
 - 네트워크, 계정, 텔레메트리, 별도 앱 로그 없음
+
+## 다운로드 및 실행
+
+Windows용 배포 ZIP은 포터블 실행 파일입니다. 압축을 푼 뒤 `UnfocusMute.exe`를 실행하면 되며, 사용자는 별도 런타임, Rust, Visual Studio Build Tools, MinGW 같은 개발 도구를 따로 설치할 필요가 없습니다.
 
 ## 사용 방법
 
@@ -36,7 +42,7 @@ UnfocusMute는 Windows 11에서 게임이나 앱이 백그라운드로 전환될
 
 설정 파일을 직접 확인하거나 백업해야 하는 경우 앱 안의 `설정 파일 열기` 버튼을 사용하세요.
 
-## 빌드
+## 개발자 빌드
 
 권장 릴리스 타깃은 `x86_64-pc-windows-msvc`입니다.
 
@@ -63,26 +69,7 @@ target\x86_64-pc-windows-msvc\release\unfocusmute.exe
 powershell -ExecutionPolicy Bypass -File scripts\package-windows.ps1
 ```
 
-결과물은 `dist\UnfocusMute-<version>-windows-x64.zip`에 생성되며, 실행 파일, `README.md`, `LICENSE`가 포함됩니다. `assets/app-icon.png`는 빌드 시 실행 파일 리소스에 포함되므로 ZIP에는 원본 PNG를 넣지 않습니다.
-
-## windows-msvc와 windows-gnu
-
-- `x86_64-pc-windows-msvc`는 Microsoft Visual C++ ABI와 Windows SDK를 사용하는 Windows 데스크톱 앱의 일반적인 배포 타깃입니다.
-- `x86_64-pc-windows-gnu`는 MinGW-w64 기반 타깃입니다. WSL이나 리눅스 CI에서 타입 체크를 하거나 크로스 빌드를 검증할 때 유용하지만, 리소스 컴파일러와 MinGW 도구가 별도로 필요합니다.
-
-실제 배포 파일은 `windows-msvc`로 만드는 것을 권장합니다.
-
-## 개발 검증
-
-WSL에서는 Windows GUI와 CoreAudio 동작을 실행할 수 없지만, 코어 로직과 Windows 타깃 타입 체크는 검증할 수 있습니다.
-
-```bash
-CARGO_HOME="$PWD/.cargo-home" cargo test
-CARGO_HOME="$PWD/.cargo-home" cargo clippy --all-targets -- -D warnings
-CARGO_HOME="$PWD/.cargo-home" cargo clippy --target x86_64-pc-windows-gnu --all-targets -- -D warnings
-```
-
-WSL에 Windows 리소스 컴파일러가 없으면 리소스 컴파일 경고가 표시될 수 있습니다.
+결과물은 `dist\UnfocusMute-<version>-windows-x64.zip`에 생성되며, 실행 파일과 `LICENSE`가 포함됩니다. `assets/app-icon.png`는 빌드 시 실행 파일 리소스에 포함되므로 ZIP에는 원본 PNG를 넣지 않습니다.
 
 ## 보안 및 개인정보
 

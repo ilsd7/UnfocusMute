@@ -27,7 +27,6 @@ try {
     New-Item -ItemType Directory -Force -Path $Stage | Out-Null
 
     Copy-Item "target\$Target\release\unfocusmute.exe" (Join-Path $Stage "UnfocusMute.exe")
-    Copy-Item "README.md" $Stage
     Copy-Item "LICENSE" $Stage
 
     if (Test-Path $TempZip) {
