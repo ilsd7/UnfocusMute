@@ -138,7 +138,7 @@ unsafe fn run_window() -> Result<()> {
     sync_startup_setting(&mut config);
 
     let forced_minimized = std::env::args().any(|arg| arg == "--minimized");
-    let start_hidden = !first_run && (forced_minimized || config.start_minimized);
+    let start_hidden = should_start_hidden(first_run, forced_minimized, config.start_minimized);
     let WindowPosition { x, y } = initial_window_position(&config);
 
     let app = Box::new(AppWindow::new(config, icon, tray_icon)?);
@@ -220,6 +220,10 @@ fn sync_startup_setting(config: &mut AppConfig) {
         config.launch_on_startup = false;
         let _ = config.save();
     }
+}
+
+fn should_start_hidden(first_run: bool, forced_minimized: bool, start_minimized: bool) -> bool {
+    !first_run && (forced_minimized || start_minimized)
 }
 
 struct LanguagePrompt {
@@ -707,14 +711,14 @@ impl AppWindow {
                 child,
                 WINDOW_EX_STYLE(0),
                 682,
-                402,
-                42,
+                407,
+                64,
                 22,
                 0,
             )?
         };
         self.controls.language_button =
-            unsafe { create_button(self.hwnd, instance, "", 734, 398, 176, 34, ID_LANGUAGE)? };
+            unsafe { create_button(self.hwnd, instance, "", 754, 398, 130, 34, ID_LANGUAGE)? };
         self.controls.open_config_button =
             unsafe { create_button(self.hwnd, instance, "", 720, 484, 164, 34, ID_OPEN_CONFIG)? };
 
