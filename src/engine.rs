@@ -40,19 +40,28 @@ pub struct MuteAction {
 pub fn plan_mute_actions_with_matcher(
     matcher: &TargetMatcher,
     foreground_pid: Option<u32>,
+    foreground_process_name: Option<&str>,
     managed_muted_sessions: &HashSet<AudioSessionKey>,
     sessions: &[AudioSessionSnapshot],
 ) -> Vec<MuteAction> {
     let mut actions = Vec::new();
+    let foreground_process_name = foreground_process_name.and_then(normalize_process_name);
 
     for session in sessions {
         let managed = managed_muted_sessions.contains(&session.key);
-        let matched = matcher.matches(&session.key.process_name, session.key.pid);
-        if !matched && !managed {
+        let match_kind = matcher.match_kind(&session.key.process_name, session.key.pid);
+        if match_kind.is_none() && !managed {
             continue;
         }
 
-        let should_mute = matched && foreground_pid != Some(session.key.pid);
+        let should_mute = match match_kind {
+            Some(TargetMatchKind::ProcessName) => {
+                foreground_process_name.as_deref() != Some(session.key.process_name.as_str())
+                    && foreground_pid != Some(session.key.pid)
+            }
+            Some(TargetMatchKind::Pid) => foreground_pid != Some(session.key.pid),
+            None => false,
+        };
         let should_change = if should_mute {
             !session.muted
         } else {
@@ -68,6 +77,12 @@ pub fn plan_mute_actions_with_matcher(
     }
 
     actions
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum TargetMatchKind {
+    ProcessName,
+    Pid,
 }
 
 #[derive(Clone, Debug, Default)]
@@ -102,12 +117,15 @@ impl TargetMatcher {
         self.names.is_empty() && self.names_by_pid.is_empty()
     }
 
-    fn matches(&self, name: &str, pid: u32) -> bool {
-        self.names.contains(name)
-            || self
-                .names_by_pid
-                .get(&pid)
-                .is_some_and(|names| names.contains(name))
+    fn match_kind(&self, name: &str, pid: u32) -> Option<TargetMatchKind> {
+        if self.names.contains(name) {
+            return Some(TargetMatchKind::ProcessName);
+        }
+
+        self.names_by_pid
+            .get(&pid)
+            .is_some_and(|names| names.contains(name))
+            .then_some(TargetMatchKind::Pid)
     }
 }
 
@@ -122,8 +140,30 @@ mod tests {
         managed_muted_sessions: &HashSet<AudioSessionKey>,
         sessions: &[AudioSessionSnapshot],
     ) -> Vec<MuteAction> {
+        plan_mute_actions_with_foreground_name(
+            targets,
+            foreground_pid,
+            None,
+            managed_muted_sessions,
+            sessions,
+        )
+    }
+
+    fn plan_mute_actions_with_foreground_name(
+        targets: &[TargetProcess],
+        foreground_pid: Option<u32>,
+        foreground_process_name: Option<&str>,
+        managed_muted_sessions: &HashSet<AudioSessionKey>,
+        sessions: &[AudioSessionSnapshot],
+    ) -> Vec<MuteAction> {
         let matcher = TargetMatcher::new(targets);
-        plan_mute_actions_with_matcher(&matcher, foreground_pid, managed_muted_sessions, sessions)
+        plan_mute_actions_with_matcher(
+            &matcher,
+            foreground_pid,
+            foreground_process_name,
+            managed_muted_sessions,
+            sessions,
+        )
     }
 
     fn session(pid: u32, process_name: &str, muted: bool) -> AudioSessionSnapshot {
@@ -192,6 +232,67 @@ mod tests {
 
         assert_eq!(
             plan_mute_actions(&targets, Some(30), &HashSet::new(), &sessions),
+            vec![MuteAction {
+                key: AudioSessionKey::new(20, "browser.exe", None).unwrap(),
+                mute: true,
+            }]
+        );
+    }
+
+    #[test]
+    fn exe_target_keeps_same_process_name_unmuted_across_pids() {
+        let targets = vec![TargetProcess::new("browser.exe").unwrap()];
+        let sessions = vec![session(20, "browser.exe", false)];
+
+        assert!(
+            plan_mute_actions_with_foreground_name(
+                &targets,
+                Some(10),
+                Some("browser.exe"),
+                &HashSet::new(),
+                &sessions,
+            )
+            .is_empty()
+        );
+    }
+
+    #[test]
+    fn exe_target_unmutes_managed_same_process_name_across_pids() {
+        let targets = vec![TargetProcess::new("browser.exe").unwrap()];
+        let session_key = AudioSessionKey::new(20, "browser.exe", None).unwrap();
+        let sessions = vec![AudioSessionSnapshot {
+            key: session_key.clone(),
+            muted: true,
+        }];
+
+        assert_eq!(
+            plan_mute_actions_with_foreground_name(
+                &targets,
+                Some(10),
+                Some("browser.exe"),
+                &HashSet::from([session_key.clone()]),
+                &sessions,
+            ),
+            vec![MuteAction {
+                key: session_key,
+                mute: false,
+            }]
+        );
+    }
+
+    #[test]
+    fn pid_target_stays_strict_even_when_process_name_is_foreground() {
+        let targets = vec![TargetProcess::for_pid("browser.exe", 20).unwrap()];
+        let sessions = vec![session(20, "browser.exe", false)];
+
+        assert_eq!(
+            plan_mute_actions_with_foreground_name(
+                &targets,
+                Some(10),
+                Some("browser.exe"),
+                &HashSet::new(),
+                &sessions,
+            ),
             vec![MuteAction {
                 key: AudioSessionKey::new(20, "browser.exe", None).unwrap(),
                 mute: true,

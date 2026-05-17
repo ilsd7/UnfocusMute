@@ -1183,9 +1183,11 @@ impl AppWindow {
             .retain(|session| active_sessions.contains(session));
 
         let foreground_pid = process::foreground_pid();
+        let foreground_process_name = foreground_pid.and_then(process::process_name);
         let actions = plan_mute_actions_with_matcher(
             &self.target_matcher,
             foreground_pid,
+            foreground_process_name.as_deref(),
             &self.muted_by_app,
             &sessions,
         );

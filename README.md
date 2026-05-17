@@ -8,7 +8,7 @@
 
 백그라운드로 내려간 게임이나 앱의 소리만 자동으로 조용히 만드는 작고 가벼운 Windows용 트레이 앱입니다.
 
-현재 Windows 릴리스 실행 파일은 약 676KB로 1MB보다 작아, 포터블 도구답게 내려받고 실행하는 부담이 작습니다.
+Rust 네이티브 앱으로 빌드해 별도 런타임 없이 바로 실행됩니다. 현재 Windows용 실행 파일은 약 676KB로 1MB 미만입니다.
 
 한국어 | [English](README_en.md) | [日本語](docs/README.ja.md) | [简体中文](docs/README.zh-CN.md) | [Español](docs/README.es.md) | [Français](docs/README.fr.md) | [Português](docs/README.pt.md) | [हिन्दी](docs/README.hi.md) | [العربية](docs/README.ar.md)
 

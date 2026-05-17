@@ -152,7 +152,7 @@ unsafe fn session_key(
     let name = match process_names.entry(pid) {
         Entry::Occupied(entry) => entry.get().clone(),
         Entry::Vacant(entry) => {
-            let name = process::process_info(pid).map(|info| info.name);
+            let name = process::process_name(pid);
             entry.insert(name.clone());
             name
         }

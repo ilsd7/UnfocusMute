@@ -15,7 +15,6 @@ use windows::core::PWSTR;
 pub struct ProcessInfo {
     pub pid: u32,
     pub name: String,
-    pub path: Option<String>,
 }
 
 pub fn foreground_pid() -> Option<u32> {
@@ -55,7 +54,6 @@ pub fn running_processes() -> Vec<ProcessInfo> {
                     processes.push(ProcessInfo {
                         pid: entry.th32ProcessID,
                         name,
-                        path: None,
                     });
                 }
 
@@ -76,29 +74,21 @@ pub fn running_processes() -> Vec<ProcessInfo> {
     processes
 }
 
-pub fn process_info(pid: u32) -> Option<ProcessInfo> {
-    let path = process_path(pid);
-    let name = path
-        .as_deref()
-        .and_then(|path| Path::new(path).file_name())
-        .and_then(|name| name.to_str())
-        .and_then(normalize_process_name)
-        .or_else(|| process_name_from_snapshot(pid))?;
-
-    Some(ProcessInfo { pid, name, path })
+pub fn process_name(pid: u32) -> Option<String> {
+    process_image_name(pid).or_else(|| process_name_from_snapshot(pid))
 }
 
-fn process_path(pid: u32) -> Option<String> {
+fn process_image_name(pid: u32) -> Option<String> {
     unsafe {
         let handle = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, false, pid).ok()?;
-        let result = query_process_path(handle);
+        let result = query_process_image_name(handle);
         let _ = CloseHandle(handle);
         result
     }
 }
 
-unsafe fn query_process_path(handle: HANDLE) -> Option<String> {
-    let mut buffer = vec![0u16; 32768];
+unsafe fn query_process_image_name(handle: HANDLE) -> Option<String> {
+    let mut buffer = [0u16; 1024];
     let mut len = buffer.len() as u32;
     unsafe {
         QueryFullProcessImageNameW(
@@ -109,7 +99,12 @@ unsafe fn query_process_path(handle: HANDLE) -> Option<String> {
         )
         .ok()?;
     }
-    Some(String::from_utf16_lossy(&buffer[..len as usize]))
+
+    let path = String::from_utf16_lossy(&buffer[..len as usize]);
+    Path::new(&path)
+        .file_name()
+        .and_then(|name| name.to_str())
+        .and_then(normalize_process_name)
 }
 
 fn process_name_from_snapshot(pid: u32) -> Option<String> {
