@@ -19,6 +19,7 @@ $StageRoot = Join-Path $Dist ".package-$([System.Guid]::NewGuid().ToString('N'))
 $Stage = Join-Path $StageRoot $PackageName
 $Zip = Join-Path $Dist "$PackageName.zip"
 $TempZip = Join-Path $Dist "$PackageName.$PID.tmp.zip"
+$Utf8NoBom = [System.Text.UTF8Encoding]::new($false)
 
 Push-Location $RepoRoot
 try {
@@ -28,6 +29,25 @@ try {
 
     Copy-Item "target\$Target\release\unfocusmute.exe" (Join-Path $Stage "UnfocusMute.exe")
     Copy-Item "LICENSE" $Stage
+
+    $ReadmeKo = [System.IO.File]::ReadAllText((Join-Path $RepoRoot "README.md"), [System.Text.Encoding]::UTF8)
+    [System.IO.File]::WriteAllText((Join-Path $Stage "README_ko.md"), $ReadmeKo, $Utf8NoBom)
+
+    $ReadmeEn = [System.IO.File]::ReadAllText((Join-Path $RepoRoot "README_en.md"), [System.Text.Encoding]::UTF8)
+    $ReadmeEn = $ReadmeEn.Replace("[한국어](README.md)", "[한국어](README_ko.md)")
+    [System.IO.File]::WriteAllText((Join-Path $Stage "README_en.md"), $ReadmeEn, $Utf8NoBom)
+
+    if (Test-Path "assets\app-icon.png") {
+        New-Item -ItemType Directory -Force -Path (Join-Path $Stage "assets") | Out-Null
+        Copy-Item "assets\app-icon.png" (Join-Path $Stage "assets\app-icon.png")
+    }
+    if (Test-Path "docs") {
+        $DocsStage = Join-Path $Stage "docs"
+        New-Item -ItemType Directory -Force -Path $DocsStage | Out-Null
+        Get-ChildItem "docs" -File |
+            Where-Object { $_.Name -ne "README.en.md" } |
+            Copy-Item -Destination $DocsStage
+    }
 
     if (Test-Path $TempZip) {
         Remove-Item $TempZip -Force

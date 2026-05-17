@@ -7,6 +7,7 @@ const APP_ICON_PNG: &str = "assets/app-icon.png";
 
 fn main() {
     println!("cargo:rerun-if-changed={APP_ICON_PNG}");
+    println!("cargo:rerun-if-changed=Cargo.toml");
 
     if env::var_os("CARGO_CFG_WINDOWS").is_none() {
         return;
@@ -21,14 +22,17 @@ fn main() {
     };
 
     let mut resource = winresource::WindowsResource::new();
+    let resource_version = windows_resource_version();
     resource.set_icon(icon_path.to_string_lossy().as_ref());
     resource.set("ProductName", "UnfocusMute");
     resource.set("FileDescription", "UnfocusMute");
+    resource.set("FileVersion", &resource_version);
+    resource.set("ProductVersion", &resource_version);
     resource.set("LegalCopyright", "Apache-2.0");
-    resource.set_manifest(
+    let manifest = format!(
         r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <assembly xmlns="urn:schemas-microsoft-com:asm.v1" manifestVersion="1.0">
-  <assemblyIdentity version="0.1.10.0" processorArchitecture="*" name="UnfocusMute" type="win32"/>
+  <assemblyIdentity version="{resource_version}" processorArchitecture="*" name="UnfocusMute" type="win32"/>
   <description>UnfocusMute</description>
   <dependency>
     <dependentAssembly>
@@ -42,12 +46,33 @@ fn main() {
       </requestedPrivileges>
     </security>
   </trustInfo>
-</assembly>"#,
+</assembly>"#
     );
+    resource.set_manifest(&manifest);
 
     if let Err(error) = resource.compile() {
         println!("cargo:warning=failed to compile Windows resources: {error}");
     }
+}
+
+fn windows_resource_version() -> String {
+    let version = env::var("CARGO_PKG_VERSION").unwrap_or_else(|_| "0.0.0".to_owned());
+    let core_version = version.split(['-', '+']).next().unwrap_or("0.0.0");
+    let mut parts = core_version
+        .split('.')
+        .take(4)
+        .map(|part| {
+            part.parse::<u16>()
+                .map(|value| value.to_string())
+                .unwrap_or_else(|_| "0".to_owned())
+        })
+        .collect::<Vec<_>>();
+
+    while parts.len() < 4 {
+        parts.push("0".to_owned());
+    }
+
+    parts.join(".")
 }
 
 fn build_ico_from_png(source: &Path) -> io::Result<PathBuf> {
