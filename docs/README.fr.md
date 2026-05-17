@@ -6,32 +6,28 @@ UnfocusMute est une petite application légère pour la zone de notification Win
 
 Compilée comme application native Rust, elle s’exécute sans runtime séparé. L’exécutable Windows actuel pèse environ 676 Ko, soit moins de 1 Mo.
 
-Écrite en Rust et distribuée comme application portable, elle ne contrôle que les sessions audio que vous enregistrez. Quand une application revient au premier plan, UnfocusMute réactive uniquement les sessions qu’elle avait coupées elle-même, sans toucher aux coupures manuelles.
+Enregistrez les applications à gérer, et UnfocusMute ne coupe leurs sessions audio que lorsqu’elles ne sont plus au premier plan. Quand une application revient au premier plan, UnfocusMute réactive uniquement les sessions qu’elle avait coupées elle-même, sans toucher aux coupures manuelles.
 
-Elle est particulièrement utile lorsque vous quittez un jeu avec Alt+Tab pour passer à un navigateur, une messagerie ou une fenêtre de travail. Vous pouvez garder une application en arrière-plan silencieuse sans rouvrir sans cesse le mélangeur de volume Windows.
+Elle est particulièrement utile lorsque vous quittez un jeu avec Alt+Tab pour passer à un navigateur, une messagerie ou une fenêtre de travail. Vous pouvez maîtriser le son en arrière-plan sans rouvrir sans cesse le mélangeur de volume Windows.
 
 ## Atouts
 
-- Enregistrement possible par `.exe` ou par PID individuel.
-- Regroupement des processus issus du même exécutable lorsque c’est préférable.
-- Enregistrement d’une instance précise avec `Afficher les PID` si nécessaire.
-- Réactivation uniquement des sessions coupées par UnfocusMute, sans modifier les coupures manuelles.
-- Application portable fournie en ZIP, sans installateur.
+- Automatise la mise en sourdine en arrière-plan par jeu ou application, afin que le son suive les changements de fenêtre sans réglage manuel.
+- Réactive uniquement l’audio modifié par UnfocusMute, sans modifier les coupures manuelles.
+- Reste un outil léger, portable et local, sans installation, compte ni connexion réseau.
 
 ## Pratique Pour
 
 - Passer d’un jeu ou d’une application à une autre fenêtre avec Alt+Tab.
-- Les jeux qui ont besoin d’un mode silencieux en arrière-plan.
 - Les jeux qui ne proposent pas leur propre option de sourdine en arrière-plan.
 - Couper le son d’un jeu en arrière-plan tout en gardant un navigateur ou une app d’appel audible.
-- Gérer une application par `.exe` ou contrôler un PID précis.
+- Passer d’une gestion par `.exe` à un contrôle PID précis lorsqu’une application ouvre plusieurs processus.
 
 ## Fonctionnalités
 
-- Coupe automatiquement le son uniquement des applications enregistrées qui ne sont pas au premier plan.
-- Réactive l’audio seulement pour les sessions coupées par UnfocusMute.
+- Détection du premier plan avec coupure et réactivation automatiques des sessions enregistrées.
 - Ajoute des cibles depuis la liste des applications en cours ou en saisissant un exécutable comme `game.exe`.
-- Prend en charge l’enregistrement groupé par `.exe` et l’enregistrement par PID.
+- Enregistrement groupé par `.exe`, enregistrement par PID et `Afficher les PID`.
 - Fonctionne dans la zone de notification, avec pause, raccourci vers le dossier de configuration et protection contre les doubles lancements.
 - Sélection de la langue au premier lancement et changement immédiat entre English, 한국어, 日本語, 简体中文, Español, Français, Português, हिन्दी et العربية.
 - Configuration locale dans `%APPDATA%\UnfocusMute\config.json`.

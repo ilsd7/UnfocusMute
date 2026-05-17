@@ -6,32 +6,28 @@ UnfocusMute is a small, lightweight Windows tray app that automatically quiets s
 
 Built as a native Rust app, it runs without a separate runtime. The current Windows executable is about 676 KB, under 1 MB.
 
-Built with Rust and shipped as a portable app, it mutes only the audio sessions you register. When an app returns to the foreground, UnfocusMute restores only sessions it muted itself, so manually muted sessions stay untouched.
+Register the apps you want to manage, and UnfocusMute mutes only their audio sessions while they are not in the foreground. When an app returns to the foreground, UnfocusMute restores only sessions it muted itself, so manually muted sessions stay untouched.
 
-It is especially useful when you Alt+Tab from a game to a browser, chat app, or work window. You can keep one background app quiet without repeatedly opening the Windows volume mixer.
+It is especially useful when you Alt+Tab from a game to a browser, chat app, or work window. You can keep background audio under control without repeatedly opening the Windows volume mixer.
 
 ## Core Benefits
 
-- Supports both `.exe`-level targets and individual PID targets.
-- Groups multiple processes from the same executable when that is what you want.
-- Lets you register one specific process instance through `Show PIDs` when needed.
-- Restores only sessions muted by UnfocusMute, preserving manual mute choices.
-- Runs as a portable ZIP app without an installer.
+- Automates background mute per game or app, so audio follows focus changes without manual volume juggling.
+- Restores only audio changed by UnfocusMute, preserving manual mute choices.
+- Runs as a lightweight, portable, local tool without an installer, account, or network connection.
 
 ## Good For
 
 - Switching away from games or apps with Alt+Tab.
-- Games that need background mute behavior.
 - Games that do not provide their own mute-when-in-background option.
 - Muting background game audio while keeping a browser or call app audible.
-- Managing an app by `.exe`, or controlling one specific PID.
+- Switching between whole-app `.exe` management and one specific PID when an app opens multiple processes.
 
 ## Features
 
-- Automatically mutes only registered apps that are not focused.
-- Restores audio only for sessions muted by UnfocusMute.
+- Foreground detection with automatic mute and restore for registered audio sessions.
 - Adds targets from the running app list or by typing an executable name such as `game.exe`.
-- Supports grouped `.exe` registration and per-PID registration.
+- Supports grouped `.exe` targets, individual PID targets, and `Show PIDs`.
 - Tray resident operation, pause, config folder shortcut, and single-instance protection.
 - First-run language selection and in-app switching between English, Korean, Japanese, Simplified Chinese, Spanish, French, Portuguese, Hindi, and Arabic.
 - Local config at `%APPDATA%\UnfocusMute\config.json`.

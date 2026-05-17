@@ -6,32 +6,28 @@ UnfocusMute es una pequeña app de bandeja para Windows, ligera y portable, que 
 
 Al estar compilada como app nativa en Rust, se ejecuta sin un runtime adicional. El ejecutable actual para Windows ocupa unos 676 KB, menos de 1 MB.
 
-Está hecha con Rust y solo controla las sesiones de audio que registras. Cuando una app vuelve al primer plano, UnfocusMute restaura únicamente las sesiones que silenció por sí misma, así que no cambia los silencios que hayas aplicado manualmente.
+Registra las apps que quieres gestionar, y UnfocusMute solo silencia sus sesiones de audio mientras no están en primer plano. Cuando una app vuelve al primer plano, UnfocusMute restaura únicamente las sesiones que silenció por sí misma, así que no cambia los silencios que hayas aplicado manualmente.
 
-Resulta especialmente útil cuando sales de un juego con Alt+Tab para usar un navegador, chat o ventana de trabajo. Puedes mantener callada una app en segundo plano sin abrir una y otra vez el mezclador de volumen de Windows.
+Resulta especialmente útil cuando sales de un juego con Alt+Tab para usar un navegador, chat o ventana de trabajo. Puedes controlar el audio en segundo plano sin abrir una y otra vez el mezclador de volumen de Windows.
 
 ## Ventajas Clave
 
-- Permite registrar objetivos por `.exe` o por PID individual.
-- Agrupa procesos del mismo ejecutable cuando quieres tratarlos como una sola app.
-- Permite registrar una instancia concreta con `Ver PID` cuando hace falta.
-- Restaura solo las sesiones silenciadas por UnfocusMute y respeta los silencios manuales.
-- Funciona como app portable desde un ZIP, sin instalador.
+- Automatiza el silencio en segundo plano por juego o app, para que el audio siga los cambios de foco sin ajustes manuales.
+- Restaura solo el audio que cambió UnfocusMute y respeta los silencios manuales.
+- Funciona como herramienta ligera, portable y local, sin instalación, cuenta ni conexión de red.
 
 ## Útil Para
 
 - Cambiar con Alt+Tab desde juegos o apps a otras ventanas.
-- Juegos que necesitan silencio al quedar en segundo plano.
 - Juegos que no tienen una opción propia para silenciarse en segundo plano.
 - Silenciar audio de un juego en segundo plano sin apagar navegador o app de llamada.
-- Gestionar una app por `.exe` o controlar solo un PID específico.
+- Alternar entre gestionar todo un `.exe` y controlar un PID concreto cuando una app abre varios procesos.
 
 ## Funciones
 
-- Silencia automáticamente solo las apps registradas que no están en primer plano.
-- Restaura el audio solo para sesiones silenciadas por UnfocusMute.
+- Detección de primer plano con silencio y restauración automáticos para sesiones registradas.
 - Añade objetivos desde la lista de apps en ejecución o escribiendo un ejecutable como `game.exe`.
-- Soporta registro agrupado por `.exe` y registro por PID.
+- Registro agrupado por `.exe`, registro por PID y `Ver PID`.
 - Funcionamiento en bandeja, pausa, acceso a la carpeta de configuración y protección contra doble ejecución.
 - Selección de idioma en el primer inicio y cambio entre English, 한국어, 日本語, 简体中文, Español, Français, Português, हिन्दी y العربية.
 - Configuración local en `%APPDATA%\UnfocusMute\config.json`.
