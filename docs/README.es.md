@@ -2,9 +2,16 @@
 
 [한국어](../README.md) | [English](README.en.md) | [日本語](README.ja.md) | [简体中文](README.zh-CN.md) | Español
 
-UnfocusMute es una app de escritorio local-first para Windows 11. Silencia automáticamente solo los procesos registrados cuando pasan a segundo plano y restaura el audio solo de las sesiones que la propia app silenció.
+UnfocusMute es una pequeña app de bandeja para Windows, ligera y portable, que silencia automáticamente juegos o apps seleccionadas cuando quedan en segundo plano.
 
-Está pensada para cambiar temporalmente de un juego a un navegador, mensajería u otra ventana sin abrir repetidamente el mezclador de volumen de Windows.
+Está hecha con Rust y solo controla las sesiones de audio que registras. Cuando una app vuelve al primer plano, UnfocusMute restaura únicamente las sesiones que silenció por sí misma, así que no cambia los silencios que hayas aplicado manualmente.
+
+## Útil Para
+
+- Cambiar entre un juego, navegador, chat o ventana de trabajo
+- Mantener callada una app en segundo plano sin abrir el mezclador de volumen de Windows
+- Gestionar apps tipo navegador que usan varios procesos con el mismo `.exe`
+- Usar una herramienta ligera hecha con Rust que se ejecuta desde un ZIP, sin instalador
 
 ## Funciones
 
@@ -20,7 +27,7 @@ Está pensada para cambiar temporalmente de un juego a un navegador, mensajería
 
 ## Descargar y Ejecutar
 
-El ZIP de distribución para Windows contiene un ejecutable portátil. Extrae el archivo y ejecuta `UnfocusMute.exe`. Los usuarios no necesitan instalar un runtime aparte, Rust, Visual Studio Build Tools ni MinGW.
+Descarga el ZIP para Windows, extráelo y ejecuta `UnfocusMute.exe`. Es portable, así que no hay instalador y no necesitas un runtime aparte, Rust, Visual Studio Build Tools ni MinGW.
 
 ## Uso
 
@@ -32,9 +39,9 @@ El ZIP de distribución para Windows contiene un ejecutable portátil. Extrae el
 6. Usa `Ver PID` solo cuando necesites registrar una instancia concreta.
 7. Al cerrar la ventana, UnfocusMute sigue en la bandeja. Usa `Salir` para cerrarla por completo.
 
-En el primer inicio puedes elegir si UnfocusMute se inicia automáticamente al entrar en Windows. La configuración nueva deja desactivado el inicio automático y activa iniciar minimizado en bandeja y quitar silencio al salir.
+## Valores Predeterminados
 
-## Idioma
+En el primer inicio puedes elegir si UnfocusMute se inicia automáticamente al entrar en Windows. La configuración nueva deja desactivado el inicio automático y activa iniciar minimizado en bandeja y quitar silencio al salir.
 
 Pulsa `Idioma` en la app para cambiar inmediatamente entre English, 한국어, 日本語, 简体中文 y Español. La selección se guarda automáticamente.
 
@@ -52,6 +59,8 @@ Crear un ZIP de distribución:
 ```powershell
 powershell -ExecutionPolicy Bypass -File scripts\package-windows.ps1
 ```
+
+El paquete se crea en `dist\UnfocusMute-<version>-windows-x64.zip` e incluye el ejecutable y `LICENSE`.
 
 ## Privacidad
 

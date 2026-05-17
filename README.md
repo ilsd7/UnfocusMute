@@ -1,12 +1,19 @@
 # UnfocusMute
 
-A portable Windows app that automatically mutes selected background processes.
+백그라운드로 내려간 게임이나 앱의 소리만 자동으로 조용히 만드는 작고 가벼운 Windows용 트레이 앱입니다.
 
 한국어 | [English](docs/README.en.md) | [日本語](docs/README.ja.md) | [简体中文](docs/README.zh-CN.md) | [Español](docs/README.es.md)
 
-UnfocusMute는 Windows 11에서 게임이나 앱이 백그라운드로 전환될 때 등록한 프로세스만 자동으로 음소거하는 로컬 우선 데스크톱 앱입니다. 다시 전면으로 돌아온 프로세스는 UnfocusMute가 직접 음소거했던 경우에만 자동으로 음소거를 해제합니다.
+UnfocusMute는 Rust로 만든 포터블 앱입니다. 등록한 앱이 전면에 있지 않을 때 해당 앱의 오디오 세션만 음소거합니다. 앱이 다시 전면으로 돌아오면 UnfocusMute가 직접 음소거했던 세션만 되돌리므로, 사용자가 직접 음소거한 상태는 건드리지 않습니다.
 
-게임을 켜 둔 채 브라우저나 메신저로 잠깐 이동할 때, 백그라운드 앱 소리만 조용히 만들고 싶을 때 사용할 수 있습니다. 앱별 음소거, 백그라운드 자동 음소거, 게임 음소거 같은 작업을 Windows 볼륨 믹서를 매번 열지 않고 처리하는 데 초점을 둡니다.
+게임을 켜 둔 채 브라우저, 메신저, 작업 창으로 잠깐 이동할 때 유용합니다. Windows 볼륨 믹서를 매번 열지 않고도 백그라운드 앱 소리만 자동으로 관리할 수 있습니다.
+
+## 이런 경우에 유용합니다
+
+- 게임이나 앱을 켜 둔 상태로 다른 창을 자주 오갈 때
+- 백그라운드 게임 소리만 잠시 끄고 싶을 때
+- 브라우저처럼 여러 PID로 실행되는 앱을 한 번에 관리하고 싶을 때
+- 설치 없이 ZIP으로 바로 실행하는 가벼운 Rust 기반 도구를 선호할 때
 
 ## 주요 기능
 
@@ -20,9 +27,9 @@ UnfocusMute는 Windows 11에서 게임이나 앱이 백그라운드로 전환될
 - 설정은 `%APPDATA%\UnfocusMute\config.json`에 로컬 저장
 - 네트워크, 계정, 텔레메트리, 별도 앱 로그 없음
 
-## 다운로드 및 실행
+## 설치 및 실행
 
-Windows용 배포 ZIP은 포터블 실행 파일입니다. 압축을 푼 뒤 `UnfocusMute.exe`를 실행하면 되며, 사용자는 별도 런타임, Rust, Visual Studio Build Tools, MinGW 같은 개발 도구를 따로 설치할 필요가 없습니다.
+Windows용 배포 ZIP을 받은 뒤 압축을 풀고 `UnfocusMute.exe`를 실행하세요. 포터블 실행 파일이라 설치 과정이 없고, 별도 런타임, Rust, Visual Studio Build Tools, MinGW 같은 개발 도구도 필요하지 않습니다.
 
 ## 사용 방법
 
@@ -34,9 +41,9 @@ Windows용 배포 ZIP은 포터블 실행 파일입니다. 압축을 푼 뒤 `Un
 6. 특정 PID만 등록해야 하면 `세부 PID 보기`를 눌러 개별 항목을 선택합니다.
 7. 창을 닫으면 앱은 트레이에 남아 계속 감시합니다. 완전히 종료하려면 `종료`를 누릅니다.
 
-첫 실행에서 `Windows에 로그인하면 자동 실행` 여부를 선택할 수 있습니다. 새 설정의 기본값은 `Windows에 로그인하면 자동 실행` 꺼짐, `시작 시 트레이로 최소화` 켜짐, `종료 시 앱 음소거 해제` 켜짐입니다. 첫 실행에서는 언어 선택과 초기 확인을 위해 메인 창을 한 번 표시하고, 이후 실행부터 트레이 최소화 설정이 적용됩니다.
+## 기본 설정
 
-## 설정
+첫 실행에서 `Windows에 로그인하면 자동 실행` 여부를 선택할 수 있습니다. 새 설정의 기본값은 `Windows에 로그인하면 자동 실행` 꺼짐, `시작 시 트레이로 최소화` 켜짐, `종료 시 앱 음소거 해제` 켜짐입니다. 첫 실행에서는 언어 선택과 초기 확인을 위해 메인 창을 한 번 표시하고, 이후 실행부터 트레이 최소화 설정이 적용됩니다.
 
 앱의 `언어` 항목을 누르면 English, 한국어, 日本語, 简体中文, Español 중 하나를 바로 선택할 수 있습니다. 변경 사항은 즉시 UI에 반영되고 설정 파일에 저장됩니다.
 
@@ -69,7 +76,7 @@ target\x86_64-pc-windows-msvc\release\unfocusmute.exe
 powershell -ExecutionPolicy Bypass -File scripts\package-windows.ps1
 ```
 
-결과물은 `dist\UnfocusMute-<version>-windows-x64.zip`에 생성되며, 실행 파일과 `LICENSE`가 포함됩니다. `assets/app-icon.png`는 빌드 시 실행 파일 리소스에 포함되므로 ZIP에는 원본 PNG를 넣지 않습니다.
+결과물은 `dist\UnfocusMute-<version>-windows-x64.zip`에 생성되며, 실행 파일과 `LICENSE`가 포함됩니다.
 
 ## 보안 및 개인정보
 

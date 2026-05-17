@@ -2,9 +2,16 @@
 
 [한국어](../README.md) | [English](README.en.md) | [日本語](README.ja.md) | 简体中文 | [Español](README.es.md)
 
-UnfocusMute 是一款面向 Windows 11 的本地优先桌面应用。当已注册进程进入后台时，它只会自动静音这些进程；当进程回到前台时，只恢复由 UnfocusMute 静音过的会话。
+UnfocusMute 是一款小巧轻量的 Windows 托盘工具，会在游戏或应用进入后台时自动静音它们。
 
-适合在游戏运行时临时切到浏览器、聊天工具或其他窗口，但又不想反复打开 Windows 音量混合器管理后台应用声音的场景。
+它使用 Rust 构建，并以便携式应用发布。它只会控制你注册的应用音频会话。应用回到前台后，UnfocusMute 只恢复它自己静音过的会话，不会打扰你手动设置的静音状态。
+
+## 适合这些场景
+
+- 经常在游戏、浏览器、聊天工具或工作窗口之间切换
+- 不想每次都打开 Windows 音量混合器来关闭后台声音
+- 想把浏览器这类多个 PID 的相同 `.exe` 作为一个目标管理
+- 更喜欢解压即用、基于 Rust 的轻量便携工具
 
 ## 功能
 
@@ -20,7 +27,7 @@ UnfocusMute 是一款面向 Windows 11 的本地优先桌面应用。当已注�
 
 ## 下载与运行
 
-Windows 发布 ZIP 包含可直接使用的便携式可执行文件。解压后运行 `UnfocusMute.exe` 即可。用户不需要额外安装运行时、Rust、Visual Studio Build Tools 或 MinGW。
+下载 Windows ZIP，解压后运行 `UnfocusMute.exe` 即可。它是便携式可执行文件，不需要安装流程，也不需要额外安装运行时、Rust、Visual Studio Build Tools 或 MinGW。
 
 ## 使用方法
 
@@ -32,9 +39,9 @@ Windows 发布 ZIP 包含可直接使用的便携式可执行文件。解压后�
 6. 如果只需要注册某个 PID，请使用 `显示 PID`。
 7. 关闭窗口后应用会继续在托盘运行。要完全退出，请点击 `退出`。
 
-首次运行时可以选择是否在登录 Windows 时自动启动 UnfocusMute。新配置默认关闭自动启动，并启用启动时最小化到托盘和退出时取消静音。
+## 默认设置
 
-## 语言
+首次运行时可以选择是否在登录 Windows 时自动启动 UnfocusMute。新配置默认关闭自动启动，并启用启动时最小化到托盘和退出时取消静音。
 
 点击应用中的 `语言` 项即可在 English、한국어、日本語、简体中文、Español 之间切换。选择会立即生效并自动保存。
 
@@ -52,6 +59,8 @@ cargo build --release --target x86_64-pc-windows-msvc
 ```powershell
 powershell -ExecutionPolicy Bypass -File scripts\package-windows.ps1
 ```
+
+生成的包位于 `dist\UnfocusMute-<version>-windows-x64.zip`，包含可执行文件和 `LICENSE`。
 
 ## 隐私
 

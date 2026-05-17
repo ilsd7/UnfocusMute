@@ -2,9 +2,16 @@
 
 [한국어](../README.md) | English | [日本語](README.ja.md) | [简体中文](README.zh-CN.md) | [Español](README.es.md)
 
-UnfocusMute is a local-first Windows 11 desktop app that automatically mutes registered processes while they are in the background. When a process returns to the foreground, UnfocusMute only unmutes sessions it muted itself.
+UnfocusMute is a small, lightweight Windows tray app that automatically quiets selected games or apps when they move to the background.
 
-It is designed for cases like switching away from a game to a browser or messenger while keeping background app audio quiet without repeatedly opening the Windows volume mixer.
+Built with Rust and shipped as a portable app, it mutes only the audio sessions you register. When an app returns to the foreground, UnfocusMute restores only sessions it muted itself, so manually muted sessions stay untouched.
+
+## Good For
+
+- Switching from a game to a browser, chat app, or work window
+- Keeping one background app quiet without opening the Windows volume mixer
+- Managing browser-like apps that run several processes with the same `.exe`
+- Using a lightweight Rust-based tool that runs from a ZIP without an installer
 
 ## Features
 
@@ -20,7 +27,7 @@ It is designed for cases like switching away from a game to a browser or messeng
 
 ## Download and Run
 
-The Windows distribution ZIP contains a portable executable. Extract the archive and run `UnfocusMute.exe`. Users do not need to install a separate runtime, Rust, Visual Studio Build Tools, or MinGW.
+Download the Windows ZIP, extract it, and run `UnfocusMute.exe`. It is portable, so there is no installer and you do not need a separate runtime, Rust, Visual Studio Build Tools, or MinGW.
 
 ## Usage
 
@@ -32,9 +39,9 @@ The Windows distribution ZIP contains a portable executable. Extract the archive
 6. Use `Show PIDs` only when you need to register one specific process instance.
 7. Closing the window keeps UnfocusMute running in the tray. Use `Quit` to fully exit.
 
-On first run, you can choose whether UnfocusMute auto-starts when you sign in to Windows. Default settings for new configs are: auto-start disabled, start minimized to tray enabled, and unmute apps on exit enabled.
+## Defaults
 
-## Language
+On first run, you can choose whether UnfocusMute auto-starts when you sign in to Windows. Default settings for new configs are: auto-start disabled, start minimized to tray enabled, and unmute apps on exit enabled.
 
 Click the `Language` field in the app to switch immediately between English, Korean, Japanese, Simplified Chinese, and Spanish. The selected language is saved automatically.
 
@@ -58,6 +65,8 @@ Create a distribution ZIP:
 ```powershell
 powershell -ExecutionPolicy Bypass -File scripts\package-windows.ps1
 ```
+
+The package is created under `dist\UnfocusMute-<version>-windows-x64.zip` and includes the executable and `LICENSE`.
 
 ## Privacy
 
