@@ -1,4 +1,4 @@
-use crate::config::{AppConfig, WindowPosition, config_dir, config_file_exists};
+use crate::config::{AppConfig, WindowPosition, config_dir, config_file_exists, config_file_path};
 use crate::engine::{AudioSessionKey, TargetMatcher, plan_mute_actions_with_matcher};
 use crate::i18n::{Language, Strings};
 use crate::windows_app::audio::AudioController;
@@ -9,6 +9,7 @@ use std::collections::{BTreeMap, HashSet};
 use std::ffi::c_void;
 use std::fs;
 use std::mem::{self, size_of};
+use std::time::{Duration, Instant, SystemTime};
 use windows::Win32::Foundation::{
     COLORREF, CloseHandle, ERROR_ALREADY_EXISTS, GetLastError, HANDLE, HINSTANCE, HWND, LPARAM,
     LRESULT, POINT, RECT, SIZE, WPARAM,
@@ -61,6 +62,7 @@ const TRAY_ID: u32 = 1;
 const WM_TRAY_ICON: u32 = WM_APP + 1;
 const WINDOW_WIDTH: i32 = 980;
 const WINDOW_HEIGHT: i32 = 640;
+const CONFIG_RELOAD_CHECK_INTERVAL: Duration = Duration::from_secs(1);
 
 const ID_TARGETS: i32 = 1001;
 const ID_RUNNING: i32 = 1002;
@@ -473,15 +475,24 @@ struct AppWindow {
     tray_added: bool,
     last_issue: Option<StatusIssue>,
     last_status: Option<(String, String)>,
+    config_stamp: Option<ConfigFileStamp>,
+    next_config_check: Instant,
     theme: AppTheme,
     icon: HICON,
     tray_icon: HICON,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+struct ConfigFileStamp {
+    modified: SystemTime,
+    len: u64,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum StatusIssue {
     AudioUnavailable,
     AudioUpdateFailed,
+    ConfigLoadFailed,
     ConfigSaveFailed,
     StartupUpdateFailed,
     OpenConfigFailed,
@@ -509,6 +520,8 @@ impl AppWindow {
             tray_added: false,
             last_issue: None,
             last_status: None,
+            config_stamp: current_config_stamp(),
+            next_config_check: Instant::now() + CONFIG_RELOAD_CHECK_INTERVAL,
             theme: AppTheme::new(language),
             icon,
             tray_icon,
@@ -541,14 +554,7 @@ impl AppWindow {
         self.refresh_checkboxes();
         self.refresh_text();
         self.update_status();
-        unsafe {
-            SetTimer(
-                Some(hwnd),
-                TIMER_ID,
-                self.config.polling_interval_ms as u32,
-                None,
-            );
-        }
+        self.reset_polling_timer();
         self.add_tray_icon();
         self.tick();
         Ok(())
@@ -1167,6 +1173,8 @@ impl AppWindow {
     }
 
     fn tick(&mut self) {
+        self.reload_config_if_due();
+
         if self.paused {
             self.update_status();
             return;
@@ -1350,15 +1358,96 @@ impl AppWindow {
         match issue {
             StatusIssue::AudioUnavailable => self.strings.audio_unavailable,
             StatusIssue::AudioUpdateFailed => self.strings.audio_update_failed,
+            StatusIssue::ConfigLoadFailed => self.strings.config_load_failed,
             StatusIssue::ConfigSaveFailed => self.strings.config_save_failed,
             StatusIssue::StartupUpdateFailed => self.strings.startup_update_failed,
             StatusIssue::OpenConfigFailed => self.strings.open_config_failed,
         }
     }
 
+    fn reload_config_if_due(&mut self) {
+        let now = Instant::now();
+        if now < self.next_config_check {
+            return;
+        }
+        self.next_config_check = now + CONFIG_RELOAD_CHECK_INTERVAL;
+        self.reload_config_if_changed();
+    }
+
+    fn reload_config_if_changed(&mut self) -> bool {
+        let stamp = current_config_stamp();
+        if stamp == self.config_stamp {
+            return true;
+        }
+
+        match AppConfig::load_existing() {
+            Ok(config) => {
+                self.config_stamp = stamp;
+                self.apply_external_config(config);
+                self.clear_issue(StatusIssue::ConfigLoadFailed);
+                true
+            }
+            Err(_) => {
+                self.set_issue(StatusIssue::ConfigLoadFailed);
+                false
+            }
+        }
+    }
+
+    fn apply_external_config(&mut self, mut config: AppConfig) {
+        let language_changed = self.config.language != config.language;
+        let targets_changed = self.config.targets != config.targets;
+        let checkboxes_changed = self.config.start_minimized != config.start_minimized
+            || self.config.launch_on_startup != config.launch_on_startup
+            || self.config.restore_muted_on_exit != config.restore_muted_on_exit;
+        let interval_changed = self.config.polling_interval_ms != config.polling_interval_ms;
+        let startup_changed = self.config.launch_on_startup != config.launch_on_startup;
+        let previous_launch_on_startup = self.config.launch_on_startup;
+
+        if startup_changed {
+            if startup::set_launch_on_startup(config.launch_on_startup).is_ok() {
+                self.clear_issue(StatusIssue::StartupUpdateFailed);
+            } else {
+                config.launch_on_startup = previous_launch_on_startup;
+                self.set_issue(StatusIssue::StartupUpdateFailed);
+            }
+        }
+
+        self.config = config;
+        if interval_changed {
+            self.reset_polling_timer();
+            self.last_status = None;
+        }
+        if targets_changed {
+            self.refresh_targets();
+        }
+        if checkboxes_changed {
+            self.refresh_checkboxes();
+        }
+        if language_changed {
+            self.refresh_text();
+        } else {
+            self.update_target_summary();
+            self.update_status();
+        }
+    }
+
+    fn reset_polling_timer(&self) {
+        unsafe {
+            SetTimer(
+                Some(self.hwnd),
+                TIMER_ID,
+                self.config.polling_interval_ms as u32,
+                None,
+            );
+        }
+    }
+
     fn save_config(&mut self) -> bool {
         match self.config.save() {
             Ok(()) => {
+                self.config_stamp = current_config_stamp();
+                self.next_config_check = Instant::now() + CONFIG_RELOAD_CHECK_INTERVAL;
                 self.clear_issue(StatusIssue::ConfigSaveFailed);
                 true
             }
@@ -1408,6 +1497,9 @@ impl AppWindow {
     fn add_selected_process(&mut self) {
         let choice = self.selected_process_choice().cloned();
         let Some(choice) = choice else { return };
+        if !self.reload_config_if_changed() {
+            return;
+        }
         if !self.can_add_process_choice(&choice) {
             return;
         }
@@ -1489,6 +1581,9 @@ impl AppWindow {
 
     fn add_manual_target(&mut self) {
         let text = unsafe { window_text(self.controls.manual_edit) };
+        if !self.reload_config_if_changed() {
+            return;
+        }
         if self.config.add_target(&text) {
             self.finish_target_change();
             unsafe {
@@ -1498,6 +1593,9 @@ impl AppWindow {
     }
 
     fn remove_selected_target(&mut self) {
+        if !self.reload_config_if_changed() {
+            return;
+        }
         let index = unsafe { SendMessageW(self.controls.target_list, LB_GETCURSEL, None, None).0 };
         if index < 0 {
             return;
@@ -1544,7 +1642,6 @@ impl AppWindow {
     }
 
     fn open_config_folder(&mut self) {
-        self.save_config();
         let Ok(path) = config_dir() else {
             self.set_issue(StatusIssue::OpenConfigFailed);
             return;
@@ -1594,6 +1691,10 @@ impl AppWindow {
             ID_RESTORE_EXIT => unsafe { is_checked(self.controls.restore_exit_check) },
             _ => return,
         };
+        if !self.reload_config_if_changed() {
+            self.refresh_checkboxes();
+            return;
+        }
 
         match id {
             ID_START_MINIMIZED => self.config.start_minimized = checked,
@@ -1661,6 +1762,9 @@ impl AppWindow {
     }
 
     fn set_language(&mut self, language: Language) {
+        if !self.reload_config_if_changed() {
+            return;
+        }
         self.config.language = language;
         self.save_config();
         self.refresh_text();
@@ -1677,6 +1781,9 @@ impl AppWindow {
     }
 
     fn save_window_position(&mut self) {
+        if !self.reload_config_if_changed() {
+            return;
+        }
         self.remember_window_position();
         self.save_config();
     }
@@ -2551,6 +2658,14 @@ fn copy_wide_fixed(text: &str, destination: &mut [u16]) {
     if let Some(last) = destination.last_mut() {
         *last = 0;
     }
+}
+
+fn current_config_stamp() -> Option<ConfigFileStamp> {
+    let metadata = fs::metadata(config_file_path().ok()?).ok()?;
+    Some(ConfigFileStamp {
+        modified: metadata.modified().ok()?,
+        len: metadata.len(),
+    })
 }
 
 fn to_wide(text: &str) -> Vec<u16> {

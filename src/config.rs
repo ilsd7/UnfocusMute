@@ -17,6 +17,8 @@ use windows::core::PCWSTR;
 
 const CONFIG_VERSION: u32 = 1;
 const DEFAULT_POLLING_INTERVAL_MS: u64 = 350;
+const MIN_POLLING_INTERVAL_MS: u64 = 100;
+const MAX_POLLING_INTERVAL_MS: u64 = 10_000;
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct TargetProcess {
@@ -95,9 +97,9 @@ impl AppConfig {
         }
 
         let raw = fs::read_to_string(&path)?;
-        match serde_json::from_str::<Self>(&raw) {
+        match parse_config(&raw) {
             Ok(mut config) => {
-                config.deduplicate_targets();
+                config.sanitize();
                 Ok(config)
             }
             Err(_) => {
@@ -105,6 +107,14 @@ impl AppConfig {
                 Ok(Self::default())
             }
         }
+    }
+
+    pub fn load_existing() -> io::Result<Self> {
+        let path = config_file_path()?;
+        let raw = fs::read_to_string(&path)?;
+        let mut config = parse_config(&raw)?;
+        config.sanitize();
+        Ok(config)
     }
 
     pub fn save(&self) -> io::Result<()> {
@@ -164,6 +174,14 @@ impl AppConfig {
         self.sort_targets();
     }
 
+    fn sanitize(&mut self) {
+        self.version = CONFIG_VERSION;
+        self.polling_interval_ms = self
+            .polling_interval_ms
+            .clamp(MIN_POLLING_INTERVAL_MS, MAX_POLLING_INTERVAL_MS);
+        self.deduplicate_targets();
+    }
+
     fn sort_targets(&mut self) {
         self.targets.sort_by(|left, right| {
             left.name
@@ -171,6 +189,10 @@ impl AppConfig {
                 .then_with(|| left.pid.unwrap_or(0).cmp(&right.pid.unwrap_or(0)))
         });
     }
+}
+
+fn parse_config(raw: &str) -> io::Result<AppConfig> {
+    serde_json::from_str::<AppConfig>(raw).map_err(io::Error::other)
 }
 
 fn replace_file(temp_path: &Path, destination: &Path) -> io::Result<()> {
@@ -361,6 +383,23 @@ mod tests {
         let config = AppConfig::default();
 
         assert_eq!(config.language, Language::En);
+    }
+
+    #[test]
+    fn sanitize_clamps_polling_interval() {
+        let mut config = AppConfig {
+            polling_interval_ms: 1,
+            ..AppConfig::default()
+        };
+
+        config.sanitize();
+
+        assert_eq!(config.polling_interval_ms, MIN_POLLING_INTERVAL_MS);
+
+        config.polling_interval_ms = 400;
+        config.sanitize();
+
+        assert_eq!(config.polling_interval_ms, 400);
     }
 
     #[test]
