@@ -11,6 +11,7 @@ use anyhow::{Context, Result, bail};
 use std::collections::{BTreeMap, HashSet};
 use std::ffi::c_void;
 use std::fs;
+use std::io::ErrorKind;
 use std::mem::size_of;
 use std::sync::atomic::{AtomicIsize, Ordering};
 use std::time::{Instant, SystemTime};
@@ -1385,9 +1386,15 @@ impl AppWindow {
                 self.clear_issue(StatusIssue::ConfigLoadFailed);
                 true
             }
+            Err(error) if error.kind() == ErrorKind::NotFound => {
+                self.config_stamp = None;
+                self.clear_issue(StatusIssue::ConfigLoadFailed);
+                true
+            }
             Err(_) => {
+                self.config_stamp = stamp;
                 self.set_issue(StatusIssue::ConfigLoadFailed);
-                false
+                true
             }
         }
     }
@@ -1464,6 +1471,7 @@ impl AppWindow {
             Ok(()) => {
                 self.config_stamp = current_config_stamp();
                 self.next_config_check = Instant::now() + CONFIG_RELOAD_CHECK_INTERVAL;
+                self.clear_issue(StatusIssue::ConfigLoadFailed);
                 self.clear_issue(StatusIssue::ConfigSaveFailed);
                 true
             }
@@ -1857,10 +1865,13 @@ impl AppWindow {
     fn cleanup(&mut self) {
         self.foreground_hook = None;
         self.save_window_position();
-        if self.config.restore_muted_on_exit
-            && let Some(audio) = &self.audio
-        {
-            let _ = restore_mute_set(audio, &mut self.muted_by_app);
+        if self.config.restore_muted_on_exit && !self.muted_by_app.is_empty() {
+            if self.audio.is_none() {
+                self.audio = AudioController::new().ok();
+            }
+            if let Some(audio) = &self.audio {
+                let _ = restore_mute_set(audio, &mut self.muted_by_app);
+            }
         }
         if self.tray_added {
             let data = self.tray_data();
