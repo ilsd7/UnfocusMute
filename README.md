@@ -6,7 +6,7 @@
 
 > Lightweight, portable Windows tray app that mutes selected background apps and restores only the audio it changed.
 
-백그라운드 소리만 조용히 하고 싶은 게임이나 앱을 등록해 두면, 포커스를 잃었을 때 해당 오디오 세션만 자동으로 음소거하는 작고 가벼운 Windows용 트레이 앱입니다.
+게임이나 앱이 백그라운드로 전환됐을 때 해당 앱의 소리만 자동으로 음소거하는 작고 가벼운 Windows용 트레이 앱입니다.
 
 Rust 네이티브 앱으로 빌드해 별도 런타임 없이 바로 실행됩니다. 현재 Windows용 실행 파일은 약 517KB로 1MB 미만입니다.
 
@@ -41,6 +41,10 @@ Rust 네이티브 앱으로 빌드해 별도 런타임 없이 바로 실행됩�
 - 트레이 상주, 일시 중지, 설정 폴더 열기, 중복 실행 방지
 - 첫 실행 시 언어 선택, 이후 앱 안에서 English/한국어/日本語/简体中文/Español/Français/Português/हिन्दी/العربية 즉시 전환
 - 설정은 `%APPDATA%\UnfocusMute\config.json`에 로컬 저장
+
+## 안티치트 호환성
+
+UnfocusMute는 게임에 코드를 주입하거나, 게임 메모리를 읽거나, 입력을 후킹하거나, 게임 파일을 수정하지 않습니다. Windows의 프로세스/전면 창 정보와 CoreAudio 세션 음소거 기능만 사용하므로 대부분의 안티치트에서는 문제가 없을 것으로 예상하지만, 모든 안티치트와의 호환성을 보장할 수는 없습니다.
 
 ## Rust로 만든 이유
 

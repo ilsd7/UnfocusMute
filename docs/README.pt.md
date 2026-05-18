@@ -36,6 +36,10 @@ Ele é especialmente útil quando você sai de um jogo com Alt+Tab para usar nav
 - Seleção de idioma no primeiro uso e troca imediata entre English, 한국어, 日本語, 简体中文, Español, Français, Português, हिन्दी e العربية.
 - Configuração local em `%APPDATA%\UnfocusMute\config.json`.
 
+## Compatibilidade com Anticheat
+
+O UnfocusMute não injeta código em jogos, não lê memória do jogo, não intercepta entradas e não modifica arquivos do jogo. Como ele usa apenas informações de processos/janela em primeiro plano do Windows e controles de mudo de sessões CoreAudio, espera-se que não cause problemas com a maioria dos sistemas anticheat, mas a compatibilidade com todos não pode ser garantida.
+
 ## Por Que Rust
 
 UnfocusMute é uma pequena ferramenta que fica em segundo plano, então inicialização rápida, baixo uso de memória e distribuição simples são importantes. O executável nativo em Rust roda sem runtime separado e conversa diretamente com as APIs Windows CoreAudio sem carregar frameworks residentes desnecessários.

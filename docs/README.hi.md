@@ -36,6 +36,10 @@ Rust native app के रूप में build होने के कार�
 - पहली बार भाषा चुनने और ऐप में तुरंत English, 한국어, 日本語, 简体中文, Español, Français, Português, हिन्दी और العربية में बदलने की सुविधा।
 - लोकल config `%APPDATA%\UnfocusMute\config.json` में सेव होती है।
 
+## Anti-Cheat संगतता
+
+UnfocusMute games में code inject नहीं करता, game memory नहीं पढ़ता, input hook नहीं करता और game files modify नहीं करता। क्योंकि यह केवल Windows process/foreground window information और CoreAudio session mute controls इस्तेमाल करता है, इसलिए ज्यादातर anti-cheat systems में समस्या न होने की उम्मीद है, लेकिन हर anti-cheat system के साथ compatibility की guarantee नहीं दी जा सकती।
+
 ## Rust क्यों
 
 UnfocusMute एक छोटा background utility है, इसलिए तेज start, कम memory use और आसान distribution मायने रखते हैं। Rust native executable अलग runtime के बिना चलता है और अनावश्यक resident framework जोड़े बिना Windows CoreAudio APIs से सीधे काम करता है।

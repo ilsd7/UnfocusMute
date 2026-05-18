@@ -36,6 +36,10 @@ It is especially useful when you Alt+Tab from a game to a browser, chat app, or 
 - First-run language selection and in-app switching between English, Korean, Japanese, Simplified Chinese, Spanish, French, Portuguese, Hindi, and Arabic.
 - Local config at `%APPDATA%\UnfocusMute\config.json`.
 
+## Anti-Cheat Compatibility
+
+UnfocusMute does not inject into games, read game memory, hook input, or modify game files. Because it only uses Windows process/window information and CoreAudio session mute controls, it is expected to work without issues with most anti-cheat systems, but compatibility with every anti-cheat system cannot be guaranteed.
+
 ## Why Rust
 
 UnfocusMute is a small background utility, so startup speed, memory use, and simple distribution matter. The Rust native executable runs without a separate runtime and talks directly to Windows CoreAudio APIs without carrying an unnecessary resident framework.
