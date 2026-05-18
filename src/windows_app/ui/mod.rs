@@ -1,6 +1,5 @@
 use crate::config::{
-    AppConfig, WindowPosition, config_dir, config_file_exists, config_file_path,
-    normalize_process_name,
+    AppConfig, WindowPosition, config_dir, config_file_exists, normalize_process_name,
 };
 use crate::engine::{AudioSessionKey, TargetMatcher, plan_mute_actions_with_matcher};
 use crate::i18n::{Language, Strings};
@@ -17,57 +16,58 @@ use std::sync::atomic::{AtomicIsize, Ordering};
 use std::time::{Instant, SystemTime};
 use windows::Win32::Foundation::{
     CloseHandle, ERROR_ALREADY_EXISTS, GetLastError, HANDLE, HINSTANCE, HWND, LPARAM, LRESULT,
-    POINT, RECT, SIZE, WPARAM,
+    POINT, RECT, WPARAM,
 };
 use windows::Win32::Graphics::Gdi::{
-    BeginPaint, CreateSolidBrush, DeleteObject, EndPaint, FillRect, FrameRect, GetDC,
-    GetTextExtentPoint32W, HBRUSH, HDC, HGDIOBJ, PAINTSTRUCT, ReleaseDC, SelectObject, SetBkColor,
+    BeginPaint, CreateSolidBrush, EndPaint, FillRect, FrameRect, HDC, PAINTSTRUCT, SetBkColor,
     SetBkMode, SetTextColor, TRANSPARENT,
 };
 use windows::Win32::System::Com::{COINIT_APARTMENTTHREADED, CoInitializeEx, CoUninitialize};
 use windows::Win32::System::LibraryLoader::GetModuleHandleW;
 use windows::Win32::System::Threading::CreateMutexW;
 use windows::Win32::UI::Accessibility::{HWINEVENTHOOK, SetWinEventHook, UnhookWinEvent};
-use windows::Win32::UI::Controls::{
-    BST_CHECKED, BST_UNCHECKED, CB_SETCUEBANNER, CB_SETMINVISIBLE, EM_SETCUEBANNER,
-};
-use windows::Win32::UI::HiDpi::{GetDpiForSystem, GetSystemMetricsForDpi};
+use windows::Win32::UI::Controls::{CB_SETCUEBANNER, CB_SETMINVISIBLE, EM_SETCUEBANNER};
 use windows::Win32::UI::Input::KeyboardAndMouse::{EnableWindow, SetFocus};
 use windows::Win32::UI::Shell::{
     NIF_ICON, NIF_MESSAGE, NIF_TIP, NIM_ADD, NIM_DELETE, NIM_MODIFY, NOTIFYICONDATAW,
     Shell_NotifyIconW, ShellExecuteW,
 };
 use windows::Win32::UI::WindowsAndMessaging::{
-    AppendMenuW, BM_GETCHECK, BM_SETCHECK, BS_AUTOCHECKBOX, BS_DEFPUSHBUTTON, BS_PUSHBUTTON,
-    CB_ADDSTRING, CB_GETCURSEL, CB_RESETCONTENT, CB_SETCURSEL, CB_SETEDITSEL, CB_SHOWDROPDOWN,
-    CBN_CLOSEUP, CBN_EDITCHANGE, CBN_SELCHANGE, CBN_SELENDOK, CBN_SETFOCUS, CBS_DROPDOWN,
-    CBS_DROPDOWNLIST, CREATESTRUCTW, CreatePopupMenu, CreateWindowExW, DefWindowProcW, DestroyMenu,
-    DestroyWindow, DispatchMessageW, ES_AUTOHSCROLL, EVENT_SYSTEM_FOREGROUND, FindWindowW,
-    GWLP_USERDATA, GetCursorPos, GetMessageW, GetSystemMetrics, GetWindowRect, HICON, HMENU,
-    ICON_BIG, ICON_SMALL, IDC_ARROW, IDI_APPLICATION, IMAGE_ICON, LB_ADDSTRING, LB_GETCURSEL,
-    LB_RESETCONTENT, LB_SETCURSEL, LBN_SELCHANGE, LBS_NOTIFY, LR_DEFAULTCOLOR, LoadCursorW,
-    LoadIconW, LoadImageW, MB_ICONINFORMATION, MB_ICONWARNING, MB_OK, MF_SEPARATOR, MF_STRING, MSG,
-    MessageBoxW, MoveWindow, PostMessageW, PostQuitMessage, RegisterClassW, SM_CXICON, SM_CXSCREEN,
-    SM_CXSMICON, SM_CYICON, SM_CYSCREEN, SM_CYSMICON, SW_HIDE, SW_RESTORE, SW_SHOW, SendMessageW,
-    SetForegroundWindow, SetTimer, SetWindowLongPtrW, SetWindowTextW, ShowWindow, TPM_NONOTIFY,
+    AppendMenuW, CB_GETCURSEL, CB_RESETCONTENT, CB_SETCURSEL, CB_SHOWDROPDOWN, CBN_CLOSEUP,
+    CBN_EDITCHANGE, CBN_SELCHANGE, CBN_SELENDOK, CBN_SETFOCUS, CBS_DROPDOWN, CREATESTRUCTW,
+    CreatePopupMenu, CreateWindowExW, DefWindowProcW, DestroyMenu, DestroyWindow, DispatchMessageW,
+    ES_AUTOHSCROLL, EVENT_SYSTEM_FOREGROUND, FindWindowW, GWLP_USERDATA, GetCursorPos, GetMessageW,
+    GetSystemMetrics, GetWindowRect, HICON, ICON_BIG, ICON_SMALL, IDC_ARROW, LB_GETCURSEL,
+    LB_RESETCONTENT, LB_SETCURSEL, LBN_SELCHANGE, LBS_NOTIFY, LoadCursorW, MB_ICONINFORMATION,
+    MB_ICONWARNING, MB_OK, MF_SEPARATOR, MF_STRING, MSG, MessageBoxW, MoveWindow, PostMessageW,
+    PostQuitMessage, RegisterClassW, SM_CXSCREEN, SM_CYSCREEN, SW_HIDE, SW_RESTORE, SW_SHOW,
+    SendMessageW, SetForegroundWindow, SetTimer, SetWindowLongPtrW, ShowWindow, TPM_NONOTIFY,
     TPM_RETURNCMD, TPM_RIGHTBUTTON, TRACK_POPUP_MENU_FLAGS, TrackPopupMenu, TranslateMessage,
     WINDOW_EX_STYLE, WINDOW_STYLE, WINEVENT_OUTOFCONTEXT, WM_CLOSE, WM_COMMAND, WM_CREATE,
     WM_CTLCOLOREDIT, WM_CTLCOLORLISTBOX, WM_CTLCOLORSTATIC, WM_DESTROY, WM_LBUTTONDBLCLK,
     WM_LBUTTONDOWN, WM_MOVE, WM_NCCREATE, WM_NCDESTROY, WM_PAINT, WM_RBUTTONUP, WM_SETFONT,
-    WM_SETICON, WM_TIMER, WNDCLASSW, WS_BORDER, WS_CHILD, WS_CLIPCHILDREN, WS_CLIPSIBLINGS,
-    WS_EX_CLIENTEDGE, WS_OVERLAPPEDWINDOW, WS_TABSTOP, WS_VISIBLE, WS_VSCROLL,
+    WM_SETICON, WM_TIMER, WNDCLASSW, WS_BORDER, WS_CHILD, WS_CLIPCHILDREN, WS_EX_CLIENTEDGE,
+    WS_OVERLAPPEDWINDOW, WS_TABSTOP, WS_VISIBLE, WS_VSCROLL,
 };
 use windows::core::{PCWSTR, w};
 
 mod constants;
 mod controls;
+mod language_prompt;
 mod process_choice;
 mod theme;
+mod win32;
 
 use constants::*;
 use controls::Controls;
+use language_prompt::prompt_initial_language;
 use process_choice::{ProcessChoice, search_terms};
-use theme::{AppTheme, UiFont, ui_font_point_size};
+use theme::AppTheme;
+use win32::{
+    add_combo_item, add_list_item, copy_wide_fixed, create_button, create_checkbox, create_control,
+    create_primary_button, current_config_stamp, hiword, is_checked, load_app_icon, load_tray_icon,
+    loword, measure_text_width, set_checkbox, set_combo_edit_caret, set_text, to_wide, window_text,
+};
 
 static FOREGROUND_EVENT_HWND: AtomicIsize = AtomicIsize::new(0);
 
@@ -276,116 +276,6 @@ fn sync_startup_setting(config: &mut AppConfig) {
 
 fn should_start_hidden(first_run: bool, forced_minimized: bool, start_minimized: bool) -> bool {
     !first_run && (forced_minimized || start_minimized)
-}
-
-struct LanguagePrompt {
-    hwnd: HWND,
-    title_label: HWND,
-    subtitle_label: HWND,
-    combo: HWND,
-    launch_on_startup_check: HWND,
-    start_button: HWND,
-    done: bool,
-    selected: Option<InitialPreferences>,
-    current: Language,
-    launch_on_startup: bool,
-    brush: HBRUSH,
-    font: UiFont,
-}
-
-#[derive(Clone, Copy)]
-struct InitialPreferences {
-    language: Language,
-    launch_on_startup: bool,
-}
-
-impl LanguagePrompt {
-    fn new(current: Language, launch_on_startup: bool) -> Self {
-        Self {
-            hwnd: HWND::default(),
-            title_label: HWND::default(),
-            subtitle_label: HWND::default(),
-            combo: HWND::default(),
-            launch_on_startup_check: HWND::default(),
-            start_button: HWND::default(),
-            done: false,
-            selected: None,
-            current,
-            launch_on_startup,
-            brush: unsafe { CreateSolidBrush(PAGE_COLOR) },
-            font: UiFont::new(ui_font_point_size(current)),
-        }
-    }
-}
-
-impl Drop for LanguagePrompt {
-    fn drop(&mut self) {
-        unsafe {
-            let _ = DeleteObject(HGDIOBJ(self.brush.0));
-        }
-    }
-}
-
-unsafe fn prompt_initial_language(
-    instance: HINSTANCE,
-    icon: HICON,
-    current: Language,
-    launch_on_startup: bool,
-) -> Result<Option<InitialPreferences>> {
-    let cursor = unsafe { LoadCursorW(None, IDC_ARROW).context("load language prompt cursor")? };
-    let background = unsafe { CreateSolidBrush(PAGE_COLOR) };
-    let class = WNDCLASSW {
-        style: Default::default(),
-        lpfnWndProc: Some(language_prompt_proc),
-        cbClsExtra: 0,
-        cbWndExtra: 0,
-        hInstance: instance,
-        hIcon: icon,
-        hCursor: cursor,
-        hbrBackground: background,
-        lpszMenuName: PCWSTR::null(),
-        lpszClassName: LANGUAGE_PROMPT_CLASS_NAME,
-    };
-    unsafe {
-        RegisterClassW(&class);
-    }
-
-    let mut state = Box::new(LanguagePrompt::new(current, launch_on_startup));
-    let state_ptr = state.as_mut() as *mut LanguagePrompt;
-    let title = to_wide(current.strings().first_run_window_title);
-    let position = centered_position(520, 270);
-    let hwnd = unsafe {
-        CreateWindowExW(
-            WINDOW_EX_STYLE(0),
-            LANGUAGE_PROMPT_CLASS_NAME,
-            PCWSTR(title.as_ptr()),
-            WS_OVERLAPPEDWINDOW,
-            position.x,
-            position.y,
-            520,
-            270,
-            None,
-            None,
-            Some(instance),
-            Some(state_ptr.cast()),
-        )
-        .context("create language prompt")?
-    };
-
-    unsafe {
-        let _ = ShowWindow(hwnd, SW_SHOW);
-        let _ = SetForegroundWindow(hwnd);
-    }
-
-    let mut msg = MSG::default();
-    while !state.done && unsafe { GetMessageW(&mut msg, None, 0, 0).as_bool() } {
-        unsafe {
-            let _ = TranslateMessage(&msg);
-            DispatchMessageW(&msg);
-        }
-    }
-
-    Ok(state.selected)
 }
 
 fn initial_window_position(config: &AppConfig) -> WindowPosition {
@@ -1185,25 +1075,12 @@ impl AppWindow {
             self.reset_audio_after_endpoint_change();
         }
 
-        if self.audio.is_none() {
-            match AudioController::new() {
-                Ok(audio) => {
-                    self.audio = Some(audio);
-                    self.clear_issue(StatusIssue::AudioUnavailable);
-                }
-                Err(_) => {
-                    self.set_issue(StatusIssue::AudioUnavailable);
-                    return;
-                }
-            }
+        if !self.ensure_audio_controller(true) {
+            return;
         }
 
-        let sessions = match self
-            .audio
-            .as_ref()
-            .expect("audio controller initialized")
-            .sessions()
-        {
+        let Some(audio) = &self.audio else { return };
+        let sessions = match audio.sessions() {
             Ok(sessions) => {
                 self.clear_issue(StatusIssue::AudioUnavailable);
                 sessions
@@ -1233,12 +1110,8 @@ impl AppWindow {
             &sessions,
         );
 
-        let apply_result = match self
-            .audio
-            .as_ref()
-            .expect("audio controller initialized")
-            .set_mutes(&actions)
-        {
+        let Some(audio) = &self.audio else { return };
+        let apply_result = match audio.set_mutes(&actions) {
             Ok(result) => result,
             Err(_) => {
                 self.audio = None;
@@ -1246,11 +1119,9 @@ impl AppWindow {
                 return;
             }
         };
+        self.apply_audio_update_result(apply_result.had_failures);
         if apply_result.had_failures {
-            self.set_issue(StatusIssue::AudioUpdateFailed);
             self.audio = None;
-        } else {
-            self.clear_issue(StatusIssue::AudioUpdateFailed);
         }
         for action in actions {
             if apply_result.changed_sessions.contains(&action.key) {
@@ -1301,11 +1172,8 @@ impl AppWindow {
 
     fn reset_audio_after_endpoint_change(&mut self) {
         if let Some(audio) = &self.audio {
-            if restore_mute_set(audio, &mut self.muted_by_app) {
-                self.set_issue(StatusIssue::AudioUpdateFailed);
-            } else {
-                self.clear_issue(StatusIssue::AudioUpdateFailed);
-            }
+            let had_failures = restore_mute_set(audio, &mut self.muted_by_app);
+            self.apply_audio_update_result(had_failures);
         }
         self.audio = None;
     }
@@ -1315,25 +1183,43 @@ impl AppWindow {
             return;
         }
 
-        if self.audio.is_none() {
-            match AudioController::new() {
-                Ok(audio) => {
-                    self.audio = Some(audio);
-                    self.clear_issue(StatusIssue::AudioUnavailable);
-                }
-                Err(_) => {
-                    self.set_issue(StatusIssue::AudioUnavailable);
-                    return;
-                }
-            }
+        if !self.ensure_audio_controller(true) {
+            return;
         }
 
         if let Some(audio) = &self.audio {
-            if restore_mute_set(audio, &mut self.muted_by_app) {
-                self.set_issue(StatusIssue::AudioUpdateFailed);
-            } else {
-                self.clear_issue(StatusIssue::AudioUpdateFailed);
+            let had_failures = restore_mute_set(audio, &mut self.muted_by_app);
+            self.apply_audio_update_result(had_failures);
+        }
+    }
+
+    fn ensure_audio_controller(&mut self, report_issue: bool) -> bool {
+        if self.audio.is_some() {
+            return true;
+        }
+
+        match AudioController::new() {
+            Ok(audio) => {
+                self.audio = Some(audio);
+                if report_issue {
+                    self.clear_issue(StatusIssue::AudioUnavailable);
+                }
+                true
             }
+            Err(_) => {
+                if report_issue {
+                    self.set_issue(StatusIssue::AudioUnavailable);
+                }
+                false
+            }
+        }
+    }
+
+    fn apply_audio_update_result(&mut self, had_failures: bool) {
+        if had_failures {
+            self.set_issue(StatusIssue::AudioUpdateFailed);
+        } else {
+            self.clear_issue(StatusIssue::AudioUpdateFailed);
         }
     }
 
@@ -1866,9 +1752,7 @@ impl AppWindow {
         self.foreground_hook = None;
         self.save_window_position();
         if self.config.restore_muted_on_exit && !self.muted_by_app.is_empty() {
-            if self.audio.is_none() {
-                self.audio = AudioController::new().ok();
-            }
+            self.ensure_audio_controller(false);
             if let Some(audio) = &self.audio {
                 let _ = restore_mute_set(audio, &mut self.muted_by_app);
             }
@@ -2137,515 +2021,4 @@ unsafe extern "system" fn window_proc(
     }
 
     unsafe { DefWindowProcW(hwnd, message, wparam, lparam) }
-}
-
-unsafe extern "system" fn language_prompt_proc(
-    hwnd: HWND,
-    message: u32,
-    wparam: WPARAM,
-    lparam: LPARAM,
-) -> LRESULT {
-    if message == WM_NCCREATE {
-        let create = lparam.0 as *const CREATESTRUCTW;
-        if !create.is_null() {
-            let prompt = unsafe { (*create).lpCreateParams as *mut LanguagePrompt };
-            unsafe {
-                SetWindowLongPtrW(hwnd, GWLP_USERDATA, prompt as isize);
-            }
-        }
-        return LRESULT(1);
-    }
-
-    let prompt = unsafe {
-        let ptr = windows::Win32::UI::WindowsAndMessaging::GetWindowLongPtrW(hwnd, GWLP_USERDATA)
-            as *mut LanguagePrompt;
-        ptr.as_mut()
-    };
-
-    if let Some(prompt) = prompt {
-        match message {
-            WM_CREATE => {
-                if unsafe { prompt.create_controls(hwnd) }.is_err() {
-                    return LRESULT(-1);
-                }
-                return LRESULT(0);
-            }
-            WM_COMMAND => {
-                let id = loword(wparam.0 as u32) as i32;
-                let notification = hiword(wparam.0 as u32);
-                if id == ID_LANGUAGE_PROMPT_OK {
-                    prompt.accept();
-                    unsafe {
-                        let _ = DestroyWindow(hwnd);
-                    }
-                } else if id == ID_LANGUAGE_PROMPT_COMBO
-                    && (notification == CBN_SELCHANGE as u16 || notification == CBN_SELENDOK as u16)
-                {
-                    prompt.refresh_prompt_text();
-                }
-                return LRESULT(0);
-            }
-            WM_CLOSE => {
-                prompt.done = true;
-                unsafe {
-                    let _ = DestroyWindow(hwnd);
-                }
-                return LRESULT(0);
-            }
-            WM_CTLCOLORSTATIC => {
-                let hdc = HDC(wparam.0 as *mut c_void);
-                unsafe {
-                    let _ = SetBkMode(hdc, TRANSPARENT);
-                    let _ = SetTextColor(hdc, TEXT_COLOR);
-                }
-                return LRESULT(prompt.brush.0 as isize);
-            }
-            WM_NCDESTROY => unsafe {
-                SetWindowLongPtrW(hwnd, GWLP_USERDATA, 0);
-            },
-            _ => {}
-        }
-    }
-
-    unsafe { DefWindowProcW(hwnd, message, wparam, lparam) }
-}
-
-impl LanguagePrompt {
-    unsafe fn create_controls(&mut self, hwnd: HWND) -> Result<()> {
-        self.hwnd = hwnd;
-        let instance = HINSTANCE(unsafe { GetModuleHandleW(None)?.0 });
-        let child = WS_CHILD | WS_VISIBLE;
-        let strings = self.current.strings();
-
-        self.title_label = unsafe {
-            create_control(
-                hwnd,
-                instance,
-                w!("STATIC"),
-                strings.first_run_language_title,
-                child,
-                WINDOW_EX_STYLE(0),
-                32,
-                28,
-                456,
-                24,
-                0,
-            )?
-        };
-        self.subtitle_label = unsafe {
-            create_control(
-                hwnd,
-                instance,
-                w!("STATIC"),
-                strings.first_run_language_subtitle,
-                child,
-                WINDOW_EX_STYLE(0),
-                32,
-                56,
-                456,
-                22,
-                0,
-            )?
-        };
-        self.combo = unsafe {
-            create_control(
-                hwnd,
-                instance,
-                w!("COMBOBOX"),
-                "",
-                child | WS_TABSTOP | WINDOW_STYLE(CBS_DROPDOWNLIST as u32),
-                WS_EX_CLIENTEDGE,
-                32,
-                92,
-                240,
-                210,
-                ID_LANGUAGE_PROMPT_COMBO,
-            )?
-        };
-        self.launch_on_startup_check = unsafe {
-            create_checkbox(
-                hwnd,
-                instance,
-                strings.launch_on_startup,
-                32,
-                136,
-                456,
-                26,
-                ID_LANGUAGE_PROMPT_STARTUP,
-            )?
-        };
-        self.start_button = unsafe {
-            create_primary_button(
-                hwnd,
-                instance,
-                strings.first_run_start,
-                390,
-                174,
-                96,
-                34,
-                ID_LANGUAGE_PROMPT_OK,
-            )?
-        };
-
-        unsafe {
-            self.apply_font();
-            for language in Language::ALL {
-                add_combo_item(self.combo, language.native_name());
-            }
-            SendMessageW(
-                self.combo,
-                CB_SETMINVISIBLE,
-                Some(WPARAM(Language::ALL.len())),
-                None,
-            );
-            let index = Language::ALL
-                .iter()
-                .position(|language| *language == self.current)
-                .unwrap_or(0);
-            SendMessageW(self.combo, CB_SETCURSEL, Some(WPARAM(index)), None);
-            set_checkbox(self.launch_on_startup_check, self.launch_on_startup);
-        }
-
-        Ok(())
-    }
-
-    unsafe fn apply_font(&self) {
-        unsafe {
-            for control in [
-                self.title_label,
-                self.subtitle_label,
-                self.combo,
-                self.launch_on_startup_check,
-                self.start_button,
-            ] {
-                SendMessageW(
-                    control,
-                    WM_SETFONT,
-                    Some(self.font.wparam()),
-                    Some(LPARAM(1)),
-                );
-            }
-        }
-    }
-
-    fn selected_language(&self) -> Language {
-        let index = unsafe { SendMessageW(self.combo, CB_GETCURSEL, None, None).0 };
-        Language::ALL
-            .get(index as usize)
-            .copied()
-            .unwrap_or(self.current)
-    }
-
-    fn refresh_prompt_text(&mut self) {
-        let language = self.selected_language();
-        self.font = UiFont::new(ui_font_point_size(language));
-        let strings = language.strings();
-        unsafe {
-            self.apply_font();
-            set_text(self.hwnd, strings.first_run_window_title);
-            set_text(self.title_label, strings.first_run_language_title);
-            set_text(self.subtitle_label, strings.first_run_language_subtitle);
-            set_text(self.launch_on_startup_check, strings.launch_on_startup);
-            set_text(self.start_button, strings.first_run_start);
-        }
-    }
-
-    fn accept(&mut self) {
-        self.selected = Some(InitialPreferences {
-            language: self.selected_language(),
-            launch_on_startup: unsafe { is_checked(self.launch_on_startup_check) },
-        });
-        self.done = true;
-    }
-}
-
-#[allow(clippy::too_many_arguments)]
-unsafe fn create_button(
-    parent: HWND,
-    instance: HINSTANCE,
-    text: &str,
-    x: i32,
-    y: i32,
-    width: i32,
-    height: i32,
-    id: i32,
-) -> Result<HWND> {
-    unsafe {
-        create_control(
-            parent,
-            instance,
-            w!("BUTTON"),
-            text,
-            WS_CHILD | WS_VISIBLE | WS_TABSTOP | WINDOW_STYLE(BS_PUSHBUTTON as u32),
-            WINDOW_EX_STYLE(0),
-            x,
-            y,
-            width,
-            height,
-            id,
-        )
-    }
-}
-
-#[allow(clippy::too_many_arguments)]
-unsafe fn create_primary_button(
-    parent: HWND,
-    instance: HINSTANCE,
-    text: &str,
-    x: i32,
-    y: i32,
-    width: i32,
-    height: i32,
-    id: i32,
-) -> Result<HWND> {
-    unsafe {
-        create_control(
-            parent,
-            instance,
-            w!("BUTTON"),
-            text,
-            WS_CHILD | WS_VISIBLE | WS_TABSTOP | WINDOW_STYLE(BS_DEFPUSHBUTTON as u32),
-            WINDOW_EX_STYLE(0),
-            x,
-            y,
-            width,
-            height,
-            id,
-        )
-    }
-}
-
-#[allow(clippy::too_many_arguments)]
-unsafe fn create_checkbox(
-    parent: HWND,
-    instance: HINSTANCE,
-    text: &str,
-    x: i32,
-    y: i32,
-    width: i32,
-    height: i32,
-    id: i32,
-) -> Result<HWND> {
-    unsafe {
-        create_control(
-            parent,
-            instance,
-            w!("BUTTON"),
-            text,
-            WS_CHILD
-                | WS_VISIBLE
-                | WS_TABSTOP
-                | WS_CLIPSIBLINGS
-                | WINDOW_STYLE(BS_AUTOCHECKBOX as u32),
-            WINDOW_EX_STYLE(0),
-            x,
-            y,
-            width,
-            height,
-            id,
-        )
-    }
-}
-
-#[allow(clippy::too_many_arguments)]
-unsafe fn create_control(
-    parent: HWND,
-    instance: HINSTANCE,
-    class: PCWSTR,
-    text: &str,
-    style: WINDOW_STYLE,
-    ex_style: WINDOW_EX_STYLE,
-    x: i32,
-    y: i32,
-    width: i32,
-    height: i32,
-    id: i32,
-) -> Result<HWND> {
-    let text = to_wide(text);
-    unsafe {
-        CreateWindowExW(
-            ex_style,
-            class,
-            PCWSTR(text.as_ptr()),
-            style | WS_CLIPSIBLINGS,
-            x,
-            y,
-            width,
-            height,
-            Some(parent),
-            Some(HMENU(id as isize as *mut c_void)),
-            Some(instance),
-            None,
-        )
-        .context("create child control")
-    }
-}
-
-unsafe fn set_text(hwnd: HWND, text: &str) {
-    let wide = to_wide(text);
-    let _ = unsafe { SetWindowTextW(hwnd, PCWSTR(wide.as_ptr())) };
-}
-
-unsafe fn measure_text_width(hwnd: HWND, font: HGDIOBJ, text: &str) -> i32 {
-    let fallback_width = text.chars().count() as i32 * 8;
-    let wide: Vec<u16> = text.encode_utf16().collect();
-    if wide.is_empty() {
-        return 0;
-    }
-
-    let hdc = unsafe { GetDC(Some(hwnd)) };
-    if hdc.0.is_null() {
-        return fallback_width;
-    }
-
-    let previous = unsafe { SelectObject(hdc, font) };
-    let mut size = SIZE::default();
-    let width = if unsafe { GetTextExtentPoint32W(hdc, &wide, &mut size).as_bool() } {
-        size.cx
-    } else {
-        fallback_width
-    };
-    if !previous.0.is_null() {
-        unsafe {
-            let _ = SelectObject(hdc, previous);
-        }
-    }
-    unsafe {
-        let _ = ReleaseDC(Some(hwnd), hdc);
-    }
-    width
-}
-
-unsafe fn window_text(hwnd: HWND) -> String {
-    let mut buffer = vec![0u16; 512];
-    let len = unsafe { windows::Win32::UI::WindowsAndMessaging::GetWindowTextW(hwnd, &mut buffer) };
-    String::from_utf16_lossy(&buffer[..len.max(0) as usize])
-}
-
-unsafe fn add_list_item(hwnd: HWND, text: &str) {
-    let wide = to_wide(text);
-    unsafe {
-        SendMessageW(
-            hwnd,
-            LB_ADDSTRING,
-            None,
-            Some(LPARAM(wide.as_ptr() as isize)),
-        );
-    }
-}
-
-unsafe fn add_combo_item(hwnd: HWND, text: &str) {
-    let wide = to_wide(text);
-    unsafe {
-        SendMessageW(
-            hwnd,
-            CB_ADDSTRING,
-            None,
-            Some(LPARAM(wide.as_ptr() as isize)),
-        );
-    }
-}
-
-unsafe fn set_checkbox(hwnd: HWND, checked: bool) {
-    unsafe {
-        SendMessageW(
-            hwnd,
-            BM_SETCHECK,
-            Some(WPARAM(if checked {
-                BST_CHECKED.0 as usize
-            } else {
-                BST_UNCHECKED.0 as usize
-            })),
-            None,
-        );
-    }
-}
-
-unsafe fn set_combo_edit_caret(hwnd: HWND, text_len: usize) {
-    let position = text_len.min(u16::MAX as usize) as u16;
-    unsafe {
-        set_combo_edit_selection(hwnd, position, position);
-    }
-}
-
-unsafe fn set_combo_edit_selection(hwnd: HWND, start: u16, end: u16) {
-    let selection = ((end as u32) << 16) | start as u32;
-    unsafe {
-        SendMessageW(
-            hwnd,
-            CB_SETEDITSEL,
-            Some(WPARAM(0)),
-            Some(LPARAM(selection as i32 as isize)),
-        );
-    }
-}
-
-unsafe fn is_checked(hwnd: HWND) -> bool {
-    unsafe { SendMessageW(hwnd, BM_GETCHECK, None, None).0 as u32 == BST_CHECKED.0 }
-}
-
-unsafe fn load_app_icon(instance: HINSTANCE) -> HICON {
-    let size = unsafe { GetSystemMetrics(SM_CXICON).max(GetSystemMetrics(SM_CYICON)) };
-    unsafe {
-        load_sized_app_icon(instance, size)
-            .or_else(|| LoadIconW(Some(instance), int_resource(1)).ok())
-            .unwrap_or_else(|| LoadIconW(None, IDI_APPLICATION).unwrap_or_default())
-    }
-}
-
-unsafe fn load_tray_icon(instance: HINSTANCE) -> HICON {
-    let size = unsafe {
-        let dpi = GetDpiForSystem();
-        GetSystemMetricsForDpi(SM_CXSMICON, dpi).max(GetSystemMetricsForDpi(SM_CYSMICON, dpi))
-    };
-    unsafe { load_sized_app_icon(instance, size).unwrap_or_else(|| load_app_icon(instance)) }
-}
-
-unsafe fn load_sized_app_icon(instance: HINSTANCE, size: i32) -> Option<HICON> {
-    unsafe {
-        LoadImageW(
-            Some(instance),
-            int_resource(1),
-            IMAGE_ICON,
-            size,
-            size,
-            LR_DEFAULTCOLOR,
-        )
-        .ok()
-        .map(|handle| HICON(handle.0))
-    }
-}
-
-#[allow(clippy::manual_dangling_ptr)]
-fn int_resource(id: u16) -> PCWSTR {
-    PCWSTR(id as usize as *const u16)
-}
-
-fn copy_wide_fixed(text: &str, destination: &mut [u16]) {
-    let wide = to_wide(text);
-    let count = wide.len().min(destination.len());
-    destination[..count].copy_from_slice(&wide[..count]);
-    if let Some(last) = destination.last_mut() {
-        *last = 0;
-    }
-}
-
-fn current_config_stamp() -> Option<ConfigFileStamp> {
-    let metadata = fs::metadata(config_file_path().ok()?).ok()?;
-    Some(ConfigFileStamp {
-        modified: metadata.modified().ok()?,
-        len: metadata.len(),
-    })
-}
-
-fn to_wide(text: &str) -> Vec<u16> {
-    text.encode_utf16().chain(std::iter::once(0)).collect()
-}
-
-fn loword(value: u32) -> u16 {
-    (value & 0xffff) as u16
-}
-
-fn hiword(value: u32) -> u16 {
-    ((value >> 16) & 0xffff) as u16
 }
