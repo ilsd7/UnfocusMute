@@ -121,14 +121,20 @@ impl AppConfig {
 
     pub fn save(&self) -> io::Result<()> {
         let path = config_file_path()?;
+        self.save_to_path(&path)
+    }
+
+    fn save_to_path(&self, path: &Path) -> io::Result<()> {
         if let Some(parent) = path.parent() {
             fs::create_dir_all(parent)?;
         }
 
+        backup_invalid_existing_config(path)?;
+
         let temp_path = path.with_extension("json.tmp");
         let json = serde_json::to_string_pretty(self).map_err(io::Error::other)?;
         fs::write(&temp_path, json)?;
-        replace_file(&temp_path, &path)
+        replace_file(&temp_path, path)
     }
 
     pub fn add_target(&mut self, name: impl AsRef<str>) -> bool {
@@ -203,6 +209,23 @@ impl AppConfig {
 
 fn parse_config(raw: &str) -> io::Result<AppConfig> {
     serde_json::from_str::<AppConfig>(raw).map_err(io::Error::other)
+}
+
+fn backup_invalid_existing_config(path: &Path) -> io::Result<()> {
+    match fs::read_to_string(path) {
+        Ok(raw) => {
+            if parse_config(&raw).is_err() {
+                backup_invalid_config(path)?;
+            }
+        }
+        Err(error) if error.kind() == io::ErrorKind::NotFound => {}
+        Err(error) if error.kind() == io::ErrorKind::InvalidData => {
+            backup_invalid_config(path)?;
+        }
+        Err(error) => return Err(error),
+    }
+
+    Ok(())
 }
 
 fn replace_file(temp_path: &Path, destination: &Path) -> io::Result<()> {
@@ -481,5 +504,35 @@ mod tests {
         assert_ne!(backup_path, config_path);
         assert_eq!(fs::read_to_string(backup_path).unwrap(), "{not valid json");
         assert_eq!(fs::read_to_string(config_path).unwrap(), "{not valid json");
+    }
+
+    #[test]
+    fn save_backs_up_invalid_existing_config_before_replacing() {
+        let dir = tempfile::tempdir().unwrap();
+        let config_path = dir.path().join("config.json");
+        fs::write(&config_path, "{not valid json").unwrap();
+
+        AppConfig::default().save_to_path(&config_path).unwrap();
+
+        assert!(
+            fs::read_to_string(&config_path)
+                .unwrap()
+                .contains("\"version\"")
+        );
+        let backups = fs::read_dir(dir.path())
+            .unwrap()
+            .filter_map(Result::ok)
+            .filter(|entry| {
+                entry
+                    .file_name()
+                    .to_string_lossy()
+                    .starts_with("config.invalid-")
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(backups.len(), 1);
+        assert_eq!(
+            fs::read_to_string(backups[0].path()).unwrap(),
+            "{not valid json"
+        );
     }
 }
