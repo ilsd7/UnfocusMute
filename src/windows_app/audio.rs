@@ -1,6 +1,6 @@
 use crate::engine::{AudioSessionKey, AudioSessionSnapshot, MuteAction};
 use crate::windows_app::process;
-use anyhow::{Context, Result};
+use anyhow::{Context, Result, bail};
 use std::collections::{HashMap, HashSet, hash_map::Entry};
 use std::sync::{
     Arc,
@@ -8,15 +8,15 @@ use std::sync::{
 };
 use windows::Win32::Foundation::PROPERTYKEY;
 use windows::Win32::Media::Audio::{
-    DEVICE_STATE, EDataFlow, ERole, IAudioSessionControl2, IAudioSessionManager2, IMMDevice,
-    IMMDeviceEnumerator, IMMNotificationClient, IMMNotificationClient_Impl, ISimpleAudioVolume,
-    MMDeviceEnumerator, eMultimedia, eRender,
+    DEVICE_STATE, DEVICE_STATE_ACTIVE, EDataFlow, ERole, IAudioSessionControl2,
+    IAudioSessionManager2, IMMDeviceEnumerator, IMMNotificationClient, IMMNotificationClient_Impl,
+    ISimpleAudioVolume, MMDeviceEnumerator, eMultimedia, eRender,
 };
 use windows::Win32::System::Com::{CLSCTX_ALL, CoCreateInstance, CoTaskMemFree};
 use windows::core::{Interface, PCWSTR, PWSTR, implement};
 
 pub struct AudioController {
-    manager: IAudioSessionManager2,
+    managers: Vec<IAudioSessionManager2>,
     endpoint_notification: Option<EndpointNotification>,
 }
 
@@ -30,12 +30,9 @@ impl AudioController {
         unsafe {
             let enumerator = device_enumerator()?;
             let endpoint_notification = EndpointNotification::new(&enumerator).ok();
-            let device = default_render_endpoint(&enumerator)?;
-            let manager = device
-                .Activate::<IAudioSessionManager2>(CLSCTX_ALL, None)
-                .context("activate audio session manager")?;
+            let managers = active_render_session_managers(&enumerator)?;
             Ok(Self {
-                manager,
+                managers,
                 endpoint_notification,
             })
         }
@@ -49,33 +46,36 @@ impl AudioController {
 
     pub fn sessions(&self) -> Result<Vec<AudioSessionSnapshot>> {
         unsafe {
-            let enumerator = self
-                .manager
-                .GetSessionEnumerator()
-                .context("get audio session enumerator")?;
-            let count = enumerator.GetCount().context("get audio session count")?;
-            let mut sessions = Vec::with_capacity(count.max(0) as usize);
+            let mut sessions = Vec::new();
             let mut process_names = HashMap::<u32, Option<String>>::new();
 
-            for index in 0..count {
-                let Ok(control) = enumerator.GetSession(index) else {
-                    continue;
-                };
-                let Ok(control2) = control.cast::<IAudioSessionControl2>() else {
-                    continue;
-                };
-                let Some(key) = session_key(&control2, &mut process_names) else {
-                    continue;
-                };
-                let Ok(volume) = control.cast::<ISimpleAudioVolume>() else {
-                    continue;
-                };
-                let muted = volume
-                    .GetMute()
-                    .map(|value| value.as_bool())
-                    .unwrap_or(false);
+            for manager in &self.managers {
+                let enumerator = manager
+                    .GetSessionEnumerator()
+                    .context("get audio session enumerator")?;
+                let count = enumerator.GetCount().context("get audio session count")?;
+                sessions.reserve(count as usize);
 
-                sessions.push(AudioSessionSnapshot { key, muted });
+                for index in 0..count {
+                    let Ok(control) = enumerator.GetSession(index) else {
+                        continue;
+                    };
+                    let Ok(control2) = control.cast::<IAudioSessionControl2>() else {
+                        continue;
+                    };
+                    let Some(key) = session_key(&control2, &mut process_names) else {
+                        continue;
+                    };
+                    let Ok(volume) = control.cast::<ISimpleAudioVolume>() else {
+                        continue;
+                    };
+                    let muted = volume
+                        .GetMute()
+                        .map(|value| value.as_bool())
+                        .unwrap_or(false);
+
+                    sessions.push(AudioSessionSnapshot { key, muted });
+                }
             }
 
             Ok(sessions)
@@ -99,34 +99,35 @@ impl AudioController {
         let mut process_names = HashMap::<u32, Option<String>>::new();
 
         unsafe {
-            let enumerator = self
-                .manager
-                .GetSessionEnumerator()
-                .context("get audio session enumerator")?;
-            let count = enumerator.GetCount().context("get audio session count")?;
+            for manager in &self.managers {
+                let enumerator = manager
+                    .GetSessionEnumerator()
+                    .context("get audio session enumerator")?;
+                let count = enumerator.GetCount().context("get audio session count")?;
 
-            for index in 0..count {
-                let Ok(control) = enumerator.GetSession(index) else {
-                    continue;
-                };
-                let Ok(control2) = control.cast::<IAudioSessionControl2>() else {
-                    continue;
-                };
-                let Some(key) = session_key(&control2, &mut process_names) else {
-                    continue;
-                };
-                let Some(mute) = desired_mutes.get(&key).copied() else {
-                    continue;
-                };
-                let Ok(volume) = control.cast::<ISimpleAudioVolume>() else {
-                    had_failures = true;
-                    continue;
-                };
-                if volume.SetMute(mute, std::ptr::null()).is_err() {
-                    had_failures = true;
-                    continue;
+                for index in 0..count {
+                    let Ok(control) = enumerator.GetSession(index) else {
+                        continue;
+                    };
+                    let Ok(control2) = control.cast::<IAudioSessionControl2>() else {
+                        continue;
+                    };
+                    let Some(key) = session_key(&control2, &mut process_names) else {
+                        continue;
+                    };
+                    let Some(mute) = desired_mutes.get(&key).copied() else {
+                        continue;
+                    };
+                    let Ok(volume) = control.cast::<ISimpleAudioVolume>() else {
+                        had_failures = true;
+                        continue;
+                    };
+                    if volume.SetMute(mute, std::ptr::null()).is_err() {
+                        had_failures = true;
+                        continue;
+                    }
+                    changed_sessions.insert(key);
                 }
-                changed_sessions.insert(key);
             }
         }
 
@@ -139,28 +140,29 @@ impl AudioController {
     pub fn set_mute(&self, key: &AudioSessionKey, mute: bool) -> Result<()> {
         let mut process_names = HashMap::<u32, Option<String>>::new();
         unsafe {
-            let enumerator = self
-                .manager
-                .GetSessionEnumerator()
-                .context("get audio session enumerator")?;
-            let count = enumerator.GetCount().context("get audio session count")?;
+            for manager in &self.managers {
+                let enumerator = manager
+                    .GetSessionEnumerator()
+                    .context("get audio session enumerator")?;
+                let count = enumerator.GetCount().context("get audio session count")?;
 
-            for index in 0..count {
-                let Ok(control) = enumerator.GetSession(index) else {
-                    continue;
-                };
-                let Ok(control2) = control.cast::<IAudioSessionControl2>() else {
-                    continue;
-                };
-                if session_key(&control2, &mut process_names).as_ref() != Some(key) {
-                    continue;
+                for index in 0..count {
+                    let Ok(control) = enumerator.GetSession(index) else {
+                        continue;
+                    };
+                    let Ok(control2) = control.cast::<IAudioSessionControl2>() else {
+                        continue;
+                    };
+                    if session_key(&control2, &mut process_names).as_ref() != Some(key) {
+                        continue;
+                    }
+                    let volume = control
+                        .cast::<ISimpleAudioVolume>()
+                        .context("get simple audio volume")?;
+                    volume
+                        .SetMute(mute, std::ptr::null())
+                        .context("set session mute")?;
                 }
-                let volume = control
-                    .cast::<ISimpleAudioVolume>()
-                    .context("get simple audio volume")?;
-                volume
-                    .SetMute(mute, std::ptr::null())
-                    .context("set session mute")?;
             }
         }
         Ok(())
@@ -217,14 +219,17 @@ impl IMMNotificationClient_Impl for EndpointNotificationClient_Impl {
         _pwstrdeviceid: &PCWSTR,
         _dwnewstate: DEVICE_STATE,
     ) -> windows::core::Result<()> {
+        self.changed.store(true, Ordering::Release);
         Ok(())
     }
 
     fn OnDeviceAdded(&self, _pwstrdeviceid: &PCWSTR) -> windows::core::Result<()> {
+        self.changed.store(true, Ordering::Release);
         Ok(())
     }
 
     fn OnDeviceRemoved(&self, _pwstrdeviceid: &PCWSTR) -> windows::core::Result<()> {
+        self.changed.store(true, Ordering::Release);
         Ok(())
     }
 
@@ -245,6 +250,7 @@ impl IMMNotificationClient_Impl for EndpointNotificationClient_Impl {
         _pwstrdeviceid: &PCWSTR,
         _key: &PROPERTYKEY,
     ) -> windows::core::Result<()> {
+        self.changed.store(true, Ordering::Release);
         Ok(())
     }
 }
@@ -280,9 +286,33 @@ unsafe fn device_enumerator() -> Result<IMMDeviceEnumerator> {
         .context("create audio device enumerator")
 }
 
-unsafe fn default_render_endpoint(enumerator: &IMMDeviceEnumerator) -> Result<IMMDevice> {
-    unsafe { enumerator.GetDefaultAudioEndpoint(eRender, eMultimedia) }
-        .context("get default render endpoint")
+unsafe fn active_render_session_managers(
+    enumerator: &IMMDeviceEnumerator,
+) -> Result<Vec<IAudioSessionManager2>> {
+    let endpoints = unsafe {
+        enumerator
+            .EnumAudioEndpoints(eRender, DEVICE_STATE_ACTIVE)
+            .context("enumerate active render endpoints")?
+    };
+    let count = unsafe { endpoints.GetCount().context("get render endpoint count")? };
+    let mut managers = Vec::with_capacity(count as usize);
+
+    for index in 0..count {
+        let Ok(device) = (unsafe { endpoints.Item(index) }) else {
+            continue;
+        };
+        let Ok(manager) = (unsafe { device.Activate::<IAudioSessionManager2>(CLSCTX_ALL, None) })
+        else {
+            continue;
+        };
+        managers.push(manager);
+    }
+
+    if managers.is_empty() {
+        bail!("no active render endpoints with audio session managers");
+    }
+
+    Ok(managers)
 }
 
 unsafe fn co_task_mem_string(value: PWSTR) -> Option<String> {

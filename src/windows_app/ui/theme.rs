@@ -1,0 +1,105 @@
+use super::constants::{PANEL_BORDER_COLOR, PANEL_COLOR};
+use crate::i18n::Language;
+use windows::Win32::Foundation::WPARAM;
+use windows::Win32::Graphics::Gdi::{
+    CLIP_DEFAULT_PRECIS, CreateFontW, CreateSolidBrush, DEFAULT_CHARSET, DEFAULT_GUI_FONT,
+    DEFAULT_QUALITY, DeleteObject, FF_DONTCARE, FW_NORMAL, GetStockObject, HBRUSH, HGDIOBJ,
+    OUT_DEFAULT_PRECIS,
+};
+use windows::Win32::UI::HiDpi::GetDpiForSystem;
+use windows::core::w;
+
+pub(super) struct AppTheme {
+    pub(super) panel_brush: HBRUSH,
+    pub(super) border_brush: HBRUSH,
+    pub(super) font: UiFont,
+}
+
+impl AppTheme {
+    pub(super) fn new(language: Language) -> Self {
+        Self {
+            panel_brush: unsafe { CreateSolidBrush(PANEL_COLOR) },
+            border_brush: unsafe { CreateSolidBrush(PANEL_BORDER_COLOR) },
+            font: UiFont::new(ui_font_point_size(language)),
+        }
+    }
+
+    pub(super) fn set_font_language(&mut self, language: Language) {
+        self.font = UiFont::new(ui_font_point_size(language));
+    }
+}
+
+impl Drop for AppTheme {
+    fn drop(&mut self) {
+        unsafe {
+            let _ = DeleteObject(HGDIOBJ(self.panel_brush.0));
+            let _ = DeleteObject(HGDIOBJ(self.border_brush.0));
+        }
+    }
+}
+
+pub(super) struct UiFont {
+    handle: HGDIOBJ,
+    owned: bool,
+}
+
+impl UiFont {
+    pub(super) fn new(point_size: i32) -> Self {
+        let dpi = unsafe { GetDpiForSystem() as i32 };
+        let height = -((point_size * dpi + 36) / 72);
+        let font = unsafe {
+            CreateFontW(
+                height,
+                0,
+                0,
+                0,
+                FW_NORMAL.0 as i32,
+                0,
+                0,
+                0,
+                DEFAULT_CHARSET,
+                OUT_DEFAULT_PRECIS,
+                CLIP_DEFAULT_PRECIS,
+                DEFAULT_QUALITY,
+                FF_DONTCARE.0 as u32,
+                w!("Segoe UI"),
+            )
+        };
+        if font.0.is_null() {
+            Self {
+                handle: unsafe { GetStockObject(DEFAULT_GUI_FONT) },
+                owned: false,
+            }
+        } else {
+            Self {
+                handle: HGDIOBJ(font.0),
+                owned: true,
+            }
+        }
+    }
+
+    pub(super) fn wparam(&self) -> WPARAM {
+        WPARAM(self.handle.0 as usize)
+    }
+
+    pub(super) fn handle(&self) -> HGDIOBJ {
+        self.handle
+    }
+}
+
+impl Drop for UiFont {
+    fn drop(&mut self) {
+        if self.owned {
+            unsafe {
+                let _ = DeleteObject(self.handle);
+            }
+        }
+    }
+}
+
+pub(super) fn ui_font_point_size(language: Language) -> i32 {
+    match language {
+        Language::Hi | Language::Ar => 10,
+        _ => 9,
+    }
+}

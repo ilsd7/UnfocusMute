@@ -11,19 +11,17 @@ use anyhow::{Context, Result, bail};
 use std::collections::{BTreeMap, HashSet};
 use std::ffi::c_void;
 use std::fs;
-use std::mem::{self, size_of};
+use std::mem::size_of;
 use std::sync::atomic::{AtomicIsize, Ordering};
-use std::time::{Duration, Instant, SystemTime};
+use std::time::{Instant, SystemTime};
 use windows::Win32::Foundation::{
-    COLORREF, CloseHandle, ERROR_ALREADY_EXISTS, GetLastError, HANDLE, HINSTANCE, HWND, LPARAM,
-    LRESULT, POINT, RECT, SIZE, WPARAM,
+    CloseHandle, ERROR_ALREADY_EXISTS, GetLastError, HANDLE, HINSTANCE, HWND, LPARAM, LRESULT,
+    POINT, RECT, SIZE, WPARAM,
 };
 use windows::Win32::Graphics::Gdi::{
-    BeginPaint, CLIP_DEFAULT_PRECIS, CreateFontW, CreateSolidBrush, DEFAULT_CHARSET,
-    DEFAULT_GUI_FONT, DEFAULT_QUALITY, DeleteObject, EndPaint, FF_DONTCARE, FW_NORMAL, FillRect,
-    FrameRect, GetDC, GetStockObject, GetTextExtentPoint32W, HBRUSH, HDC, HGDIOBJ,
-    OUT_DEFAULT_PRECIS, PAINTSTRUCT, ReleaseDC, SelectObject, SetBkColor, SetBkMode, SetTextColor,
-    TRANSPARENT,
+    BeginPaint, CreateSolidBrush, DeleteObject, EndPaint, FillRect, FrameRect, GetDC,
+    GetTextExtentPoint32W, HBRUSH, HDC, HGDIOBJ, PAINTSTRUCT, ReleaseDC, SelectObject, SetBkColor,
+    SetBkMode, SetTextColor, TRANSPARENT,
 };
 use windows::Win32::System::Com::{COINIT_APARTMENTTHREADED, CoInitializeEx, CoUninitialize};
 use windows::Win32::System::LibraryLoader::GetModuleHandleW;
@@ -52,7 +50,7 @@ use windows::Win32::UI::WindowsAndMessaging::{
     SM_CXSMICON, SM_CYICON, SM_CYSCREEN, SM_CYSMICON, SW_HIDE, SW_RESTORE, SW_SHOW, SendMessageW,
     SetForegroundWindow, SetTimer, SetWindowLongPtrW, SetWindowTextW, ShowWindow, TPM_NONOTIFY,
     TPM_RETURNCMD, TPM_RIGHTBUTTON, TRACK_POPUP_MENU_FLAGS, TrackPopupMenu, TranslateMessage,
-    WINDOW_EX_STYLE, WINDOW_STYLE, WINEVENT_OUTOFCONTEXT, WM_APP, WM_CLOSE, WM_COMMAND, WM_CREATE,
+    WINDOW_EX_STYLE, WINDOW_STYLE, WINEVENT_OUTOFCONTEXT, WM_CLOSE, WM_COMMAND, WM_CREATE,
     WM_CTLCOLOREDIT, WM_CTLCOLORLISTBOX, WM_CTLCOLORSTATIC, WM_DESTROY, WM_LBUTTONDBLCLK,
     WM_LBUTTONDOWN, WM_MOVE, WM_NCCREATE, WM_NCDESTROY, WM_PAINT, WM_RBUTTONUP, WM_SETFONT,
     WM_SETICON, WM_TIMER, WNDCLASSW, WS_BORDER, WS_CHILD, WS_CLIPCHILDREN, WS_CLIPSIBLINGS,
@@ -60,53 +58,17 @@ use windows::Win32::UI::WindowsAndMessaging::{
 };
 use windows::core::{PCWSTR, w};
 
-const CLASS_NAME: PCWSTR = w!("UnfocusMuteWindow");
-const LANGUAGE_PROMPT_CLASS_NAME: PCWSTR = w!("UnfocusMuteLanguagePrompt");
-const MUTEX_NAME: PCWSTR = w!("Local\\UnfocusMute.SingleInstance");
-const AUDIO_FALLBACK_TIMER_ID: usize = 1;
-const CONFIG_RELOAD_TIMER_ID: usize = 2;
-const TRAY_ID: u32 = 1;
-const WM_TRAY_ICON: u32 = WM_APP + 1;
-const WM_FOREGROUND_CHANGED: u32 = WM_APP + 2;
-const WINDOW_WIDTH: i32 = 980;
-const WINDOW_HEIGHT: i32 = 640;
-const CONFIG_RELOAD_CHECK_INTERVAL: Duration = Duration::from_secs(1);
-const CONFIG_RELOAD_TIMER_INTERVAL_MS: u32 = 1_000;
+mod constants;
+mod controls;
+mod process_choice;
+mod theme;
+
+use constants::*;
+use controls::Controls;
+use process_choice::{ProcessChoice, search_terms};
+use theme::{AppTheme, UiFont, ui_font_point_size};
 
 static FOREGROUND_EVENT_HWND: AtomicIsize = AtomicIsize::new(0);
-
-const ID_TARGETS: i32 = 1001;
-const ID_RUNNING: i32 = 1002;
-const ID_MANUAL: i32 = 1003;
-const ID_ADD_SELECTED: i32 = 1005;
-const ID_ADD_MANUAL: i32 = 1006;
-const ID_REMOVE: i32 = 1007;
-const ID_REFRESH: i32 = 1008;
-const ID_PAUSE: i32 = 1009;
-const ID_START_MINIMIZED: i32 = 1010;
-const ID_LAUNCH_STARTUP: i32 = 1011;
-const ID_RESTORE_EXIT: i32 = 1012;
-const ID_LANGUAGE: i32 = 1013;
-const ID_HIDE: i32 = 1014;
-const ID_QUIT: i32 = 1015;
-const ID_SHOW: i32 = 1016;
-const ID_OPEN_CONFIG: i32 = 1017;
-const ID_TOGGLE_PROCESS_DETAILS: i32 = 1018;
-const ID_PID_DETAILS_HELP: i32 = 1019;
-const ID_LANGUAGE_PROMPT_COMBO: i32 = 2001;
-const ID_LANGUAGE_PROMPT_OK: i32 = 2002;
-const ID_LANGUAGE_PROMPT_STARTUP: i32 = 2003;
-const ID_LANGUAGE_MENU_BASE: i32 = 3000;
-const PAGE_COLOR: COLORREF = rgb(245, 247, 250);
-const PANEL_COLOR: COLORREF = rgb(255, 255, 255);
-const PANEL_BORDER_COLOR: COLORREF = rgb(228, 232, 238);
-const TEXT_COLOR: COLORREF = rgb(25, 33, 45);
-const SUBTLE_TEXT_COLOR: COLORREF = rgb(85, 96, 112);
-const SS_RIGHT_STYLE: WINDOW_STYLE = WINDOW_STYLE(2);
-
-const fn rgb(red: u8, green: u8, blue: u8) -> COLORREF {
-    COLORREF((red as u32) | ((green as u32) << 8) | ((blue as u32) << 16))
-}
 
 pub fn run() -> Result<()> {
     unsafe {
@@ -441,94 +403,6 @@ fn centered_position(width: i32, height: i32) -> WindowPosition {
     WindowPosition {
         x: ((screen_width - width) / 2).max(0),
         y: ((screen_height - height) / 2).max(0),
-    }
-}
-
-struct AppTheme {
-    panel_brush: HBRUSH,
-    border_brush: HBRUSH,
-    font: UiFont,
-}
-
-impl AppTheme {
-    fn new(language: Language) -> Self {
-        Self {
-            panel_brush: unsafe { CreateSolidBrush(PANEL_COLOR) },
-            border_brush: unsafe { CreateSolidBrush(PANEL_BORDER_COLOR) },
-            font: UiFont::new(ui_font_point_size(language)),
-        }
-    }
-
-    fn set_font_language(&mut self, language: Language) {
-        self.font = UiFont::new(ui_font_point_size(language));
-    }
-}
-
-impl Drop for AppTheme {
-    fn drop(&mut self) {
-        unsafe {
-            let _ = DeleteObject(HGDIOBJ(self.panel_brush.0));
-            let _ = DeleteObject(HGDIOBJ(self.border_brush.0));
-        }
-    }
-}
-
-struct UiFont {
-    handle: HGDIOBJ,
-    owned: bool,
-}
-
-impl UiFont {
-    fn new(point_size: i32) -> Self {
-        let dpi = unsafe { GetDpiForSystem() as i32 };
-        let height = -((point_size * dpi + 36) / 72);
-        let font = unsafe {
-            CreateFontW(
-                height,
-                0,
-                0,
-                0,
-                FW_NORMAL.0 as i32,
-                0,
-                0,
-                0,
-                DEFAULT_CHARSET,
-                OUT_DEFAULT_PRECIS,
-                CLIP_DEFAULT_PRECIS,
-                DEFAULT_QUALITY,
-                FF_DONTCARE.0 as u32,
-                w!("Segoe UI"),
-            )
-        };
-        if font.0.is_null() {
-            Self {
-                handle: unsafe { GetStockObject(DEFAULT_GUI_FONT) },
-                owned: false,
-            }
-        } else {
-            Self {
-                handle: HGDIOBJ(font.0),
-                owned: true,
-            }
-        }
-    }
-
-    fn wparam(&self) -> WPARAM {
-        WPARAM(self.handle.0 as usize)
-    }
-
-    fn handle(&self) -> HGDIOBJ {
-        self.handle
-    }
-}
-
-impl Drop for UiFont {
-    fn drop(&mut self) {
-        if self.owned {
-            unsafe {
-                let _ = DeleteObject(self.handle);
-            }
-        }
     }
 }
 
@@ -1426,8 +1300,10 @@ impl AppWindow {
 
     fn reset_audio_after_endpoint_change(&mut self) {
         if let Some(audio) = &self.audio {
-            for session in mem::take(&mut self.muted_by_app) {
-                let _ = audio.set_mute(&session, false);
+            if restore_mute_set(audio, &mut self.muted_by_app) {
+                self.set_issue(StatusIssue::AudioUpdateFailed);
+            } else {
+                self.clear_issue(StatusIssue::AudioUpdateFailed);
             }
         }
         self.audio = None;
@@ -1451,26 +1327,12 @@ impl AppWindow {
             }
         }
 
-        let sessions = self.muted_by_app.iter().cloned().collect::<Vec<_>>();
-        let mut restored = Vec::new();
-        let mut had_failures = false;
         if let Some(audio) = &self.audio {
-            for session in sessions {
-                if audio.set_mute(&session, false).is_ok() {
-                    restored.push(session);
-                } else {
-                    had_failures = true;
-                }
+            if restore_mute_set(audio, &mut self.muted_by_app) {
+                self.set_issue(StatusIssue::AudioUpdateFailed);
+            } else {
+                self.clear_issue(StatusIssue::AudioUpdateFailed);
             }
-        }
-
-        for session in restored {
-            self.muted_by_app.remove(&session);
-        }
-        if had_failures {
-            self.set_issue(StatusIssue::AudioUpdateFailed);
-        } else {
-            self.clear_issue(StatusIssue::AudioUpdateFailed);
         }
     }
 
@@ -1998,9 +1860,7 @@ impl AppWindow {
         if self.config.restore_muted_on_exit
             && let Some(audio) = &self.audio
         {
-            for session in mem::take(&mut self.muted_by_app) {
-                let _ = audio.set_mute(&session, false);
-            }
+            let _ = restore_mute_set(audio, &mut self.muted_by_app);
         }
         if self.tray_added {
             let data = self.tray_data();
@@ -2140,119 +2000,28 @@ impl AppWindow {
     }
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
-struct ProcessChoice {
-    name: String,
-    pid: Option<u32>,
-    display_name: String,
-    search_text: String,
-}
-
-impl ProcessChoice {
-    fn new(name: String, pid: Option<u32>, count: usize) -> Self {
-        let display_name = match pid {
-            Some(pid) => format!("{name} (PID {pid})"),
-            None if count > 1 => format!("{name} ({count} PID)"),
-            None => name.clone(),
-        };
-        let search_text = match pid {
-            Some(pid) => format!("{name} {display_name} {pid}").to_lowercase(),
-            None => format!("{name} {display_name}").to_lowercase(),
-        };
-
-        Self {
-            name,
-            pid,
-            display_name,
-            search_text,
-        }
-    }
-
-    fn display_name(&self) -> &str {
-        &self.display_name
-    }
-
-    fn matches_search(&self, terms: &[String]) -> bool {
-        terms.iter().all(|term| self.search_text.contains(term))
-    }
-}
-
 fn language_button_text(language: Language) -> String {
     language.native_name().to_owned()
 }
 
-fn ui_font_point_size(language: Language) -> i32 {
-    match language {
-        Language::Hi | Language::Ar => 10,
-        _ => 9,
-    }
-}
+fn restore_mute_set(audio: &AudioController, muted_by_app: &mut HashSet<AudioSessionKey>) -> bool {
+    let sessions = muted_by_app.iter().cloned().collect::<Vec<_>>();
+    let mut restored = Vec::new();
+    let mut had_failures = false;
 
-#[derive(Clone, Copy, Default)]
-struct Controls {
-    title_label: HWND,
-    subtitle_label: HWND,
-    status: HWND,
-    status_detail: HWND,
-    targets_label: HWND,
-    target_list: HWND,
-    remove_button: HWND,
-    add_label: HWND,
-    running_label: HWND,
-    running_hint: HWND,
-    running_combo: HWND,
-    refresh_button: HWND,
-    toggle_process_details_button: HWND,
-    pid_details_help_button: HWND,
-    add_selected_button: HWND,
-    manual_label: HWND,
-    manual_edit: HWND,
-    add_manual_button: HWND,
-    settings_label: HWND,
-    start_minimized_check: HWND,
-    launch_startup_check: HWND,
-    restore_exit_check: HWND,
-    language_label: HWND,
-    language_button: HWND,
-    open_config_button: HWND,
-    pause_button: HWND,
-    hide_button: HWND,
-    quit_button: HWND,
-}
-
-impl Controls {
-    fn all(self) -> [HWND; 28] {
-        [
-            self.title_label,
-            self.subtitle_label,
-            self.status,
-            self.status_detail,
-            self.targets_label,
-            self.target_list,
-            self.remove_button,
-            self.add_label,
-            self.running_label,
-            self.running_hint,
-            self.running_combo,
-            self.refresh_button,
-            self.toggle_process_details_button,
-            self.pid_details_help_button,
-            self.add_selected_button,
-            self.manual_label,
-            self.manual_edit,
-            self.add_manual_button,
-            self.settings_label,
-            self.start_minimized_check,
-            self.launch_startup_check,
-            self.restore_exit_check,
-            self.language_label,
-            self.language_button,
-            self.open_config_button,
-            self.pause_button,
-            self.hide_button,
-            self.quit_button,
-        ]
+    for session in sessions {
+        if audio.set_mute(&session, false).is_ok() {
+            restored.push(session);
+        } else {
+            had_failures = true;
+        }
     }
+
+    for session in restored {
+        muted_by_app.remove(&session);
+    }
+
+    had_failures
 }
 
 unsafe extern "system" fn window_proc(
@@ -2860,14 +2629,6 @@ fn current_config_stamp() -> Option<ConfigFileStamp> {
 
 fn to_wide(text: &str) -> Vec<u16> {
     text.encode_utf16().chain(std::iter::once(0)).collect()
-}
-
-fn search_terms(query: &str) -> Vec<String> {
-    query
-        .split_whitespace()
-        .map(str::to_lowercase)
-        .filter(|term| !term.is_empty())
-        .collect()
 }
 
 fn loword(value: u32) -> u16 {
