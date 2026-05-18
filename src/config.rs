@@ -15,9 +15,10 @@ use windows::Win32::Storage::FileSystem::{
 #[cfg(windows)]
 use windows::core::PCWSTR;
 
-const CONFIG_VERSION: u32 = 2;
+const CONFIG_VERSION: u32 = 3;
 const LEGACY_DEFAULT_POLLING_INTERVAL_MS: u64 = 350;
-const DEFAULT_POLLING_INTERVAL_MS: u64 = 5_000;
+const EVENT_FALLBACK_DEFAULT_POLLING_INTERVAL_MS: u64 = 5_000;
+const DEFAULT_POLLING_INTERVAL_MS: u64 = 3_000;
 const MIN_POLLING_INTERVAL_MS: u64 = 100;
 const MAX_POLLING_INTERVAL_MS: u64 = 10_000;
 
@@ -178,7 +179,11 @@ impl AppConfig {
     fn sanitize(&mut self) {
         let previous_version = self.version;
         self.version = CONFIG_VERSION;
-        if previous_version < 2 && self.polling_interval_ms == LEGACY_DEFAULT_POLLING_INTERVAL_MS {
+        let should_migrate_default_interval = (previous_version < 2
+            && self.polling_interval_ms == LEGACY_DEFAULT_POLLING_INTERVAL_MS)
+            || (previous_version < 3
+                && self.polling_interval_ms == EVENT_FALLBACK_DEFAULT_POLLING_INTERVAL_MS);
+        if should_migrate_default_interval {
             self.polling_interval_ms = DEFAULT_POLLING_INTERVAL_MS;
         }
         self.polling_interval_ms = self
@@ -413,6 +418,20 @@ mod tests {
         let mut config = AppConfig {
             version: 1,
             polling_interval_ms: LEGACY_DEFAULT_POLLING_INTERVAL_MS,
+            ..AppConfig::default()
+        };
+
+        config.sanitize();
+
+        assert_eq!(config.version, CONFIG_VERSION);
+        assert_eq!(config.polling_interval_ms, DEFAULT_POLLING_INTERVAL_MS);
+    }
+
+    #[test]
+    fn previous_event_fallback_default_migrates_to_current_default() {
+        let mut config = AppConfig {
+            version: 2,
+            polling_interval_ms: EVENT_FALLBACK_DEFAULT_POLLING_INTERVAL_MS,
             ..AppConfig::default()
         };
 

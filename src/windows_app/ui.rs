@@ -1391,17 +1391,12 @@ impl AppWindow {
     }
 
     fn update_status(&mut self) {
-        let interval =
-            format_polling_interval(self.config.polling_interval_ms, self.config.language);
-        let status = format!(
-            "{} · {}",
-            if self.paused {
-                self.strings.status_paused
-            } else {
-                self.strings.status_running
-            },
-            interval
-        );
+        let status = if self.paused {
+            self.strings.status_paused
+        } else {
+            self.strings.status_running
+        }
+        .to_owned();
         let detail = if let Some(issue) = self.last_issue {
             format!("{} · {}", self.strings.status_issue, self.issue_text(issue))
         } else {
@@ -2190,29 +2185,6 @@ fn ui_font_point_size(language: Language) -> i32 {
     match language {
         Language::Hi | Language::Ar => 10,
         _ => 9,
-    }
-}
-
-fn format_polling_interval(milliseconds: u64, language: Language) -> String {
-    let seconds = milliseconds as f64 / 1000.0;
-    let value = if seconds.fract().abs() < f64::EPSILON {
-        format!("{seconds:.0}")
-    } else {
-        format!("{seconds:.2}")
-            .trim_end_matches('0')
-            .trim_end_matches('.')
-            .to_owned()
-    };
-    match language {
-        Language::Ko => format!("{value}초"),
-        Language::En => format!("{value} s"),
-        Language::Ja => format!("{value}秒"),
-        Language::ZhHans => format!("{value} 秒"),
-        Language::Es => format!("{value} s"),
-        Language::Fr => format!("{value} s"),
-        Language::Pt => format!("{value} s"),
-        Language::Hi => format!("{value} सेकंड"),
-        Language::Ar => format!("{value} ث"),
     }
 }
 
