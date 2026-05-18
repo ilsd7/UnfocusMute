@@ -51,7 +51,11 @@ fn main() {
     resource.set_manifest(&manifest);
 
     if let Err(error) = resource.compile() {
-        println!("cargo:warning=failed to compile Windows resources: {error}");
+        let message = format!("failed to compile Windows resources: {error}");
+        if env::var("PROFILE").as_deref() == Ok("release") {
+            panic!("{message}");
+        }
+        println!("cargo:warning={message}");
     }
 }
 

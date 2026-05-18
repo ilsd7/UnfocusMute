@@ -13,6 +13,11 @@ pub struct AudioController {
     manager: IAudioSessionManager2,
 }
 
+pub struct MuteApplyResult {
+    pub changed_sessions: HashSet<AudioSessionKey>,
+    pub had_failures: bool,
+}
+
 impl AudioController {
     pub fn new() -> Result<Self> {
         unsafe {
@@ -64,9 +69,12 @@ impl AudioController {
         }
     }
 
-    pub fn set_mutes(&self, actions: &[MuteAction]) -> Result<HashSet<AudioSessionKey>> {
+    pub fn set_mutes(&self, actions: &[MuteAction]) -> Result<MuteApplyResult> {
         if actions.is_empty() {
-            return Ok(HashSet::new());
+            return Ok(MuteApplyResult {
+                changed_sessions: HashSet::new(),
+                had_failures: false,
+            });
         }
 
         let desired_mutes = actions
@@ -74,6 +82,7 @@ impl AudioController {
             .map(|action| (action.key.clone(), action.mute))
             .collect::<HashMap<_, _>>();
         let mut changed_sessions = HashSet::new();
+        let mut had_failures = false;
         let mut process_names = HashMap::<u32, Option<String>>::new();
 
         unsafe {
@@ -96,17 +105,22 @@ impl AudioController {
                 let Some(mute) = desired_mutes.get(&key).copied() else {
                     continue;
                 };
-                let volume = control
-                    .cast::<ISimpleAudioVolume>()
-                    .context("get simple audio volume")?;
-                volume
-                    .SetMute(mute, std::ptr::null())
-                    .context("set session mute")?;
+                let Ok(volume) = control.cast::<ISimpleAudioVolume>() else {
+                    had_failures = true;
+                    continue;
+                };
+                if volume.SetMute(mute, std::ptr::null()).is_err() {
+                    had_failures = true;
+                    continue;
+                }
                 changed_sessions.insert(key);
             }
         }
 
-        Ok(changed_sessions)
+        Ok(MuteApplyResult {
+            changed_sessions,
+            had_failures,
+        })
     }
 
     pub fn set_mute(&self, key: &AudioSessionKey, mute: bool) -> Result<()> {

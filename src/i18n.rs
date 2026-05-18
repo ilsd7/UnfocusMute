@@ -82,6 +82,12 @@ impl Language {
                 first_run_language_title: "언어를 선택하세요.",
                 first_run_language_subtitle: "나중에 UnfocusMute 안에서 언제든 바꿀 수 있습니다.",
                 first_run_start: "시작",
+                status_issue: "주의",
+                audio_unavailable: "오디오 장치를 사용할 수 없습니다",
+                audio_update_failed: "오디오 음소거를 바꾸지 못했습니다",
+                config_save_failed: "설정 저장 실패",
+                startup_update_failed: "자동 실행 설정 실패",
+                open_config_failed: "설정 폴더 열기 실패",
                 unsupported_os: "UnfocusMute는 Windows용 앱입니다. 이 환경에서는 코어 테스트와 문서 작업만 실행할 수 있습니다.",
             },
             Language::En => Strings {
@@ -120,6 +126,12 @@ impl Language {
                 first_run_language_title: "Choose your language.",
                 first_run_language_subtitle: "You can change it later in UnfocusMute.",
                 first_run_start: "Start",
+                status_issue: "Needs attention",
+                audio_unavailable: "Audio device unavailable",
+                audio_update_failed: "Could not update audio mute",
+                config_save_failed: "Could not save settings",
+                startup_update_failed: "Could not update auto-start",
+                open_config_failed: "Could not open config folder",
                 unsupported_os: "UnfocusMute is a Windows app. This environment can run only core tests and documentation tasks.",
             },
             Language::Ja => Strings {
@@ -158,6 +170,12 @@ impl Language {
                 first_run_language_title: "言語を選択してください。",
                 first_run_language_subtitle: "あとでUnfocusMute内から変更できます。",
                 first_run_start: "開始",
+                status_issue: "要確認",
+                audio_unavailable: "オーディオデバイスを使用できません",
+                audio_update_failed: "ミュート状態を変更できませんでした",
+                config_save_failed: "設定を保存できませんでした",
+                startup_update_failed: "自動起動設定を変更できませんでした",
+                open_config_failed: "設定フォルダーを開けませんでした",
                 unsupported_os: "UnfocusMuteはWindows向けアプリです。この環境ではコアテストとドキュメント作業のみ実行できます。",
             },
             Language::ZhHans => Strings {
@@ -196,6 +214,12 @@ impl Language {
                 first_run_language_title: "选择语言。",
                 first_run_language_subtitle: "之后可在 UnfocusMute 中随时更改。",
                 first_run_start: "开始",
+                status_issue: "需要注意",
+                audio_unavailable: "音频设备不可用",
+                audio_update_failed: "无法更新静音状态",
+                config_save_failed: "无法保存设置",
+                startup_update_failed: "无法更新自动启动",
+                open_config_failed: "无法打开配置文件夹",
                 unsupported_os: "UnfocusMute 是 Windows 应用。此环境只能运行核心测试和文档任务。",
             },
             Language::Es => Strings {
@@ -234,6 +258,12 @@ impl Language {
                 first_run_language_title: "Elige tu idioma.",
                 first_run_language_subtitle: "Puedes cambiarlo más tarde en UnfocusMute.",
                 first_run_start: "Empezar",
+                status_issue: "Revisar",
+                audio_unavailable: "Dispositivo de audio no disponible",
+                audio_update_failed: "No se pudo cambiar el silencio",
+                config_save_failed: "No se pudo guardar la configuración",
+                startup_update_failed: "No se pudo cambiar el inicio automático",
+                open_config_failed: "No se pudo abrir la carpeta de configuración",
                 unsupported_os: "UnfocusMute es una app para Windows. En este entorno solo se pueden ejecutar pruebas del núcleo y tareas de documentación.",
             },
             Language::Fr => Strings {
@@ -272,6 +302,12 @@ impl Language {
                 first_run_language_title: "Choisissez votre langue.",
                 first_run_language_subtitle: "Vous pourrez la modifier plus tard dans UnfocusMute.",
                 first_run_start: "Commencer",
+                status_issue: "À vérifier",
+                audio_unavailable: "Périphérique audio indisponible",
+                audio_update_failed: "Impossible de modifier la sourdine",
+                config_save_failed: "Impossible d’enregistrer les réglages",
+                startup_update_failed: "Impossible de modifier le démarrage auto",
+                open_config_failed: "Impossible d’ouvrir le dossier de configuration",
                 unsupported_os: "UnfocusMute est une application pour Windows. Cet environnement ne peut exécuter que les tests du cœur et les tâches de documentation.",
             },
             Language::Pt => Strings {
@@ -310,6 +346,12 @@ impl Language {
                 first_run_language_title: "Escolha seu idioma.",
                 first_run_language_subtitle: "Você pode mudar isso depois no UnfocusMute.",
                 first_run_start: "Começar",
+                status_issue: "Atenção",
+                audio_unavailable: "Dispositivo de áudio indisponível",
+                audio_update_failed: "Não foi possível mudar o mudo",
+                config_save_failed: "Não foi possível salvar as configurações",
+                startup_update_failed: "Não foi possível mudar o início automático",
+                open_config_failed: "Não foi possível abrir a pasta de configuração",
                 unsupported_os: "UnfocusMute é um app para Windows. Neste ambiente, só é possível executar testes principais e tarefas de documentação.",
             },
             Language::Hi => Strings {
@@ -348,6 +390,12 @@ impl Language {
                 first_run_language_title: "अपनी भाषा चुनें।",
                 first_run_language_subtitle: "इसे बाद में UnfocusMute में बदला जा सकता है।",
                 first_run_start: "शुरू करें",
+                status_issue: "ध्यान दें",
+                audio_unavailable: "ऑडियो डिवाइस उपलब्ध नहीं है",
+                audio_update_failed: "ऑडियो म्यूट बदला नहीं जा सका",
+                config_save_failed: "सेटिंग सहेजी नहीं जा सकी",
+                startup_update_failed: "ऑटो-स्टार्ट सेटिंग बदली नहीं जा सकी",
+                open_config_failed: "कॉन्फिग फ़ोल्डर नहीं खुल सका",
                 unsupported_os: "UnfocusMute Windows ऐप है। इस वातावरण में केवल कोर टेस्ट और दस्तावेज़ कार्य चल सकते हैं।",
             },
             Language::Ar => Strings {
@@ -386,6 +434,12 @@ impl Language {
                 first_run_language_title: "اختر لغتك.",
                 first_run_language_subtitle: "يمكنك تغييرها لاحقًا داخل UnfocusMute.",
                 first_run_start: "ابدأ",
+                status_issue: "تنبيه",
+                audio_unavailable: "جهاز الصوت غير متاح",
+                audio_update_failed: "تعذر تغيير كتم الصوت",
+                config_save_failed: "تعذر حفظ الإعدادات",
+                startup_update_failed: "تعذر تغيير التشغيل التلقائي",
+                open_config_failed: "تعذر فتح مجلد الإعدادات",
                 unsupported_os: "UnfocusMute تطبيق لنظام Windows. في هذه البيئة يمكن تشغيل الاختبارات الأساسية وأعمال التوثيق فقط.",
             },
         }
@@ -429,6 +483,12 @@ pub struct Strings {
     pub first_run_language_title: &'static str,
     pub first_run_language_subtitle: &'static str,
     pub first_run_start: &'static str,
+    pub status_issue: &'static str,
+    pub audio_unavailable: &'static str,
+    pub audio_update_failed: &'static str,
+    pub config_save_failed: &'static str,
+    pub startup_update_failed: &'static str,
+    pub open_config_failed: &'static str,
     pub unsupported_os: &'static str,
 }
 
@@ -444,6 +504,12 @@ mod tests {
             assert!(!language.strings().first_run_language_title.is_empty());
             assert!(!language.strings().first_run_language_subtitle.is_empty());
             assert!(!language.strings().first_run_start.is_empty());
+            assert!(!language.strings().status_issue.is_empty());
+            assert!(!language.strings().audio_unavailable.is_empty());
+            assert!(!language.strings().audio_update_failed.is_empty());
+            assert!(!language.strings().config_save_failed.is_empty());
+            assert!(!language.strings().startup_update_failed.is_empty());
+            assert!(!language.strings().open_config_failed.is_empty());
             assert!(!language.native_name().is_empty());
         }
     }

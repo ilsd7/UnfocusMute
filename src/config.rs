@@ -8,6 +8,12 @@ use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
+#[cfg(windows)]
+use windows::Win32::Storage::FileSystem::{
+    MOVEFILE_REPLACE_EXISTING, MOVEFILE_WRITE_THROUGH, MoveFileExW,
+};
+#[cfg(windows)]
+use windows::core::PCWSTR;
 
 const CONFIG_VERSION: u32 = 1;
 const DEFAULT_POLLING_INTERVAL_MS: u64 = 350;
@@ -168,20 +174,43 @@ impl AppConfig {
 }
 
 fn replace_file(temp_path: &Path, destination: &Path) -> io::Result<()> {
-    match fs::rename(temp_path, destination) {
-        Ok(()) => Ok(()),
-        Err(error) => {
-            if !(cfg!(windows) && destination.exists()) {
-                let _ = fs::remove_file(temp_path);
-                return Err(error);
-            }
-
-            fs::remove_file(destination)?;
-            fs::rename(temp_path, destination).inspect_err(|_| {
-                let _ = fs::remove_file(temp_path);
-            })
-        }
+    #[cfg(windows)]
+    {
+        replace_file_windows(temp_path, destination)
     }
+
+    #[cfg(not(windows))]
+    {
+        fs::rename(temp_path, destination).inspect_err(|_| {
+            let _ = fs::remove_file(temp_path);
+        })
+    }
+}
+
+#[cfg(windows)]
+fn replace_file_windows(temp_path: &Path, destination: &Path) -> io::Result<()> {
+    let temp_path = path_to_wide(temp_path);
+    let destination = path_to_wide(destination);
+    let flags = MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH;
+
+    unsafe {
+        MoveFileExW(
+            PCWSTR(temp_path.as_ptr()),
+            PCWSTR(destination.as_ptr()),
+            flags,
+        )
+    }
+    .map_err(|error| io::Error::other(format!("replace config file: {error}")))
+}
+
+#[cfg(windows)]
+fn path_to_wide(path: &Path) -> Vec<u16> {
+    use std::os::windows::ffi::OsStrExt;
+
+    path.as_os_str()
+        .encode_wide()
+        .chain(std::iter::once(0))
+        .collect()
 }
 
 fn backup_invalid_config(path: &Path) -> io::Result<PathBuf> {

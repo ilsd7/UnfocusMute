@@ -7,6 +7,7 @@ use crate::windows_app::startup;
 use anyhow::{Context, Result};
 use std::collections::{BTreeMap, HashSet};
 use std::ffi::c_void;
+use std::fs;
 use std::mem::{self, size_of};
 use windows::Win32::Foundation::{
     COLORREF, CloseHandle, ERROR_ALREADY_EXISTS, GetLastError, HANDLE, HINSTANCE, HWND, LPARAM,
@@ -470,10 +471,20 @@ struct AppWindow {
     paused: bool,
     show_process_details: bool,
     tray_added: bool,
+    last_issue: Option<StatusIssue>,
     last_status: Option<(String, String)>,
     theme: AppTheme,
     icon: HICON,
     tray_icon: HICON,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum StatusIssue {
+    AudioUnavailable,
+    AudioUpdateFailed,
+    ConfigSaveFailed,
+    StartupUpdateFailed,
+    OpenConfigFailed,
 }
 
 impl AppWindow {
@@ -496,6 +507,7 @@ impl AppWindow {
             paused: false,
             show_process_details: false,
             tray_added: false,
+            last_issue: None,
             last_status: None,
             theme: AppTheme::new(language),
             icon,
@@ -1161,21 +1173,40 @@ impl AppWindow {
         }
 
         if self.target_matcher.is_empty() && self.muted_by_app.is_empty() {
+            self.clear_issue(StatusIssue::AudioUnavailable);
+            self.clear_issue(StatusIssue::AudioUpdateFailed);
             self.update_status();
             return;
         }
 
         if self.audio.is_none() {
-            self.audio = AudioController::new().ok();
+            match AudioController::new() {
+                Ok(audio) => {
+                    self.audio = Some(audio);
+                    self.clear_issue(StatusIssue::AudioUnavailable);
+                }
+                Err(_) => {
+                    self.set_issue(StatusIssue::AudioUnavailable);
+                    return;
+                }
+            }
         }
-        let Some(audio) = &self.audio else {
-            self.update_status();
-            return;
-        };
 
-        let Ok(sessions) = audio.sessions() else {
-            self.update_status();
-            return;
+        let sessions = match self
+            .audio
+            .as_ref()
+            .expect("audio controller initialized")
+            .sessions()
+        {
+            Ok(sessions) => {
+                self.clear_issue(StatusIssue::AudioUnavailable);
+                sessions
+            }
+            Err(_) => {
+                self.audio = None;
+                self.set_issue(StatusIssue::AudioUnavailable);
+                return;
+            }
         };
         if !self.muted_by_app.is_empty() {
             let active_sessions = sessions
@@ -1196,9 +1227,26 @@ impl AppWindow {
             &sessions,
         );
 
-        let changed_sessions = audio.set_mutes(&actions).unwrap_or_default();
+        let apply_result = match self
+            .audio
+            .as_ref()
+            .expect("audio controller initialized")
+            .set_mutes(&actions)
+        {
+            Ok(result) => result,
+            Err(_) => {
+                self.audio = None;
+                self.set_issue(StatusIssue::AudioUnavailable);
+                return;
+            }
+        };
+        if apply_result.had_failures {
+            self.set_issue(StatusIssue::AudioUpdateFailed);
+        } else {
+            self.clear_issue(StatusIssue::AudioUpdateFailed);
+        }
         for action in actions {
-            if changed_sessions.contains(&action.key) {
+            if apply_result.changed_sessions.contains(&action.key) {
                 if action.mute {
                     self.muted_by_app.insert(action.key);
                 } else {
@@ -1222,13 +1270,17 @@ impl AppWindow {
             },
             interval
         );
-        let detail = format!(
-            "{} {} · {} {}",
-            self.strings.target_count,
-            self.config.targets.len(),
-            self.strings.muted_count,
-            self.muted_by_app.len()
-        );
+        let detail = if let Some(issue) = self.last_issue {
+            format!("{} · {}", self.strings.status_issue, self.issue_text(issue))
+        } else {
+            format!(
+                "{} {} · {} {}",
+                self.strings.target_count,
+                self.config.targets.len(),
+                self.strings.muted_count,
+                self.muted_by_app.len()
+            )
+        };
         if self
             .last_status
             .as_ref()
@@ -1257,6 +1309,45 @@ impl AppWindow {
         };
         unsafe {
             set_text(self.controls.target_summary, &summary);
+        }
+    }
+
+    fn set_issue(&mut self, issue: StatusIssue) {
+        if self.last_issue != Some(issue) {
+            self.last_issue = Some(issue);
+            self.last_status = None;
+        }
+        self.update_status();
+    }
+
+    fn clear_issue(&mut self, issue: StatusIssue) {
+        if self.last_issue == Some(issue) {
+            self.last_issue = None;
+            self.last_status = None;
+            self.update_status();
+        }
+    }
+
+    fn issue_text(&self, issue: StatusIssue) -> &'static str {
+        match issue {
+            StatusIssue::AudioUnavailable => self.strings.audio_unavailable,
+            StatusIssue::AudioUpdateFailed => self.strings.audio_update_failed,
+            StatusIssue::ConfigSaveFailed => self.strings.config_save_failed,
+            StatusIssue::StartupUpdateFailed => self.strings.startup_update_failed,
+            StatusIssue::OpenConfigFailed => self.strings.open_config_failed,
+        }
+    }
+
+    fn save_config(&mut self) -> bool {
+        match self.config.save() {
+            Ok(()) => {
+                self.clear_issue(StatusIssue::ConfigSaveFailed);
+                true
+            }
+            Err(_) => {
+                self.set_issue(StatusIssue::ConfigSaveFailed);
+                false
+            }
         }
     }
 
@@ -1388,7 +1479,7 @@ impl AppWindow {
             return;
         }
         if self.config.remove_target_at(index as usize) {
-            let _ = self.config.save();
+            self.save_config();
             self.refresh_targets();
         }
     }
@@ -1424,20 +1515,24 @@ impl AppWindow {
     }
 
     fn finish_target_change(&mut self) {
-        let _ = self.config.save();
+        self.save_config();
         self.refresh_targets();
         self.refresh_text();
     }
 
     fn open_config_folder(&mut self) {
-        let _ = self.config.save();
+        self.save_config();
         let Ok(path) = config_dir() else {
+            self.set_issue(StatusIssue::OpenConfigFailed);
             return;
         };
-        let path = path.to_string_lossy();
-        let path = to_wide(path.as_ref());
+        if fs::create_dir_all(&path).is_err() {
+            self.set_issue(StatusIssue::OpenConfigFailed);
+            return;
+        }
+        let path = to_wide(path.to_string_lossy().as_ref());
         unsafe {
-            let _ = ShellExecuteW(
+            let result = ShellExecuteW(
                 Some(self.hwnd),
                 w!("open"),
                 PCWSTR(path.as_ptr()),
@@ -1445,6 +1540,12 @@ impl AppWindow {
                 PCWSTR::null(),
                 SW_SHOW,
             );
+            if result.0 as isize <= 32 {
+                self.set_issue(StatusIssue::OpenConfigFailed);
+            } else {
+                self.clear_issue(StatusIssue::OpenConfigFailed);
+                self.update_status();
+            }
         }
     }
 
@@ -1476,6 +1577,7 @@ impl AppWindow {
             ID_LAUNCH_STARTUP => {
                 if startup::set_launch_on_startup(checked).is_ok() {
                     self.config.launch_on_startup = checked;
+                    self.clear_issue(StatusIssue::StartupUpdateFailed);
                 } else {
                     unsafe {
                         set_checkbox(
@@ -1483,12 +1585,13 @@ impl AppWindow {
                             self.config.launch_on_startup,
                         );
                     }
+                    self.set_issue(StatusIssue::StartupUpdateFailed);
                 }
             }
             ID_RESTORE_EXIT => self.config.restore_muted_on_exit = checked,
             _ => {}
         }
-        let _ = self.config.save();
+        self.save_config();
     }
 
     fn choose_language_menu(&mut self) {
@@ -1536,7 +1639,7 @@ impl AppWindow {
 
     fn set_language(&mut self, language: Language) {
         self.config.language = language;
-        let _ = self.config.save();
+        self.save_config();
         self.refresh_text();
     }
 
@@ -1552,7 +1655,7 @@ impl AppWindow {
 
     fn save_window_position(&mut self) {
         self.remember_window_position();
-        let _ = self.config.save();
+        self.save_config();
     }
 
     fn cleanup(&mut self) {
