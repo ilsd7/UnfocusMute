@@ -41,16 +41,16 @@ use windows::Win32::UI::WindowsAndMessaging::{
     DestroyWindow, DispatchMessageW, ES_AUTOHSCROLL, FindWindowW, GWLP_USERDATA, GetCursorPos,
     GetMessageW, GetSystemMetrics, GetWindowRect, HICON, HMENU, ICON_BIG, ICON_SMALL, IDC_ARROW,
     IDI_APPLICATION, IMAGE_ICON, LB_ADDSTRING, LB_GETCURSEL, LB_RESETCONTENT, LBN_SELCHANGE,
-    LBS_NOTIFY, LR_DEFAULTCOLOR, LoadCursorW, LoadIconW, LoadImageW, MF_SEPARATOR, MF_STRING, MSG,
-    MoveWindow, PostQuitMessage, RegisterClassW, SM_CXICON, SM_CXSCREEN, SM_CXSMICON, SM_CYICON,
-    SM_CYSCREEN, SM_CYSMICON, SW_HIDE, SW_RESTORE, SW_SHOW, SendMessageW, SetForegroundWindow,
-    SetTimer, SetWindowLongPtrW, SetWindowTextW, ShowWindow, TPM_NONOTIFY, TPM_RETURNCMD,
-    TPM_RIGHTBUTTON, TRACK_POPUP_MENU_FLAGS, TrackPopupMenu, TranslateMessage, WINDOW_EX_STYLE,
-    WINDOW_STYLE, WM_APP, WM_CLOSE, WM_COMMAND, WM_CREATE, WM_CTLCOLOREDIT, WM_CTLCOLORLISTBOX,
-    WM_CTLCOLORSTATIC, WM_DESTROY, WM_LBUTTONDBLCLK, WM_MOVE, WM_NCCREATE, WM_NCDESTROY, WM_PAINT,
-    WM_RBUTTONUP, WM_SETFONT, WM_SETICON, WM_TIMER, WNDCLASSW, WS_BORDER, WS_CHILD,
-    WS_CLIPCHILDREN, WS_CLIPSIBLINGS, WS_EX_CLIENTEDGE, WS_OVERLAPPEDWINDOW, WS_TABSTOP,
-    WS_VISIBLE, WS_VSCROLL,
+    LBS_NOTIFY, LR_DEFAULTCOLOR, LoadCursorW, LoadIconW, LoadImageW, MB_ICONINFORMATION, MB_OK,
+    MF_SEPARATOR, MF_STRING, MSG, MessageBoxW, MoveWindow, PostQuitMessage, RegisterClassW,
+    SM_CXICON, SM_CXSCREEN, SM_CXSMICON, SM_CYICON, SM_CYSCREEN, SM_CYSMICON, SW_HIDE, SW_RESTORE,
+    SW_SHOW, SendMessageW, SetForegroundWindow, SetTimer, SetWindowLongPtrW, SetWindowTextW,
+    ShowWindow, TPM_NONOTIFY, TPM_RETURNCMD, TPM_RIGHTBUTTON, TRACK_POPUP_MENU_FLAGS,
+    TrackPopupMenu, TranslateMessage, WINDOW_EX_STYLE, WINDOW_STYLE, WM_APP, WM_CLOSE, WM_COMMAND,
+    WM_CREATE, WM_CTLCOLOREDIT, WM_CTLCOLORLISTBOX, WM_CTLCOLORSTATIC, WM_DESTROY,
+    WM_LBUTTONDBLCLK, WM_MOVE, WM_NCCREATE, WM_NCDESTROY, WM_PAINT, WM_RBUTTONUP, WM_SETFONT,
+    WM_SETICON, WM_TIMER, WNDCLASSW, WS_BORDER, WS_CHILD, WS_CLIPCHILDREN, WS_CLIPSIBLINGS,
+    WS_EX_CLIENTEDGE, WS_OVERLAPPEDWINDOW, WS_TABSTOP, WS_VISIBLE, WS_VSCROLL,
 };
 use windows::core::{PCWSTR, w};
 
@@ -81,6 +81,7 @@ const ID_QUIT: i32 = 1015;
 const ID_SHOW: i32 = 1016;
 const ID_OPEN_CONFIG: i32 = 1017;
 const ID_TOGGLE_PROCESS_DETAILS: i32 = 1018;
+const ID_PID_DETAILS_HELP: i32 = 1019;
 const ID_LANGUAGE_PROMPT_COMBO: i32 = 2001;
 const ID_LANGUAGE_PROMPT_OK: i32 = 2002;
 const ID_LANGUAGE_PROMPT_STARTUP: i32 = 2003;
@@ -748,6 +749,18 @@ impl AppWindow {
                 ID_TOGGLE_PROCESS_DETAILS,
             )?
         };
+        self.controls.pid_details_help_button = unsafe {
+            create_button(
+                self.hwnd,
+                instance,
+                "?",
+                894,
+                274,
+                34,
+                36,
+                ID_PID_DETAILS_HELP,
+            )?
+        };
         self.controls.add_selected_button = unsafe {
             create_primary_button(self.hwnd, instance, "", 484, 274, 220, 36, ID_ADD_SELECTED)?
         };
@@ -880,23 +893,11 @@ impl AppWindow {
             set_text(self.controls.add_label, self.strings.add_process_section);
             set_text(self.controls.settings_label, self.strings.settings_title);
             set_text(self.controls.running_label, self.strings.running_processes);
-            set_text(
-                self.controls.running_hint,
-                self.strings.running_process_hint,
-            );
             set_text(self.controls.manual_label, self.strings.manual_process);
             set_text(self.controls.add_selected_button, self.strings.add_selected);
             set_text(self.controls.add_manual_button, self.strings.add_manual);
             set_text(self.controls.remove_button, self.strings.remove_selected);
             set_text(self.controls.refresh_button, self.strings.refresh);
-            set_text(
-                self.controls.toggle_process_details_button,
-                if self.show_process_details {
-                    self.strings.hide_pid_details
-                } else {
-                    self.strings.show_pid_details
-                },
-            );
             set_text(
                 self.controls.start_minimized_check,
                 self.strings.start_minimized,
@@ -941,7 +942,7 @@ impl AppWindow {
                 Some(LPARAM(process_placeholder.as_ptr() as isize)),
             );
         }
-        self.layout_localized_controls();
+        self.refresh_process_details_ui();
         self.update_status();
         self.update_target_summary();
         self.add_tray_icon();
@@ -973,10 +974,45 @@ impl AppWindow {
         }
     }
 
+    fn refresh_process_details_ui(&self) {
+        let detail_button_text = if self.show_process_details {
+            self.strings.hide_pid_details
+        } else {
+            self.strings.show_pid_details
+        };
+        let hint_text = if self.show_process_details {
+            self.strings.pid_details_hint
+        } else {
+            ""
+        };
+        let visibility = if self.show_process_details {
+            SW_SHOW
+        } else {
+            SW_HIDE
+        };
+
+        unsafe {
+            set_text(self.controls.running_hint, hint_text);
+            set_text(
+                self.controls.toggle_process_details_button,
+                detail_button_text,
+            );
+            set_text(self.controls.pid_details_help_button, "?");
+            let _ = ShowWindow(self.controls.running_hint, visibility);
+            let _ = ShowWindow(self.controls.pid_details_help_button, visibility);
+        }
+        self.layout_localized_controls();
+    }
+
     fn layout_localized_controls(&self) {
         let content_right = WINDOW_WIDTH - 52;
         let right_panel_left = 484;
         let gap = 12;
+        let combo_y = if self.show_process_details { 236 } else { 208 };
+        let button_y = combo_y + 38;
+        let manual_button_y = button_y + 48;
+        let manual_edit_y = manual_button_y + 4;
+        let manual_label_y = manual_button_y + 8;
 
         let refresh_width = self.button_width(self.strings.refresh, 108, 150);
         let refresh_x = content_right - refresh_width;
@@ -984,7 +1020,7 @@ impl AppWindow {
             MoveWindow(
                 self.controls.refresh_button,
                 refresh_x,
-                234,
+                combo_y - 2,
                 refresh_width,
                 34,
                 true,
@@ -994,7 +1030,7 @@ impl AppWindow {
             MoveWindow(
                 self.controls.running_combo,
                 right_panel_left,
-                236,
+                combo_y,
                 refresh_x - right_panel_left - gap,
                 34,
                 true,
@@ -1012,18 +1048,29 @@ impl AppWindow {
             MoveWindow(
                 self.controls.add_selected_button,
                 right_panel_left,
-                274,
+                button_y,
                 add_selected_width,
+                36,
+                true,
+            )
+        };
+        let details_x = right_panel_left + add_selected_width + gap;
+        let _ = unsafe {
+            MoveWindow(
+                self.controls.toggle_process_details_button,
+                details_x,
+                button_y,
+                details_width,
                 36,
                 true,
             )
         };
         let _ = unsafe {
             MoveWindow(
-                self.controls.toggle_process_details_button,
-                right_panel_left + add_selected_width + gap,
-                274,
-                details_width,
+                self.controls.pid_details_help_button,
+                details_x + details_width + 8,
+                button_y,
+                34,
                 36,
                 true,
             )
@@ -1037,7 +1084,7 @@ impl AppWindow {
             MoveWindow(
                 self.controls.manual_label,
                 right_panel_left,
-                330,
+                manual_label_y,
                 manual_label_width,
                 22,
                 true,
@@ -1047,7 +1094,7 @@ impl AppWindow {
             MoveWindow(
                 self.controls.manual_edit,
                 manual_edit_x,
-                326,
+                manual_edit_y,
                 add_manual_x - manual_edit_x - gap,
                 24,
                 true,
@@ -1057,7 +1104,7 @@ impl AppWindow {
             MoveWindow(
                 self.controls.add_manual_button,
                 add_manual_x,
-                322,
+                manual_button_y,
                 add_manual_width,
                 34,
                 true,
@@ -1465,6 +1512,7 @@ impl AppWindow {
             ID_REMOVE => self.remove_selected_target(),
             ID_REFRESH => self.refresh_processes(),
             ID_TOGGLE_PROCESS_DETAILS => self.toggle_process_details(),
+            ID_PID_DETAILS_HELP => self.show_pid_details_help(),
             ID_RUNNING if notification == CBN_EDITCHANGE as u16 => self.search_running_processes(),
             ID_RUNNING if notification == CBN_SETFOCUS as u16 => self.open_running_process_picker(),
             ID_RUNNING
@@ -1561,20 +1609,26 @@ impl AppWindow {
     fn toggle_process_details(&mut self) {
         self.show_process_details = !self.show_process_details;
         self.refresh_processes();
+        self.refresh_process_details_ui();
         unsafe {
-            set_text(
-                self.controls.toggle_process_details_button,
-                if self.show_process_details {
-                    self.strings.hide_pid_details
-                } else {
-                    self.strings.show_pid_details
-                },
-            );
             SendMessageW(
                 self.controls.running_combo,
                 CB_SHOWDROPDOWN,
                 Some(WPARAM(1)),
                 None,
+            );
+        }
+    }
+
+    fn show_pid_details_help(&self) {
+        let title = to_wide(self.strings.pid_details_help_title);
+        let body = to_wide(self.strings.pid_details_help);
+        unsafe {
+            let _ = MessageBoxW(
+                Some(self.hwnd),
+                PCWSTR(body.as_ptr()),
+                PCWSTR(title.as_ptr()),
+                MB_OK | MB_ICONINFORMATION,
             );
         }
     }
@@ -2022,6 +2076,7 @@ struct Controls {
     running_combo: HWND,
     refresh_button: HWND,
     toggle_process_details_button: HWND,
+    pid_details_help_button: HWND,
     add_selected_button: HWND,
     manual_label: HWND,
     manual_edit: HWND,
@@ -2039,7 +2094,7 @@ struct Controls {
 }
 
 impl Controls {
-    fn all(self) -> [HWND; 28] {
+    fn all(self) -> [HWND; 29] {
         [
             self.title_label,
             self.subtitle_label,
@@ -2055,6 +2110,7 @@ impl Controls {
             self.running_combo,
             self.refresh_button,
             self.toggle_process_details_button,
+            self.pid_details_help_button,
             self.add_selected_button,
             self.manual_label,
             self.manual_edit,
