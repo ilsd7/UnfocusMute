@@ -7,11 +7,12 @@ use crate::i18n::{Language, Strings};
 use crate::windows_app::audio::AudioController;
 use crate::windows_app::process::{self, ProcessInfo};
 use crate::windows_app::startup;
-use anyhow::{Context, Result};
+use anyhow::{Context, Result, bail};
 use std::collections::{BTreeMap, HashSet};
 use std::ffi::c_void;
 use std::fs;
 use std::mem::{self, size_of};
+use std::sync::atomic::{AtomicIsize, Ordering};
 use std::time::{Duration, Instant, SystemTime};
 use windows::Win32::Foundation::{
     COLORREF, CloseHandle, ERROR_ALREADY_EXISTS, GetLastError, HANDLE, HINSTANCE, HWND, LPARAM,
@@ -27,6 +28,7 @@ use windows::Win32::Graphics::Gdi::{
 use windows::Win32::System::Com::{COINIT_APARTMENTTHREADED, CoInitializeEx, CoUninitialize};
 use windows::Win32::System::LibraryLoader::GetModuleHandleW;
 use windows::Win32::System::Threading::CreateMutexW;
+use windows::Win32::UI::Accessibility::{HWINEVENTHOOK, SetWinEventHook, UnhookWinEvent};
 use windows::Win32::UI::Controls::{
     BST_CHECKED, BST_UNCHECKED, CB_SETCUEBANNER, CB_SETMINVISIBLE, EM_SETCUEBANNER,
 };
@@ -41,32 +43,37 @@ use windows::Win32::UI::WindowsAndMessaging::{
     CB_ADDSTRING, CB_GETCURSEL, CB_RESETCONTENT, CB_SETCURSEL, CB_SETEDITSEL, CB_SHOWDROPDOWN,
     CBN_CLOSEUP, CBN_EDITCHANGE, CBN_SELCHANGE, CBN_SELENDOK, CBN_SETFOCUS, CBS_DROPDOWN,
     CBS_DROPDOWNLIST, CREATESTRUCTW, CreatePopupMenu, CreateWindowExW, DefWindowProcW, DestroyMenu,
-    DestroyWindow, DispatchMessageW, ES_AUTOHSCROLL, FindWindowW, GWLP_USERDATA, GetCursorPos,
-    GetMessageW, GetSystemMetrics, GetWindowRect, HICON, HMENU, ICON_BIG, ICON_SMALL, IDC_ARROW,
-    IDI_APPLICATION, IMAGE_ICON, LB_ADDSTRING, LB_GETCURSEL, LB_RESETCONTENT, LB_SETCURSEL,
-    LBN_SELCHANGE, LBS_NOTIFY, LR_DEFAULTCOLOR, LoadCursorW, LoadIconW, LoadImageW,
-    MB_ICONINFORMATION, MB_ICONWARNING, MB_OK, MF_SEPARATOR, MF_STRING, MSG, MessageBoxW,
-    MoveWindow, PostQuitMessage, RegisterClassW, SM_CXICON, SM_CXSCREEN, SM_CXSMICON, SM_CYICON,
-    SM_CYSCREEN, SM_CYSMICON, SW_HIDE, SW_RESTORE, SW_SHOW, SendMessageW, SetForegroundWindow,
-    SetTimer, SetWindowLongPtrW, SetWindowTextW, ShowWindow, TPM_NONOTIFY, TPM_RETURNCMD,
-    TPM_RIGHTBUTTON, TRACK_POPUP_MENU_FLAGS, TrackPopupMenu, TranslateMessage, WINDOW_EX_STYLE,
-    WINDOW_STYLE, WM_APP, WM_CLOSE, WM_COMMAND, WM_CREATE, WM_CTLCOLOREDIT, WM_CTLCOLORLISTBOX,
-    WM_CTLCOLORSTATIC, WM_DESTROY, WM_LBUTTONDBLCLK, WM_LBUTTONDOWN, WM_MOVE, WM_NCCREATE,
-    WM_NCDESTROY, WM_PAINT, WM_RBUTTONUP, WM_SETFONT, WM_SETICON, WM_TIMER, WNDCLASSW, WS_BORDER,
-    WS_CHILD, WS_CLIPCHILDREN, WS_CLIPSIBLINGS, WS_EX_CLIENTEDGE, WS_OVERLAPPEDWINDOW, WS_TABSTOP,
-    WS_VISIBLE, WS_VSCROLL,
+    DestroyWindow, DispatchMessageW, ES_AUTOHSCROLL, EVENT_SYSTEM_FOREGROUND, FindWindowW,
+    GWLP_USERDATA, GetCursorPos, GetMessageW, GetSystemMetrics, GetWindowRect, HICON, HMENU,
+    ICON_BIG, ICON_SMALL, IDC_ARROW, IDI_APPLICATION, IMAGE_ICON, LB_ADDSTRING, LB_GETCURSEL,
+    LB_RESETCONTENT, LB_SETCURSEL, LBN_SELCHANGE, LBS_NOTIFY, LR_DEFAULTCOLOR, LoadCursorW,
+    LoadIconW, LoadImageW, MB_ICONINFORMATION, MB_ICONWARNING, MB_OK, MF_SEPARATOR, MF_STRING, MSG,
+    MessageBoxW, MoveWindow, PostMessageW, PostQuitMessage, RegisterClassW, SM_CXICON, SM_CXSCREEN,
+    SM_CXSMICON, SM_CYICON, SM_CYSCREEN, SM_CYSMICON, SW_HIDE, SW_RESTORE, SW_SHOW, SendMessageW,
+    SetForegroundWindow, SetTimer, SetWindowLongPtrW, SetWindowTextW, ShowWindow, TPM_NONOTIFY,
+    TPM_RETURNCMD, TPM_RIGHTBUTTON, TRACK_POPUP_MENU_FLAGS, TrackPopupMenu, TranslateMessage,
+    WINDOW_EX_STYLE, WINDOW_STYLE, WINEVENT_OUTOFCONTEXT, WM_APP, WM_CLOSE, WM_COMMAND, WM_CREATE,
+    WM_CTLCOLOREDIT, WM_CTLCOLORLISTBOX, WM_CTLCOLORSTATIC, WM_DESTROY, WM_LBUTTONDBLCLK,
+    WM_LBUTTONDOWN, WM_MOVE, WM_NCCREATE, WM_NCDESTROY, WM_PAINT, WM_RBUTTONUP, WM_SETFONT,
+    WM_SETICON, WM_TIMER, WNDCLASSW, WS_BORDER, WS_CHILD, WS_CLIPCHILDREN, WS_CLIPSIBLINGS,
+    WS_EX_CLIENTEDGE, WS_OVERLAPPEDWINDOW, WS_TABSTOP, WS_VISIBLE, WS_VSCROLL,
 };
 use windows::core::{PCWSTR, w};
 
 const CLASS_NAME: PCWSTR = w!("UnfocusMuteWindow");
 const LANGUAGE_PROMPT_CLASS_NAME: PCWSTR = w!("UnfocusMuteLanguagePrompt");
 const MUTEX_NAME: PCWSTR = w!("Local\\UnfocusMute.SingleInstance");
-const TIMER_ID: usize = 1;
+const AUDIO_FALLBACK_TIMER_ID: usize = 1;
+const CONFIG_RELOAD_TIMER_ID: usize = 2;
 const TRAY_ID: u32 = 1;
 const WM_TRAY_ICON: u32 = WM_APP + 1;
+const WM_FOREGROUND_CHANGED: u32 = WM_APP + 2;
 const WINDOW_WIDTH: i32 = 980;
 const WINDOW_HEIGHT: i32 = 640;
 const CONFIG_RELOAD_CHECK_INTERVAL: Duration = Duration::from_secs(1);
+const CONFIG_RELOAD_TIMER_INTERVAL_MS: u32 = 1_000;
+
+static FOREGROUND_EVENT_HWND: AtomicIsize = AtomicIsize::new(0);
 
 const ID_TARGETS: i32 = 1001;
 const ID_RUNNING: i32 = 1002;
@@ -221,6 +228,69 @@ unsafe fn acquire_single_instance() -> Result<Option<SingleInstance>> {
     }
 
     Ok(Some(SingleInstance(handle)))
+}
+
+struct ForegroundEventHook {
+    hook: HWINEVENTHOOK,
+}
+
+impl ForegroundEventHook {
+    unsafe fn new(hwnd: HWND) -> Result<Self> {
+        FOREGROUND_EVENT_HWND.store(hwnd.0 as isize, Ordering::Release);
+        let hook = unsafe {
+            SetWinEventHook(
+                EVENT_SYSTEM_FOREGROUND,
+                EVENT_SYSTEM_FOREGROUND,
+                None,
+                Some(foreground_event_proc),
+                0,
+                0,
+                WINEVENT_OUTOFCONTEXT,
+            )
+        };
+        if hook.0.is_null() {
+            FOREGROUND_EVENT_HWND.store(0, Ordering::Release);
+            bail!("register foreground window event hook");
+        }
+        Ok(Self { hook })
+    }
+}
+
+impl Drop for ForegroundEventHook {
+    fn drop(&mut self) {
+        FOREGROUND_EVENT_HWND.store(0, Ordering::Release);
+        unsafe {
+            let _ = UnhookWinEvent(self.hook);
+        }
+    }
+}
+
+unsafe extern "system" fn foreground_event_proc(
+    _hook: HWINEVENTHOOK,
+    event: u32,
+    hwnd: HWND,
+    _object_id: i32,
+    _child_id: i32,
+    _event_thread: u32,
+    _event_time: u32,
+) {
+    if event != EVENT_SYSTEM_FOREGROUND || hwnd == HWND::default() {
+        return;
+    }
+
+    let target = FOREGROUND_EVENT_HWND.load(Ordering::Acquire);
+    if target == 0 {
+        return;
+    }
+
+    unsafe {
+        let _ = PostMessageW(
+            Some(HWND(target as *mut c_void)),
+            WM_FOREGROUND_CHANGED,
+            WPARAM(0),
+            LPARAM(0),
+        );
+    }
 }
 
 unsafe fn bring_existing_window_to_front() {
@@ -469,6 +539,7 @@ struct AppWindow {
     target_matcher: TargetMatcher,
     strings: Strings,
     audio: Option<AudioController>,
+    foreground_hook: Option<ForegroundEventHook>,
     running_processes: Vec<ProcessInfo>,
     all_process_choices: Vec<ProcessChoice>,
     process_choices: Vec<ProcessChoice>,
@@ -514,6 +585,7 @@ impl AppWindow {
             config,
             strings,
             audio: AudioController::new().ok(),
+            foreground_hook: None,
             running_processes: Vec::new(),
             all_process_choices: Vec::new(),
             process_choices: Vec::new(),
@@ -559,7 +631,8 @@ impl AppWindow {
         self.refresh_checkboxes();
         self.refresh_text();
         self.update_status();
-        self.reset_polling_timer();
+        self.reset_timers();
+        self.install_foreground_hook();
         self.add_tray_icon();
         self.tick();
         Ok(())
@@ -1206,6 +1279,14 @@ impl AppWindow {
             .collect()
     }
 
+    fn timer_tick(&mut self, timer_id: usize) {
+        match timer_id {
+            CONFIG_RELOAD_TIMER_ID => self.reload_config_if_due(),
+            AUDIO_FALLBACK_TIMER_ID => self.tick(),
+            _ => {}
+        }
+    }
+
     fn tick(&mut self) {
         self.reload_config_if_due();
 
@@ -1491,11 +1572,30 @@ impl AppWindow {
         }
     }
 
+    fn install_foreground_hook(&mut self) {
+        match unsafe { ForegroundEventHook::new(self.hwnd) } {
+            Ok(hook) => self.foreground_hook = Some(hook),
+            Err(_) => self.foreground_hook = None,
+        }
+    }
+
+    fn reset_timers(&self) {
+        unsafe {
+            SetTimer(
+                Some(self.hwnd),
+                CONFIG_RELOAD_TIMER_ID,
+                CONFIG_RELOAD_TIMER_INTERVAL_MS,
+                None,
+            );
+        }
+        self.reset_polling_timer();
+    }
+
     fn reset_polling_timer(&self) {
         unsafe {
             SetTimer(
                 Some(self.hwnd),
-                TIMER_ID,
+                AUDIO_FALLBACK_TIMER_ID,
                 self.config.polling_interval_ms as u32,
                 None,
             );
@@ -1898,6 +1998,7 @@ impl AppWindow {
     }
 
     fn cleanup(&mut self) {
+        self.foreground_hook = None;
         self.save_window_position();
         if self.config.restore_muted_on_exit
             && let Some(audio) = &self.audio
@@ -2228,6 +2329,10 @@ unsafe extern "system" fn window_proc(
                 return LRESULT(0);
             }
             WM_TIMER => {
+                app.timer_tick(wparam.0);
+                return LRESULT(0);
+            }
+            WM_FOREGROUND_CHANGED => {
                 app.tick();
                 return LRESULT(0);
             }

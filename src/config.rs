@@ -15,8 +15,9 @@ use windows::Win32::Storage::FileSystem::{
 #[cfg(windows)]
 use windows::core::PCWSTR;
 
-const CONFIG_VERSION: u32 = 1;
-const DEFAULT_POLLING_INTERVAL_MS: u64 = 350;
+const CONFIG_VERSION: u32 = 2;
+const LEGACY_DEFAULT_POLLING_INTERVAL_MS: u64 = 350;
+const DEFAULT_POLLING_INTERVAL_MS: u64 = 5_000;
 const MIN_POLLING_INTERVAL_MS: u64 = 100;
 const MAX_POLLING_INTERVAL_MS: u64 = 10_000;
 
@@ -175,7 +176,11 @@ impl AppConfig {
     }
 
     fn sanitize(&mut self) {
+        let previous_version = self.version;
         self.version = CONFIG_VERSION;
+        if previous_version < 2 && self.polling_interval_ms == LEGACY_DEFAULT_POLLING_INTERVAL_MS {
+            self.polling_interval_ms = DEFAULT_POLLING_INTERVAL_MS;
+        }
         self.polling_interval_ms = self
             .polling_interval_ms
             .clamp(MIN_POLLING_INTERVAL_MS, MAX_POLLING_INTERVAL_MS);
@@ -389,6 +394,7 @@ mod tests {
     fn sanitize_clamps_polling_interval() {
         let mut config = AppConfig {
             polling_interval_ms: 1,
+            version: CONFIG_VERSION,
             ..AppConfig::default()
         };
 
@@ -400,6 +406,34 @@ mod tests {
         config.sanitize();
 
         assert_eq!(config.polling_interval_ms, 400);
+    }
+
+    #[test]
+    fn legacy_default_polling_interval_migrates_to_event_based_fallback() {
+        let mut config = AppConfig {
+            version: 1,
+            polling_interval_ms: LEGACY_DEFAULT_POLLING_INTERVAL_MS,
+            ..AppConfig::default()
+        };
+
+        config.sanitize();
+
+        assert_eq!(config.version, CONFIG_VERSION);
+        assert_eq!(config.polling_interval_ms, DEFAULT_POLLING_INTERVAL_MS);
+    }
+
+    #[test]
+    fn custom_legacy_polling_interval_is_preserved() {
+        let mut config = AppConfig {
+            version: 1,
+            polling_interval_ms: 700,
+            ..AppConfig::default()
+        };
+
+        config.sanitize();
+
+        assert_eq!(config.version, CONFIG_VERSION);
+        assert_eq!(config.polling_interval_ms, 700);
     }
 
     #[test]
