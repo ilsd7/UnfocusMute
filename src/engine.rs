@@ -44,7 +44,7 @@ pub fn plan_mute_actions_with_matcher(
     managed_muted_sessions: &HashSet<AudioSessionKey>,
     sessions: &[AudioSessionSnapshot],
 ) -> Vec<MuteAction> {
-    let mut actions = Vec::new();
+    let mut actions = Vec::with_capacity(sessions.len());
     let foreground_process_name = foreground_process_name.and_then(normalize_process_name);
 
     for session in sessions {

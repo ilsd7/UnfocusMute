@@ -108,10 +108,33 @@ unsafe fn query_process_image_name(handle: HANDLE) -> Option<String> {
 }
 
 fn process_name_from_snapshot(pid: u32) -> Option<String> {
-    running_processes()
-        .into_iter()
-        .find(|process| process.pid == pid)
-        .map(|process| process.name)
+    unsafe {
+        let Ok(snapshot) = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0) else {
+            return None;
+        };
+
+        let mut entry = PROCESSENTRY32W {
+            dwSize: size_of::<PROCESSENTRY32W>() as u32,
+            ..Default::default()
+        };
+        let mut result = None;
+
+        if Process32FirstW(snapshot, &mut entry).is_ok() {
+            loop {
+                if entry.th32ProcessID == pid {
+                    result = normalize_process_name(&utf16_array_to_string(&entry.szExeFile));
+                    break;
+                }
+
+                if Process32NextW(snapshot, &mut entry).is_err() {
+                    break;
+                }
+            }
+        }
+
+        let _ = CloseHandle(snapshot);
+        result
+    }
 }
 
 fn utf16_array_to_string(buffer: &[u16]) -> String {

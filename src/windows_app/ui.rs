@@ -1182,9 +1182,9 @@ impl AppWindow {
         if self
             .audio
             .as_ref()
-            .is_some_and(|audio| !audio.is_current_default_endpoint())
+            .is_some_and(|audio| audio.take_endpoint_changed())
         {
-            self.audio = None;
+            self.reset_audio_after_endpoint_change();
         }
 
         if self.audio.is_none() {
@@ -1250,6 +1250,7 @@ impl AppWindow {
         };
         if apply_result.had_failures {
             self.set_issue(StatusIssue::AudioUpdateFailed);
+            self.audio = None;
         } else {
             self.clear_issue(StatusIssue::AudioUpdateFailed);
         }
@@ -1318,6 +1319,15 @@ impl AppWindow {
         unsafe {
             set_text(self.controls.target_summary, &summary);
         }
+    }
+
+    fn reset_audio_after_endpoint_change(&mut self) {
+        if let Some(audio) = &self.audio {
+            for session in mem::take(&mut self.muted_by_app) {
+                let _ = audio.set_mute(&session, false);
+            }
+        }
+        self.audio = None;
     }
 
     fn set_issue(&mut self, issue: StatusIssue) {
@@ -1531,7 +1541,6 @@ impl AppWindow {
     fn finish_target_change(&mut self) {
         self.save_config();
         self.refresh_targets();
-        self.refresh_text();
     }
 
     fn open_config_folder(&mut self) {
@@ -1692,10 +1701,10 @@ impl AppWindow {
 
     fn add_tray_icon(&mut self) {
         let data = self.tray_data();
-        unsafe {
-            let _ = Shell_NotifyIconW(if self.tray_added { NIM_MODIFY } else { NIM_ADD }, &data);
+        let command = if self.tray_added { NIM_MODIFY } else { NIM_ADD };
+        if unsafe { Shell_NotifyIconW(command, &data).as_bool() } {
+            self.tray_added = true;
         }
-        self.tray_added = true;
     }
 
     fn tray_data(&self) -> NOTIFYICONDATAW {
