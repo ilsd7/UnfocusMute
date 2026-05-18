@@ -1,5 +1,6 @@
 param(
-    [string]$Target = "x86_64-pc-windows-msvc"
+    [string]$Target = "x86_64-pc-windows-msvc",
+    [string]$ReleaseTag = ""
 )
 
 $ErrorActionPreference = "Stop"
@@ -12,6 +13,17 @@ if (-not $VersionLine) {
 }
 
 $Version = $VersionLine.Matches[0].Groups[1].Value
+$ResolvedReleaseTag = $ReleaseTag
+if (-not $ResolvedReleaseTag -and $env:GITHUB_REF_TYPE -eq "tag") {
+    $ResolvedReleaseTag = $env:GITHUB_REF_NAME
+}
+if ($ResolvedReleaseTag) {
+    $ExpectedTag = "v$Version"
+    if ($ResolvedReleaseTag -ne $ExpectedTag) {
+        throw "Release tag $ResolvedReleaseTag does not match Cargo.toml version $Version. Expected $ExpectedTag."
+    }
+}
+
 $Dist = Join-Path $RepoRoot "dist"
 $PackageName = "UnfocusMute-$Version-windows-x64"
 $LegacyStage = Join-Path $Dist $PackageName

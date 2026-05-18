@@ -16,7 +16,7 @@ jobs:
     steps:
       - uses: actions/checkout@v5
       - run: rustup toolchain install stable --profile minimal --target x86_64-pc-windows-msvc
-      - run: powershell -NoProfile -ExecutionPolicy Bypass -File scripts\package-windows.ps1
+      - run: powershell -NoProfile -ExecutionPolicy Bypass -File scripts\package-windows.ps1 -ReleaseTag $env:GITHUB_REF_NAME
       - name: Create draft release
         shell: pwsh
         env:

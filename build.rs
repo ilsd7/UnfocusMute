@@ -16,7 +16,11 @@ fn main() {
     let icon_path = match build_ico_from_png(Path::new(APP_ICON_PNG)) {
         Ok(path) => path,
         Err(error) => {
-            println!("cargo:warning=failed to prepare Windows icon from {APP_ICON_PNG}: {error}");
+            let message = format!("failed to prepare Windows icon from {APP_ICON_PNG}: {error}");
+            if is_release_profile() {
+                panic!("{message}");
+            }
+            println!("cargo:warning={message}");
             return;
         }
     };
@@ -52,11 +56,15 @@ fn main() {
 
     if let Err(error) = resource.compile() {
         let message = format!("failed to compile Windows resources: {error}");
-        if env::var("PROFILE").as_deref() == Ok("release") {
+        if is_release_profile() {
             panic!("{message}");
         }
         println!("cargo:warning={message}");
     }
+}
+
+fn is_release_profile() -> bool {
+    env::var("PROFILE").as_deref() == Ok("release")
 }
 
 fn windows_resource_version() -> String {
