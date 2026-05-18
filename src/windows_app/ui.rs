@@ -1,4 +1,7 @@
-use crate::config::{AppConfig, WindowPosition, config_dir, config_file_exists, config_file_path};
+use crate::config::{
+    AppConfig, WindowPosition, config_dir, config_file_exists, config_file_path,
+    normalize_process_name,
+};
 use crate::engine::{AudioSessionKey, TargetMatcher, plan_mute_actions_with_matcher};
 use crate::i18n::{Language, Strings};
 use crate::windows_app::audio::AudioController;
@@ -41,8 +44,9 @@ use windows::Win32::UI::WindowsAndMessaging::{
     DestroyWindow, DispatchMessageW, ES_AUTOHSCROLL, FindWindowW, GWLP_USERDATA, GetCursorPos,
     GetMessageW, GetSystemMetrics, GetWindowRect, HICON, HMENU, ICON_BIG, ICON_SMALL, IDC_ARROW,
     IDI_APPLICATION, IMAGE_ICON, LB_ADDSTRING, LB_GETCURSEL, LB_RESETCONTENT, LBN_SELCHANGE,
-    LBS_NOTIFY, LR_DEFAULTCOLOR, LoadCursorW, LoadIconW, LoadImageW, MB_ICONINFORMATION, MB_OK,
-    MF_SEPARATOR, MF_STRING, MSG, MessageBoxW, MoveWindow, PostQuitMessage, RegisterClassW,
+    LBS_NOTIFY, LR_DEFAULTCOLOR, LoadCursorW, LoadIconW, LoadImageW, MB_ICONINFORMATION,
+    MB_ICONWARNING, MB_OK, MF_SEPARATOR, MF_STRING, MSG, MessageBoxW, MoveWindow, PostQuitMessage,
+    RegisterClassW,
     SM_CXICON, SM_CXSCREEN, SM_CXSMICON, SM_CYICON, SM_CYSCREEN, SM_CYSMICON, SW_HIDE, SW_RESTORE,
     SW_SHOW, SendMessageW, SetForegroundWindow, SetTimer, SetWindowLongPtrW, SetWindowTextW,
     ShowWindow, TPM_NONOTIFY, TPM_RETURNCMD, TPM_RIGHTBUTTON, TRACK_POPUP_MENU_FLAGS,
@@ -668,12 +672,12 @@ impl AppWindow {
                 36,
                 222,
                 392,
-                214,
+                242,
                 ID_TARGETS,
             )?
         };
         self.controls.remove_button =
-            unsafe { create_button(self.hwnd, instance, "", 36, 452, 150, 34, ID_REMOVE)? };
+            unsafe { create_button(self.hwnd, instance, "", 36, 480, 150, 34, ID_REMOVE)? };
 
         self.controls.add_label = unsafe {
             create_control(
@@ -860,11 +864,11 @@ impl AppWindow {
             unsafe { create_button(self.hwnd, instance, "", 724, 484, 220, 34, ID_OPEN_CONFIG)? };
 
         self.controls.pause_button =
-            unsafe { create_button(self.hwnd, instance, "", 492, 552, 132, 38, ID_PAUSE)? };
+            unsafe { create_button(self.hwnd, instance, "", 640, 552, 132, 38, ID_PAUSE)? };
         self.controls.hide_button =
-            unsafe { create_button(self.hwnd, instance, "", 640, 552, 132, 38, ID_HIDE)? };
+            unsafe { create_button(self.hwnd, instance, "", 788, 552, 140, 38, ID_HIDE)? };
         self.controls.quit_button =
-            unsafe { create_button(self.hwnd, instance, "", 788, 552, 140, 38, ID_QUIT)? };
+            unsafe { create_button(self.hwnd, instance, "", 162, 552, 140, 38, ID_QUIT)? };
 
         unsafe {
             SendMessageW(
@@ -1385,6 +1389,47 @@ impl AppWindow {
         self.audio = None;
     }
 
+    fn restore_managed_mutes(&mut self) {
+        if self.muted_by_app.is_empty() {
+            return;
+        }
+
+        if self.audio.is_none() {
+            match AudioController::new() {
+                Ok(audio) => {
+                    self.audio = Some(audio);
+                    self.clear_issue(StatusIssue::AudioUnavailable);
+                }
+                Err(_) => {
+                    self.set_issue(StatusIssue::AudioUnavailable);
+                    return;
+                }
+            }
+        }
+
+        let sessions = self.muted_by_app.iter().cloned().collect::<Vec<_>>();
+        let mut restored = Vec::new();
+        let mut had_failures = false;
+        if let Some(audio) = &self.audio {
+            for session in sessions {
+                if audio.set_mute(&session, false).is_ok() {
+                    restored.push(session);
+                } else {
+                    had_failures = true;
+                }
+            }
+        }
+
+        for session in restored {
+            self.muted_by_app.remove(&session);
+        }
+        if had_failures {
+            self.set_issue(StatusIssue::AudioUpdateFailed);
+        } else {
+            self.clear_issue(StatusIssue::AudioUpdateFailed);
+        }
+    }
+
     fn set_issue(&mut self, issue: StatusIssue) {
         if self.last_issue != Some(issue) {
             self.last_issue = Some(issue);
@@ -1635,14 +1680,34 @@ impl AppWindow {
 
     fn add_manual_target(&mut self) {
         let text = unsafe { window_text(self.controls.manual_edit) };
+        let Some(name) = normalize_process_name(&text) else {
+            return;
+        };
+        if !name.ends_with(".exe") {
+            self.show_manual_process_exe_required();
+            return;
+        }
         if !self.reload_config_if_changed() {
             return;
         }
-        if self.config.add_target(&text) {
+        if self.config.add_target(&name) {
             self.finish_target_change();
             unsafe {
                 set_text(self.controls.manual_edit, "");
             }
+        }
+    }
+
+    fn show_manual_process_exe_required(&self) {
+        let title = to_wide(self.strings.manual_process);
+        let body = to_wide(self.strings.manual_process_exe_required);
+        unsafe {
+            let _ = MessageBoxW(
+                Some(self.hwnd),
+                PCWSTR(body.as_ptr()),
+                PCWSTR(title.as_ptr()),
+                MB_OK | MB_ICONWARNING,
+            );
         }
     }
 
@@ -1725,6 +1790,9 @@ impl AppWindow {
 
     fn toggle_pause(&mut self) {
         self.paused = !self.paused;
+        if self.paused {
+            self.restore_managed_mutes();
+        }
         unsafe {
             set_text(
                 self.controls.pause_button,
@@ -1948,7 +2016,7 @@ impl AppWindow {
                 left: 16,
                 top: 128,
                 right: 448,
-                bottom: 500,
+                bottom: 528,
             },
             RECT {
                 left: 464,

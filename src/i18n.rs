@@ -75,6 +75,7 @@ impl Language {
                 show: "열기",
                 hide: "트레이로 숨기기",
                 manual_placeholder: "예: game.exe",
+                manual_process_exe_required: "프로세스 이름은 .exe로 끝나야 합니다.",
                 settings_title: "동작 설정",
                 no_targets: "등록된 앱이 없습니다. 오른쪽에서 실행 중인 앱을 추가하세요.",
                 target_count: "등록 앱",
@@ -122,6 +123,7 @@ impl Language {
                 show: "Open",
                 hide: "Hide to tray",
                 manual_placeholder: "Example: game.exe",
+                manual_process_exe_required: "Process names must end with .exe.",
                 settings_title: "Behavior",
                 no_targets: "No apps are registered. Add a running app on the right.",
                 target_count: "Registered apps",
@@ -169,6 +171,7 @@ impl Language {
                 show: "開く",
                 hide: "トレイへ隠す",
                 manual_placeholder: "例: game.exe",
+                manual_process_exe_required: "プロセス名は .exe で終わる必要があります。",
                 settings_title: "動作設定",
                 no_targets: "登録済みアプリはありません。右側から実行中のアプリを追加してください。",
                 target_count: "登録アプリ",
@@ -216,6 +219,7 @@ impl Language {
                 show: "打开",
                 hide: "隐藏到托盘",
                 manual_placeholder: "例如: game.exe",
+                manual_process_exe_required: "进程名称必须以 .exe 结尾。",
                 settings_title: "行为设置",
                 no_targets: "尚未注册任何应用。请从右侧添加正在运行的应用。",
                 target_count: "已注册应用",
@@ -263,6 +267,7 @@ impl Language {
                 show: "Abrir",
                 hide: "Ocultar en bandeja",
                 manual_placeholder: "Ejemplo: game.exe",
+                manual_process_exe_required: "El nombre del proceso debe terminar en .exe.",
                 settings_title: "Comportamiento",
                 no_targets: "No hay apps registradas. Añade una app en ejecución a la derecha.",
                 target_count: "Apps registradas",
@@ -310,6 +315,7 @@ impl Language {
                 show: "Ouvrir",
                 hide: "Masquer dans la zone de notification",
                 manual_placeholder: "Exemple : game.exe",
+                manual_process_exe_required: "Le nom du processus doit se terminer par .exe.",
                 settings_title: "Comportement",
                 no_targets: "Aucune application enregistrée. Ajoutez une application en cours à droite.",
                 target_count: "Applications enregistrées",
@@ -357,6 +363,7 @@ impl Language {
                 show: "Abrir",
                 hide: "Ocultar na bandeja",
                 manual_placeholder: "Exemplo: game.exe",
+                manual_process_exe_required: "O nome do processo deve terminar em .exe.",
                 settings_title: "Comportamento",
                 no_targets: "Nenhum app registrado. Adicione um app em execução à direita.",
                 target_count: "Apps registrados",
@@ -404,6 +411,7 @@ impl Language {
                 show: "खोलें",
                 hide: "ट्रे में छिपाएं",
                 manual_placeholder: "उदाहरण: game.exe",
+                manual_process_exe_required: "प्रक्रिया नाम .exe पर खत्म होना चाहिए।",
                 settings_title: "व्यवहार सेटिंग",
                 no_targets: "कोई ऐप पंजीकृत नहीं है। दाईं ओर से चल रहा ऐप जोड़ें।",
                 target_count: "पंजीकृत ऐप्स",
@@ -451,6 +459,7 @@ impl Language {
                 show: "فتح",
                 hide: "إخفاء في علبة النظام",
                 manual_placeholder: "مثال: game.exe",
+                manual_process_exe_required: "يجب أن ينتهي اسم العملية بـ .exe.",
                 settings_title: "إعدادات السلوك",
                 no_targets: "لا توجد تطبيقات مسجلة. أضف تطبيقًا قيد التشغيل من الجهة اليمنى.",
                 target_count: "التطبيقات المسجلة",
@@ -503,6 +512,7 @@ pub struct Strings {
     pub show: &'static str,
     pub hide: &'static str,
     pub manual_placeholder: &'static str,
+    pub manual_process_exe_required: &'static str,
     pub settings_title: &'static str,
     pub no_targets: &'static str,
     pub target_count: &'static str,
@@ -537,6 +547,7 @@ mod tests {
             assert!(!language.strings().pid_details_hint.is_empty());
             assert!(!language.strings().pid_details_help_title.is_empty());
             assert!(!language.strings().pid_details_help.is_empty());
+            assert!(!language.strings().manual_process_exe_required.is_empty());
             assert!(!language.strings().status_issue.is_empty());
             assert!(!language.strings().audio_unavailable.is_empty());
             assert!(!language.strings().audio_update_failed.is_empty());
