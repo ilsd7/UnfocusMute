@@ -43,7 +43,8 @@ use windows::Win32::UI::WindowsAndMessaging::{
     CBS_DROPDOWNLIST, CREATESTRUCTW, CreatePopupMenu, CreateWindowExW, DefWindowProcW, DestroyMenu,
     DestroyWindow, DispatchMessageW, ES_AUTOHSCROLL, FindWindowW, GWLP_USERDATA, GetCursorPos,
     GetMessageW, GetSystemMetrics, GetWindowRect, HICON, HMENU, ICON_BIG, ICON_SMALL, IDC_ARROW,
-    IDI_APPLICATION, IMAGE_ICON, LB_ADDSTRING, LB_GETCURSEL, LB_RESETCONTENT, LBN_SELCHANGE,
+    IDI_APPLICATION, IMAGE_ICON, LB_ADDSTRING, LB_GETCURSEL, LB_RESETCONTENT, LB_SETCURSEL,
+    LBN_SELCHANGE,
     LBS_NOTIFY, LR_DEFAULTCOLOR, LoadCursorW, LoadIconW, LoadImageW, MB_ICONINFORMATION,
     MB_ICONWARNING, MB_OK, MF_SEPARATOR, MF_STRING, MSG, MessageBoxW, MoveWindow, PostQuitMessage,
     RegisterClassW,
@@ -52,9 +53,10 @@ use windows::Win32::UI::WindowsAndMessaging::{
     ShowWindow, TPM_NONOTIFY, TPM_RETURNCMD, TPM_RIGHTBUTTON, TRACK_POPUP_MENU_FLAGS,
     TrackPopupMenu, TranslateMessage, WINDOW_EX_STYLE, WINDOW_STYLE, WM_APP, WM_CLOSE, WM_COMMAND,
     WM_CREATE, WM_CTLCOLOREDIT, WM_CTLCOLORLISTBOX, WM_CTLCOLORSTATIC, WM_DESTROY,
-    WM_LBUTTONDBLCLK, WM_MOVE, WM_NCCREATE, WM_NCDESTROY, WM_PAINT, WM_RBUTTONUP, WM_SETFONT,
-    WM_SETICON, WM_TIMER, WNDCLASSW, WS_BORDER, WS_CHILD, WS_CLIPCHILDREN, WS_CLIPSIBLINGS,
-    WS_EX_CLIENTEDGE, WS_OVERLAPPEDWINDOW, WS_TABSTOP, WS_VISIBLE, WS_VSCROLL,
+    WM_LBUTTONDBLCLK, WM_LBUTTONDOWN, WM_MOVE, WM_NCCREATE, WM_NCDESTROY, WM_PAINT,
+    WM_RBUTTONUP, WM_SETFONT, WM_SETICON, WM_TIMER, WNDCLASSW, WS_BORDER, WS_CHILD,
+    WS_CLIPCHILDREN, WS_CLIPSIBLINGS, WS_EX_CLIENTEDGE, WS_OVERLAPPEDWINDOW, WS_TABSTOP,
+    WS_VISIBLE, WS_VSCROLL,
 };
 use windows::core::{PCWSTR, w};
 
@@ -646,21 +648,6 @@ impl AppWindow {
                 0,
             )?
         };
-        self.controls.target_summary = unsafe {
-            create_control(
-                self.hwnd,
-                instance,
-                w!("STATIC"),
-                "",
-                child,
-                WINDOW_EX_STYLE(0),
-                36,
-                178,
-                392,
-                34,
-                0,
-            )?
-        };
         self.controls.target_list = unsafe {
             create_control(
                 self.hwnd,
@@ -670,9 +657,9 @@ impl AppWindow {
                 child | WS_BORDER | WS_VSCROLL | WINDOW_STYLE(LBS_NOTIFY as u32),
                 WS_EX_CLIENTEDGE,
                 36,
-                222,
+                184,
                 392,
-                242,
+                280,
                 ID_TARGETS,
             )?
         };
@@ -948,7 +935,6 @@ impl AppWindow {
         }
         self.refresh_process_details_ui();
         self.update_status();
-        self.update_target_summary();
         self.add_tray_icon();
     }
 
@@ -1159,7 +1145,6 @@ impl AppWindow {
                 add_list_item(self.controls.target_list, &target.display_name());
             }
         }
-        self.update_target_summary();
         self.update_status();
         self.update_action_buttons();
     }
@@ -1365,21 +1350,6 @@ impl AppWindow {
         self.last_status = Some((status, detail));
     }
 
-    fn update_target_summary(&self) {
-        let summary = if self.config.targets.is_empty() {
-            self.strings.no_targets.to_owned()
-        } else {
-            format!(
-                "{} {}",
-                self.strings.target_count,
-                self.config.targets.len()
-            )
-        };
-        unsafe {
-            set_text(self.controls.target_summary, &summary);
-        }
-    }
-
     fn reset_audio_after_endpoint_change(&mut self) {
         if let Some(audio) = &self.audio {
             for session in mem::take(&mut self.muted_by_app) {
@@ -1519,7 +1489,6 @@ impl AppWindow {
         if language_changed {
             self.refresh_text();
         } else {
-            self.update_target_summary();
             self.update_status();
         }
     }
@@ -1551,6 +1520,10 @@ impl AppWindow {
     }
 
     fn command(&mut self, id: i32, notification: u16) {
+        if id != ID_TARGETS && id != ID_REMOVE {
+            self.clear_target_selection();
+        }
+
         match id {
             ID_ADD_SELECTED => self.add_selected_process(),
             ID_ADD_MANUAL => self.add_manual_target(),
@@ -1723,6 +1696,22 @@ impl AppWindow {
             self.save_config();
             self.refresh_targets();
         }
+    }
+
+    fn clear_target_selection(&mut self) {
+        let index = unsafe { SendMessageW(self.controls.target_list, LB_GETCURSEL, None, None).0 };
+        if index < 0 {
+            return;
+        }
+        unsafe {
+            SendMessageW(
+                self.controls.target_list,
+                LB_SETCURSEL,
+                Some(WPARAM(usize::MAX)),
+                None,
+            );
+        }
+        self.update_action_buttons();
     }
 
     fn update_action_buttons(&self) {
@@ -2135,7 +2124,6 @@ struct Controls {
     status: HWND,
     status_detail: HWND,
     targets_label: HWND,
-    target_summary: HWND,
     target_list: HWND,
     remove_button: HWND,
     add_label: HWND,
@@ -2162,14 +2150,13 @@ struct Controls {
 }
 
 impl Controls {
-    fn all(self) -> [HWND; 29] {
+    fn all(self) -> [HWND; 28] {
         [
             self.title_label,
             self.subtitle_label,
             self.status,
             self.status_detail,
             self.targets_label,
-            self.target_summary,
             self.target_list,
             self.remove_button,
             self.add_label,
@@ -2248,6 +2235,10 @@ unsafe extern "system" fn window_proc(
             }
             WM_PAINT => {
                 app.paint(hwnd);
+                return LRESULT(0);
+            }
+            WM_LBUTTONDOWN => {
+                app.clear_target_selection();
                 return LRESULT(0);
             }
             WM_MOVE => {

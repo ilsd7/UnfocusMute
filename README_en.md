@@ -64,6 +64,10 @@ Download the Windows 10/11 ZIP, extract it, and run `UnfocusMute.exe`. It is por
 6. Use `Show PIDs` only when you need to register one specific process instance. A PID target applies only to the currently running instance, so choose it again if the app restarts with a different PID.
 7. Closing the window keeps UnfocusMute running in the tray. Use `Quit` to fully exit.
 
+## Finding a Game Process Name
+
+If you are not sure what to type, start the game and press `Ctrl`+`Shift`+`Esc` to open Task Manager. Sort the process list by `CPU` so the active game is easier to spot. Right-click the game, open `Properties`, and look for the process name ending in `.exe`, such as `game.exe`.
+
 ## Defaults
 
 On first run, you can choose whether UnfocusMute auto-starts when you sign in to Windows. Default settings for new configs are: auto-start disabled, start minimized to tray enabled, and unmute apps on exit enabled.

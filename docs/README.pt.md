@@ -64,6 +64,10 @@ Baixe o ZIP para Windows 10/11, extraia e execute `UnfocusMute.exe`. O app é po
 6. Use `Mostrar PIDs` somente quando precisar registrar uma instância específica. Um alvo por PID vale apenas para a instância em execução; se o app reiniciar com outro PID, selecione-o novamente.
 7. Fechar a janela mantém o UnfocusMute rodando na bandeja. Use `Sair` para encerrar completamente.
 
+## Encontrar o Nome do Processo do Jogo
+
+Se você não souber o que digitar, abra o jogo e pressione `Ctrl`+`Shift`+`Esc` para abrir o Gerenciador de Tarefas. Ordene a lista de processos por `CPU` para encontrar o jogo ativo com mais facilidade. Clique com o botão direito no jogo, abra `Propriedades` e procure o nome do processo terminado em `.exe`, como `game.exe`.
+
 ## Padrões
 
 No primeiro uso, você pode escolher se o UnfocusMute inicia automaticamente ao entrar no Windows. Em novas configurações, o início automático fica desativado, enquanto iniciar minimizado na bandeja e desmutar apps ao sair ficam ativados.

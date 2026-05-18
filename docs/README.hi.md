@@ -64,6 +64,10 @@ Windows 10/11 ZIP डाउनलोड करें, extract करें औ�
 6. किसी खास process instance को register करना हो तो ही `PID विवरण दिखाएं` इस्तेमाल करें। PID target सिर्फ अभी चल रहे instance पर लागू होता है; app restart होकर PID बदल जाए तो उसे फिर से चुनें।
 7. Window बंद करने पर UnfocusMute tray में चलता रहता है। पूरी तरह बंद करने के लिए `बंद करें` इस्तेमाल करें।
 
+## गेम का प्रोसेस नाम कैसे देखें
+
+अगर समझ न आए कि कौन सा नाम लिखना है, तो पहले गेम चलाएं और `Ctrl`+`Shift`+`Esc` दबाकर Task Manager खोलें। Process list को `CPU` के हिसाब से sort करें, इससे चल रहा गेम जल्दी दिखता है। गेम पर right-click करें, `Properties` खोलें, और `game.exe` जैसे `.exe` पर खत्म होने वाले process name को देखें।
+
 ## डिफॉल्ट सेटिंग
 
 पहली बार चलाने पर आप चुन सकते हैं कि Windows में sign in करते ही UnfocusMute अपने आप शुरू हो या नहीं। नई config में auto-start बंद रहता है, start minimized to tray चालू रहता है, और exit पर apps को unmute करना चालू रहता है।

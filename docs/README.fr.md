@@ -64,6 +64,10 @@ Téléchargez le ZIP pour Windows 10/11, extrayez-le, puis lancez `UnfocusMute.e
 6. Utilisez `Afficher les PID` uniquement si vous devez enregistrer une instance précise. Une cible PID ne s’applique qu’à l’instance en cours ; si l’application redémarre avec un autre PID, sélectionnez-la à nouveau.
 7. Fermer la fenêtre laisse UnfocusMute actif dans la zone de notification. Utilisez `Quitter` pour l’arrêter complètement.
 
+## Trouver le Nom du Processus d’un Jeu
+
+Si vous ne savez pas quel nom saisir, lancez le jeu puis appuyez sur `Ctrl`+`Shift`+`Esc` pour ouvrir le Gestionnaire des tâches. Triez la liste des processus par `CPU` afin de repérer plus facilement le jeu actif. Faites un clic droit sur le jeu, ouvrez `Propriétés`, puis cherchez le nom du processus qui se termine par `.exe`, comme `game.exe`.
+
 ## Réglages Par Défaut
 
 Au premier lancement, vous pouvez choisir si UnfocusMute démarre automatiquement à l’ouverture de session Windows. Les nouvelles configurations désactivent le démarrage automatique par défaut, activent le démarrage réduit dans la zone de notification et réactivent le son des applications à la fermeture.
