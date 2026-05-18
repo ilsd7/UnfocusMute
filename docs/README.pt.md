@@ -6,17 +6,17 @@
   <img src="../assets/screenshot.png" alt="Janela do UnfocusMute" width="760">
 </p>
 
-UnfocusMute é um pequeno app leve para a bandeja do Windows que silencia automaticamente jogos ou apps selecionados quando eles ficam em segundo plano.
+UnfocusMute é um app leve e portátil para a bandeja do Windows que silencia apenas o áudio dos jogos ou apps que você escolher quando eles ficam em segundo plano.
 
 Criado como app nativo em Rust, ele roda sem runtime separado. O executável atual para Windows tem cerca de 517 KB, menos de 1 MB.
 
-Registre os apps que você quer gerenciar, e o UnfocusMute silencia apenas as sessões de áudio deles enquanto não estão em foco. Quando um app volta ao primeiro plano, o UnfocusMute restaura somente as sessões que ele mesmo silenciou, sem alterar silenciamentos feitos manualmente.
+Registre os apps que você quer gerenciar, e o UnfocusMute silencia apenas as sessões de áudio deles enquanto não estão em foco. Quando um app volta ao primeiro plano, o UnfocusMute restaura somente as sessões que ele mesmo silenciou, sem alterar os silenciamentos feitos manualmente.
 
 Ele é especialmente útil quando você sai de um jogo com Alt+Tab para usar navegador, chat ou uma janela de trabalho. Dá para controlar o áudio em segundo plano sem abrir o mixer de volume do Windows repetidamente.
 
 ## Principais Vantagens
 
-- Automatiza o mudo em segundo plano por jogo ou app, fazendo o áudio acompanhar as mudanças de foco sem ajustes manuais.
+- Automatiza o silenciamento em segundo plano por jogo ou app, fazendo o áudio acompanhar as mudanças de foco sem ajustes manuais.
 - Restaura apenas o áudio que o UnfocusMute alterou, preservando silenciamentos manuais.
 - Funciona como ferramenta leve, portátil e local, sem instalação, conta ou conexão de rede.
 
@@ -29,11 +29,11 @@ Ele é especialmente útil quando você sai de um jogo com Alt+Tab para usar nav
 
 ## Recursos
 
-- Detecção de foco com mudo e restauração automáticos para sessões registradas.
-- Adiciona alvos pela lista de apps em execução ou digitando um executável como `game.exe`.
-- Registro agrupado por `.exe`, registro por PID da instância atual e `Mostrar PIDs`.
-- Funciona na bandeja, com pausa, atalho para a pasta de configuração e proteção contra múltiplas instâncias.
-- Seleção de idioma no primeiro uso e troca imediata entre English, 한국어, 日本語, 简体中文, Español, Français, Português, हिन्दी e العربية.
+- Silencia automaticamente as sessões de áudio dos apps registrados enquanto eles estão em segundo plano e restaura o áudio quando voltam ao primeiro plano.
+- Permite adicionar alvos pela lista de apps em execução ou digitando um executável como `game.exe`.
+- Oferece alvos por `.exe`, alvos por PID da instância atual e `Mostrar PIDs`.
+- Fica na bandeja, permite pausar, abrir a pasta de configuração e evita múltiplas instâncias.
+- Permite escolher o idioma no primeiro uso e depois alternar no app entre English, 한국어, 日本語, 简体中文, Español, Français, Português, हिन्दी e العربية.
 - Configuração local em `%APPDATA%\UnfocusMute\config.json`.
 
 ## Compatibilidade com Anticheat
@@ -79,7 +79,7 @@ rustup target add x86_64-pc-windows-msvc
 cargo build --release --target x86_64-pc-windows-msvc
 ```
 
-Builds de release são configurados para reduzir o tamanho final. O release profile em `Cargo.toml` remove símbolos, ativa LTO, usa uma única codegen unit, define `panic = "abort"` e otimiza para tamanho.
+As builds de release são configuradas para reduzir o tamanho final. O release profile em `Cargo.toml` remove símbolos, ativa LTO, usa uma única codegen unit, define `panic = "abort"` e otimiza para tamanho.
 
 Criar um ZIP de distribuição:
 

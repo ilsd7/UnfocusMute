@@ -6,11 +6,11 @@
   <img src="../assets/screenshot.png" alt="UnfocusMute ऐप विंडो" width="760">
 </p>
 
-UnfocusMute Windows ट्रे के लिए एक छोटा और हल्का ऐप है। जब चुने गए गेम या ऐप बैकग्राउंड में चले जाते हैं, तो यह उन्हें अपने आप म्यूट कर देता है।
+UnfocusMute Windows ट्रे के लिए एक छोटा और हल्का ऐप है। जब चुना गया गेम या ऐप बैकग्राउंड में जाता है, तो यह सिर्फ उसी ऐप की आवाज अपने आप म्यूट करता है।
 
 Rust native app के रूप में build होने के कारण यह अलग runtime के बिना सीधे चलता है। मौजूदा Windows executable लगभग 517 KB है, यानी 1 MB से कम।
 
-जिन ऐप्स को संभालना है उन्हें रजिस्टर करें; जब वे सामने नहीं होते, UnfocusMute सिर्फ उनके ऑडियो सेशन म्यूट करता है। जब ऐप फिर से सामने आता है, तो UnfocusMute सिर्फ वही सेशन अनम्यूट करता है जिन्हें उसने खुद म्यूट किया था, इसलिए आपके मैन्युअल म्यूट नहीं बदलते।
+जिन ऐप्स को संभालना है उन्हें रजिस्टर करें; जब वे सामने नहीं होते, UnfocusMute सिर्फ उनके ऑडियो सेशन म्यूट करता है। जब ऐप फिर से सामने आता है, तो UnfocusMute सिर्फ वही सेशन अनम्यूट करता है जिन्हें उसने खुद म्यूट किया था, इसलिए आपके मैन्युअल म्यूट वैसे ही रहते हैं।
 
 जब आप Alt+Tab से गेम से ब्राउज़र, चैट ऐप या काम की विंडो पर जाते हैं, तब यह खास तौर पर उपयोगी है। बैकग्राउंड ऑडियो संभालने के लिए Windows वॉल्यूम मिक्सर बार-बार खोलने की जरूरत नहीं पड़ती।
 
@@ -29,11 +29,11 @@ Rust native app के रूप में build होने के कार�
 
 ## मुख्य सुविधाएं
 
-- Foreground state देखकर registered audio sessions को अपने आप mute और restore करता है।
-- चल रहे ऐप्स की सूची से लक्ष्य जोड़ें या `game.exe` जैसा executable नाम टाइप करें।
-- `.exe` group registration, current instance के लिए per-PID registration और `PID विवरण दिखाएं` support करता है।
-- ट्रे में चलता है, pause, config folder shortcut और single-instance protection देता है।
-- पहली बार भाषा चुनने और ऐप में तुरंत English, 한국어, 日本語, 简体中文, Español, Français, Português, हिन्दी और العربية में बदलने की सुविधा।
+- रजिस्टर किए गए ऐप्स बैकग्राउंड में हों तो उनके audio sessions अपने आप mute करता है, और foreground में लौटने पर restore करता है।
+- चल रहे ऐप्स की सूची से target जोड़ें या `game.exe` जैसा executable नाम टाइप करें।
+- `.exe` target, current instance के PID target और `PID विवरण दिखाएं` को support करता है।
+- tray में चलता है और pause, config folder खोलने व single-instance protection की सुविधा देता है।
+- पहली बार भाषा चुनें, फिर app में तुरंत English, 한국어, 日本語, 简体中文, Español, Français, Português, हिन्दी और العربية के बीच बदलें।
 - लोकल config `%APPDATA%\UnfocusMute\config.json` में सेव होती है।
 
 ## Anti-Cheat संगतता

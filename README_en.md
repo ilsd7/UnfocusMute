@@ -6,11 +6,11 @@
   <img src="assets/screenshot.png" alt="UnfocusMute app window" width="760">
 </p>
 
-UnfocusMute is a small, lightweight Windows tray app that automatically quiets selected games or apps when they move to the background.
+UnfocusMute is a small, lightweight Windows tray app that automatically mutes selected games or apps only while they are in the background.
 
 Built as a native Rust app, it runs without a separate runtime. The current Windows executable is about 517 KB, under 1 MB.
 
-Register the apps you want to manage, and UnfocusMute mutes only their audio sessions while they are not in the foreground. When an app returns to the foreground, UnfocusMute restores only sessions it muted itself, so manually muted sessions stay untouched.
+Register the apps you want to manage, and UnfocusMute mutes only their audio sessions while they are not in the foreground. When an app returns to the foreground, UnfocusMute restores only the sessions it muted itself, so manually muted sessions stay untouched.
 
 It is especially useful when you Alt+Tab from a game to a browser, chat app, or work window. You can keep background audio under control without repeatedly opening the Windows volume mixer.
 
@@ -29,11 +29,11 @@ It is especially useful when you Alt+Tab from a game to a browser, chat app, or 
 
 ## Features
 
-- Foreground detection with automatic mute and restore for registered audio sessions.
+- Automatically mutes registered apps while they are in the background and restores their audio when they return to the foreground.
 - Adds targets from the running app list or by typing an executable name such as `game.exe`.
-- Supports grouped `.exe` targets, current-instance PID targets, and `Show PIDs`.
-- Tray resident operation, pause, config folder shortcut, and single-instance protection.
-- First-run language selection and in-app switching between English, Korean, Japanese, Simplified Chinese, Spanish, French, Portuguese, Hindi, and Arabic.
+- Supports `.exe` targets, current-instance PID targets, and `Show PIDs`.
+- Runs in the tray with pause, config folder access, and single-instance protection.
+- Choose a language on first run, then switch in-app between English, Korean, Japanese, Simplified Chinese, Spanish, French, Portuguese, Hindi, and Arabic.
 - Local config at `%APPDATA%\UnfocusMute\config.json`.
 
 ## Anti-Cheat Compatibility

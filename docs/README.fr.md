@@ -6,11 +6,11 @@
   <img src="../assets/screenshot.png" alt="Fenêtre de l’application UnfocusMute" width="760">
 </p>
 
-UnfocusMute est une petite application légère pour la zone de notification Windows. Elle coupe automatiquement le son des jeux ou applications sélectionnés lorsqu’ils passent en arrière-plan.
+UnfocusMute est une petite application légère pour la zone de notification Windows qui coupe uniquement le son des jeux ou applications sélectionnés lorsqu’ils passent en arrière-plan.
 
 Compilée comme application native Rust, elle s’exécute sans runtime séparé. L’exécutable Windows actuel pèse environ 517 Ko, soit moins de 1 Mo.
 
-Enregistrez les applications à gérer, et UnfocusMute ne coupe leurs sessions audio que lorsqu’elles ne sont plus au premier plan. Quand une application revient au premier plan, UnfocusMute réactive uniquement les sessions qu’elle avait coupées elle-même, sans toucher aux coupures manuelles.
+Enregistrez les applications à gérer, et UnfocusMute ne coupe leurs sessions audio que lorsqu’elles ne sont plus au premier plan. Quand une application revient au premier plan, l’application ne réactive que les sessions qu’elle avait elle-même coupées, sans toucher aux coupures manuelles.
 
 Elle est particulièrement utile lorsque vous quittez un jeu avec Alt+Tab pour passer à un navigateur, une messagerie ou une fenêtre de travail. Vous pouvez maîtriser le son en arrière-plan sans rouvrir sans cesse le mélangeur de volume Windows.
 
@@ -29,11 +29,11 @@ Elle est particulièrement utile lorsque vous quittez un jeu avec Alt+Tab pour p
 
 ## Fonctionnalités
 
-- Détection du premier plan avec coupure et réactivation automatiques des sessions enregistrées.
-- Ajoute des cibles depuis la liste des applications en cours ou en saisissant un exécutable comme `game.exe`.
-- Enregistrement groupé par `.exe`, enregistrement par PID de l’instance en cours et `Afficher les PID`.
-- Fonctionne dans la zone de notification, avec pause, raccourci vers le dossier de configuration et protection contre les doubles lancements.
-- Sélection de la langue au premier lancement et changement immédiat entre English, 한국어, 日本語, 简体中文, Español, Français, Português, हिन्दी et العربية.
+- Coupe automatiquement les sessions audio des applications enregistrées lorsqu’elles sont en arrière-plan et les réactive au retour au premier plan.
+- Permet d’ajouter des cibles depuis la liste des applications en cours ou en saisissant un exécutable comme `game.exe`.
+- Prend en charge les cibles par `.exe`, les cibles par PID de l’instance en cours et `Afficher les PID`.
+- Reste dans la zone de notification, avec pause, accès au dossier de configuration et protection contre les doubles lancements.
+- Permet de choisir la langue au premier lancement, puis de passer dans l’application entre English, 한국어, 日本語, 简体中文, Español, Français, Português, हिन्दी et العربية.
 - Configuration locale dans `%APPDATA%\UnfocusMute\config.json`.
 
 ## Compatibilité Anticheat
