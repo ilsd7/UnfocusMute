@@ -868,7 +868,7 @@ impl AppWindow {
         self.controls.hide_button =
             unsafe { create_button(self.hwnd, instance, "", 788, 552, 140, 38, ID_HIDE)? };
         self.controls.quit_button =
-            unsafe { create_button(self.hwnd, instance, "", 162, 552, 140, 38, ID_QUIT)? };
+            unsafe { create_button(self.hwnd, instance, "", 492, 552, 132, 38, ID_QUIT)? };
 
         unsafe {
             SendMessageW(
