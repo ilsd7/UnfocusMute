@@ -3,14 +3,15 @@ use crate::windows_app::process;
 use anyhow::{Context, Result};
 use std::collections::{HashMap, HashSet, hash_map::Entry};
 use windows::Win32::Media::Audio::{
-    IAudioSessionControl2, IAudioSessionManager2, IMMDeviceEnumerator, ISimpleAudioVolume,
-    MMDeviceEnumerator, eMultimedia, eRender,
+    IAudioSessionControl2, IAudioSessionManager2, IMMDevice, IMMDeviceEnumerator,
+    ISimpleAudioVolume, MMDeviceEnumerator, eMultimedia, eRender,
 };
 use windows::Win32::System::Com::{CLSCTX_ALL, CoCreateInstance, CoTaskMemFree};
-use windows::core::Interface;
+use windows::core::{Interface, PWSTR};
 
 pub struct AudioController {
     manager: IAudioSessionManager2,
+    endpoint_id: String,
 }
 
 pub struct MuteApplyResult {
@@ -21,17 +22,20 @@ pub struct MuteApplyResult {
 impl AudioController {
     pub fn new() -> Result<Self> {
         unsafe {
-            let enumerator: IMMDeviceEnumerator =
-                CoCreateInstance(&MMDeviceEnumerator, None, CLSCTX_ALL)
-                    .context("create audio device enumerator")?;
-            let device = enumerator
-                .GetDefaultAudioEndpoint(eRender, eMultimedia)
-                .context("get default render endpoint")?;
+            let device = default_render_endpoint()?;
+            let endpoint_id = device_id(&device).context("get default render endpoint id")?;
             let manager = device
                 .Activate::<IAudioSessionManager2>(CLSCTX_ALL, None)
                 .context("activate audio session manager")?;
-            Ok(Self { manager })
+            Ok(Self {
+                manager,
+                endpoint_id,
+            })
         }
+    }
+
+    pub fn is_current_default_endpoint(&self) -> bool {
+        default_render_endpoint_id().is_ok_and(|endpoint_id| endpoint_id == self.endpoint_id)
     }
 
     pub fn sessions(&self) -> Result<Vec<AudioSessionSnapshot>> {
@@ -177,14 +181,40 @@ unsafe fn session_key(
 
 unsafe fn session_instance_id(control: &IAudioSessionControl2) -> Option<String> {
     let value = unsafe { control.GetSessionInstanceIdentifier().ok()? };
+    unsafe { co_task_mem_string(value) }
+}
+
+unsafe fn default_render_endpoint() -> Result<IMMDevice> {
+    let enumerator: IMMDeviceEnumerator =
+        unsafe { CoCreateInstance(&MMDeviceEnumerator, None, CLSCTX_ALL) }
+            .context("create audio device enumerator")?;
+    unsafe { enumerator.GetDefaultAudioEndpoint(eRender, eMultimedia) }
+        .context("get default render endpoint")
+}
+
+fn default_render_endpoint_id() -> Result<String> {
+    unsafe {
+        let device = default_render_endpoint()?;
+        device_id(&device)
+    }
+}
+
+unsafe fn device_id(device: &IMMDevice) -> Result<String> {
+    let value = unsafe { device.GetId().context("get audio endpoint id")? };
+    Ok(unsafe { co_task_mem_string(value) }.unwrap_or_default())
+}
+
+unsafe fn co_task_mem_string(value: PWSTR) -> Option<String> {
     if value.is_null() {
         return None;
     }
 
-    let id = unsafe { String::from_utf16_lossy(value.as_wide()) };
+    let text = unsafe { String::from_utf16_lossy(value.as_wide()) }
+        .trim_end_matches('\0')
+        .to_owned();
     unsafe {
         CoTaskMemFree(Some(value.as_ptr().cast()));
     }
 
-    if id.is_empty() { None } else { Some(id) }
+    if text.is_empty() { None } else { Some(text) }
 }

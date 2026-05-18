@@ -1179,6 +1179,14 @@ impl AppWindow {
             return;
         }
 
+        if self
+            .audio
+            .as_ref()
+            .is_some_and(|audio| !audio.is_current_default_endpoint())
+        {
+            self.audio = None;
+        }
+
         if self.audio.is_none() {
             match AudioController::new() {
                 Ok(audio) => {
@@ -1400,6 +1408,7 @@ impl AppWindow {
         };
         if added {
             self.finish_target_change();
+            self.clear_process_search();
         }
     }
 
@@ -1434,6 +1443,11 @@ impl AppWindow {
                 None,
             );
         }
+    }
+
+    fn clear_process_search(&mut self) {
+        self.process_query.clear();
+        self.apply_process_filter();
     }
 
     fn release_running_process_focus(&self) {
