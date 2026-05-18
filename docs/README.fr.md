@@ -40,10 +40,6 @@ Elle est particulièrement utile lorsque vous quittez un jeu avec Alt+Tab pour p
 
 UnfocusMute n’injecte pas de code dans les jeux, ne lit pas leur mémoire, n’intercepte pas les entrées et ne modifie pas leurs fichiers. Comme il utilise uniquement les informations de processus/fenêtre au premier plan de Windows et les contrôles de sourdine des sessions CoreAudio, il devrait fonctionner sans problème avec la plupart des systèmes anticheat, mais la compatibilité avec tous ne peut pas être garantie.
 
-## Pourquoi Rust
-
-UnfocusMute est un petit outil qui reste actif en arrière-plan. La rapidité de lancement, la faible consommation mémoire et la simplicité de distribution comptent donc beaucoup. L’exécutable natif Rust ne nécessite pas de runtime séparé et communique directement avec les API Windows CoreAudio sans embarquer de framework résident inutile.
-
 ## Sécurité et Confidentialité
 
 UnfocusMute fonctionne d’abord en local. Il stocke uniquement les noms de processus enregistrés, les PID facultatifs, la langue de l’interface, la position de la fenêtre et les préférences de démarrage dans un fichier de configuration local.
@@ -66,7 +62,7 @@ Téléchargez le ZIP pour Windows 10/11, extrayez-le, puis lancez `UnfocusMute.e
 
 ## Trouver le Nom du Processus d’un Jeu
 
-Si vous ne savez pas quel nom saisir, lancez le jeu puis appuyez sur `Ctrl`+`Shift`+`Esc` pour ouvrir le Gestionnaire des tâches. Triez la liste des processus par `CPU` afin de repérer plus facilement le jeu actif. Faites un clic droit sur le jeu, ouvrez `Propriétés`, puis cherchez le nom du processus qui se termine par `.exe`, comme `game.exe`.
+Si vous ne savez pas quel nom saisir, lancez d’abord le jeu, revenez dans Windows, puis appuyez sur `Ctrl`+`Shift`+`Esc` pour ouvrir le Gestionnaire des tâches. Triez la liste des processus par `CPU` afin de repérer plus facilement le jeu actif. Faites un clic droit sur le jeu, ouvrez `Propriétés`, puis cherchez le nom du processus qui se termine par `.exe`, comme `game.exe`.
 
 ## Réglages Par Défaut
 

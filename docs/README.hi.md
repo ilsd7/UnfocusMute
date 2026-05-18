@@ -40,10 +40,6 @@ Rust native app के रूप में build होने के कार�
 
 UnfocusMute games में code inject नहीं करता, game memory नहीं पढ़ता, input hook नहीं करता और game files modify नहीं करता। क्योंकि यह केवल Windows process/foreground window information और CoreAudio session mute controls इस्तेमाल करता है, इसलिए ज्यादातर anti-cheat systems में समस्या न होने की उम्मीद है, लेकिन हर anti-cheat system के साथ compatibility की guarantee नहीं दी जा सकती।
 
-## Rust क्यों
-
-UnfocusMute एक छोटा background utility है, इसलिए तेज start, कम memory use और आसान distribution मायने रखते हैं। Rust native executable अलग runtime के बिना चलता है और अनावश्यक resident framework जोड़े बिना Windows CoreAudio APIs से सीधे काम करता है।
-
 ## सुरक्षा और प्राइवेसी
 
 UnfocusMute local-first तरीके से काम करता है। यह local config file में सिर्फ registered process names, optional PIDs, UI language, window position और startup preferences सेव करता है।
@@ -66,7 +62,7 @@ Windows 10/11 ZIP डाउनलोड करें, extract करें औ�
 
 ## गेम का प्रोसेस नाम कैसे देखें
 
-अगर समझ न आए कि कौन सा नाम लिखना है, तो पहले गेम चलाएं और `Ctrl`+`Shift`+`Esc` दबाकर Task Manager खोलें। Process list को `CPU` के हिसाब से sort करें, इससे चल रहा गेम जल्दी दिखता है। गेम पर right-click करें, `Properties` खोलें, और `game.exe` जैसे `.exe` पर खत्म होने वाले process name को देखें।
+अगर समझ न आए कि कौन सा नाम लिखना है, तो पहले गेम चलाकर Windows पर वापस आएं, फिर `Ctrl`+`Shift`+`Esc` दबाकर Task Manager खोलें। Process list को `CPU` के हिसाब से sort करें, इससे चल रहा गेम जल्दी दिखता है। गेम पर right-click करें, `Properties` खोलें, और `game.exe` जैसे `.exe` पर खत्म होने वाले process name को देखें।
 
 ## डिफॉल्ट सेटिंग
 

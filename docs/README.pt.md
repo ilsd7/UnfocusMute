@@ -40,10 +40,6 @@ Ele é especialmente útil quando você sai de um jogo com Alt+Tab para usar nav
 
 O UnfocusMute não injeta código em jogos, não lê memória do jogo, não intercepta entradas e não modifica arquivos do jogo. Como ele usa apenas informações de processos/janela em primeiro plano do Windows e controles de mudo de sessões CoreAudio, espera-se que não cause problemas com a maioria dos sistemas anticheat, mas a compatibilidade com todos não pode ser garantida.
 
-## Por Que Rust
-
-UnfocusMute é uma pequena ferramenta que fica em segundo plano, então inicialização rápida, baixo uso de memória e distribuição simples são importantes. O executável nativo em Rust roda sem runtime separado e conversa diretamente com as APIs Windows CoreAudio sem carregar frameworks residentes desnecessários.
-
 ## Segurança e Privacidade
 
 UnfocusMute funciona com uma abordagem local. Ele salva apenas nomes de processos registrados, PIDs opcionais, idioma da interface, posição da janela e preferências de inicialização em um arquivo de configuração local.
@@ -66,7 +62,7 @@ Baixe o ZIP para Windows 10/11, extraia e execute `UnfocusMute.exe`. O app é po
 
 ## Encontrar o Nome do Processo do Jogo
 
-Se você não souber o que digitar, abra o jogo e pressione `Ctrl`+`Shift`+`Esc` para abrir o Gerenciador de Tarefas. Ordene a lista de processos por `CPU` para encontrar o jogo ativo com mais facilidade. Clique com o botão direito no jogo, abra `Propriedades` e procure o nome do processo terminado em `.exe`, como `game.exe`.
+Se você não souber o que digitar, abra primeiro o jogo, volte para o Windows e pressione `Ctrl`+`Shift`+`Esc` para abrir o Gerenciador de Tarefas. Ordene a lista de processos por `CPU` para encontrar o jogo ativo com mais facilidade. Clique com o botão direito no jogo, abra `Propriedades` e procure o nome do processo terminado em `.exe`, como `game.exe`.
 
 ## Padrões
 

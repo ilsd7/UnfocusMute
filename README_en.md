@@ -40,10 +40,6 @@ It is especially useful when you Alt+Tab from a game to a browser, chat app, or 
 
 UnfocusMute does not inject into games, read game memory, hook input, or modify game files. Because it only uses Windows process/window information and CoreAudio session mute controls, it is expected to work without issues with most anti-cheat systems, but compatibility with every anti-cheat system cannot be guaranteed.
 
-## Why Rust
-
-UnfocusMute is a small background utility, so startup speed, memory use, and simple distribution matter. The Rust native executable runs without a separate runtime and talks directly to Windows CoreAudio APIs without carrying an unnecessary resident framework.
-
 ## Security and Privacy
 
 UnfocusMute is local-first. It stores only registered process names, optional PIDs, UI language, window position, and startup preferences in a local config file.
@@ -66,7 +62,7 @@ Download the Windows 10/11 ZIP, extract it, and run `UnfocusMute.exe`. It is por
 
 ## Finding a Game Process Name
 
-If you are not sure what to type, start the game and press `Ctrl`+`Shift`+`Esc` to open Task Manager. Sort the process list by `CPU` so the active game is easier to spot. Right-click the game, open `Properties`, and look for the process name ending in `.exe`, such as `game.exe`.
+If you are not sure what to type, start the game first, switch back to Windows, then press `Ctrl`+`Shift`+`Esc` to open Task Manager. Sort the process list by `CPU` so the active game is easier to spot. Right-click the game, open `Properties`, and look for the process name ending in `.exe`, such as `game.exe`.
 
 ## Defaults
 
