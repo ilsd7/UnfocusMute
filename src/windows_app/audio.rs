@@ -27,9 +27,8 @@ pub struct MuteApplyResult {
 }
 
 pub struct PlannedMuteApplyResult {
-    pub active_sessions: Option<Vec<AudioSessionKey>>,
-    pub actions: Vec<MuteAction>,
-    pub changed_sessions: Vec<AudioSessionKey>,
+    pub active_managed_sessions: Option<Vec<AudioSessionKey>>,
+    pub changed_actions: Vec<MuteAction>,
     pub had_failures: bool,
 }
 
@@ -52,8 +51,11 @@ impl AudioController {
             .is_some_and(EndpointNotification::take_changed)
     }
 
-    pub fn set_mutes(&self, actions: &[MuteAction]) -> Result<MuteApplyResult> {
-        if actions.is_empty() {
+    pub fn unmute_sessions(
+        &self,
+        session_keys: &HashSet<AudioSessionKey>,
+    ) -> Result<MuteApplyResult> {
+        if session_keys.is_empty() {
             return Ok(MuteApplyResult {
                 changed_sessions: Vec::new(),
                 missing_sessions: Vec::new(),
@@ -62,44 +64,27 @@ impl AudioController {
         }
 
         let sessions = self.session_handles()?;
-        Ok(apply_actions_to_handles(&sessions, actions, true))
+        Ok(apply_unmute_to_handles(&sessions, session_keys))
     }
 
     pub fn apply_mute_plan(
         &self,
         matcher: &TargetMatcher,
         foreground_pid: Option<u32>,
-        foreground_process_name: Option<&str>,
+        foreground_process_name: Option<String>,
         managed_muted_sessions: &HashSet<AudioSessionKey>,
     ) -> Result<PlannedMuteApplyResult> {
         let sessions = self.session_handles()?;
-        let active_sessions = (!managed_muted_sessions.is_empty()).then(|| {
-            sessions
-                .iter()
-                .map(|session| session.key.clone())
-                .collect::<Vec<_>>()
-        });
-        let planner = MutePlanner::new(matcher, foreground_pid, foreground_process_name);
-        let actions = sessions
-            .iter()
-            .filter_map(|session| {
-                planner.plan_session(managed_muted_sessions, &session.key, session.muted)
-            })
-            .collect::<Vec<_>>();
-        let apply_result = if actions.is_empty() {
-            MuteApplyResult {
-                changed_sessions: Vec::new(),
-                missing_sessions: Vec::new(),
-                had_failures: false,
-            }
-        } else {
-            apply_actions_to_handles(&sessions, &actions, false)
-        };
+        let planner = MutePlanner::new_with_normalized_foreground(
+            matcher,
+            foreground_pid,
+            foreground_process_name,
+        );
+        let apply_result = apply_plan_to_handles(&sessions, &planner, managed_muted_sessions);
 
         Ok(PlannedMuteApplyResult {
-            active_sessions,
-            actions,
-            changed_sessions: apply_result.changed_sessions,
+            active_managed_sessions: apply_result.active_managed_sessions,
+            changed_actions: apply_result.changed_actions,
             had_failures: apply_result.had_failures,
         })
     }
@@ -149,30 +134,63 @@ struct AudioSessionHandle {
     volume: ISimpleAudioVolume,
 }
 
-fn apply_actions_to_handles(
+struct PlanApplyResult {
+    active_managed_sessions: Option<Vec<AudioSessionKey>>,
+    changed_actions: Vec<MuteAction>,
+    had_failures: bool,
+}
+
+fn apply_plan_to_handles(
     sessions: &[AudioSessionHandle],
-    actions: &[MuteAction],
-    track_missing: bool,
-) -> MuteApplyResult {
-    let mut changed_sessions = Vec::new();
-    let mut missing_sessions = if track_missing {
-        actions
-            .iter()
-            .map(|action| action.key.clone())
-            .collect::<Vec<_>>()
-    } else {
-        Vec::new()
-    };
+    planner: &MutePlanner<'_>,
+    managed_muted_sessions: &HashSet<AudioSessionKey>,
+) -> PlanApplyResult {
+    let track_active_managed = !managed_muted_sessions.is_empty();
+    let mut active_managed_sessions = track_active_managed.then(Vec::new);
+    let mut changed_actions = Vec::new();
     let mut had_failures = false;
 
     for session in sessions {
-        let Some(action) = actions.iter().find(|action| action.key == session.key) else {
+        let managed = track_active_managed && managed_muted_sessions.contains(&session.key);
+        if managed && let Some(active_managed_sessions) = &mut active_managed_sessions {
+            active_managed_sessions.push(session.key.clone());
+        }
+
+        let Some(action) = planner.plan_session_with_managed(managed, &session.key, session.muted)
+        else {
             continue;
         };
-        if track_missing {
-            missing_sessions.retain(|key| key != &session.key);
-        }
         if unsafe { session.volume.SetMute(action.mute, std::ptr::null()) }.is_err() {
+            had_failures = true;
+            continue;
+        }
+        changed_actions.push(action);
+    }
+
+    PlanApplyResult {
+        active_managed_sessions,
+        changed_actions,
+        had_failures,
+    }
+}
+
+fn apply_unmute_to_handles(
+    sessions: &[AudioSessionHandle],
+    session_keys: &HashSet<AudioSessionKey>,
+) -> MuteApplyResult {
+    let mut changed_sessions = Vec::new();
+    let mut missing_sessions = session_keys.clone();
+    let mut had_failures = false;
+
+    for session in sessions {
+        if !missing_sessions.remove(&session.key) {
+            continue;
+        }
+        if !session.muted {
+            changed_sessions.push(session.key.clone());
+            continue;
+        }
+        if unsafe { session.volume.SetMute(false, std::ptr::null()) }.is_err() {
             had_failures = true;
             continue;
         }
@@ -181,7 +199,7 @@ fn apply_actions_to_handles(
 
     MuteApplyResult {
         changed_sessions,
-        missing_sessions,
+        missing_sessions: missing_sessions.into_iter().collect(),
         had_failures,
     }
 }

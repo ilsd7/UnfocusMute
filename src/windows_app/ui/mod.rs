@@ -1,7 +1,7 @@
 use crate::config::{
     AppConfig, WindowPosition, config_dir, config_file_exists, normalize_process_name,
 };
-use crate::engine::{AudioSessionKey, MuteAction, TargetMatcher};
+use crate::engine::{AudioSessionKey, TargetMatcher};
 use crate::i18n::{Language, Strings};
 use crate::windows_app::audio::AudioController;
 use crate::windows_app::process::{self, ProcessInfo};
@@ -316,7 +316,7 @@ struct AppWindow {
     show_process_details: bool,
     tray_added: bool,
     last_issue: Option<StatusIssue>,
-    last_status: Option<(String, String)>,
+    last_status: Option<(StatusSnapshot, &'static str, String)>,
     config_stamp: Option<ConfigFileStamp>,
     next_config_check: Instant,
     theme: AppTheme,
@@ -338,6 +338,14 @@ enum StatusIssue {
     ConfigSaveFailed,
     StartupUpdateFailed,
     OpenConfigFailed,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+struct StatusSnapshot {
+    paused: bool,
+    issue: Option<StatusIssue>,
+    target_count: usize,
+    muted_count: usize,
 }
 
 impl AppWindow {
@@ -772,6 +780,7 @@ impl AppWindow {
             );
         }
         self.refresh_process_details_ui();
+        self.last_status = None;
         self.update_status();
         self.add_tray_icon();
     }
@@ -1114,7 +1123,7 @@ impl AppWindow {
         let apply_result = match audio.apply_mute_plan(
             &self.target_matcher,
             foreground_pid,
-            foreground_process_name.as_deref(),
+            foreground_process_name,
             &self.muted_by_app,
         ) {
             Ok(result) => {
@@ -1127,22 +1136,20 @@ impl AppWindow {
                 return;
             }
         };
-        if let Some(active_sessions) = &apply_result.active_sessions {
-            self.muted_by_app
-                .retain(|session| active_sessions.contains(session));
+        if let Some(active_managed_sessions) = apply_result.active_managed_sessions {
+            self.muted_by_app.clear();
+            self.muted_by_app.extend(active_managed_sessions);
         }
 
         self.apply_audio_update_result(apply_result.had_failures);
         if apply_result.had_failures {
             self.audio = None;
         }
-        for action in apply_result.actions {
-            if apply_result.changed_sessions.contains(&action.key) {
-                if action.mute {
-                    self.muted_by_app.insert(action.key);
-                } else {
-                    self.muted_by_app.remove(&action.key);
-                }
+        for action in apply_result.changed_actions {
+            if action.mute {
+                self.muted_by_app.insert(action.key);
+            } else {
+                self.muted_by_app.remove(&action.key);
             }
         }
 
@@ -1150,12 +1157,25 @@ impl AppWindow {
     }
 
     fn update_status(&mut self) {
+        let snapshot = StatusSnapshot {
+            paused: self.paused,
+            issue: self.last_issue,
+            target_count: self.config.targets.len(),
+            muted_count: self.muted_by_app.len(),
+        };
+        if self
+            .last_status
+            .as_ref()
+            .is_some_and(|(last_snapshot, _, _)| *last_snapshot == snapshot)
+        {
+            return;
+        }
+
         let status = if self.paused {
             self.strings.status_paused
         } else {
             self.strings.status_running
-        }
-        .to_owned();
+        };
         let detail = if let Some(issue) = self.last_issue {
             format!("{} · {}", self.strings.status_issue, self.issue_text(issue))
         } else {
@@ -1167,20 +1187,11 @@ impl AppWindow {
                 self.muted_by_app.len()
             )
         };
-        if self
-            .last_status
-            .as_ref()
-            .is_some_and(|(last_status, last_detail)| {
-                last_status == &status && last_detail == &detail
-            })
-        {
-            return;
-        }
         unsafe {
-            set_text(self.controls.status, &status);
+            set_text(self.controls.status, status);
             set_text(self.controls.status_detail, &detail);
         }
-        self.last_status = Some((status, detail));
+        self.last_status = Some((snapshot, status, detail));
     }
 
     fn reset_audio_after_endpoint_change(&mut self) {
@@ -1934,12 +1945,7 @@ fn language_button_text(language: Language) -> String {
 }
 
 fn restore_mute_set(audio: &AudioController, muted_by_app: &mut HashSet<AudioSessionKey>) -> bool {
-    let actions = muted_by_app
-        .iter()
-        .cloned()
-        .map(|key| MuteAction { key, mute: false })
-        .collect::<Vec<_>>();
-    let Ok(result) = audio.set_mutes(&actions) else {
+    let Ok(result) = audio.unmute_sessions(muted_by_app) else {
         return true;
     };
 

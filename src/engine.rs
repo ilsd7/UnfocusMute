@@ -140,18 +140,37 @@ pub struct MutePlanner<'a> {
 }
 
 impl<'a> MutePlanner<'a> {
+    #[cfg(test)]
     pub fn new(
         matcher: &'a TargetMatcher,
         foreground_pid: Option<u32>,
         foreground_process_name: Option<&str>,
     ) -> Self {
+        Self::new_with_normalized_foreground(
+            matcher,
+            foreground_pid,
+            foreground_process_name.and_then(normalize_process_name),
+        )
+    }
+
+    pub(crate) fn new_with_normalized_foreground(
+        matcher: &'a TargetMatcher,
+        foreground_pid: Option<u32>,
+        foreground_process_name: Option<String>,
+    ) -> Self {
+        if let Some(name) = &foreground_process_name {
+            debug_assert!(!name.is_empty());
+            debug_assert!(!name.contains('\0'));
+            debug_assert_eq!(name, &name.to_ascii_lowercase());
+        }
         Self {
             matcher,
             foreground_pid,
-            foreground_process_name: foreground_process_name.and_then(normalize_process_name),
+            foreground_process_name,
         }
     }
 
+    #[cfg(test)]
     pub fn plan_session(
         &self,
         managed_muted_sessions: &HashSet<AudioSessionKey>,
@@ -159,6 +178,15 @@ impl<'a> MutePlanner<'a> {
         muted: bool,
     ) -> Option<MuteAction> {
         let managed = managed_muted_sessions.contains(key);
+        self.plan_session_with_managed(managed, key, muted)
+    }
+
+    pub(crate) fn plan_session_with_managed(
+        &self,
+        managed: bool,
+        key: &AudioSessionKey,
+        muted: bool,
+    ) -> Option<MuteAction> {
         let match_kind = self.matcher.match_kind(&key.process_name, key.pid);
         if match_kind.is_none() && !managed {
             return None;

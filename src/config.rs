@@ -302,14 +302,25 @@ pub fn normalize_process_name(input: &str) -> Option<String> {
         .rsplit(['\\', '/'])
         .next()
         .unwrap_or_default()
-        .trim()
-        .to_ascii_lowercase();
+        .trim();
 
-    if name.is_empty() || name.contains('\0') {
+    if name.is_empty() {
         return None;
     }
 
-    Some(name)
+    let mut has_uppercase = false;
+    for byte in name.bytes() {
+        if byte == b'\0' {
+            return None;
+        }
+        has_uppercase |= byte.is_ascii_uppercase();
+    }
+
+    if has_uppercase {
+        Some(name.to_ascii_lowercase())
+    } else {
+        Some(name.to_owned())
+    }
 }
 
 pub fn config_dir() -> io::Result<PathBuf> {
