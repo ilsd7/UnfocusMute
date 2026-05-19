@@ -1,20 +1,72 @@
-# UnfocusMute
+<div align="center">
+  <img src="../assets/app-icon.png" alt="UnfocusMuteアイコン" width="96" height="96">
 
-[한국어](../README.md) | [English](../README_en.md) | 日本語 | [简体中文](README.zh-CN.md) | [Español](README.es.md) | [Français](README.fr.md) | [Português](README.pt.md) | [हिन्दी](README.hi.md) | [العربية](README.ar.md)
+  <h1>UnfocusMute</h1>
 
-<p align="center">
-  <img src="../assets/screenshot.png" alt="UnfocusMuteのアプリ画面" width="760">
-</p>
+  <p><strong>選択したバックグラウンドアプリだけをミュートし、UnfocusMuteが変更した音だけを元に戻す軽量なWindowsトレイアプリです。</strong></p>
+
+  <p>
+    <a href="https://github.com/ilsd7/UnfocusMute/releases">ダウンロード</a>
+    · <a href="#使い方">使い方</a>
+    · <a href="#セキュリティとプライバシー">プライバシー</a>
+    · <a href="../LICENSE">Apache-2.0</a>
+  </p>
+
+  <p>
+    <code>Windows 10/11</code>
+    <code>Portable</code>
+    <code>Rust Native</code>
+    <code>~516KB</code>
+    <code>No telemetry</code>
+  </p>
+
+  <p>
+    <a href="../README.md">한국어</a> · <a href="../README_en.md">English</a> · 日本語 · <a href="README.zh-CN.md">简体中文</a> · <a href="README.es.md">Español</a> · <a href="README.fr.md">Français</a> · <a href="README.pt.md">Português</a> · <a href="README.hi.md">हिन्दी</a> · <a href="README.ar.md">العربية</a>
+  </p>
+</div>
 
 UnfocusMuteは、選択したゲームやアプリがバックグラウンドに回ったとき、そのアプリの音だけを自動でミュートする小さく軽量なWindowsトレイアプリです。
 
 Rust製のネイティブアプリなので、別途ランタイムなしでそのまま実行できます。現在のWindows実行ファイルは約516KBで、1MB未満です。
 
+<p align="center">
+  <img src="../assets/screenshot.png" alt="UnfocusMuteのアプリ画面" width="760">
+</p>
+
 管理したいアプリを登録しておくと、前面にない間だけそのアプリのオーディオセッションをミュートします。前面に戻ったときはUnfocusMuteがミュートしたセッションだけを元に戻すため、手動でミュートした状態はそのまま保たれます。
 
 ゲームからブラウザ、チャット、作業ウィンドウへAlt+Tabで切り替える場面に向いています。Windowsの音量ミキサーを何度も開かずに、必要なバックグラウンド音だけを抑えられます。
 
-## 主な利点
+---
+
+## ダウンロードと実行
+
+[GitHub Releases](https://github.com/ilsd7/UnfocusMute/releases) からWindows 10/11向けZIPをダウンロードし、展開して `UnfocusMute.exe` を実行してください。ポータブル実行ファイルなのでインストール作業はなく、別途ランタイム、Rust、Visual Studio Build Tools、MinGWなどの開発ツールも不要です。
+
+## 使い方
+
+1. UnfocusMuteを起動します。
+2. 初回起動時に言語を選択します。既定では English が選択されています。
+3. 管理したいゲームまたはアプリを起動します。
+4. 実行中アプリ一覧を更新し、対象を選んで `選択を追加` を押します。
+5. 同じ `.exe` が複数ある場合は既定でまとめて登録されます。
+6. 特定のPIDだけを登録したい場合は `PID詳細を表示` を使います。PID対象は現在実行中のインスタンスだけに適用されるため、アプリを再起動してPIDが変わった場合は選び直してください。
+7. ウィンドウを閉じてもアプリはトレイで動作します。完全に終了するには `終了` を押します。
+
+## ゲームの実行ファイル名を確認する
+
+入力する名前が分からない場合は、タスク マネージャーで `.exe` で終わる実行ファイル名を確認してください。
+
+1. まずゲームを起動します。
+2. `Alt`+`Tab` または `Windows`+`Tab` でゲーム画面を離れ、Windowsに戻ります。
+3. `Ctrl`+`Shift`+`Esc` を押してタスク マネージャーを開きます。
+4. プロセス一覧を `CPU` 順に並べ、起動したゲームを探します。
+5. ゲームを右クリックして `プロパティ` を開きます。
+6. `game.exe` のように `.exe` で終わる実行ファイル名を確認し、UnfocusMuteに登録します。
+
+---
+
+## 利点
 
 - ゲームやアプリごとのバックグラウンドミュートを自動化し、ウィンドウを切り替えるたびに音の状態を調整する手間を減らします。
 - UnfocusMuteが変更した音だけを戻すため、手動ミュートを尊重します。
@@ -36,7 +88,9 @@ Rust製のネイティブアプリなので、別途ランタイムなしでそ�
 - 初回起動時に言語を選択し、アプリ内で英語/韓国語/日本語/簡体字中国語/スペイン語/フランス語/ポルトガル語/ヒンディー語/アラビア語へすぐに切り替え
 - 設定は `%APPDATA%\UnfocusMute\config.json` にローカル保存
 
-## アンチチート互換性
+---
+
+## 使用前の注意
 
 UnfocusMuteはゲームへコードを注入したり、ゲームメモリを読んだり、入力をフックしたり、ゲームファイルを変更したりしません。Windowsのプロセス/前面ウィンドウ情報とCoreAudioセッションのミュート制御だけを使用するため、多くのアンチチートでは問題なく動作すると想定されますが、すべてのアンチチートとの互換性は保証できません。
 
@@ -46,33 +100,25 @@ UnfocusMuteはローカル優先で動作します。保存するのは、登録
 
 オーディオセッションの検出とミュート制御はWindows CoreAudio APIを使ってPC内で処理されます。ネットワーク通信、アカウント、テレメトリ、分析ツール、クラッシュレポート、リモートログは含まず、個別のアプリログファイルも作成しません。
 
-## ダウンロードと実行
-
-Windows 10/11向けZIPをダウンロードし、展開して `UnfocusMute.exe` を実行してください。ポータブル実行ファイルなのでインストール作業はなく、別途ランタイム、Rust、Visual Studio Build Tools、MinGWなどの開発ツールも不要です。
-
-## 使い方
-
-1. UnfocusMuteを起動します。
-2. 初回起動時に言語を選択します。既定では English が選択されています。
-3. 管理したいゲームまたはアプリを起動します。
-4. 実行中アプリ一覧を更新し、対象を選んで `選択を追加` を押します。
-5. 同じ `.exe` が複数ある場合は既定でまとめて登録されます。
-6. 特定のPIDだけを登録したい場合は `PID詳細を表示` を使います。PID対象は現在実行中のインスタンスだけに適用されるため、アプリを再起動してPIDが変わった場合は選び直してください。
-7. ウィンドウを閉じてもアプリはトレイで動作します。完全に終了するには `終了` を押します。
-
-## ゲームのプロセス名を確認する
-
-入力する名前が分からない場合は、まずゲームを起動しておき、ゲーム画面からWindowsに戻ってから `Ctrl`+`Shift`+`Esc` でタスク マネージャーを開きます。プロセス一覧を `CPU` 順に並べると、起動中のゲームを見つけやすくなります。ゲームを右クリックして `プロパティ` を開くと、`game.exe` のように `.exe` で終わるプロセス名を確認できます。
-
-## 既定の動作
+## 初期設定
 
 初回起動時に、Windowsサインイン時にUnfocusMuteを自動起動するかを選択できます。新しい設定では、自動起動は無効、トレイ最小化と終了時のミュート解除は有効です。
 
 アプリ内の `言語` 項目をクリックすると、English、한국어、日本語、简体中文、Español、Français、Português、हिन्दी、العربيةをすぐに切り替えられます。選択した言語は自動保存されます。
 
-## 開発者向けビルド
+設定ファイルを直接確認したりバックアップファイルを管理したりする場合は、アプリ内の `設定フォルダーを開く` を使ってください。
+
+---
+
+## 自分でビルドする
 
 推奨リリースターゲットは `x86_64-pc-windows-msvc` です。
+
+要件:
+
+- Rust stable
+- Visual Studio Build Tools 2022 または Visual Studio 2022
+- Windows 10/11 SDK
 
 ```powershell
 rustup target add x86_64-pc-windows-msvc
@@ -81,13 +127,27 @@ cargo build --release --target x86_64-pc-windows-msvc
 
 リリースビルドは出力サイズを小さくする設定です。`Cargo.toml` の release profile はシンボル削除、LTO、単一 codegen unit、`panic = "abort"`、サイズ優先最適化を使います。
 
+実行ファイル:
+
+```text
+target\x86_64-pc-windows-msvc\release\unfocusmute.exe
+```
+
 配布ZIPを作成:
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File scripts\package-windows.ps1
 ```
 
+サードパーティライセンス通知を更新:
+
+```powershell
+cargo about generate --frozen --fail -o THIRD_PARTY_NOTICES.md about.hbs
+```
+
 パッケージは `dist\UnfocusMute-<version>-windows-x64.zip` に作成され、実行ファイル、`LICENSE`、`THIRD_PARTY_NOTICES.md`、ルートの `README_ko.md` と `README_en.md`、`docs` 配下のその他の言語ドキュメントが含まれます。
+
+---
 
 ## ライセンス
 

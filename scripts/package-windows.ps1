@@ -46,6 +46,19 @@ function Remove-ReadmeLanguageLinks {
     )
 }
 
+function Remove-ReadmeHeaderBlock {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$Content
+    )
+
+    return [System.Text.RegularExpressions.Regex]::Replace(
+        $Content,
+        '(?ms)^\s*<div align="center">\s*<img src="(?:\.\./)?assets/app-icon\.png"[\s\S]*?</div>\s*',
+        "# UnfocusMute`r`n`r`n"
+    )
+}
+
 function Remove-ReadmeScreenshotBlock {
     param(
         [Parameter(Mandatory = $true)]
@@ -57,6 +70,18 @@ function Remove-ReadmeScreenshotBlock {
         '(?ms)^[ \t]*<p align="center">\s*<img src="(?:\.\./)?assets/screenshot\.png"[^>]*>\s*</p>\s*',
         ''
     )
+}
+
+function Convert-ReadmeForPackage {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$Content
+    )
+
+    $Content = Remove-ReadmeHeaderBlock $Content
+    $Content = Remove-ReadmeLanguageLinks $Content
+    $Content = Remove-ReadmeScreenshotBlock $Content
+    return $Content.TrimStart()
 }
 
 Push-Location $RepoRoot
@@ -73,14 +98,11 @@ try {
     Copy-Item "THIRD_PARTY_NOTICES.md" $Stage
 
     $ReadmeKo = [System.IO.File]::ReadAllText((Join-Path $RepoRoot "README.md"), [System.Text.Encoding]::UTF8)
-    $ReadmeKo = [System.Text.RegularExpressions.Regex]::Replace($ReadmeKo, '^\s*<p align="center">[\s\S]*?</p>\s*', '')
-    $ReadmeKo = Remove-ReadmeLanguageLinks $ReadmeKo
-    $ReadmeKo = Remove-ReadmeScreenshotBlock $ReadmeKo
+    $ReadmeKo = Convert-ReadmeForPackage $ReadmeKo
     [System.IO.File]::WriteAllText((Join-Path $Stage "README_ko.md"), $ReadmeKo, $Utf8NoBom)
 
     $ReadmeEn = [System.IO.File]::ReadAllText((Join-Path $RepoRoot "README_en.md"), [System.Text.Encoding]::UTF8)
-    $ReadmeEn = Remove-ReadmeLanguageLinks $ReadmeEn
-    $ReadmeEn = Remove-ReadmeScreenshotBlock $ReadmeEn
+    $ReadmeEn = Convert-ReadmeForPackage $ReadmeEn
     [System.IO.File]::WriteAllText((Join-Path $Stage "README_en.md"), $ReadmeEn, $Utf8NoBom)
 
     if (Test-Path "docs") {
@@ -90,8 +112,7 @@ try {
             Where-Object { $_.Name -ne "README.en.md" } |
             ForEach-Object {
                 $Readme = [System.IO.File]::ReadAllText($_.FullName, [System.Text.Encoding]::UTF8)
-                $Readme = Remove-ReadmeLanguageLinks $Readme
-                $Readme = Remove-ReadmeScreenshotBlock $Readme
+                $Readme = Convert-ReadmeForPackage $Readme
                 [System.IO.File]::WriteAllText((Join-Path $DocsStage $_.Name), $Readme, $Utf8NoBom)
             }
     }
