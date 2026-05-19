@@ -11,10 +11,10 @@ use windows::Win32::UI::Controls::{BST_CHECKED, BST_UNCHECKED};
 use windows::Win32::UI::HiDpi::{GetDpiForSystem, GetSystemMetricsForDpi};
 use windows::Win32::UI::WindowsAndMessaging::{
     BM_GETCHECK, BM_SETCHECK, BS_AUTOCHECKBOX, BS_DEFPUSHBUTTON, BS_PUSHBUTTON, CB_ADDSTRING,
-    CB_SETEDITSEL, CreateWindowExW, GetSystemMetrics, HICON, HMENU, IDI_APPLICATION, IMAGE_ICON,
-    LB_ADDSTRING, LR_DEFAULTCOLOR, LoadIconW, LoadImageW, SM_CXICON, SM_CXSMICON, SM_CYICON,
-    SM_CYSMICON, SendMessageW, SetWindowTextW, UnregisterClassW, WINDOW_EX_STYLE, WINDOW_STYLE,
-    WS_CHILD, WS_CLIPSIBLINGS, WS_TABSTOP, WS_VISIBLE,
+    CB_SETEDITSEL, CreateWindowExW, GetSystemMetrics, GetWindowTextLengthW, GetWindowTextW, HICON,
+    HMENU, IDI_APPLICATION, IMAGE_ICON, LB_ADDSTRING, LR_DEFAULTCOLOR, LoadIconW, LoadImageW,
+    SM_CXICON, SM_CXSMICON, SM_CYICON, SM_CYSMICON, SendMessageW, SetWindowTextW, UnregisterClassW,
+    WINDOW_EX_STYLE, WINDOW_STYLE, WS_CHILD, WS_CLIPSIBLINGS, WS_TABSTOP, WS_VISIBLE,
 };
 use windows::core::{PCWSTR, w};
 
@@ -198,8 +198,9 @@ pub(super) unsafe fn measure_text_width(hwnd: HWND, font: HGDIOBJ, text: &str) -
 }
 
 pub(super) unsafe fn window_text(hwnd: HWND) -> String {
-    let mut buffer = vec![0u16; 512];
-    let len = unsafe { windows::Win32::UI::WindowsAndMessaging::GetWindowTextW(hwnd, &mut buffer) };
+    let capacity = unsafe { GetWindowTextLengthW(hwnd) }.max(0) as usize + 1;
+    let mut buffer = vec![0u16; capacity];
+    let len = unsafe { GetWindowTextW(hwnd, &mut buffer) };
     String::from_utf16_lossy(&buffer[..len.max(0) as usize])
 }
 

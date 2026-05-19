@@ -750,7 +750,7 @@ impl AppWindow {
             set_text(self.controls.language_label, self.strings.language);
             set_text(
                 self.controls.language_button,
-                &language_button_text(self.config.language),
+                language_button_text(self.config.language),
             );
             set_text(
                 self.controls.pause_button,
@@ -789,7 +789,7 @@ impl AppWindow {
         unsafe {
             set_text(
                 self.controls.language_button,
-                &language_button_text(self.config.language),
+                language_button_text(self.config.language),
             );
         }
     }
@@ -989,7 +989,7 @@ impl AppWindow {
         unsafe {
             SendMessageW(self.controls.target_list, LB_RESETCONTENT, None, None);
             for target in &self.config.targets {
-                add_list_item(self.controls.target_list, &target.display_name());
+                add_list_item(self.controls.target_list, target.display_name().as_ref());
             }
         }
         self.update_status();
@@ -1597,7 +1597,7 @@ impl AppWindow {
         let can_add_selected = self
             .selected_process_choice()
             .is_some_and(|choice| self.can_add_process_choice(choice));
-        let can_add_manual = self.manual_target_candidate().is_some();
+        let can_add_manual = self.can_submit_manual_target();
         unsafe {
             let _ = EnableWindow(self.controls.remove_button, has_selected_target);
             let _ = EnableWindow(self.controls.add_selected_button, can_add_selected);
@@ -1623,19 +1623,17 @@ impl AppWindow {
         })
     }
 
-    fn manual_target_candidate(&self) -> Option<String> {
+    fn can_submit_manual_target(&self) -> bool {
         let text = unsafe { window_text(self.controls.manual_edit) };
-        let name = normalize_process_name(&text)?;
-        if !name.ends_with(".exe")
+        let Some(name) = normalize_process_name(&text) else {
+            return false;
+        };
+        !name.ends_with(".exe")
             || self
                 .config
                 .targets
                 .iter()
-                .any(|target| target.pid.is_none() && target.name.eq_ignore_ascii_case(&name))
-        {
-            return None;
-        }
-        Some(name)
+                .all(|target| target.pid.is_some() || !target.name.eq_ignore_ascii_case(&name))
     }
 
     fn finish_target_change(&mut self) {
@@ -1940,8 +1938,8 @@ impl AppWindow {
     }
 }
 
-fn language_button_text(language: Language) -> String {
-    language.native_name().to_owned()
+fn language_button_text(language: Language) -> &'static str {
+    language.native_name()
 }
 
 fn restore_mute_set(audio: &AudioController, muted_by_app: &mut HashSet<AudioSessionKey>) -> bool {

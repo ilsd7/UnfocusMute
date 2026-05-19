@@ -1,7 +1,6 @@
-use crate::config::normalize_process_name;
+use crate::config::normalize_process_name_owned;
 use std::collections::HashMap;
 use std::mem::size_of;
-use std::path::Path;
 use windows::Win32::Foundation::{CloseHandle, HANDLE, HWND};
 use windows::Win32::System::Diagnostics::ToolHelp::{
     CreateToolhelp32Snapshot, PROCESSENTRY32W, Process32FirstW, Process32NextW, TH32CS_SNAPPROCESS,
@@ -42,11 +41,19 @@ impl ProcessNameResolver {
             return name.clone();
         }
 
-        let name = if self.prefer_snapshot {
-            self.snapshot_name(pid).or_else(|| process_image_name(pid))
-        } else {
-            process_image_name(pid).or_else(|| self.snapshot_name(pid))
-        };
+        if self.prefer_snapshot
+            && let Some(name) = self.snapshot_name(pid)
+        {
+            return Some(name);
+        }
+
+        let name = process_image_name(pid).or_else(|| {
+            if self.prefer_snapshot {
+                None
+            } else {
+                self.snapshot_name(pid)
+            }
+        });
         self.names.insert(pid, name.clone());
         name
     }
@@ -108,8 +115,9 @@ fn visit_process_snapshot(mut visit: impl FnMut(u32, String)) {
 
         if Process32FirstW(snapshot, &mut entry).is_ok() {
             loop {
-                let name = utf16_array_to_string(&entry.szExeFile);
-                if let Some(name) = normalize_process_name(&name) {
+                if let Some(name) =
+                    normalize_process_name_owned(utf16_array_to_string(&entry.szExeFile))
+                {
                     visit(entry.th32ProcessID, name);
                 }
 
@@ -149,11 +157,7 @@ unsafe fn query_process_image_name(handle: HANDLE) -> Option<String> {
         .ok()?;
     }
 
-    let path = String::from_utf16_lossy(&buffer[..len as usize]);
-    Path::new(&path)
-        .file_name()
-        .and_then(|name| name.to_str())
-        .and_then(normalize_process_name)
+    normalize_process_name_owned(String::from_utf16_lossy(&buffer[..len as usize]))
 }
 
 fn utf16_array_to_string(buffer: &[u16]) -> String {

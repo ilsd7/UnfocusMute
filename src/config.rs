@@ -2,7 +2,8 @@
 
 use crate::i18n::Language;
 use serde::{Deserialize, Serialize};
-use std::collections::BTreeSet;
+use std::borrow::Cow;
+use std::collections::HashSet;
 use std::env;
 use std::fs;
 use std::io;
@@ -49,10 +50,10 @@ impl TargetProcess {
         })
     }
 
-    pub fn display_name(&self) -> String {
+    pub fn display_name(&self) -> Cow<'_, str> {
         match self.pid {
-            Some(pid) => format!("{} (PID {pid})", self.name),
-            None => self.name.clone(),
+            Some(pid) => Cow::Owned(format!("{} (PID {pid})", self.name)),
+            None => Cow::Borrowed(&self.name),
         }
     }
 }
@@ -171,7 +172,7 @@ impl AppConfig {
     }
 
     pub fn deduplicate_targets(&mut self) {
-        let mut names = BTreeSet::new();
+        let mut names = HashSet::with_capacity(self.targets.len());
         self.targets.retain_mut(|target| {
             let Some(name) = normalize_process_name(&target.name) else {
                 return false;
@@ -295,7 +296,12 @@ fn backup_invalid_config(path: &Path) -> io::Result<PathBuf> {
     ))
 }
 
-pub fn normalize_process_name(input: &str) -> Option<String> {
+struct ProcessNameCandidate<'a> {
+    name: &'a str,
+    has_uppercase: bool,
+}
+
+fn process_name_candidate(input: &str) -> Option<ProcessNameCandidate<'_>> {
     let name = input
         .trim()
         .trim_matches('"')
@@ -316,10 +322,36 @@ pub fn normalize_process_name(input: &str) -> Option<String> {
         has_uppercase |= byte.is_ascii_uppercase();
     }
 
-    if has_uppercase {
-        Some(name.to_ascii_lowercase())
+    Some(ProcessNameCandidate {
+        name,
+        has_uppercase,
+    })
+}
+
+pub fn normalize_process_name(input: &str) -> Option<String> {
+    let candidate = process_name_candidate(input)?;
+
+    if candidate.has_uppercase {
+        Some(candidate.name.to_ascii_lowercase())
     } else {
-        Some(name.to_owned())
+        Some(candidate.name.to_owned())
+    }
+}
+
+pub fn normalize_process_name_owned(mut input: String) -> Option<String> {
+    let candidate = process_name_candidate(&input)?;
+
+    if candidate.name.len() == input.len() && candidate.name.as_ptr() == input.as_ptr() {
+        if candidate.has_uppercase {
+            input.make_ascii_lowercase();
+        }
+        return Some(input);
+    }
+
+    if candidate.has_uppercase {
+        Some(candidate.name.to_ascii_lowercase())
+    } else {
+        Some(candidate.name.to_owned())
     }
 }
 
@@ -363,6 +395,33 @@ mod tests {
             Some("game.exe".to_owned())
         );
         assert_eq!(normalize_process_name(""), None);
+    }
+
+    #[test]
+    fn owned_normalization_reuses_already_normalized_name() {
+        let name = "game.exe".to_owned();
+        let ptr = name.as_ptr();
+        let normalized = normalize_process_name_owned(name).unwrap();
+
+        assert_eq!(normalized, "game.exe");
+        assert_eq!(normalized.as_ptr(), ptr);
+    }
+
+    #[test]
+    fn owned_normalization_matches_borrowed_normalization() {
+        let inputs = [
+            r#"C:\Games\Example.EXE"#,
+            "  game.exe  ",
+            "\"MIXER.EXE\"",
+            "C:/Tools/player.exe",
+        ];
+
+        for input in inputs {
+            assert_eq!(
+                normalize_process_name_owned(input.to_owned()),
+                normalize_process_name(input)
+            );
+        }
     }
 
     #[test]

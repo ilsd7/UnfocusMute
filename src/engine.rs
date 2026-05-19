@@ -90,8 +90,8 @@ pub struct TargetMatcher {
 
 impl TargetMatcher {
     pub fn new(targets: &[TargetProcess]) -> Self {
-        let mut names = HashSet::new();
-        let mut names_by_pid = HashMap::<u32, Vec<String>>::new();
+        let mut names = HashSet::with_capacity(targets.len());
+        let mut names_by_pid = HashMap::<u32, Vec<String>>::with_capacity(targets.len());
 
         for target in targets.iter().filter(|target| target.enabled) {
             let Some(name) = normalize_process_name(&target.name) else {

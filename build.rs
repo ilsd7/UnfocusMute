@@ -70,21 +70,12 @@ fn is_release_profile() -> bool {
 fn windows_resource_version() -> String {
     let version = env::var("CARGO_PKG_VERSION").unwrap_or_else(|_| "0.0.0".to_owned());
     let core_version = version.split(['-', '+']).next().unwrap_or("0.0.0");
-    let mut parts = core_version
-        .split('.')
-        .take(4)
-        .map(|part| {
-            part.parse::<u16>()
-                .map(|value| value.to_string())
-                .unwrap_or_else(|_| "0".to_owned())
-        })
-        .collect::<Vec<_>>();
-
-    while parts.len() < 4 {
-        parts.push("0".to_owned());
+    let mut parts = [0u16; 4];
+    for (index, part) in core_version.split('.').take(parts.len()).enumerate() {
+        parts[index] = part.parse::<u16>().unwrap_or(0);
     }
 
-    parts.join(".")
+    format!("{}.{}.{}.{}", parts[0], parts[1], parts[2], parts[3])
 }
 
 fn build_ico_from_png(source: &Path) -> io::Result<PathBuf> {
