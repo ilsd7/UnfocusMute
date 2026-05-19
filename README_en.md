@@ -49,9 +49,8 @@ Download the Windows 10/11 ZIP from [GitHub Releases](https://github.com/ilsd7/U
 2. Select a language on first run. English is selected by default.
 3. Start the game or app you want to manage.
 4. Refresh the running app list, select an item, and click `Add selected`.
-5. Duplicate `.exe` entries are grouped by default.
-6. Use `Show PIDs` only when you need to register one specific process instance. A PID target applies only to the currently running instance, so choose it again if the app restarts with a different PID.
-7. Closing the window keeps UnfocusMute running in the tray. Use `Quit` to fully exit.
+5. Use `Show PIDs` only when you need to register one specific process instance. Targets registered by PID apply only to the currently running instance, so choose it again if the app restarts with a different PID.
+6. Closing the window keeps UnfocusMute running in the tray. Use `Quit` to fully exit.
 
 ## Finding a Game Executable Name
 

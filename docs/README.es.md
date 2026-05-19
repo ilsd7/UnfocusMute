@@ -49,9 +49,8 @@ Descarga el ZIP para Windows 10/11 desde [GitHub Releases](https://github.com/il
 2. Selecciona un idioma en el primer inicio. English está seleccionado por defecto.
 3. Abre el juego o app que quieras gestionar.
 4. Actualiza la lista de apps en ejecución, selecciona un elemento y pulsa `Añadir selección`.
-5. Los procesos con el mismo `.exe` se agrupan por defecto.
-6. Usa `Ver PID` solo cuando necesites registrar una instancia concreta. Un objetivo PID solo se aplica a la instancia que está en ejecución; si la app se reinicia con otro PID, selecciónalo de nuevo.
-7. Al cerrar la ventana, UnfocusMute sigue en la bandeja. Usa `Salir` para cerrarla por completo.
+5. Usa `Ver PID` solo cuando necesites registrar una instancia concreta. Los objetivos registrados por PID solo se aplican a la instancia que está en ejecución; si la app se reinicia con otro PID, selecciónalo de nuevo.
+6. Al cerrar la ventana, UnfocusMute sigue en la bandeja. Usa `Salir` para cerrarla por completo.
 
 ## Encontrar el nombre del ejecutable del juego
 

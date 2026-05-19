@@ -49,9 +49,8 @@ Téléchargez le ZIP pour Windows 10/11 depuis [GitHub Releases](https://github.
 2. Sélectionnez une langue au premier lancement. English est sélectionné par défaut.
 3. Ouvrez le jeu ou l’application à gérer.
 4. Actualisez la liste des applications en cours, sélectionnez un élément, puis cliquez sur `Ajouter la sélection`.
-5. Les entrées avec le même `.exe` sont regroupées par défaut.
-6. Utilisez `Afficher les PID` uniquement si vous devez enregistrer une instance précise. Une cible PID ne s’applique qu’à l’instance en cours ; si l’application redémarre avec un autre PID, sélectionnez-la à nouveau.
-7. Fermer la fenêtre laisse UnfocusMute actif dans la zone de notification. Utilisez `Quitter` pour l’arrêter complètement.
+5. Utilisez `Afficher les PID` uniquement si vous devez enregistrer une instance précise. Une cible enregistrée par PID ne s’applique qu’à l’instance en cours ; si l’application redémarre avec un autre PID, sélectionnez-la à nouveau.
+6. Fermer la fenêtre laisse UnfocusMute actif dans la zone de notification. Utilisez `Quitter` pour l’arrêter complètement.
 
 ## Trouver le nom de l’exécutable d’un jeu
 

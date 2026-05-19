@@ -49,9 +49,8 @@ Baixe o ZIP para Windows 10/11 em [GitHub Releases](https://github.com/ilsd7/Unf
 2. Selecione um idioma no primeiro uso. English vem selecionado por padrão.
 3. Inicie o jogo ou app que você quer gerenciar.
 4. Atualize a lista de apps em execução, selecione um item e clique em `Adicionar seleção`.
-5. Entradas com o mesmo `.exe` são agrupadas por padrão.
-6. Use `Mostrar PIDs` somente quando precisar registrar uma instância específica. Um alvo por PID vale apenas para a instância em execução; se o app reiniciar com outro PID, selecione-o novamente.
-7. Fechar a janela mantém o UnfocusMute rodando na bandeja. Use `Sair` para encerrar completamente.
+5. Use `Mostrar PIDs` somente quando precisar registrar uma instância específica. Um alvo registrado por PID vale apenas para a instância em execução; se o app reiniciar com outro PID, selecione-o novamente.
+6. Fechar a janela mantém o UnfocusMute rodando na bandeja. Use `Sair` para encerrar completamente.
 
 ## Encontrar o nome do executável do jogo
 
