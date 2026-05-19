@@ -1,6 +1,6 @@
 use super::constants::{PANEL_BORDER_COLOR, PANEL_COLOR};
 use crate::i18n::Language;
-use windows::Win32::Foundation::WPARAM;
+use windows::Win32::Foundation::{COLORREF, WPARAM};
 use windows::Win32::Graphics::Gdi::{
     CLIP_DEFAULT_PRECIS, CreateFontW, CreateSolidBrush, DEFAULT_CHARSET, DEFAULT_GUI_FONT,
     DEFAULT_QUALITY, DeleteObject, FF_DONTCARE, FW_NORMAL, GetStockObject, HBRUSH, HGDIOBJ,
@@ -8,6 +8,30 @@ use windows::Win32::Graphics::Gdi::{
 };
 use windows::Win32::UI::HiDpi::GetDpiForSystem;
 use windows::core::w;
+
+pub(super) struct OwnedBrush {
+    handle: HBRUSH,
+}
+
+impl OwnedBrush {
+    pub(super) fn solid(color: COLORREF) -> Self {
+        Self {
+            handle: unsafe { CreateSolidBrush(color) },
+        }
+    }
+
+    pub(super) fn handle(&self) -> HBRUSH {
+        self.handle
+    }
+}
+
+impl Drop for OwnedBrush {
+    fn drop(&mut self) {
+        unsafe {
+            let _ = DeleteObject(HGDIOBJ(self.handle.0));
+        }
+    }
+}
 
 pub(super) struct AppTheme {
     pub(super) panel_brush: HBRUSH,

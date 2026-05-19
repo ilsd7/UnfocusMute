@@ -46,7 +46,7 @@ Baixe o ZIP para Windows 10/11 em [GitHub Releases](https://github.com/ilsd7/Unf
 ## Uso
 
 1. Abra o UnfocusMute.
-2. Selecione um idioma no primeiro uso. English vem selecionado por padrão.
+2. Selecione um idioma no primeiro uso. 한국어 vem selecionado por padrão.
 3. Inicie o jogo ou app que você quer gerenciar.
 4. Atualize a lista de apps em execução, selecione um item e clique em `Adicionar seleção`.
 5. Use `Mostrar PIDs` somente quando precisar registrar uma instância específica. Um alvo registrado por PID vale apenas para a instância em execução; se o app reiniciar com outro PID, selecione-o novamente.

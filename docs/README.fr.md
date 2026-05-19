@@ -46,7 +46,7 @@ Téléchargez le ZIP pour Windows 10/11 depuis [GitHub Releases](https://github.
 ## Utilisation
 
 1. Lancez UnfocusMute.
-2. Sélectionnez une langue au premier lancement. English est sélectionné par défaut.
+2. Sélectionnez une langue au premier lancement. 한국어 est sélectionné par défaut.
 3. Ouvrez le jeu ou l’application à gérer.
 4. Actualisez la liste des applications en cours, sélectionnez un élément, puis cliquez sur `Ajouter la sélection`.
 5. Utilisez `Afficher les PID` uniquement si vous devez enregistrer une instance précise. Une cible enregistrée par PID ne s’applique qu’à l’instance en cours ; si l’application redémarre avec un autre PID, sélectionnez-la à nouveau.

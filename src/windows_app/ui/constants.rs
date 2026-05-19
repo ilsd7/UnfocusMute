@@ -14,6 +14,7 @@ pub(super) const WM_FOREGROUND_CHANGED: u32 = WM_APP + 2;
 pub(super) const WINDOW_WIDTH: i32 = 980;
 pub(super) const WINDOW_HEIGHT: i32 = 640;
 pub(super) const CONFIG_RELOAD_CHECK_INTERVAL: Duration = Duration::from_secs(1);
+pub(super) const PROCESS_REFRESH_STALE_INTERVAL: Duration = Duration::from_secs(3);
 pub(super) const CONFIG_RELOAD_TIMER_INTERVAL_MS: u32 = 1_000;
 
 pub(super) const ID_TARGETS: i32 = 1001;

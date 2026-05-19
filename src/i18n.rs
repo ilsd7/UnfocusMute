@@ -5,8 +5,8 @@ use serde::{Deserialize, Serialize};
 #[derive(Clone, Copy, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum Language {
-    Ko,
     #[default]
+    Ko,
     En,
     Ja,
     ZhHans,
@@ -19,8 +19,8 @@ pub enum Language {
 
 impl Language {
     pub const ALL: [Language; 9] = [
-        Language::En,
         Language::Ko,
+        Language::En,
         Language::Ja,
         Language::ZhHans,
         Language::Es,
@@ -550,7 +550,7 @@ mod tests {
     }
 
     #[test]
-    fn default_language_is_english() {
-        assert_eq!(Language::default(), Language::En);
+    fn default_language_is_korean() {
+        assert_eq!(Language::default(), Language::Ko);
     }
 }

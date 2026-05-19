@@ -1,4 +1,5 @@
 use crate::config::normalize_process_name;
+use std::collections::HashMap;
 use std::mem::size_of;
 use std::path::Path;
 use windows::Win32::Foundation::{CloseHandle, HANDLE, HWND};
@@ -15,6 +16,47 @@ use windows::core::PWSTR;
 pub struct ProcessInfo {
     pub pid: u32,
     pub name: String,
+}
+
+#[derive(Default)]
+pub struct ProcessNameResolver {
+    names: HashMap<u32, Option<String>>,
+    snapshot_names: Option<HashMap<u32, String>>,
+    prefer_snapshot: bool,
+}
+
+impl ProcessNameResolver {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    pub fn snapshot_first() -> Self {
+        Self {
+            prefer_snapshot: true,
+            ..Self::default()
+        }
+    }
+
+    pub fn name(&mut self, pid: u32) -> Option<String> {
+        if let Some(name) = self.names.get(&pid) {
+            return name.clone();
+        }
+
+        let name = if self.prefer_snapshot {
+            self.snapshot_name(pid).or_else(|| process_image_name(pid))
+        } else {
+            process_image_name(pid).or_else(|| self.snapshot_name(pid))
+        };
+        self.names.insert(pid, name.clone());
+        name
+    }
+
+    fn snapshot_name(&mut self, pid: u32) -> Option<String> {
+        let names = self
+            .snapshot_names
+            .get_or_insert_with(process_names_from_snapshot);
+        names.get(&pid).cloned()
+    }
 }
 
 pub fn foreground_pid() -> Option<u32> {
@@ -36,10 +78,27 @@ pub fn foreground_pid() -> Option<u32> {
 
 pub fn running_processes() -> Vec<ProcessInfo> {
     let mut processes = Vec::new();
+    visit_process_snapshot(|pid, name| processes.push(ProcessInfo { pid, name }));
+    processes.sort_by(|left, right| {
+        left.name
+            .cmp(&right.name)
+            .then_with(|| left.pid.cmp(&right.pid))
+    });
+    processes
+}
 
+fn process_names_from_snapshot() -> HashMap<u32, String> {
+    let mut processes = HashMap::new();
+    visit_process_snapshot(|pid, name| {
+        processes.insert(pid, name);
+    });
+    processes
+}
+
+fn visit_process_snapshot(mut visit: impl FnMut(u32, String)) {
     unsafe {
         let Ok(snapshot) = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0) else {
-            return processes;
+            return;
         };
 
         let mut entry = PROCESSENTRY32W {
@@ -51,10 +110,7 @@ pub fn running_processes() -> Vec<ProcessInfo> {
             loop {
                 let name = utf16_array_to_string(&entry.szExeFile);
                 if let Some(name) = normalize_process_name(&name) {
-                    processes.push(ProcessInfo {
-                        pid: entry.th32ProcessID,
-                        name,
-                    });
+                    visit(entry.th32ProcessID, name);
                 }
 
                 if Process32NextW(snapshot, &mut entry).is_err() {
@@ -65,17 +121,10 @@ pub fn running_processes() -> Vec<ProcessInfo> {
 
         let _ = CloseHandle(snapshot);
     }
-
-    processes.sort_by(|left, right| {
-        left.name
-            .cmp(&right.name)
-            .then_with(|| left.pid.cmp(&right.pid))
-    });
-    processes
 }
 
 pub fn process_name(pid: u32) -> Option<String> {
-    process_image_name(pid).or_else(|| process_name_from_snapshot(pid))
+    ProcessNameResolver::new().name(pid)
 }
 
 fn process_image_name(pid: u32) -> Option<String> {
@@ -105,36 +154,6 @@ unsafe fn query_process_image_name(handle: HANDLE) -> Option<String> {
         .file_name()
         .and_then(|name| name.to_str())
         .and_then(normalize_process_name)
-}
-
-fn process_name_from_snapshot(pid: u32) -> Option<String> {
-    unsafe {
-        let Ok(snapshot) = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0) else {
-            return None;
-        };
-
-        let mut entry = PROCESSENTRY32W {
-            dwSize: size_of::<PROCESSENTRY32W>() as u32,
-            ..Default::default()
-        };
-        let mut result = None;
-
-        if Process32FirstW(snapshot, &mut entry).is_ok() {
-            loop {
-                if entry.th32ProcessID == pid {
-                    result = normalize_process_name(&utf16_array_to_string(&entry.szExeFile));
-                    break;
-                }
-
-                if Process32NextW(snapshot, &mut entry).is_err() {
-                    break;
-                }
-            }
-        }
-
-        let _ = CloseHandle(snapshot);
-        result
-    }
 }
 
 fn utf16_array_to_string(buffer: &[u16]) -> String {

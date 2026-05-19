@@ -412,10 +412,10 @@ mod tests {
     }
 
     #[test]
-    fn default_language_is_english() {
+    fn default_language_is_korean() {
         let config = AppConfig::default();
 
-        assert_eq!(config.language, Language::En);
+        assert_eq!(config.language, Language::Ko);
     }
 
     #[test]

@@ -13,10 +13,32 @@ use windows::Win32::UI::WindowsAndMessaging::{
     BM_GETCHECK, BM_SETCHECK, BS_AUTOCHECKBOX, BS_DEFPUSHBUTTON, BS_PUSHBUTTON, CB_ADDSTRING,
     CB_SETEDITSEL, CreateWindowExW, GetSystemMetrics, HICON, HMENU, IDI_APPLICATION, IMAGE_ICON,
     LB_ADDSTRING, LR_DEFAULTCOLOR, LoadIconW, LoadImageW, SM_CXICON, SM_CXSMICON, SM_CYICON,
-    SM_CYSMICON, SendMessageW, SetWindowTextW, WINDOW_EX_STYLE, WINDOW_STYLE, WS_CHILD,
-    WS_CLIPSIBLINGS, WS_TABSTOP, WS_VISIBLE,
+    SM_CYSMICON, SendMessageW, SetWindowTextW, UnregisterClassW, WINDOW_EX_STYLE, WINDOW_STYLE,
+    WS_CHILD, WS_CLIPSIBLINGS, WS_TABSTOP, WS_VISIBLE,
 };
 use windows::core::{PCWSTR, w};
+
+pub(super) struct WindowClassRegistration {
+    class_name: PCWSTR,
+    instance: HINSTANCE,
+}
+
+impl WindowClassRegistration {
+    pub(super) fn new(class_name: PCWSTR, instance: HINSTANCE) -> Self {
+        Self {
+            class_name,
+            instance,
+        }
+    }
+}
+
+impl Drop for WindowClassRegistration {
+    fn drop(&mut self) {
+        unsafe {
+            let _ = UnregisterClassW(self.class_name, Some(self.instance));
+        }
+    }
+}
 
 #[allow(clippy::too_many_arguments)]
 pub(super) unsafe fn create_button(

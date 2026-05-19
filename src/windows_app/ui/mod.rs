@@ -1,13 +1,13 @@
 use crate::config::{
     AppConfig, WindowPosition, config_dir, config_file_exists, normalize_process_name,
 };
-use crate::engine::{AudioSessionKey, TargetMatcher, plan_mute_actions_with_matcher};
+use crate::engine::{AudioSessionKey, MuteAction, TargetMatcher};
 use crate::i18n::{Language, Strings};
 use crate::windows_app::audio::AudioController;
 use crate::windows_app::process::{self, ProcessInfo};
 use crate::windows_app::startup;
 use anyhow::{Context, Result, bail};
-use std::collections::{BTreeMap, HashSet};
+use std::collections::HashSet;
 use std::ffi::c_void;
 use std::fs;
 use std::io::ErrorKind;
@@ -19,8 +19,8 @@ use windows::Win32::Foundation::{
     POINT, RECT, WPARAM,
 };
 use windows::Win32::Graphics::Gdi::{
-    BeginPaint, CreateSolidBrush, EndPaint, FillRect, FrameRect, HDC, PAINTSTRUCT, SetBkColor,
-    SetBkMode, SetTextColor, TRANSPARENT,
+    BeginPaint, EndPaint, FillRect, FrameRect, HDC, PAINTSTRUCT, SetBkColor, SetBkMode,
+    SetTextColor, TRANSPARENT,
 };
 use windows::Win32::System::Com::{COINIT_APARTMENTTHREADED, CoInitializeEx, CoUninitialize};
 use windows::Win32::System::LibraryLoader::GetModuleHandleW;
@@ -36,18 +36,18 @@ use windows::Win32::UI::WindowsAndMessaging::{
     AppendMenuW, CB_GETCURSEL, CB_RESETCONTENT, CB_SETCURSEL, CB_SHOWDROPDOWN, CBN_CLOSEUP,
     CBN_EDITCHANGE, CBN_SELCHANGE, CBN_SELENDOK, CBN_SETFOCUS, CBS_DROPDOWN, CREATESTRUCTW,
     CreatePopupMenu, CreateWindowExW, DefWindowProcW, DestroyMenu, DestroyWindow, DispatchMessageW,
-    ES_AUTOHSCROLL, EVENT_SYSTEM_FOREGROUND, FindWindowW, GWLP_USERDATA, GetCursorPos, GetMessageW,
-    GetSystemMetrics, GetWindowRect, HICON, ICON_BIG, ICON_SMALL, IDC_ARROW, LB_GETCURSEL,
-    LB_RESETCONTENT, LB_SETCURSEL, LBN_SELCHANGE, LBS_NOTIFY, LoadCursorW, MB_ICONINFORMATION,
-    MB_ICONWARNING, MB_OK, MF_SEPARATOR, MF_STRING, MSG, MessageBoxW, MoveWindow, PostMessageW,
-    PostQuitMessage, RegisterClassW, SM_CXSCREEN, SM_CYSCREEN, SW_HIDE, SW_RESTORE, SW_SHOW,
-    SendMessageW, SetForegroundWindow, SetTimer, SetWindowLongPtrW, ShowWindow, TPM_NONOTIFY,
-    TPM_RETURNCMD, TPM_RIGHTBUTTON, TRACK_POPUP_MENU_FLAGS, TrackPopupMenu, TranslateMessage,
-    WINDOW_EX_STYLE, WINDOW_STYLE, WINEVENT_OUTOFCONTEXT, WM_CLOSE, WM_COMMAND, WM_CREATE,
-    WM_CTLCOLOREDIT, WM_CTLCOLORLISTBOX, WM_CTLCOLORSTATIC, WM_DESTROY, WM_LBUTTONDBLCLK,
-    WM_LBUTTONDOWN, WM_MOVE, WM_NCCREATE, WM_NCDESTROY, WM_PAINT, WM_RBUTTONUP, WM_SETFONT,
-    WM_SETICON, WM_TIMER, WNDCLASSW, WS_BORDER, WS_CHILD, WS_CLIPCHILDREN, WS_EX_CLIENTEDGE,
-    WS_OVERLAPPEDWINDOW, WS_TABSTOP, WS_VISIBLE, WS_VSCROLL,
+    EN_CHANGE, ES_AUTOHSCROLL, EVENT_SYSTEM_FOREGROUND, FindWindowW, GWLP_USERDATA, GetCursorPos,
+    GetMessageW, GetSystemMetrics, GetWindowRect, HICON, ICON_BIG, ICON_SMALL, IDC_ARROW,
+    LB_GETCURSEL, LB_RESETCONTENT, LB_SETCURSEL, LBN_SELCHANGE, LBS_NOTIFY, LoadCursorW,
+    MB_ICONINFORMATION, MB_ICONWARNING, MB_OK, MF_SEPARATOR, MF_STRING, MSG, MessageBoxW,
+    MoveWindow, PostMessageW, PostQuitMessage, RegisterClassW, SM_CXSCREEN, SM_CYSCREEN, SW_HIDE,
+    SW_RESTORE, SW_SHOW, SendMessageW, SetForegroundWindow, SetTimer, SetWindowLongPtrW,
+    ShowWindow, TPM_NONOTIFY, TPM_RETURNCMD, TPM_RIGHTBUTTON, TRACK_POPUP_MENU_FLAGS,
+    TrackPopupMenu, TranslateMessage, WINDOW_EX_STYLE, WINDOW_STYLE, WINEVENT_OUTOFCONTEXT,
+    WM_CLOSE, WM_COMMAND, WM_CREATE, WM_CTLCOLOREDIT, WM_CTLCOLORLISTBOX, WM_CTLCOLORSTATIC,
+    WM_DESTROY, WM_LBUTTONDBLCLK, WM_LBUTTONDOWN, WM_MOVE, WM_NCCREATE, WM_NCDESTROY, WM_PAINT,
+    WM_RBUTTONUP, WM_SETFONT, WM_SETICON, WM_TIMER, WNDCLASSW, WS_BORDER, WS_CHILD,
+    WS_CLIPCHILDREN, WS_EX_CLIENTEDGE, WS_OVERLAPPEDWINDOW, WS_TABSTOP, WS_VISIBLE, WS_VSCROLL,
 };
 use windows::core::{PCWSTR, w};
 
@@ -62,11 +62,12 @@ use constants::*;
 use controls::Controls;
 use language_prompt::prompt_initial_language;
 use process_choice::{ProcessChoice, search_terms};
-use theme::AppTheme;
+use theme::{AppTheme, OwnedBrush};
 use win32::{
-    add_combo_item, add_list_item, copy_wide_fixed, create_button, create_checkbox, create_control,
-    create_primary_button, current_config_stamp, hiword, is_checked, load_app_icon, load_tray_icon,
-    loword, measure_text_width, set_checkbox, set_combo_edit_caret, set_text, to_wide, window_text,
+    WindowClassRegistration, add_combo_item, add_list_item, copy_wide_fixed, create_button,
+    create_checkbox, create_control, create_primary_button, current_config_stamp, hiword,
+    is_checked, load_app_icon, load_tray_icon, loword, measure_text_width, set_checkbox,
+    set_combo_edit_caret, set_text, to_wide, window_text,
 };
 
 static FOREGROUND_EVENT_HWND: AtomicIsize = AtomicIsize::new(0);
@@ -94,7 +95,7 @@ unsafe fn run_window() -> Result<()> {
     let icon = unsafe { load_app_icon(instance) };
     let tray_icon = unsafe { load_tray_icon(instance) };
     let cursor = unsafe { LoadCursorW(None, IDC_ARROW).context("load cursor")? };
-    let background = unsafe { CreateSolidBrush(PAGE_COLOR) };
+    let background = OwnedBrush::solid(PAGE_COLOR);
 
     let class = WNDCLASSW {
         style: Default::default(),
@@ -104,13 +105,12 @@ unsafe fn run_window() -> Result<()> {
         hInstance: instance,
         hIcon: icon,
         hCursor: cursor,
-        hbrBackground: background,
+        hbrBackground: background.handle(),
         lpszMenuName: PCWSTR::null(),
         lpszClassName: CLASS_NAME,
     };
-    unsafe {
-        RegisterClassW(&class);
-    }
+    let _class_registration = (unsafe { RegisterClassW(&class) } != 0)
+        .then(|| WindowClassRegistration::new(CLASS_NAME, instance));
 
     let first_run = !config_file_exists();
     let mut config = AppConfig::load_or_default().unwrap_or_default();
@@ -309,6 +309,7 @@ struct AppWindow {
     all_process_choices: Vec<ProcessChoice>,
     process_choices: Vec<ProcessChoice>,
     process_query: String,
+    last_process_refresh: Instant,
     updating_process_combo: bool,
     muted_by_app: HashSet<AudioSessionKey>,
     paused: bool,
@@ -355,6 +356,7 @@ impl AppWindow {
             all_process_choices: Vec::new(),
             process_choices: Vec::new(),
             process_query: String::new(),
+            last_process_refresh: Instant::now(),
             updating_process_combo: false,
             muted_by_app: HashSet::new(),
             paused: false,
@@ -987,21 +989,33 @@ impl AppWindow {
 
     fn refresh_processes(&mut self) {
         self.running_processes = process::running_processes();
+        self.last_process_refresh = Instant::now();
         self.all_process_choices = self.build_process_choices();
         self.apply_process_filter();
     }
 
+    fn refresh_processes_if_stale(&mut self) -> bool {
+        if self.last_process_refresh.elapsed() >= PROCESS_REFRESH_STALE_INTERVAL {
+            self.refresh_processes();
+            true
+        } else {
+            false
+        }
+    }
+
     fn apply_process_filter(&mut self) {
         let terms = search_terms(&self.process_query);
-        self.process_choices = if terms.is_empty() {
-            self.all_process_choices.clone()
+        self.process_choices.clear();
+        if terms.is_empty() {
+            self.process_choices.clone_from(&self.all_process_choices);
         } else {
-            self.all_process_choices
-                .iter()
-                .filter(|choice| choice.matches_search(&terms))
-                .cloned()
-                .collect()
-        };
+            self.process_choices.extend(
+                self.all_process_choices
+                    .iter()
+                    .filter(|choice| choice.matches_search(&terms))
+                    .cloned(),
+            );
+        }
 
         unsafe {
             self.updating_process_combo = true;
@@ -1033,15 +1047,25 @@ impl AppWindow {
                 .collect();
         }
 
-        let mut counts = BTreeMap::<String, usize>::new();
-        for process in &self.running_processes {
-            *counts.entry(process.name.clone()).or_default() += 1;
-        }
+        let mut choices = Vec::new();
+        let mut processes = self.running_processes.iter();
+        let Some(first) = processes.next() else {
+            return choices;
+        };
 
-        counts
-            .into_iter()
-            .map(|(name, count)| ProcessChoice::new(name, None, count))
-            .collect()
+        let mut name = first.name.clone();
+        let mut count = 1;
+        for process in processes {
+            if process.name == name {
+                count += 1;
+            } else {
+                choices.push(ProcessChoice::new(name, None, count));
+                name = process.name.clone();
+                count = 1;
+            }
+        }
+        choices.push(ProcessChoice::new(name, None, count));
+        choices
     }
 
     fn timer_tick(&mut self, timer_id: usize) {
@@ -1079,51 +1103,40 @@ impl AppWindow {
             return;
         }
 
-        let Some(audio) = &self.audio else { return };
-        let sessions = match audio.sessions() {
-            Ok(sessions) => {
-                self.clear_issue(StatusIssue::AudioUnavailable);
-                sessions
-            }
-            Err(_) => {
-                self.audio = None;
-                self.set_issue(StatusIssue::AudioUnavailable);
-                return;
-            }
-        };
-        if !self.muted_by_app.is_empty() {
-            let active_sessions = sessions
-                .iter()
-                .map(|session| session.key.clone())
-                .collect::<HashSet<_>>();
-            self.muted_by_app
-                .retain(|session| active_sessions.contains(session));
-        }
-
         let foreground_pid = process::foreground_pid();
-        let foreground_process_name = foreground_pid.and_then(process::process_name);
-        let actions = plan_mute_actions_with_matcher(
+        let foreground_process_name = if self.target_matcher.needs_foreground_process_name() {
+            foreground_pid.and_then(process::process_name)
+        } else {
+            None
+        };
+
+        let Some(audio) = &self.audio else { return };
+        let apply_result = match audio.apply_mute_plan(
             &self.target_matcher,
             foreground_pid,
             foreground_process_name.as_deref(),
             &self.muted_by_app,
-            &sessions,
-        );
-
-        let Some(audio) = &self.audio else { return };
-        let apply_result = match audio.set_mutes(&actions) {
-            Ok(result) => result,
+        ) {
+            Ok(result) => {
+                self.clear_issue(StatusIssue::AudioUnavailable);
+                result
+            }
             Err(_) => {
                 self.audio = None;
                 self.set_issue(StatusIssue::AudioUnavailable);
                 return;
             }
         };
+        if let Some(active_sessions) = &apply_result.active_sessions {
+            self.muted_by_app
+                .retain(|session| active_sessions.contains(session));
+        }
+
         self.apply_audio_update_result(apply_result.had_failures);
         if apply_result.had_failures {
             self.audio = None;
         }
-        for action in actions {
+        for action in apply_result.actions {
             if apply_result.changed_sessions.contains(&action.key) {
                 if action.mute {
                     self.muted_by_app.insert(action.key);
@@ -1390,6 +1403,7 @@ impl AppWindow {
             ID_RUNNING if notification == CBN_CLOSEUP as u16 => {
                 self.release_running_process_focus()
             }
+            ID_MANUAL if notification == EN_CHANGE as u16 => self.update_action_buttons(),
             ID_OPEN_CONFIG => self.open_config_folder(),
             ID_PAUSE => self.toggle_pause(),
             ID_HIDE => unsafe {
@@ -1397,7 +1411,6 @@ impl AppWindow {
                 let _ = ShowWindow(self.hwnd, SW_HIDE);
             },
             ID_QUIT => unsafe {
-                self.save_window_position();
                 let _ = DestroyWindow(self.hwnd);
             },
             ID_START_MINIMIZED => self.update_bool_setting(id),
@@ -1450,7 +1463,11 @@ impl AppWindow {
     fn open_running_process_picker(&mut self) {
         if self.process_query.trim().is_empty() {
             self.process_query.clear();
-            self.apply_process_filter();
+            if !self.refresh_processes_if_stale() {
+                self.apply_process_filter();
+            }
+        } else {
+            self.refresh_processes_if_stale();
         }
         unsafe {
             SendMessageW(
@@ -1569,9 +1586,11 @@ impl AppWindow {
         let can_add_selected = self
             .selected_process_choice()
             .is_some_and(|choice| self.can_add_process_choice(choice));
+        let can_add_manual = self.manual_target_candidate().is_some();
         unsafe {
             let _ = EnableWindow(self.controls.remove_button, has_selected_target);
             let _ = EnableWindow(self.controls.add_selected_button, can_add_selected);
+            let _ = EnableWindow(self.controls.add_manual_button, can_add_manual);
         }
     }
 
@@ -1591,6 +1610,21 @@ impl AppWindow {
         self.config.targets.iter().all(|target| {
             !target.name.eq_ignore_ascii_case(&choice.name) || target.pid != choice.pid
         })
+    }
+
+    fn manual_target_candidate(&self) -> Option<String> {
+        let text = unsafe { window_text(self.controls.manual_edit) };
+        let name = normalize_process_name(&text)?;
+        if !name.ends_with(".exe")
+            || self
+                .config
+                .targets
+                .iter()
+                .any(|target| target.pid.is_none() && target.name.eq_ignore_ascii_case(&name))
+        {
+            return None;
+        }
+        Some(name)
     }
 
     fn finish_target_change(&mut self) {
@@ -1900,23 +1934,23 @@ fn language_button_text(language: Language) -> String {
 }
 
 fn restore_mute_set(audio: &AudioController, muted_by_app: &mut HashSet<AudioSessionKey>) -> bool {
-    let sessions = muted_by_app.iter().cloned().collect::<Vec<_>>();
-    let mut restored = Vec::new();
-    let mut had_failures = false;
+    let actions = muted_by_app
+        .iter()
+        .cloned()
+        .map(|key| MuteAction { key, mute: false })
+        .collect::<Vec<_>>();
+    let Ok(result) = audio.set_mutes(&actions) else {
+        return true;
+    };
 
-    for session in sessions {
-        if audio.set_mute(&session, false).is_ok() {
-            restored.push(session);
-        } else {
-            had_failures = true;
-        }
+    for session in result.changed_sessions {
+        muted_by_app.remove(&session);
     }
-
-    for session in restored {
+    for session in result.missing_sessions {
         muted_by_app.remove(&session);
     }
 
-    had_failures
+    result.had_failures
 }
 
 unsafe extern "system" fn window_proc(

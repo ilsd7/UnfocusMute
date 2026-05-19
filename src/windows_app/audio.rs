@@ -1,7 +1,7 @@
-use crate::engine::{AudioSessionKey, AudioSessionSnapshot, MuteAction};
+use crate::engine::{AudioSessionKey, MuteAction, MutePlanner, TargetMatcher};
 use crate::windows_app::process;
 use anyhow::{Context, Result, bail};
-use std::collections::{HashMap, HashSet, hash_map::Entry};
+use std::collections::HashSet;
 use std::sync::{
     Arc,
     atomic::{AtomicBool, Ordering},
@@ -21,7 +21,15 @@ pub struct AudioController {
 }
 
 pub struct MuteApplyResult {
-    pub changed_sessions: HashSet<AudioSessionKey>,
+    pub changed_sessions: Vec<AudioSessionKey>,
+    pub missing_sessions: Vec<AudioSessionKey>,
+    pub had_failures: bool,
+}
+
+pub struct PlannedMuteApplyResult {
+    pub active_sessions: Option<Vec<AudioSessionKey>>,
+    pub actions: Vec<MuteAction>,
+    pub changed_sessions: Vec<AudioSessionKey>,
     pub had_failures: bool,
 }
 
@@ -44,10 +52,62 @@ impl AudioController {
             .is_some_and(EndpointNotification::take_changed)
     }
 
-    pub fn sessions(&self) -> Result<Vec<AudioSessionSnapshot>> {
+    pub fn set_mutes(&self, actions: &[MuteAction]) -> Result<MuteApplyResult> {
+        if actions.is_empty() {
+            return Ok(MuteApplyResult {
+                changed_sessions: Vec::new(),
+                missing_sessions: Vec::new(),
+                had_failures: false,
+            });
+        }
+
+        let sessions = self.session_handles()?;
+        Ok(apply_actions_to_handles(&sessions, actions, true))
+    }
+
+    pub fn apply_mute_plan(
+        &self,
+        matcher: &TargetMatcher,
+        foreground_pid: Option<u32>,
+        foreground_process_name: Option<&str>,
+        managed_muted_sessions: &HashSet<AudioSessionKey>,
+    ) -> Result<PlannedMuteApplyResult> {
+        let sessions = self.session_handles()?;
+        let active_sessions = (!managed_muted_sessions.is_empty()).then(|| {
+            sessions
+                .iter()
+                .map(|session| session.key.clone())
+                .collect::<Vec<_>>()
+        });
+        let planner = MutePlanner::new(matcher, foreground_pid, foreground_process_name);
+        let actions = sessions
+            .iter()
+            .filter_map(|session| {
+                planner.plan_session(managed_muted_sessions, &session.key, session.muted)
+            })
+            .collect::<Vec<_>>();
+        let apply_result = if actions.is_empty() {
+            MuteApplyResult {
+                changed_sessions: Vec::new(),
+                missing_sessions: Vec::new(),
+                had_failures: false,
+            }
+        } else {
+            apply_actions_to_handles(&sessions, &actions, false)
+        };
+
+        Ok(PlannedMuteApplyResult {
+            active_sessions,
+            actions,
+            changed_sessions: apply_result.changed_sessions,
+            had_failures: apply_result.had_failures,
+        })
+    }
+
+    fn session_handles(&self) -> Result<Vec<AudioSessionHandle>> {
         unsafe {
             let mut sessions = Vec::new();
-            let mut process_names = HashMap::<u32, Option<String>>::new();
+            let mut process_names = process::ProcessNameResolver::snapshot_first();
 
             for manager in &self.managers {
                 let enumerator = manager
@@ -74,98 +134,55 @@ impl AudioController {
                         .map(|value| value.as_bool())
                         .unwrap_or(false);
 
-                    sessions.push(AudioSessionSnapshot { key, muted });
+                    sessions.push(AudioSessionHandle { key, muted, volume });
                 }
             }
 
             Ok(sessions)
         }
     }
+}
 
-    pub fn set_mutes(&self, actions: &[MuteAction]) -> Result<MuteApplyResult> {
-        if actions.is_empty() {
-            return Ok(MuteApplyResult {
-                changed_sessions: HashSet::new(),
-                had_failures: false,
-            });
-        }
+struct AudioSessionHandle {
+    key: AudioSessionKey,
+    muted: bool,
+    volume: ISimpleAudioVolume,
+}
 
-        let desired_mutes = actions
+fn apply_actions_to_handles(
+    sessions: &[AudioSessionHandle],
+    actions: &[MuteAction],
+    track_missing: bool,
+) -> MuteApplyResult {
+    let mut changed_sessions = Vec::new();
+    let mut missing_sessions = if track_missing {
+        actions
             .iter()
-            .map(|action| (action.key.clone(), action.mute))
-            .collect::<HashMap<_, _>>();
-        let mut changed_sessions = HashSet::new();
-        let mut had_failures = false;
-        let mut process_names = HashMap::<u32, Option<String>>::new();
+            .map(|action| action.key.clone())
+            .collect::<Vec<_>>()
+    } else {
+        Vec::new()
+    };
+    let mut had_failures = false;
 
-        unsafe {
-            for manager in &self.managers {
-                let enumerator = manager
-                    .GetSessionEnumerator()
-                    .context("get audio session enumerator")?;
-                let count = enumerator.GetCount().context("get audio session count")?;
-
-                for index in 0..count {
-                    let Ok(control) = enumerator.GetSession(index) else {
-                        continue;
-                    };
-                    let Ok(control2) = control.cast::<IAudioSessionControl2>() else {
-                        continue;
-                    };
-                    let Some(key) = session_key(&control2, &mut process_names) else {
-                        continue;
-                    };
-                    let Some(mute) = desired_mutes.get(&key).copied() else {
-                        continue;
-                    };
-                    let Ok(volume) = control.cast::<ISimpleAudioVolume>() else {
-                        had_failures = true;
-                        continue;
-                    };
-                    if volume.SetMute(mute, std::ptr::null()).is_err() {
-                        had_failures = true;
-                        continue;
-                    }
-                    changed_sessions.insert(key);
-                }
-            }
+    for session in sessions {
+        let Some(action) = actions.iter().find(|action| action.key == session.key) else {
+            continue;
+        };
+        if track_missing {
+            missing_sessions.retain(|key| key != &session.key);
         }
-
-        Ok(MuteApplyResult {
-            changed_sessions,
-            had_failures,
-        })
+        if unsafe { session.volume.SetMute(action.mute, std::ptr::null()) }.is_err() {
+            had_failures = true;
+            continue;
+        }
+        changed_sessions.push(session.key.clone());
     }
 
-    pub fn set_mute(&self, key: &AudioSessionKey, mute: bool) -> Result<()> {
-        let mut process_names = HashMap::<u32, Option<String>>::new();
-        unsafe {
-            for manager in &self.managers {
-                let enumerator = manager
-                    .GetSessionEnumerator()
-                    .context("get audio session enumerator")?;
-                let count = enumerator.GetCount().context("get audio session count")?;
-
-                for index in 0..count {
-                    let Ok(control) = enumerator.GetSession(index) else {
-                        continue;
-                    };
-                    let Ok(control2) = control.cast::<IAudioSessionControl2>() else {
-                        continue;
-                    };
-                    if session_key(&control2, &mut process_names).as_ref() != Some(key) {
-                        continue;
-                    }
-                    let volume = control
-                        .cast::<ISimpleAudioVolume>()
-                        .context("get simple audio volume")?;
-                    volume
-                        .SetMute(mute, std::ptr::null())
-                        .context("set session mute")?;
-                }
-            }
-        }
-        Ok(())
+    MuteApplyResult {
+        changed_sessions,
+        missing_sessions,
+        had_failures,
     }
 }
 
@@ -257,23 +274,18 @@ impl IMMNotificationClient_Impl for EndpointNotificationClient_Impl {
 
 unsafe fn session_key(
     control: &IAudioSessionControl2,
-    process_names: &mut HashMap<u32, Option<String>>,
+    process_names: &mut process::ProcessNameResolver,
 ) -> Option<AudioSessionKey> {
     let pid = unsafe { control.GetProcessId().ok()? };
     if pid == 0 {
         return None;
     }
 
-    let name = match process_names.entry(pid) {
-        Entry::Occupied(entry) => entry.get().clone(),
-        Entry::Vacant(entry) => {
-            let name = process::process_name(pid);
-            entry.insert(name.clone());
-            name
-        }
-    }?;
+    let name = process_names.name(pid)?;
 
-    AudioSessionKey::new(pid, name, unsafe { session_instance_id(control) })
+    Some(AudioSessionKey::from_normalized(pid, name, unsafe {
+        session_instance_id(control)
+    }))
 }
 
 unsafe fn session_instance_id(control: &IAudioSessionControl2) -> Option<String> {

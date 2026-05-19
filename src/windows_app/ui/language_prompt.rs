@@ -3,18 +3,16 @@ use super::constants::{
     ID_LANGUAGE_PROMPT_COMBO, ID_LANGUAGE_PROMPT_OK, ID_LANGUAGE_PROMPT_STARTUP,
     LANGUAGE_PROMPT_CLASS_NAME, PAGE_COLOR, TEXT_COLOR,
 };
-use super::theme::{UiFont, ui_font_point_size};
+use super::theme::{OwnedBrush, UiFont, ui_font_point_size};
 use super::win32::{
-    add_combo_item, create_checkbox, create_control, create_primary_button, hiword, is_checked,
-    loword, set_checkbox, set_text, to_wide,
+    WindowClassRegistration, add_combo_item, create_checkbox, create_control,
+    create_primary_button, hiword, is_checked, loword, set_checkbox, set_text, to_wide,
 };
 use crate::i18n::Language;
 use anyhow::{Context, Result};
 use std::ffi::c_void;
 use windows::Win32::Foundation::{HINSTANCE, HWND, LPARAM, LRESULT, WPARAM};
-use windows::Win32::Graphics::Gdi::{
-    CreateSolidBrush, DeleteObject, HBRUSH, HDC, HGDIOBJ, SetBkMode, SetTextColor, TRANSPARENT,
-};
+use windows::Win32::Graphics::Gdi::{HDC, SetBkMode, SetTextColor, TRANSPARENT};
 use windows::Win32::System::LibraryLoader::GetModuleHandleW;
 use windows::Win32::UI::Controls::CB_SETMINVISIBLE;
 use windows::Win32::UI::WindowsAndMessaging::{
@@ -38,7 +36,7 @@ struct LanguagePrompt {
     selected: Option<InitialPreferences>,
     current: Language,
     launch_on_startup: bool,
-    brush: HBRUSH,
+    brush: OwnedBrush,
     font: UiFont,
 }
 
@@ -61,7 +59,7 @@ impl LanguagePrompt {
             selected: None,
             current,
             launch_on_startup,
-            brush: unsafe { CreateSolidBrush(PAGE_COLOR) },
+            brush: OwnedBrush::solid(PAGE_COLOR),
             font: UiFont::new(ui_font_point_size(current)),
         }
     }
@@ -214,14 +212,6 @@ impl LanguagePrompt {
     }
 }
 
-impl Drop for LanguagePrompt {
-    fn drop(&mut self) {
-        unsafe {
-            let _ = DeleteObject(HGDIOBJ(self.brush.0));
-        }
-    }
-}
-
 pub(super) unsafe fn prompt_initial_language(
     instance: HINSTANCE,
     icon: HICON,
@@ -229,7 +219,7 @@ pub(super) unsafe fn prompt_initial_language(
     launch_on_startup: bool,
 ) -> Result<Option<InitialPreferences>> {
     let cursor = unsafe { LoadCursorW(None, IDC_ARROW).context("load language prompt cursor")? };
-    let background = unsafe { CreateSolidBrush(PAGE_COLOR) };
+    let background = OwnedBrush::solid(PAGE_COLOR);
     let class = WNDCLASSW {
         style: Default::default(),
         lpfnWndProc: Some(language_prompt_proc),
@@ -238,13 +228,12 @@ pub(super) unsafe fn prompt_initial_language(
         hInstance: instance,
         hIcon: icon,
         hCursor: cursor,
-        hbrBackground: background,
+        hbrBackground: background.handle(),
         lpszMenuName: PCWSTR::null(),
         lpszClassName: LANGUAGE_PROMPT_CLASS_NAME,
     };
-    unsafe {
-        RegisterClassW(&class);
-    }
+    let _class_registration = (unsafe { RegisterClassW(&class) } != 0)
+        .then(|| WindowClassRegistration::new(LANGUAGE_PROMPT_CLASS_NAME, instance));
 
     let mut state = Box::new(LanguagePrompt::new(current, launch_on_startup));
     let state_ptr = state.as_mut() as *mut LanguagePrompt;
@@ -342,7 +331,7 @@ unsafe extern "system" fn language_prompt_proc(
                     let _ = SetBkMode(hdc, TRANSPARENT);
                     let _ = SetTextColor(hdc, TEXT_COLOR);
                 }
-                return LRESULT(prompt.brush.0 as isize);
+                return LRESULT(prompt.brush.handle().0 as isize);
             }
             WM_NCDESTROY => unsafe {
                 SetWindowLongPtrW(hwnd, GWLP_USERDATA, 0);

@@ -13,10 +13,7 @@ impl ProcessChoice {
             None if count > 1 => format!("{name} ({count} PID)"),
             None => name.clone(),
         };
-        let search_text = match pid {
-            Some(pid) => format!("{name} {display_name} {pid}").to_lowercase(),
-            None => format!("{name} {display_name}").to_lowercase(),
-        };
+        let search_text = display_name.to_lowercase();
 
         Self {
             name,
@@ -41,4 +38,23 @@ pub(super) fn search_terms(query: &str) -> Vec<String> {
         .map(str::to_lowercase)
         .filter(|term| !term.is_empty())
         .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn pid_choices_match_by_name_and_pid() {
+        let choice = ProcessChoice::new("MusicApp.exe".to_owned(), Some(4242), 1);
+
+        assert!(choice.matches_search(&search_terms("musicapp 4242")));
+    }
+
+    #[test]
+    fn grouped_choices_match_by_name_and_count() {
+        let choice = ProcessChoice::new("Chat.exe".to_owned(), None, 3);
+
+        assert!(choice.matches_search(&search_terms("chat 3")));
+    }
 }

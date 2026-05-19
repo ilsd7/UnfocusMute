@@ -11,6 +11,7 @@ pub struct AudioSessionKey {
 }
 
 impl AudioSessionKey {
+    #[cfg(test)]
     pub fn new(
         pid: u32,
         process_name: impl AsRef<str>,
@@ -23,8 +24,24 @@ impl AudioSessionKey {
             instance_id,
         })
     }
+
+    pub(crate) fn from_normalized(
+        pid: u32,
+        process_name: String,
+        instance_id: Option<String>,
+    ) -> Self {
+        debug_assert!(!process_name.is_empty());
+        debug_assert!(!process_name.contains('\0'));
+        debug_assert_eq!(process_name, process_name.to_ascii_lowercase());
+        Self {
+            pid,
+            process_name,
+            instance_id,
+        }
+    }
 }
 
+#[cfg(test)]
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct AudioSessionSnapshot {
     pub key: AudioSessionKey,
@@ -37,6 +54,7 @@ pub struct MuteAction {
     pub mute: bool,
 }
 
+#[cfg(test)]
 pub fn plan_mute_actions_with_matcher(
     matcher: &TargetMatcher,
     foreground_pid: Option<u32>,
@@ -44,35 +62,14 @@ pub fn plan_mute_actions_with_matcher(
     managed_muted_sessions: &HashSet<AudioSessionKey>,
     sessions: &[AudioSessionSnapshot],
 ) -> Vec<MuteAction> {
+    let planner = MutePlanner::new(matcher, foreground_pid, foreground_process_name);
     let mut actions = Vec::with_capacity(sessions.len());
-    let foreground_process_name = foreground_process_name.and_then(normalize_process_name);
 
     for session in sessions {
-        let managed = managed_muted_sessions.contains(&session.key);
-        let match_kind = matcher.match_kind(&session.key.process_name, session.key.pid);
-        if match_kind.is_none() && !managed {
-            continue;
-        }
-
-        let should_mute = match match_kind {
-            Some(TargetMatchKind::ProcessName) => {
-                foreground_process_name.as_deref() != Some(session.key.process_name.as_str())
-                    && foreground_pid != Some(session.key.pid)
-            }
-            Some(TargetMatchKind::Pid) => foreground_pid != Some(session.key.pid),
-            None => false,
-        };
-        let should_change = if should_mute {
-            !session.muted
-        } else {
-            session.muted && managed
-        };
-
-        if should_change {
-            actions.push(MuteAction {
-                key: session.key.clone(),
-                mute: should_mute,
-            });
+        if let Some(action) =
+            planner.plan_session(managed_muted_sessions, &session.key, session.muted)
+        {
+            actions.push(action);
         }
     }
 
@@ -88,20 +85,23 @@ enum TargetMatchKind {
 #[derive(Clone, Debug, Default)]
 pub struct TargetMatcher {
     names: HashSet<String>,
-    names_by_pid: HashMap<u32, HashSet<String>>,
+    names_by_pid: HashMap<u32, Vec<String>>,
 }
 
 impl TargetMatcher {
     pub fn new(targets: &[TargetProcess]) -> Self {
         let mut names = HashSet::new();
-        let mut names_by_pid = HashMap::<u32, HashSet<String>>::new();
+        let mut names_by_pid = HashMap::<u32, Vec<String>>::new();
 
         for target in targets.iter().filter(|target| target.enabled) {
             let Some(name) = normalize_process_name(&target.name) else {
                 continue;
             };
             if let Some(pid) = target.pid {
-                names_by_pid.entry(pid).or_default().insert(name);
+                let names = names_by_pid.entry(pid).or_default();
+                if !names.iter().any(|existing| existing == &name) {
+                    names.push(name);
+                }
             } else {
                 names.insert(name);
             }
@@ -117,6 +117,10 @@ impl TargetMatcher {
         self.names.is_empty() && self.names_by_pid.is_empty()
     }
 
+    pub fn needs_foreground_process_name(&self) -> bool {
+        !self.names.is_empty()
+    }
+
     fn match_kind(&self, name: &str, pid: u32) -> Option<TargetMatchKind> {
         if self.names.contains(name) {
             return Some(TargetMatchKind::ProcessName);
@@ -124,8 +128,60 @@ impl TargetMatcher {
 
         self.names_by_pid
             .get(&pid)
-            .is_some_and(|names| names.contains(name))
+            .is_some_and(|names| names.iter().any(|target| target == name))
             .then_some(TargetMatchKind::Pid)
+    }
+}
+
+pub struct MutePlanner<'a> {
+    matcher: &'a TargetMatcher,
+    foreground_pid: Option<u32>,
+    foreground_process_name: Option<String>,
+}
+
+impl<'a> MutePlanner<'a> {
+    pub fn new(
+        matcher: &'a TargetMatcher,
+        foreground_pid: Option<u32>,
+        foreground_process_name: Option<&str>,
+    ) -> Self {
+        Self {
+            matcher,
+            foreground_pid,
+            foreground_process_name: foreground_process_name.and_then(normalize_process_name),
+        }
+    }
+
+    pub fn plan_session(
+        &self,
+        managed_muted_sessions: &HashSet<AudioSessionKey>,
+        key: &AudioSessionKey,
+        muted: bool,
+    ) -> Option<MuteAction> {
+        let managed = managed_muted_sessions.contains(key);
+        let match_kind = self.matcher.match_kind(&key.process_name, key.pid);
+        if match_kind.is_none() && !managed {
+            return None;
+        }
+
+        let should_mute = match match_kind {
+            Some(TargetMatchKind::ProcessName) => {
+                self.foreground_process_name.as_deref() != Some(key.process_name.as_str())
+                    && self.foreground_pid != Some(key.pid)
+            }
+            Some(TargetMatchKind::Pid) => self.foreground_pid != Some(key.pid),
+            None => false,
+        };
+        let should_change = if should_mute {
+            !muted
+        } else {
+            muted && managed
+        };
+
+        should_change.then(|| MuteAction {
+            key: key.clone(),
+            mute: should_mute,
+        })
     }
 }
 
@@ -171,6 +227,15 @@ mod tests {
             key: AudioSessionKey::new(pid, process_name, None).unwrap(),
             muted,
         }
+    }
+
+    #[test]
+    fn pid_only_targets_do_not_need_foreground_process_name() {
+        let pid_matcher = TargetMatcher::new(&[TargetProcess::for_pid("game.exe", 10).unwrap()]);
+        let exe_matcher = TargetMatcher::new(&[TargetProcess::new("game.exe").unwrap()]);
+
+        assert!(!pid_matcher.needs_foreground_process_name());
+        assert!(exe_matcher.needs_foreground_process_name());
     }
 
     #[test]
