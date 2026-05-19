@@ -1,5 +1,6 @@
 use crate::config::{
-    AppConfig, WindowPosition, config_dir, config_file_exists, normalize_process_name,
+    AppConfig, TargetProcess, WindowPosition, config_dir, config_file_exists,
+    normalize_process_name,
 };
 use crate::engine::{AudioSessionKey, TargetMatcher};
 use crate::i18n::{Language, Strings};
@@ -67,7 +68,8 @@ use win32::{
     WindowClassRegistration, add_combo_item, add_list_item, copy_wide_fixed, create_button,
     create_checkbox, create_control, create_primary_button, current_config_stamp, hiword,
     is_checked, load_app_icon, load_tray_icon, loword, measure_text_width, path_to_wide,
-    set_checkbox, set_combo_edit_caret, set_text, to_wide, window_text,
+    reserve_combo_items, reserve_list_items, set_checkbox, set_combo_edit_caret, set_text, to_wide,
+    window_text,
 };
 
 static FOREGROUND_EVENT_HWND: AtomicIsize = AtomicIsize::new(0);
@@ -307,15 +309,16 @@ struct AppWindow {
     foreground_hook: Option<ForegroundEventHook>,
     running_processes: Vec<ProcessInfo>,
     all_process_choices: Vec<ProcessChoice>,
-    process_choices: Vec<ProcessChoice>,
+    process_choice_indices: Vec<usize>,
     process_query: String,
+    foreground_process_name_cache: Option<(u32, Option<String>)>,
     last_process_refresh: Instant,
     updating_process_combo: bool,
     muted_by_app: HashSet<AudioSessionKey>,
     paused: bool,
     show_process_details: bool,
     tray_added: bool,
-    last_issue: Option<StatusIssue>,
+    issues: IssueState,
     last_status: Option<(StatusSnapshot, &'static str, String)>,
     config_stamp: Option<ConfigFileStamp>,
     next_config_check: Instant,
@@ -330,7 +333,52 @@ struct ConfigFileStamp {
     len: u64,
 }
 
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+struct IssueState {
+    flags: u8,
+    visible: Option<StatusIssue>,
+}
+
+impl IssueState {
+    fn set(&mut self, issue: StatusIssue) -> bool {
+        let old_visible = self.visible;
+        self.flags |= issue.bit();
+        self.visible = Some(issue);
+        old_visible != self.visible
+    }
+
+    fn clear(&mut self, issue: StatusIssue) -> bool {
+        if self.flags & issue.bit() == 0 {
+            return false;
+        }
+
+        let old_visible = self.visible;
+        self.flags &= !issue.bit();
+        if self.visible == Some(issue) {
+            self.visible = STATUS_ISSUE_FALLBACK_ORDER
+                .iter()
+                .copied()
+                .find(|issue| self.flags & issue.bit() != 0);
+        }
+        old_visible != self.visible
+    }
+
+    fn visible(self) -> Option<StatusIssue> {
+        self.visible
+    }
+}
+
+const STATUS_ISSUE_FALLBACK_ORDER: [StatusIssue; 6] = [
+    StatusIssue::ConfigSaveFailed,
+    StatusIssue::ConfigLoadFailed,
+    StatusIssue::StartupUpdateFailed,
+    StatusIssue::OpenConfigFailed,
+    StatusIssue::AudioUnavailable,
+    StatusIssue::AudioUpdateFailed,
+];
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[repr(u8)]
 enum StatusIssue {
     AudioUnavailable,
     AudioUpdateFailed,
@@ -338,6 +386,29 @@ enum StatusIssue {
     ConfigSaveFailed,
     StartupUpdateFailed,
     OpenConfigFailed,
+}
+
+impl StatusIssue {
+    fn bit(self) -> u8 {
+        1 << self as u8
+    }
+}
+
+#[cfg(test)]
+mod issue_state_tests {
+    use super::*;
+
+    #[test]
+    fn clearing_visible_issue_reveals_hidden_issue() {
+        let mut issues = IssueState::default();
+
+        issues.set(StatusIssue::AudioUnavailable);
+        issues.set(StatusIssue::ConfigSaveFailed);
+        assert_eq!(issues.visible(), Some(StatusIssue::ConfigSaveFailed));
+
+        issues.clear(StatusIssue::ConfigSaveFailed);
+        assert_eq!(issues.visible(), Some(StatusIssue::AudioUnavailable));
+    }
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -362,15 +433,16 @@ impl AppWindow {
             foreground_hook: None,
             running_processes: Vec::new(),
             all_process_choices: Vec::new(),
-            process_choices: Vec::new(),
+            process_choice_indices: Vec::new(),
             process_query: String::new(),
+            foreground_process_name_cache: None,
             last_process_refresh: Instant::now(),
             updating_process_combo: false,
             muted_by_app: HashSet::new(),
             paused: false,
             show_process_details: false,
             tray_added: false,
-            last_issue: None,
+            issues: IssueState::default(),
             last_status: None,
             config_stamp: current_config_stamp(),
             next_config_check: Instant::now() + CONFIG_RELOAD_CHECK_INTERVAL,
@@ -986,8 +1058,19 @@ impl AppWindow {
 
     fn refresh_targets(&mut self) {
         self.target_matcher = TargetMatcher::new(&self.config.targets);
+        let target_text_bytes = self
+            .config
+            .targets
+            .iter()
+            .map(target_display_utf16_bytes)
+            .sum();
         unsafe {
             SendMessageW(self.controls.target_list, LB_RESETCONTENT, None, None);
+            reserve_list_items(
+                self.controls.target_list,
+                self.config.targets.len(),
+                target_text_bytes,
+            );
             for target in &self.config.targets {
                 add_list_item(self.controls.target_list, target.display_name().as_ref());
             }
@@ -997,9 +1080,9 @@ impl AppWindow {
     }
 
     fn refresh_processes(&mut self) {
-        self.running_processes = process::running_processes();
+        process::refresh_running_processes(&mut self.running_processes);
         self.last_process_refresh = Instant::now();
-        self.all_process_choices = self.build_process_choices();
+        self.rebuild_process_choices();
         self.apply_process_filter();
     }
 
@@ -1014,23 +1097,37 @@ impl AppWindow {
 
     fn apply_process_filter(&mut self) {
         let terms = search_terms(&self.process_query);
-        self.process_choices.clear();
+        self.process_choice_indices.clear();
         if terms.is_empty() {
-            self.process_choices.clone_from(&self.all_process_choices);
+            self.process_choice_indices
+                .extend(0..self.all_process_choices.len());
         } else {
-            self.process_choices.extend(
+            self.process_choice_indices.extend(
                 self.all_process_choices
                     .iter()
-                    .filter(|choice| choice.matches_search(&terms))
-                    .cloned(),
+                    .enumerate()
+                    .filter_map(|(index, choice)| choice.matches_search(&terms).then_some(index)),
             );
         }
 
         unsafe {
             self.updating_process_combo = true;
+            let process_text_bytes = self
+                .process_choice_indices
+                .iter()
+                .map(|index| utf16_bytes(self.all_process_choices[*index].display_name()))
+                .sum();
             SendMessageW(self.controls.running_combo, CB_RESETCONTENT, None, None);
-            for choice in &self.process_choices {
-                add_combo_item(self.controls.running_combo, choice.display_name());
+            reserve_combo_items(
+                self.controls.running_combo,
+                self.process_choice_indices.len(),
+                process_text_bytes,
+            );
+            for index in &self.process_choice_indices {
+                add_combo_item(
+                    self.controls.running_combo,
+                    self.all_process_choices[*index].display_name(),
+                );
             }
             SendMessageW(
                 self.controls.running_combo,
@@ -1047,19 +1144,24 @@ impl AppWindow {
         self.update_action_buttons();
     }
 
-    fn build_process_choices(&self) -> Vec<ProcessChoice> {
+    fn rebuild_process_choices(&mut self) {
+        self.all_process_choices.clear();
         if self.show_process_details {
-            return self
-                .running_processes
-                .iter()
-                .map(|process| ProcessChoice::new(process.name.clone(), Some(process.pid), 1))
-                .collect();
+            self.all_process_choices
+                .reserve(self.running_processes.len());
+            self.all_process_choices.extend(
+                self.running_processes
+                    .iter()
+                    .map(|process| ProcessChoice::new(process.name.clone(), Some(process.pid), 1)),
+            );
+            return;
         }
 
-        let mut choices = Vec::with_capacity(self.running_processes.len());
+        self.all_process_choices
+            .reserve(self.running_processes.len());
         let mut processes = self.running_processes.iter();
         let Some(first) = processes.next() else {
-            return choices;
+            return;
         };
 
         let mut name = first.name.clone();
@@ -1068,13 +1170,14 @@ impl AppWindow {
             if process.name == name {
                 count += 1;
             } else {
-                choices.push(ProcessChoice::new(name, None, count));
+                self.all_process_choices
+                    .push(ProcessChoice::new(name, None, count));
                 name = process.name.clone();
                 count = 1;
             }
         }
-        choices.push(ProcessChoice::new(name, None, count));
-        choices
+        self.all_process_choices
+            .push(ProcessChoice::new(name, None, count));
     }
 
     fn timer_tick(&mut self, timer_id: usize) {
@@ -1114,7 +1217,7 @@ impl AppWindow {
 
         let foreground_pid = process::foreground_pid();
         let foreground_process_name = if self.target_matcher.needs_foreground_process_name() {
-            foreground_pid.and_then(process::process_name)
+            self.foreground_process_name(foreground_pid)
         } else {
             None
         };
@@ -1159,7 +1262,7 @@ impl AppWindow {
     fn update_status(&mut self) {
         let snapshot = StatusSnapshot {
             paused: self.paused,
-            issue: self.last_issue,
+            issue: self.issues.visible(),
             target_count: self.config.targets.len(),
             muted_count: self.muted_by_app.len(),
         };
@@ -1176,7 +1279,7 @@ impl AppWindow {
         } else {
             self.strings.status_running
         };
-        let detail = if let Some(issue) = self.last_issue {
+        let detail = if let Some(issue) = self.issues.visible() {
             format!("{} · {}", self.strings.status_issue, self.issue_text(issue))
         } else {
             format!(
@@ -1200,6 +1303,23 @@ impl AppWindow {
             self.apply_audio_update_result(had_failures);
         }
         self.audio = None;
+    }
+
+    fn foreground_process_name(&mut self, foreground_pid: Option<u32>) -> Option<String> {
+        let pid = foreground_pid?;
+        if let Some((cached_pid, name)) = &self.foreground_process_name_cache
+            && *cached_pid == pid
+        {
+            return name.clone();
+        }
+
+        let name = process::process_name(pid);
+        self.foreground_process_name_cache = Some((pid, name.clone()));
+        name
+    }
+
+    fn clear_foreground_process_cache(&mut self) {
+        self.foreground_process_name_cache = None;
     }
 
     fn restore_managed_mutes(&mut self) {
@@ -1248,16 +1368,14 @@ impl AppWindow {
     }
 
     fn set_issue(&mut self, issue: StatusIssue) {
-        if self.last_issue != Some(issue) {
-            self.last_issue = Some(issue);
+        if self.issues.set(issue) {
             self.last_status = None;
         }
         self.update_status();
     }
 
     fn clear_issue(&mut self, issue: StatusIssue) {
-        if self.last_issue == Some(issue) {
-            self.last_issue = None;
+        if self.issues.clear(issue) {
             self.last_status = None;
             self.update_status();
         }
@@ -1459,7 +1577,7 @@ impl AppWindow {
         }
         self.process_query = unsafe { window_text(self.controls.running_combo) };
         self.apply_process_filter();
-        if !self.process_choices.is_empty() {
+        if !self.process_choice_indices.is_empty() {
             unsafe {
                 SendMessageW(
                     self.controls.running_combo,
@@ -1609,11 +1727,15 @@ impl AppWindow {
         let index =
             unsafe { SendMessageW(self.controls.running_combo, CB_GETCURSEL, None, None).0 };
         if index >= 0 {
-            self.process_choices.get(index as usize)
+            self.process_choice_indices
+                .get(index as usize)
+                .and_then(|index| self.all_process_choices.get(*index))
         } else if self.process_query.trim().is_empty() {
             None
         } else {
-            self.process_choices.first()
+            self.process_choice_indices
+                .first()
+                .and_then(|index| self.all_process_choices.get(*index))
         }
     }
 
@@ -1942,17 +2064,29 @@ fn language_button_text(language: Language) -> &'static str {
     language.native_name()
 }
 
+fn utf16_bytes(text: &str) -> usize {
+    text.encode_utf16().count() * size_of::<u16>()
+}
+
+fn target_display_utf16_bytes(target: &TargetProcess) -> usize {
+    let mut code_units = target.name.encode_utf16().count();
+    if let Some(pid) = target.pid {
+        code_units += " (PID ".len() + decimal_digit_count(pid) + 1;
+    }
+    code_units * size_of::<u16>()
+}
+
+fn decimal_digit_count(value: u32) -> usize {
+    if value == 0 {
+        return 1;
+    }
+    value.ilog10() as usize + 1
+}
+
 fn restore_mute_set(audio: &AudioController, muted_by_app: &mut HashSet<AudioSessionKey>) -> bool {
     let Ok(result) = audio.unmute_sessions(muted_by_app) else {
         return true;
     };
-
-    for session in result.changed_sessions {
-        muted_by_app.remove(&session);
-    }
-    for session in result.missing_sessions {
-        muted_by_app.remove(&session);
-    }
 
     result.had_failures
 }
@@ -2007,6 +2141,7 @@ unsafe extern "system" fn window_proc(
                 return LRESULT(0);
             }
             WM_FOREGROUND_CHANGED => {
+                app.clear_foreground_process_cache();
                 app.tick();
                 return LRESULT(0);
             }

@@ -73,11 +73,29 @@ fn to_wide(text: &str) -> Vec<u16> {
 fn startup_command(exe: &Path) -> Vec<u16> {
     let exe_len = exe.as_os_str().encode_wide().count();
     let suffix = " --minimized";
-    let mut command = Vec::with_capacity(1 + exe_len + 1 + suffix.len() + 1);
+    let suffix_len = suffix.encode_utf16().count();
+    let mut command = Vec::with_capacity(1 + exe_len + 1 + suffix_len + 1);
     command.push(b'"' as u16);
     command.extend(exe.as_os_str().encode_wide());
     command.push(b'"' as u16);
     command.extend(suffix.encode_utf16());
     command.push(0);
     command
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn startup_command_quotes_executable_path() {
+        let command = startup_command(Path::new(r"C:\Program Files\UnfocusMute\UnfocusMute.exe"));
+        let text = String::from_utf16(&command[..command.len() - 1]).unwrap();
+
+        assert_eq!(
+            text,
+            r#""C:\Program Files\UnfocusMute\UnfocusMute.exe" --minimized"#
+        );
+        assert_eq!(command.last(), Some(&0));
+    }
 }

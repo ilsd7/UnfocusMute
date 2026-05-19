@@ -87,15 +87,17 @@ pub fn foreground_pid() -> Option<u32> {
     }
 }
 
-pub fn running_processes() -> Vec<ProcessInfo> {
-    let mut processes = Vec::with_capacity(EXPECTED_PROCESS_COUNT);
+pub fn refresh_running_processes(processes: &mut Vec<ProcessInfo>) {
+    processes.clear();
+    if processes.capacity() < EXPECTED_PROCESS_COUNT {
+        processes.reserve(EXPECTED_PROCESS_COUNT - processes.capacity());
+    }
     visit_process_snapshot(|pid, name| processes.push(ProcessInfo { pid, name }));
-    processes.sort_by(|left, right| {
+    processes.sort_unstable_by(|left, right| {
         left.name
             .cmp(&right.name)
             .then_with(|| left.pid.cmp(&right.pid))
     });
-    processes
 }
 
 fn process_names_from_snapshot() -> HashMap<u32, String> {

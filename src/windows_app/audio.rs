@@ -21,8 +21,6 @@ pub struct AudioController {
 }
 
 pub struct MuteApplyResult {
-    pub changed_sessions: Vec<AudioSessionKey>,
-    pub missing_sessions: Vec<AudioSessionKey>,
     pub had_failures: bool,
 }
 
@@ -53,27 +51,29 @@ impl AudioController {
 
     pub fn unmute_sessions(
         &self,
-        session_keys: &HashSet<AudioSessionKey>,
+        session_keys: &mut HashSet<AudioSessionKey>,
     ) -> Result<MuteApplyResult> {
         if session_keys.is_empty() {
             return Ok(MuteApplyResult {
-                changed_sessions: Vec::new(),
-                missing_sessions: Vec::new(),
                 had_failures: false,
             });
         }
 
-        let mut result = MuteApplyResult {
-            changed_sessions: Vec::with_capacity(session_keys.len()),
-            missing_sessions: Vec::new(),
-            had_failures: false,
-        };
-        let mut missing_sessions = session_keys.clone();
+        let mut failed_sessions = HashSet::new();
+        let mut had_failures = false;
         self.visit_session_handles(|session| {
-            apply_unmute_to_handle(&session, &mut missing_sessions, &mut result);
+            if apply_unmute_to_handle(&session, session_keys).is_err() {
+                had_failures = true;
+                failed_sessions.insert(session.key.clone());
+            }
         })?;
-        result.missing_sessions = missing_sessions.into_iter().collect();
-        Ok(result)
+
+        if failed_sessions.is_empty() {
+            session_keys.clear();
+        } else {
+            session_keys.retain(|key| failed_sessions.contains(key));
+        }
+        Ok(MuteApplyResult { had_failures })
     }
 
     pub fn apply_mute_plan(
@@ -190,21 +190,18 @@ fn apply_plan_to_handle(
 
 fn apply_unmute_to_handle(
     session: &AudioSessionHandle,
-    missing_sessions: &mut HashSet<AudioSessionKey>,
-    result: &mut MuteApplyResult,
-) {
-    if !missing_sessions.remove(&session.key) {
-        return;
+    session_keys: &HashSet<AudioSessionKey>,
+) -> std::result::Result<(), ()> {
+    if !session_keys.contains(&session.key) {
+        return Ok(());
     }
     if !session.muted {
-        result.changed_sessions.push(session.key.clone());
-        return;
+        return Ok(());
     }
     if unsafe { session.volume.SetMute(false, std::ptr::null()) }.is_err() {
-        result.had_failures = true;
-        return;
+        return Err(());
     }
-    result.changed_sessions.push(session.key.clone());
+    Ok(())
 }
 
 struct EndpointNotification {
@@ -353,9 +350,9 @@ unsafe fn co_task_mem_string(value: PWSTR) -> Option<String> {
         return None;
     }
 
-    let text = unsafe { String::from_utf16_lossy(value.as_wide()) }
-        .trim_end_matches('\0')
-        .to_owned();
+    let wide = unsafe { value.as_wide() };
+    let len = wide.iter().position(|ch| *ch == 0).unwrap_or(wide.len());
+    let text = String::from_utf16_lossy(&wide[..len]);
     unsafe {
         CoTaskMemFree(Some(value.as_ptr().cast()));
     }

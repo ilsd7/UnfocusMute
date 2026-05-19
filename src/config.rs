@@ -3,7 +3,6 @@
 use crate::i18n::Language;
 use serde::{Deserialize, Serialize};
 use std::borrow::Cow;
-use std::collections::HashSet;
 use std::env;
 use std::fs;
 use std::io;
@@ -172,16 +171,16 @@ impl AppConfig {
     }
 
     pub fn deduplicate_targets(&mut self) {
-        let mut names = HashSet::with_capacity(self.targets.len());
         self.targets.retain_mut(|target| {
             let Some(name) = normalize_process_name_owned(std::mem::take(&mut target.name)) else {
                 return false;
             };
-            let keep = names.insert((name.clone(), target.pid));
             target.name = name;
-            keep
+            true
         });
         self.sort_targets();
+        self.targets
+            .dedup_by(|right, left| right.name == left.name && right.pid == left.pid);
     }
 
     fn sanitize(&mut self) {
@@ -487,6 +486,30 @@ mod tests {
 
         assert_eq!(config.targets.len(), 1);
         assert_eq!(config.targets[0].name, "game.exe");
+    }
+
+    #[test]
+    fn deduplicate_targets_keeps_first_duplicate_after_normalization() {
+        let mut config = AppConfig {
+            targets: vec![
+                TargetProcess {
+                    name: "Game.EXE".to_owned(),
+                    pid: None,
+                    enabled: false,
+                },
+                TargetProcess {
+                    name: "game.exe".to_owned(),
+                    pid: None,
+                    enabled: true,
+                },
+            ],
+            ..AppConfig::default()
+        };
+
+        config.deduplicate_targets();
+
+        assert_eq!(config.targets.len(), 1);
+        assert!(!config.targets[0].enabled);
     }
 
     #[test]

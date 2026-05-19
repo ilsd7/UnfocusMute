@@ -13,10 +13,11 @@ use windows::Win32::UI::Controls::{BST_CHECKED, BST_UNCHECKED};
 use windows::Win32::UI::HiDpi::{GetDpiForSystem, GetSystemMetricsForDpi};
 use windows::Win32::UI::WindowsAndMessaging::{
     BM_GETCHECK, BM_SETCHECK, BS_AUTOCHECKBOX, BS_DEFPUSHBUTTON, BS_PUSHBUTTON, CB_ADDSTRING,
-    CB_SETEDITSEL, CreateWindowExW, GetSystemMetrics, GetWindowTextLengthW, GetWindowTextW, HICON,
-    HMENU, IDI_APPLICATION, IMAGE_ICON, LB_ADDSTRING, LR_DEFAULTCOLOR, LoadIconW, LoadImageW,
-    SM_CXICON, SM_CXSMICON, SM_CYICON, SM_CYSMICON, SendMessageW, SetWindowTextW, UnregisterClassW,
-    WINDOW_EX_STYLE, WINDOW_STYLE, WS_CHILD, WS_CLIPSIBLINGS, WS_TABSTOP, WS_VISIBLE,
+    CB_INITSTORAGE, CB_SETEDITSEL, CreateWindowExW, GetSystemMetrics, GetWindowTextLengthW,
+    GetWindowTextW, HICON, HMENU, IDI_APPLICATION, IMAGE_ICON, LB_ADDSTRING, LB_INITSTORAGE,
+    LR_DEFAULTCOLOR, LoadIconW, LoadImageW, SM_CXICON, SM_CXSMICON, SM_CYICON, SM_CYSMICON,
+    SendMessageW, SetWindowTextW, UnregisterClassW, WINDOW_EX_STYLE, WINDOW_STYLE, WS_CHILD,
+    WS_CLIPSIBLINGS, WS_TABSTOP, WS_VISIBLE,
 };
 use windows::core::{PCWSTR, w};
 
@@ -222,6 +223,17 @@ pub(super) unsafe fn add_list_item(hwnd: HWND, text: &str) {
     }
 }
 
+pub(super) unsafe fn reserve_list_items(hwnd: HWND, count: usize, text_bytes: usize) {
+    unsafe {
+        SendMessageW(
+            hwnd,
+            LB_INITSTORAGE,
+            Some(WPARAM(count)),
+            Some(LPARAM(text_bytes.min(isize::MAX as usize) as isize)),
+        );
+    }
+}
+
 pub(super) unsafe fn add_combo_item(hwnd: HWND, text: &str) {
     let wide = to_wide(text);
     unsafe {
@@ -230,6 +242,17 @@ pub(super) unsafe fn add_combo_item(hwnd: HWND, text: &str) {
             CB_ADDSTRING,
             None,
             Some(LPARAM(wide.as_ptr() as isize)),
+        );
+    }
+}
+
+pub(super) unsafe fn reserve_combo_items(hwnd: HWND, count: usize, text_bytes: usize) {
+    unsafe {
+        SendMessageW(
+            hwnd,
+            CB_INITSTORAGE,
+            Some(WPARAM(count)),
+            Some(LPARAM(text_bytes.min(isize::MAX as usize) as isize)),
         );
     }
 }
