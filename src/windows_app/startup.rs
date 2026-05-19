@@ -1,6 +1,8 @@
 use anyhow::{Context, Result, bail};
 use std::env;
 use std::mem::size_of;
+use std::os::windows::ffi::OsStrExt;
+use std::path::Path;
 use std::slice;
 use windows::Win32::Foundation::{ERROR_FILE_NOT_FOUND, ERROR_SUCCESS};
 use windows::Win32::System::Registry::{
@@ -17,13 +19,9 @@ pub fn set_launch_on_startup(enabled: bool) -> Result<()> {
     let value_name = to_wide(VALUE_NAME);
     let result = if enabled {
         let exe = env::current_exe().context("resolve current executable")?;
-        let command = format!("\"{}\" --minimized", exe.display());
-        let mut wide = to_wide(&command);
+        let wide = startup_command(&exe);
         let bytes = unsafe {
-            slice::from_raw_parts(
-                wide.as_mut_ptr().cast::<u8>(),
-                wide.len() * size_of::<u16>(),
-            )
+            slice::from_raw_parts(wide.as_ptr().cast::<u8>(), wide.len() * size_of::<u16>())
         };
         unsafe { RegSetValueExW(key, PCWSTR(value_name.as_ptr()), None, REG_SZ, Some(bytes)) }
     } else {
@@ -70,4 +68,16 @@ fn open_run_key() -> Result<HKEY> {
 
 fn to_wide(text: &str) -> Vec<u16> {
     text.encode_utf16().chain(std::iter::once(0)).collect()
+}
+
+fn startup_command(exe: &Path) -> Vec<u16> {
+    let exe_len = exe.as_os_str().encode_wide().count();
+    let suffix = " --minimized";
+    let mut command = Vec::with_capacity(1 + exe_len + 1 + suffix.len() + 1);
+    command.push(b'"' as u16);
+    command.extend(exe.as_os_str().encode_wide());
+    command.push(b'"' as u16);
+    command.extend(suffix.encode_utf16());
+    command.push(0);
+    command
 }

@@ -66,8 +66,8 @@ use theme::{AppTheme, OwnedBrush};
 use win32::{
     WindowClassRegistration, add_combo_item, add_list_item, copy_wide_fixed, create_button,
     create_checkbox, create_control, create_primary_button, current_config_stamp, hiword,
-    is_checked, load_app_icon, load_tray_icon, loword, measure_text_width, set_checkbox,
-    set_combo_edit_caret, set_text, to_wide, window_text,
+    is_checked, load_app_icon, load_tray_icon, loword, measure_text_width, path_to_wide,
+    set_checkbox, set_combo_edit_caret, set_text, to_wide, window_text,
 };
 
 static FOREGROUND_EVENT_HWND: AtomicIsize = AtomicIsize::new(0);
@@ -1056,7 +1056,7 @@ impl AppWindow {
                 .collect();
         }
 
-        let mut choices = Vec::new();
+        let mut choices = Vec::with_capacity(self.running_processes.len());
         let mut processes = self.running_processes.iter();
         let Some(first) = processes.next() else {
             return choices;
@@ -1650,7 +1650,7 @@ impl AppWindow {
             self.set_issue(StatusIssue::OpenConfigFailed);
             return;
         }
-        let path = to_wide(path.to_string_lossy().as_ref());
+        let path = path_to_wide(&path);
         unsafe {
             let result = ShellExecuteW(
                 Some(self.hwnd),

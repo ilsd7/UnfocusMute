@@ -1,7 +1,7 @@
 use crate::config::normalize_process_name_owned;
 use std::collections::HashMap;
 use std::mem::size_of;
-use windows::Win32::Foundation::{CloseHandle, HANDLE, HWND};
+use windows::Win32::Foundation::{CloseHandle, ERROR_INSUFFICIENT_BUFFER, HANDLE, HWND};
 use windows::Win32::System::Diagnostics::ToolHelp::{
     CreateToolhelp32Snapshot, PROCESSENTRY32W, Process32FirstW, Process32NextW, TH32CS_SNAPPROCESS,
 };
@@ -9,7 +9,11 @@ use windows::Win32::System::Threading::{
     OpenProcess, PROCESS_NAME_WIN32, PROCESS_QUERY_LIMITED_INFORMATION, QueryFullProcessImageNameW,
 };
 use windows::Win32::UI::WindowsAndMessaging::{GetForegroundWindow, GetWindowThreadProcessId};
-use windows::core::PWSTR;
+use windows::core::{Error, HRESULT, PWSTR};
+
+const EXPECTED_PROCESS_COUNT: usize = 128;
+const PROCESS_IMAGE_BUFFER_LEN: usize = 1024;
+const MAX_PROCESS_IMAGE_BUFFER_LEN: usize = 32_768;
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ProcessInfo {
@@ -84,7 +88,7 @@ pub fn foreground_pid() -> Option<u32> {
 }
 
 pub fn running_processes() -> Vec<ProcessInfo> {
-    let mut processes = Vec::new();
+    let mut processes = Vec::with_capacity(EXPECTED_PROCESS_COUNT);
     visit_process_snapshot(|pid, name| processes.push(ProcessInfo { pid, name }));
     processes.sort_by(|left, right| {
         left.name
@@ -95,7 +99,7 @@ pub fn running_processes() -> Vec<ProcessInfo> {
 }
 
 fn process_names_from_snapshot() -> HashMap<u32, String> {
-    let mut processes = HashMap::new();
+    let mut processes = HashMap::with_capacity(EXPECTED_PROCESS_COUNT);
     visit_process_snapshot(|pid, name| {
         processes.insert(pid, name);
     });
@@ -145,7 +149,24 @@ fn process_image_name(pid: u32) -> Option<String> {
 }
 
 unsafe fn query_process_image_name(handle: HANDLE) -> Option<String> {
-    let mut buffer = [0u16; 1024];
+    let mut buffer = [0u16; PROCESS_IMAGE_BUFFER_LEN];
+    let len = match unsafe { query_process_image_name_into(handle, &mut buffer) } {
+        Ok(len) => len,
+        Err(error) if is_insufficient_buffer(&error) => {
+            let mut buffer = vec![0u16; MAX_PROCESS_IMAGE_BUFFER_LEN];
+            let len = unsafe { query_process_image_name_into(handle, &mut buffer) }.ok()?;
+            return normalize_process_name_owned(String::from_utf16_lossy(&buffer[..len]));
+        }
+        Err(_) => return None,
+    };
+
+    normalize_process_name_owned(String::from_utf16_lossy(&buffer[..len]))
+}
+
+unsafe fn query_process_image_name_into(
+    handle: HANDLE,
+    buffer: &mut [u16],
+) -> Result<usize, Error> {
     let mut len = buffer.len() as u32;
     unsafe {
         QueryFullProcessImageNameW(
@@ -154,10 +175,12 @@ unsafe fn query_process_image_name(handle: HANDLE) -> Option<String> {
             PWSTR(buffer.as_mut_ptr()),
             &mut len,
         )
-        .ok()?;
-    }
+    }?;
+    Ok(len as usize)
+}
 
-    normalize_process_name_owned(String::from_utf16_lossy(&buffer[..len as usize]))
+fn is_insufficient_buffer(error: &Error) -> bool {
+    error.code() == HRESULT::from_win32(ERROR_INSUFFICIENT_BUFFER.0)
 }
 
 fn utf16_array_to_string(buffer: &[u16]) -> String {

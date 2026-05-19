@@ -63,8 +63,17 @@ impl AudioController {
             });
         }
 
-        let sessions = self.session_handles()?;
-        Ok(apply_unmute_to_handles(&sessions, session_keys))
+        let mut result = MuteApplyResult {
+            changed_sessions: Vec::with_capacity(session_keys.len()),
+            missing_sessions: Vec::new(),
+            had_failures: false,
+        };
+        let mut missing_sessions = session_keys.clone();
+        self.visit_session_handles(|session| {
+            apply_unmute_to_handle(&session, &mut missing_sessions, &mut result);
+        })?;
+        result.missing_sessions = missing_sessions.into_iter().collect();
+        Ok(result)
     }
 
     pub fn apply_mute_plan(
@@ -74,13 +83,20 @@ impl AudioController {
         foreground_process_name: Option<String>,
         managed_muted_sessions: &HashSet<AudioSessionKey>,
     ) -> Result<PlannedMuteApplyResult> {
-        let sessions = self.session_handles()?;
         let planner = MutePlanner::new_with_normalized_foreground(
             matcher,
             foreground_pid,
             foreground_process_name,
         );
-        let apply_result = apply_plan_to_handles(&sessions, &planner, managed_muted_sessions);
+        let mut apply_result = PlanApplyResult::new(managed_muted_sessions.len());
+        self.visit_session_handles(|session| {
+            apply_plan_to_handle(
+                &session,
+                &planner,
+                managed_muted_sessions,
+                &mut apply_result,
+            );
+        })?;
 
         Ok(PlannedMuteApplyResult {
             active_managed_sessions: apply_result.active_managed_sessions,
@@ -89,9 +105,8 @@ impl AudioController {
         })
     }
 
-    fn session_handles(&self) -> Result<Vec<AudioSessionHandle>> {
+    fn visit_session_handles(&self, mut visit: impl FnMut(AudioSessionHandle)) -> Result<()> {
         unsafe {
-            let mut sessions = Vec::new();
             let mut process_names = process::ProcessNameResolver::snapshot_first();
 
             for manager in &self.managers {
@@ -99,7 +114,6 @@ impl AudioController {
                     .GetSessionEnumerator()
                     .context("get audio session enumerator")?;
                 let count = enumerator.GetCount().context("get audio session count")?;
-                sessions.reserve(count as usize);
 
                 for index in 0..count {
                     let Ok(control) = enumerator.GetSession(index) else {
@@ -119,11 +133,11 @@ impl AudioController {
                         .map(|value| value.as_bool())
                         .unwrap_or(false);
 
-                    sessions.push(AudioSessionHandle { key, muted, volume });
+                    visit(AudioSessionHandle { key, muted, volume });
                 }
             }
 
-            Ok(sessions)
+            Ok(())
         }
     }
 }
@@ -140,68 +154,57 @@ struct PlanApplyResult {
     had_failures: bool,
 }
 
-fn apply_plan_to_handles(
-    sessions: &[AudioSessionHandle],
-    planner: &MutePlanner<'_>,
-    managed_muted_sessions: &HashSet<AudioSessionKey>,
-) -> PlanApplyResult {
-    let track_active_managed = !managed_muted_sessions.is_empty();
-    let mut active_managed_sessions = track_active_managed.then(Vec::new);
-    let mut changed_actions = Vec::new();
-    let mut had_failures = false;
-
-    for session in sessions {
-        let managed = track_active_managed && managed_muted_sessions.contains(&session.key);
-        if managed && let Some(active_managed_sessions) = &mut active_managed_sessions {
-            active_managed_sessions.push(session.key.clone());
+impl PlanApplyResult {
+    fn new(managed_session_count: usize) -> Self {
+        Self {
+            active_managed_sessions: (managed_session_count > 0)
+                .then(|| Vec::with_capacity(managed_session_count)),
+            changed_actions: Vec::new(),
+            had_failures: false,
         }
-
-        let Some(action) = planner.plan_session_with_managed(managed, &session.key, session.muted)
-        else {
-            continue;
-        };
-        if unsafe { session.volume.SetMute(action.mute, std::ptr::null()) }.is_err() {
-            had_failures = true;
-            continue;
-        }
-        changed_actions.push(action);
-    }
-
-    PlanApplyResult {
-        active_managed_sessions,
-        changed_actions,
-        had_failures,
     }
 }
 
-fn apply_unmute_to_handles(
-    sessions: &[AudioSessionHandle],
-    session_keys: &HashSet<AudioSessionKey>,
-) -> MuteApplyResult {
-    let mut changed_sessions = Vec::new();
-    let mut missing_sessions = session_keys.clone();
-    let mut had_failures = false;
-
-    for session in sessions {
-        if !missing_sessions.remove(&session.key) {
-            continue;
-        }
-        if !session.muted {
-            changed_sessions.push(session.key.clone());
-            continue;
-        }
-        if unsafe { session.volume.SetMute(false, std::ptr::null()) }.is_err() {
-            had_failures = true;
-            continue;
-        }
-        changed_sessions.push(session.key.clone());
+fn apply_plan_to_handle(
+    session: &AudioSessionHandle,
+    planner: &MutePlanner<'_>,
+    managed_muted_sessions: &HashSet<AudioSessionKey>,
+    result: &mut PlanApplyResult,
+) {
+    let managed =
+        result.active_managed_sessions.is_some() && managed_muted_sessions.contains(&session.key);
+    if managed && let Some(active_managed_sessions) = &mut result.active_managed_sessions {
+        active_managed_sessions.push(session.key.clone());
     }
 
-    MuteApplyResult {
-        changed_sessions,
-        missing_sessions: missing_sessions.into_iter().collect(),
-        had_failures,
+    let Some(action) = planner.plan_session_with_managed(managed, &session.key, session.muted)
+    else {
+        return;
+    };
+    if unsafe { session.volume.SetMute(action.mute, std::ptr::null()) }.is_err() {
+        result.had_failures = true;
+        return;
     }
+    result.changed_actions.push(action);
+}
+
+fn apply_unmute_to_handle(
+    session: &AudioSessionHandle,
+    missing_sessions: &mut HashSet<AudioSessionKey>,
+    result: &mut MuteApplyResult,
+) {
+    if !missing_sessions.remove(&session.key) {
+        return;
+    }
+    if !session.muted {
+        result.changed_sessions.push(session.key.clone());
+        return;
+    }
+    if unsafe { session.volume.SetMute(false, std::ptr::null()) }.is_err() {
+        result.had_failures = true;
+        return;
+    }
+    result.changed_sessions.push(session.key.clone());
 }
 
 struct EndpointNotification {

@@ -1,6 +1,6 @@
 #![cfg_attr(not(windows), allow(dead_code))]
 
-use crate::config::{TargetProcess, normalize_process_name};
+use crate::config::{TargetProcess, is_normalized_process_name, normalize_process_name};
 use std::collections::{HashMap, HashSet};
 
 #[derive(Clone, Debug, Eq, Hash, PartialEq)]
@@ -30,9 +30,7 @@ impl AudioSessionKey {
         process_name: String,
         instance_id: Option<String>,
     ) -> Self {
-        debug_assert!(!process_name.is_empty());
-        debug_assert!(!process_name.contains('\0'));
-        debug_assert_eq!(process_name, process_name.to_ascii_lowercase());
+        debug_assert!(is_normalized_process_name(&process_name));
         Self {
             pid,
             process_name,
@@ -159,9 +157,7 @@ impl<'a> MutePlanner<'a> {
         foreground_process_name: Option<String>,
     ) -> Self {
         if let Some(name) = &foreground_process_name {
-            debug_assert!(!name.is_empty());
-            debug_assert!(!name.contains('\0'));
-            debug_assert_eq!(name, &name.to_ascii_lowercase());
+            debug_assert!(is_normalized_process_name(name));
         }
         Self {
             matcher,

@@ -35,8 +35,10 @@ impl ProcessChoice {
         self.display_name.as_deref().unwrap_or(&self.name)
     }
 
-    pub(super) fn matches_search(&self, terms: &[String]) -> bool {
-        terms.iter().all(|term| self.search_text.contains(term))
+    pub(super) fn matches_search(&self, terms: &[Cow<'_, str>]) -> bool {
+        terms
+            .iter()
+            .all(|term| self.search_text.contains(term.as_ref()))
     }
 }
 
@@ -48,12 +50,8 @@ fn lowercase_if_needed(text: &str) -> Cow<'_, str> {
     }
 }
 
-pub(super) fn search_terms(query: &str) -> Vec<String> {
-    query
-        .split_whitespace()
-        .map(str::to_lowercase)
-        .filter(|term| !term.is_empty())
-        .collect()
+pub(super) fn search_terms(query: &str) -> Vec<Cow<'_, str>> {
+    query.split_whitespace().map(lowercase_if_needed).collect()
 }
 
 #[cfg(test)]

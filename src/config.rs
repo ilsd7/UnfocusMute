@@ -174,11 +174,12 @@ impl AppConfig {
     pub fn deduplicate_targets(&mut self) {
         let mut names = HashSet::with_capacity(self.targets.len());
         self.targets.retain_mut(|target| {
-            let Some(name) = normalize_process_name(&target.name) else {
+            let Some(name) = normalize_process_name_owned(std::mem::take(&mut target.name)) else {
                 return false;
             };
+            let keep = names.insert((name.clone(), target.pid));
             target.name = name;
-            names.insert((target.name.clone(), target.pid))
+            keep
         });
         self.sort_targets();
     }
@@ -355,6 +356,14 @@ pub fn normalize_process_name_owned(mut input: String) -> Option<String> {
     }
 }
 
+pub fn is_normalized_process_name(input: &str) -> bool {
+    process_name_candidate(input).is_some_and(|candidate| {
+        !candidate.has_uppercase
+            && candidate.name.len() == input.len()
+            && candidate.name.as_ptr() == input.as_ptr()
+    })
+}
+
 pub fn config_dir() -> io::Result<PathBuf> {
     if cfg!(windows)
         && let Some(appdata) = env::var_os("APPDATA")
@@ -422,6 +431,14 @@ mod tests {
                 normalize_process_name(input)
             );
         }
+    }
+
+    #[test]
+    fn detects_already_normalized_process_names() {
+        assert!(is_normalized_process_name("game.exe"));
+        assert!(!is_normalized_process_name("Game.EXE"));
+        assert!(!is_normalized_process_name(r#"C:\Games\game.exe"#));
+        assert!(!is_normalized_process_name("game.exe\0"));
     }
 
     #[test]

@@ -3,6 +3,8 @@ use crate::config::config_file_path;
 use anyhow::{Context, Result};
 use std::ffi::c_void;
 use std::fs;
+use std::os::windows::ffi::OsStrExt;
+use std::path::Path;
 use windows::Win32::Foundation::{HINSTANCE, HWND, LPARAM, SIZE, WPARAM};
 use windows::Win32::Graphics::Gdi::{
     GetDC, GetTextExtentPoint32W, HGDIOBJ, ReleaseDC, SelectObject,
@@ -198,8 +200,12 @@ pub(super) unsafe fn measure_text_width(hwnd: HWND, font: HGDIOBJ, text: &str) -
 }
 
 pub(super) unsafe fn window_text(hwnd: HWND) -> String {
-    let capacity = unsafe { GetWindowTextLengthW(hwnd) }.max(0) as usize + 1;
-    let mut buffer = vec![0u16; capacity];
+    let len = unsafe { GetWindowTextLengthW(hwnd) }.max(0) as usize;
+    if len == 0 {
+        return String::new();
+    }
+
+    let mut buffer = vec![0u16; len + 1];
     let len = unsafe { GetWindowTextW(hwnd, &mut buffer) };
     String::from_utf16_lossy(&buffer[..len.max(0) as usize])
 }
@@ -304,12 +310,16 @@ fn int_resource(id: u16) -> PCWSTR {
 }
 
 pub(super) fn copy_wide_fixed(text: &str, destination: &mut [u16]) {
-    let wide = to_wide(text);
-    let count = wide.len().min(destination.len());
-    destination[..count].copy_from_slice(&wide[..count]);
-    if let Some(last) = destination.last_mut() {
-        *last = 0;
+    let Some(max_text_len) = destination.len().checked_sub(1) else {
+        return;
+    };
+
+    let mut count = 0;
+    for ch in text.encode_utf16().take(max_text_len) {
+        destination[count] = ch;
+        count += 1;
     }
+    destination[count] = 0;
 }
 
 pub(super) fn current_config_stamp() -> Option<ConfigFileStamp> {
@@ -322,6 +332,13 @@ pub(super) fn current_config_stamp() -> Option<ConfigFileStamp> {
 
 pub(super) fn to_wide(text: &str) -> Vec<u16> {
     text.encode_utf16().chain(std::iter::once(0)).collect()
+}
+
+pub(super) fn path_to_wide(path: &Path) -> Vec<u16> {
+    path.as_os_str()
+        .encode_wide()
+        .chain(std::iter::once(0))
+        .collect()
 }
 
 pub(super) fn loword(value: u32) -> u16 {
