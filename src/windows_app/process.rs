@@ -96,11 +96,13 @@ pub fn refresh_running_processes(processes: &mut Vec<ProcessInfo>) {
         processes.push(ProcessInfo { pid, name });
         true
     });
-    processes.sort_unstable_by(|left, right| {
-        left.name
-            .cmp(&right.name)
-            .then_with(|| left.pid.cmp(&right.pid))
-    });
+    if processes.len() > 1 {
+        processes.sort_unstable_by(|left, right| {
+            left.name
+                .cmp(&right.name)
+                .then_with(|| left.pid.cmp(&right.pid))
+        });
+    }
 }
 
 fn process_names_from_snapshot() -> HashMap<u32, String> {
@@ -113,6 +115,18 @@ fn process_names_from_snapshot() -> HashMap<u32, String> {
 }
 
 fn visit_process_snapshot(mut visit: impl FnMut(u32, String) -> bool) {
+    visit_process_snapshot_entries(|entry| {
+        if entry.th32ProcessID == 0 {
+            return true;
+        }
+        let Some(name) = normalize_process_name_utf16(&entry.szExeFile) else {
+            return true;
+        };
+        visit(entry.th32ProcessID, name)
+    });
+}
+
+fn visit_process_snapshot_entries(mut visit: impl FnMut(&PROCESSENTRY32W) -> bool) {
     unsafe {
         let Ok(snapshot) = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0) else {
             return;
@@ -126,10 +140,7 @@ fn visit_process_snapshot(mut visit: impl FnMut(u32, String) -> bool) {
 
         if Process32FirstW(snapshot.raw(), &mut entry).is_ok() {
             loop {
-                if entry.th32ProcessID != 0
-                    && let Some(name) = normalize_process_name_utf16(&entry.szExeFile)
-                    && !visit(entry.th32ProcessID, name)
-                {
+                if !visit(&entry) {
                     break;
                 }
 
@@ -153,10 +164,14 @@ fn process_image_name(pid: u32) -> Option<String> {
 }
 
 fn process_name_from_snapshot(target_pid: u32) -> Option<String> {
+    if target_pid == 0 {
+        return None;
+    }
+
     let mut result = None;
-    visit_process_snapshot(|pid, name| {
-        if pid == target_pid && result.is_none() {
-            result = Some(name);
+    visit_process_snapshot_entries(|entry| {
+        if entry.th32ProcessID == target_pid {
+            result = normalize_process_name_utf16(&entry.szExeFile);
             false
         } else {
             true

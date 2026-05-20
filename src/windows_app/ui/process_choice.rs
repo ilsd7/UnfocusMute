@@ -1,5 +1,4 @@
 use std::borrow::Cow;
-use std::fmt::Write as _;
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(super) struct ProcessChoice {
@@ -86,7 +85,7 @@ fn display_pid_text(text: &str, pid: u32) -> String {
     let mut output = String::with_capacity(text.len() + 7 + decimal_digit_count(pid as usize));
     output.push_str(text);
     output.push_str(" (PID ");
-    let _ = write!(output, "{pid}");
+    push_decimal(&mut output, pid as usize);
     output.push(')');
     output
 }
@@ -95,7 +94,7 @@ fn display_pid_count_text(text: &str, count: usize) -> String {
     let mut output = String::with_capacity(text.len() + 7 + decimal_digit_count(count));
     output.push_str(text);
     output.push_str(" (");
-    let _ = write!(output, "{count}");
+    push_decimal(&mut output, count);
     output.push_str(" PID");
     output.push(')');
     output
@@ -106,10 +105,26 @@ fn search_text_with_number(text: &str, number: usize, label: &str) -> String {
         String::with_capacity(text.len() + 2 + label.len() + decimal_digit_count(number));
     output.push_str(text);
     output.push(' ');
-    let _ = write!(output, "{number}");
+    push_decimal(&mut output, number);
     output.push(' ');
     output.push_str(label);
     output
+}
+
+fn push_decimal(output: &mut String, mut number: usize) {
+    let mut digits = [0u8; 20];
+    let mut len = 0;
+    loop {
+        digits[len] = b'0' + (number % 10) as u8;
+        len += 1;
+        number /= 10;
+        if number == 0 {
+            break;
+        }
+    }
+    for digit in digits[..len].iter().rev() {
+        output.push(*digit as char);
+    }
 }
 
 fn decimal_digit_count(number: usize) -> usize {

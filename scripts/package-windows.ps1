@@ -109,8 +109,8 @@ try {
         $DocsStage = Join-Path $Stage "docs"
         New-Item -ItemType Directory -Force -Path $DocsStage | Out-Null
         Get-ChildItem "docs" -File |
-            Sort-Object Name |
             Where-Object { $_.Name -ne "README.en.md" } |
+            Sort-Object Name |
             ForEach-Object {
                 $Readme = [System.IO.File]::ReadAllText($_.FullName, [System.Text.Encoding]::UTF8)
                 $Readme = Convert-ReadmeForPackage $Readme

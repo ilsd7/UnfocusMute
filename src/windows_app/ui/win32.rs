@@ -345,6 +345,10 @@ pub(super) unsafe fn add_list_item_with_buffer(hwnd: HWND, text: &str, wide: &mu
 }
 
 pub(super) unsafe fn reserve_list_items(hwnd: HWND, count: usize, text_bytes: usize) {
+    if count == 0 {
+        return;
+    }
+
     unsafe {
         SendMessageW(
             hwnd,
@@ -368,6 +372,10 @@ pub(super) unsafe fn add_combo_item_with_buffer(hwnd: HWND, text: &str, wide: &m
 }
 
 pub(super) unsafe fn reserve_combo_items(hwnd: HWND, count: usize, text_bytes: usize) {
+    if count == 0 {
+        return;
+    }
+
     unsafe {
         SendMessageW(
             hwnd,

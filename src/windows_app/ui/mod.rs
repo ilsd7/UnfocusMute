@@ -173,7 +173,7 @@ unsafe fn run_window() -> Result<()> {
         initial_issues.set(StatusIssue::ConfigSaveFailed);
     }
 
-    let forced_minimized = std::env::args().any(|arg| arg == "--minimized");
+    let forced_minimized = std::env::args_os().any(|arg| arg == "--minimized");
     let start_hidden = should_start_hidden(first_run, forced_minimized, config.start_minimized);
     let WindowPosition { x, y } = initial_window_position(&config);
 
@@ -1591,20 +1591,17 @@ impl AppWindow {
         let issue_text = snapshot.issue.map(|issue| self.issue_text(issue));
         self.status_detail_text.clear();
         if let Some(issue_text) = issue_text {
-            let _ = write!(
-                self.status_detail_text,
-                "{} · {}",
-                self.strings.status_issue, issue_text
-            );
+            self.status_detail_text.push_str(self.strings.status_issue);
+            self.status_detail_text.push_str(" · ");
+            self.status_detail_text.push_str(issue_text);
         } else {
-            let _ = write!(
-                self.status_detail_text,
-                "{} {} · {} {}",
-                self.strings.target_count,
-                snapshot.target_count,
-                self.strings.muted_count,
-                snapshot.muted_count
-            );
+            self.status_detail_text.push_str(self.strings.target_count);
+            self.status_detail_text.push(' ');
+            let _ = write!(self.status_detail_text, "{}", snapshot.target_count);
+            self.status_detail_text.push_str(" · ");
+            self.status_detail_text.push_str(self.strings.muted_count);
+            self.status_detail_text.push(' ');
+            let _ = write!(self.status_detail_text, "{}", snapshot.muted_count);
         }
         unsafe {
             set_text(self.controls.status, status);
@@ -1739,8 +1736,10 @@ impl AppWindow {
         match AppConfig::load_existing() {
             Ok(config) => {
                 self.config_stamp = stamp;
+                if self.issues.clear(StatusIssue::ConfigLoadFailed) {
+                    self.last_status = None;
+                }
                 let targets_changed = self.apply_external_config(config);
-                self.clear_issue(StatusIssue::ConfigLoadFailed);
                 ConfigReloadResult::changed(targets_changed)
             }
             Err(error) if error.kind() == ErrorKind::NotFound => {
@@ -1904,14 +1903,22 @@ impl AppWindow {
             Ok(()) => {
                 self.config_stamp = current_config_stamp();
                 self.next_config_check = Instant::now() + CONFIG_RELOAD_CHECK_INTERVAL;
-                self.clear_issue(StatusIssue::ConfigLoadFailed);
-                self.clear_issue(StatusIssue::ConfigSaveFailed);
+                self.clear_config_issues();
                 true
             }
             Err(_) => {
                 self.set_issue(StatusIssue::ConfigSaveFailed);
                 false
             }
+        }
+    }
+
+    fn clear_config_issues(&mut self) {
+        let load_changed = self.issues.clear(StatusIssue::ConfigLoadFailed);
+        let save_changed = self.issues.clear(StatusIssue::ConfigSaveFailed);
+        if load_changed || save_changed {
+            self.last_status = None;
+            self.update_status();
         }
     }
 
@@ -2183,22 +2190,14 @@ impl AppWindow {
         if pid == Some(0) {
             return false;
         }
-        self.config
-            .targets
-            .iter()
-            .all(|target| target.name != name || target.pid != pid)
+        !self.config.contains_normalized_target(name, pid)
     }
 
     fn can_submit_manual_target(&self) -> bool {
         let Some(name) = normalize_process_name_cow(&self.manual_process_text) else {
             return false;
         };
-        name.ends_with(".exe")
-            && self
-                .config
-                .targets
-                .iter()
-                .all(|target| target.pid.is_some() || target.name != name.as_ref())
+        name.ends_with(".exe") && !self.config.contains_normalized_target(name.as_ref(), None)
     }
 
     fn finish_target_change(&mut self) {

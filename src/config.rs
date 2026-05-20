@@ -229,6 +229,13 @@ impl AppConfig {
         true
     }
 
+    pub(crate) fn contains_normalized_target(&self, name: &str, pid: Option<u32>) -> bool {
+        debug_assert!(is_normalized_process_name(name));
+        self.targets
+            .binary_search_by(|target| compare_target_key(target, name, pid))
+            .is_ok()
+    }
+
     pub fn deduplicate_targets(&mut self) {
         self.targets.retain_mut(|target| {
             if target.pid == Some(0) {
@@ -240,9 +247,11 @@ impl AppConfig {
             target.name = name;
             true
         });
-        self.sort_targets();
-        self.targets
-            .dedup_by(|right, left| right.name == left.name && right.pid == left.pid);
+        if self.targets.len() > 1 {
+            self.sort_targets();
+            self.targets
+                .dedup_by(|right, left| right.name == left.name && right.pid == left.pid);
+        }
     }
 
     fn sanitize(&mut self) {
@@ -267,9 +276,14 @@ impl AppConfig {
 }
 
 fn compare_targets(left: &TargetProcess, right: &TargetProcess) -> Ordering {
+    compare_target_key(left, &right.name, right.pid)
+}
+
+fn compare_target_key(left: &TargetProcess, name: &str, pid: Option<u32>) -> Ordering {
     left.name
-        .cmp(&right.name)
-        .then_with(|| left.pid.unwrap_or(0).cmp(&right.pid.unwrap_or(0)))
+        .as_str()
+        .cmp(name)
+        .then_with(|| left.pid.unwrap_or(0).cmp(&pid.unwrap_or(0)))
 }
 
 fn load_or_default_from_path(path: &Path) -> io::Result<AppConfigLoad> {
@@ -716,6 +730,9 @@ mod tests {
         assert!(config.add_target("browser.exe"));
         assert!(config.add_pid_target("browser.exe", 42));
         assert!(!config.add_pid_target("browser.exe", 42));
+        assert!(config.contains_normalized_target("browser.exe", None));
+        assert!(config.contains_normalized_target("browser.exe", Some(42)));
+        assert!(!config.contains_normalized_target("browser.exe", Some(43)));
         assert_eq!(config.targets.len(), 2);
         let mut display_name = String::new();
         config.targets[0].display_name_into(&mut display_name);
