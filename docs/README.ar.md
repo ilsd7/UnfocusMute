@@ -41,7 +41,7 @@ UnfocusMute تطبيق صغير وخفيف لعلبة نظام Windows يكتم 
 
 ## التنزيل والتشغيل
 
-نزّل ملف ZIP الخاص بـ Windows 10/11 من [GitHub Releases](https://github.com/ilsd7/UnfocusMute/releases)، ثم فك الضغط وشغّل `UnfocusMute.exe`. التطبيق محمول، لذلك لا يحتاج إلى مثبت ولا يتطلب runtime منفصلًا أو Rust أو Visual Studio Build Tools أو MinGW.
+نزّل ملف ZIP الخاص بـ Windows 10/11 من [GitHub Releases](https://github.com/ilsd7/UnfocusMute/releases)، ثم فك الضغط. انقل مجلد `UnfocusMute-<version>-windows-x64` الناتج إلى المكان الذي تريد الاحتفاظ بالتطبيق فيه، ثم شغّل `UnfocusMute.exe` من داخل ذلك المجلد. التطبيق محمول، لذلك لا يحتاج إلى مثبت ولا يتطلب runtime منفصلًا أو Rust أو Visual Studio Build Tools أو MinGW.
 
 ## الاستخدام
 

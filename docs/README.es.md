@@ -41,7 +41,7 @@ Resulta especialmente útil cuando sales de un juego con Alt+Tab para usar un na
 
 ## Descargar y ejecutar
 
-Descarga el ZIP para Windows 10/11 desde [GitHub Releases](https://github.com/ilsd7/UnfocusMute/releases), extráelo y ejecuta `UnfocusMute.exe`. Es portable, así que no hay instalador y no necesitas un runtime aparte, Rust, Visual Studio Build Tools ni MinGW.
+Descarga el ZIP para Windows 10/11 desde [GitHub Releases](https://github.com/ilsd7/UnfocusMute/releases) y extráelo. Mueve la carpeta extraída `UnfocusMute-<version>-windows-x64` a la ubicación donde quieras guardar la app y ejecuta `UnfocusMute.exe` desde esa carpeta. Es portable, así que no hay instalador y no necesitas un runtime aparte, Rust, Visual Studio Build Tools ni MinGW.
 
 ## Uso
 

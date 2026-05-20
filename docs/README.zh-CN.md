@@ -41,7 +41,7 @@ UnfocusMute 是一款小巧轻量的 Windows 托盘应用，会在所选游戏�
 
 ## 下载与运行
 
-从 [GitHub Releases](https://github.com/ilsd7/UnfocusMute/releases) 下载 Windows 10/11 ZIP，解压后运行 `UnfocusMute.exe` 即可。它是便携式可执行文件，不需要安装流程，也不需要额外安装运行时、Rust、Visual Studio Build Tools 或 MinGW。
+从 [GitHub Releases](https://github.com/ilsd7/UnfocusMute/releases) 下载 Windows 10/11 ZIP 并解压。将解压后的 `UnfocusMute-<version>-windows-x64` 文件夹移动到你想保存应用的位置，然后从该文件夹运行 `UnfocusMute.exe` 即可。它是便携式可执行文件，不需要安装流程，也不需要额外安装运行时、Rust、Visual Studio Build Tools 或 MinGW。
 
 ## 使用方法
 

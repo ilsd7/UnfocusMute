@@ -41,7 +41,7 @@ Rust native app के रूप में build होने के कार�
 
 ## डाउनलोड और चलाएं
 
-[GitHub Releases](https://github.com/ilsd7/UnfocusMute/releases) से Windows 10/11 ZIP डाउनलोड करें, extract करें और `UnfocusMute.exe` चलाएं। यह portable है, इसलिए installer की जरूरत नहीं है और अलग runtime, Rust, Visual Studio Build Tools या MinGW भी जरूरी नहीं हैं।
+[GitHub Releases](https://github.com/ilsd7/UnfocusMute/releases) से Windows 10/11 ZIP डाउनलोड करें और उसे extract करें। Extract की गई `UnfocusMute-<version>-windows-x64` फ़ोल्डर को उस जगह ले जाएं जहां आप ऐप रखना चाहते हैं, फिर उसी फ़ोल्डर से `UnfocusMute.exe` चलाएं। यह portable है, इसलिए installer की जरूरत नहीं है और अलग runtime, Rust, Visual Studio Build Tools या MinGW भी जरूरी नहीं हैं।
 
 ## उपयोग
 

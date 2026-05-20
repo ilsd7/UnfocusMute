@@ -41,7 +41,7 @@ Rust 네이티브 앱으로 빌드해 별도 런타임 없이 바로 실행됩�
 
 ## 설치 및 실행
 
-Windows 10/11용 배포 ZIP을 [GitHub Releases](https://github.com/ilsd7/UnfocusMute/releases)에서 받은 뒤 압축을 풀고 `UnfocusMute.exe`를 실행하세요. 포터블 실행 파일이라 설치 과정이 없고, 별도 런타임, Rust, Visual Studio Build Tools, MinGW 같은 개발 도구도 필요하지 않습니다.
+Windows 10/11용 배포 ZIP을 [GitHub Releases](https://github.com/ilsd7/UnfocusMute/releases)에서 받은 뒤 압축을 풀어 주세요. 압축을 푼 `UnfocusMute-<version>-windows-x64` 폴더를 원하는 위치로 옮긴 다음, 그 안의 `UnfocusMute.exe`를 실행하면 됩니다. 포터블 실행 파일이라 설치 과정이 없고, 별도 런타임, Rust, Visual Studio Build Tools, MinGW 같은 개발 도구도 필요하지 않습니다.
 
 ## 사용 방법
 

@@ -41,7 +41,7 @@ Rust製のネイティブアプリなので、別途ランタイムなしでそ�
 
 ## ダウンロードと実行
 
-[GitHub Releases](https://github.com/ilsd7/UnfocusMute/releases) からWindows 10/11向けZIPをダウンロードし、展開して `UnfocusMute.exe` を実行してください。ポータブル実行ファイルなのでインストール作業はなく、別途ランタイム、Rust、Visual Studio Build Tools、MinGWなどの開発ツールも不要です。
+[GitHub Releases](https://github.com/ilsd7/UnfocusMute/releases) からWindows 10/11向けZIPをダウンロードし、展開してください。展開した `UnfocusMute-<version>-windows-x64` フォルダーを使いたい場所へ移動してから、その中の `UnfocusMute.exe` を実行します。ポータブル実行ファイルなのでインストール作業はなく、別途ランタイム、Rust、Visual Studio Build Tools、MinGWなどの開発ツールも不要です。
 
 ## 使い方
 
