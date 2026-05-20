@@ -142,14 +142,14 @@ unsafe fn run_window() -> Result<()> {
         }
         let _ = config.save();
     }
-    sync_startup_setting(&mut config);
+    let initial_issues = sync_startup_setting(&mut config);
 
     let forced_minimized = std::env::args().any(|arg| arg == "--minimized");
     let start_hidden = should_start_hidden(first_run, forced_minimized, config.start_minimized);
     let WindowPosition { x, y } = initial_window_position(&config);
 
     let title = to_wide(config.language.strings().app_title);
-    let mut app = Box::new(AppWindow::new(config, icon, tray_icon)?);
+    let mut app = Box::new(AppWindow::new(config, icon, tray_icon, initial_issues)?);
     let app_ptr = app.as_mut() as *mut AppWindow;
     let hwnd = unsafe {
         CreateWindowExW(
@@ -328,12 +328,17 @@ unsafe fn bring_existing_window_to_front() {
     }
 }
 
-fn sync_startup_setting(config: &mut AppConfig) {
+fn sync_startup_setting(config: &mut AppConfig) -> IssueState {
+    let mut issues = IssueState::default();
     let result = startup::set_launch_on_startup(config.launch_on_startup);
     if result.is_err() && config.launch_on_startup {
         config.launch_on_startup = false;
-        let _ = config.save();
+        issues.set(StatusIssue::StartupUpdateFailed);
+        if config.save().is_err() {
+            issues.set(StatusIssue::ConfigSaveFailed);
+        }
     }
+    issues
 }
 
 fn should_start_hidden(first_run: bool, forced_minimized: bool, start_minimized: bool) -> bool {
@@ -512,7 +517,12 @@ struct StatusSnapshot {
 }
 
 impl AppWindow {
-    fn new(config: AppConfig, icon: HICON, tray_icon: HICON) -> Result<Self> {
+    fn new(
+        config: AppConfig,
+        icon: HICON,
+        tray_icon: HICON,
+        initial_issues: IssueState,
+    ) -> Result<Self> {
         let language = config.language;
         let strings = config.language.strings();
         Ok(Self {
@@ -537,7 +547,7 @@ impl AppWindow {
             paused: false,
             show_process_details: false,
             tray_added: false,
-            issues: IssueState::default(),
+            issues: initial_issues,
             last_status: None,
             config_stamp: current_config_stamp(),
             next_config_check: Instant::now() + CONFIG_RELOAD_CHECK_INTERVAL,
@@ -1826,8 +1836,7 @@ impl AppWindow {
             return;
         }
         if self.config.remove_target_at(index as usize) {
-            self.save_config();
-            self.refresh_targets();
+            self.finish_target_change();
         }
     }
 
@@ -1871,11 +1880,16 @@ impl AppWindow {
             unsafe { SendMessageW(self.controls.running_combo, CB_GETCURSEL, None, None).0 };
         if index >= 0 {
             self.process_choice_indices.get(index as usize).copied()
-        } else if self.process_query.trim().is_empty() {
-            None
         } else {
-            self.process_choice_indices.first().copied()
+            self.single_filtered_process_choice_index()
         }
+    }
+
+    fn single_filtered_process_choice_index(&self) -> Option<usize> {
+        if self.process_query.trim().is_empty() || self.process_choice_indices.len() != 1 {
+            return None;
+        }
+        self.process_choice_indices.first().copied()
     }
 
     fn can_add_process_choice(&self, choice: &ProcessChoice) -> bool {
@@ -1894,8 +1908,8 @@ impl AppWindow {
         let Some(name) = normalize_process_name_cow(&self.manual_process_text) else {
             return false;
         };
-        !name.ends_with(".exe")
-            || self
+        name.ends_with(".exe")
+            && self
                 .config
                 .targets
                 .iter()
@@ -1905,6 +1919,7 @@ impl AppWindow {
     fn finish_target_change(&mut self) {
         self.save_config();
         self.refresh_targets();
+        self.tick();
     }
 
     fn open_config_folder(&mut self) {
@@ -2184,11 +2199,11 @@ impl AppWindow {
             match message {
                 WM_CTLCOLOREDIT | WM_CTLCOLORLISTBOX => {
                     let _ = SetBkColor(hdc, PANEL_COLOR);
-                    LRESULT(self.theme.panel_brush.0 as isize)
+                    LRESULT(self.theme.panel_brush.handle().0 as isize)
                 }
                 _ => {
                     let _ = SetTextColor(hdc, SUBTLE_TEXT_COLOR);
-                    LRESULT(self.theme.panel_brush.0 as isize)
+                    LRESULT(self.theme.panel_brush.handle().0 as isize)
                 }
             }
         }
@@ -2223,8 +2238,8 @@ impl AppWindow {
             },
         ] {
             unsafe {
-                let _ = FillRect(paint.hdc(), &rect, self.theme.panel_brush);
-                let _ = FrameRect(paint.hdc(), &rect, self.theme.border_brush);
+                let _ = FillRect(paint.hdc(), &rect, self.theme.panel_brush.handle());
+                let _ = FrameRect(paint.hdc(), &rect, self.theme.border_brush.handle());
             }
         }
     }

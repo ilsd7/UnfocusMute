@@ -34,8 +34,8 @@ impl Drop for OwnedBrush {
 }
 
 pub(super) struct AppTheme {
-    pub(super) panel_brush: HBRUSH,
-    pub(super) border_brush: HBRUSH,
+    pub(super) panel_brush: OwnedBrush,
+    pub(super) border_brush: OwnedBrush,
     pub(super) font: UiFont,
     font_point_size: i32,
 }
@@ -44,8 +44,8 @@ impl AppTheme {
     pub(super) fn new(language: Language) -> Self {
         let font_point_size = ui_font_point_size(language);
         Self {
-            panel_brush: unsafe { CreateSolidBrush(PANEL_COLOR) },
-            border_brush: unsafe { CreateSolidBrush(PANEL_BORDER_COLOR) },
+            panel_brush: OwnedBrush::solid(PANEL_COLOR),
+            border_brush: OwnedBrush::solid(PANEL_BORDER_COLOR),
             font: UiFont::new(font_point_size),
             font_point_size,
         }
@@ -59,15 +59,6 @@ impl AppTheme {
             true
         } else {
             false
-        }
-    }
-}
-
-impl Drop for AppTheme {
-    fn drop(&mut self) {
-        unsafe {
-            let _ = DeleteObject(HGDIOBJ(self.panel_brush.0));
-            let _ = DeleteObject(HGDIOBJ(self.border_brush.0));
         }
     }
 }

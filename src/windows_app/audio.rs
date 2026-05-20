@@ -176,6 +176,15 @@ impl PlanApplyResult {
             had_failures: false,
         }
     }
+
+    fn keep_active_session(
+        &mut self,
+        session: &AudioSessionControl<'_>,
+        key: Option<AudioSessionKey>,
+    ) {
+        self.active_managed_sessions
+            .push(key.unwrap_or_else(|| session.key()));
+    }
 }
 
 enum ManagedSessionLookup<'a> {
@@ -270,9 +279,7 @@ fn apply_plan_to_session(
 
     let Some(volume) = session.volume() else {
         if managed {
-            result
-                .active_managed_sessions
-                .push(key.unwrap_or_else(|| session.key()));
+            result.keep_active_session(session, key);
         }
         return;
     };
@@ -285,9 +292,7 @@ fn apply_plan_to_session(
         muted,
     ) else {
         if managed {
-            result
-                .active_managed_sessions
-                .push(key.unwrap_or_else(|| session.key()));
+            result.keep_active_session(session, key);
         }
         return;
     };
@@ -295,17 +300,13 @@ fn apply_plan_to_session(
     if unsafe { volume.SetMute(mute, std::ptr::null()) }.is_err() {
         result.had_failures = true;
         if managed {
-            result
-                .active_managed_sessions
-                .push(key.unwrap_or_else(|| session.key()));
+            result.keep_active_session(session, key);
         }
         return;
     }
 
     if mute {
-        result
-            .active_managed_sessions
-            .push(key.unwrap_or_else(|| session.key()));
+        result.keep_active_session(session, key);
     }
 }
 

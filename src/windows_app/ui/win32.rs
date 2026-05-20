@@ -15,9 +15,9 @@ use windows::Win32::UI::WindowsAndMessaging::{
     BM_GETCHECK, BM_SETCHECK, BS_AUTOCHECKBOX, BS_DEFPUSHBUTTON, BS_PUSHBUTTON, CB_ADDSTRING,
     CB_INITSTORAGE, CB_SETEDITSEL, CreateWindowExW, GetMessageW, GetSystemMetrics,
     GetWindowTextLengthW, GetWindowTextW, HICON, HMENU, IDI_APPLICATION, IMAGE_ICON, LB_ADDSTRING,
-    LB_INITSTORAGE, LR_DEFAULTCOLOR, LoadIconW, LoadImageW, MSG, SM_CXICON, SM_CXSMICON, SM_CYICON,
-    SM_CYSMICON, SendMessageW, SetWindowTextW, UnregisterClassW, WINDOW_EX_STYLE, WINDOW_STYLE,
-    WS_CHILD, WS_CLIPSIBLINGS, WS_TABSTOP, WS_VISIBLE,
+    LB_INITSTORAGE, LR_DEFAULTCOLOR, LR_SHARED, LoadIconW, LoadImageW, MSG, SM_CXICON, SM_CXSMICON,
+    SM_CYICON, SM_CYSMICON, SendMessageW, SetWindowTextW, UnregisterClassW, WINDOW_EX_STYLE,
+    WINDOW_STYLE, WS_CHILD, WS_CLIPSIBLINGS, WS_TABSTOP, WS_VISIBLE,
 };
 use windows::core::{PCWSTR, w};
 
@@ -468,7 +468,7 @@ unsafe fn load_sized_app_icon(instance: HINSTANCE, size: i32) -> Option<HICON> {
             IMAGE_ICON,
             size,
             size,
-            LR_DEFAULTCOLOR,
+            LR_DEFAULTCOLOR | LR_SHARED,
         )
         .ok()
         .map(|handle| HICON(handle.0))
