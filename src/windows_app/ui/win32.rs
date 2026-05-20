@@ -12,8 +12,8 @@ use windows::Win32::Graphics::Gdi::{
 use windows::Win32::UI::Controls::{BST_CHECKED, BST_UNCHECKED};
 use windows::Win32::UI::HiDpi::{GetDpiForSystem, GetSystemMetricsForDpi};
 use windows::Win32::UI::WindowsAndMessaging::{
-    BM_GETCHECK, BM_SETCHECK, BS_AUTOCHECKBOX, BS_DEFPUSHBUTTON, BS_PUSHBUTTON, CB_ADDSTRING,
-    CB_INITSTORAGE, CB_SETEDITSEL, CreateWindowExW, GetMessageW, GetSystemMetrics,
+    BM_GETCHECK, BM_SETCHECK, BS_AUTOCHECKBOX, BS_DEFPUSHBUTTON, BS_MULTILINE, BS_PUSHBUTTON,
+    CB_ADDSTRING, CB_INITSTORAGE, CB_SETEDITSEL, CreateWindowExW, GetMessageW, GetSystemMetrics,
     GetWindowTextLengthW, GetWindowTextW, HICON, HMENU, IDI_APPLICATION, IMAGE_ICON, LB_ADDSTRING,
     LB_INITSTORAGE, LR_DEFAULTCOLOR, LR_SHARED, LoadIconW, LoadImageW, MSG, SM_CXICON, SM_CXSMICON,
     SM_CYICON, SM_CYSMICON, SendMessageW, SetWindowTextW, UnregisterClassW, WINDOW_EX_STYLE,
@@ -176,6 +176,59 @@ pub(super) unsafe fn create_checkbox(
     id: i32,
 ) -> Result<HWND> {
     unsafe {
+        create_checkbox_with_style(
+            parent,
+            instance,
+            text,
+            x,
+            y,
+            width,
+            height,
+            id,
+            WINDOW_STYLE(0),
+        )
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
+pub(super) unsafe fn create_multiline_checkbox(
+    parent: HWND,
+    instance: HINSTANCE,
+    text: &str,
+    x: i32,
+    y: i32,
+    width: i32,
+    height: i32,
+    id: i32,
+) -> Result<HWND> {
+    unsafe {
+        create_checkbox_with_style(
+            parent,
+            instance,
+            text,
+            x,
+            y,
+            width,
+            height,
+            id,
+            WINDOW_STYLE(BS_MULTILINE as u32),
+        )
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
+unsafe fn create_checkbox_with_style(
+    parent: HWND,
+    instance: HINSTANCE,
+    text: &str,
+    x: i32,
+    y: i32,
+    width: i32,
+    height: i32,
+    id: i32,
+    extra_style: WINDOW_STYLE,
+) -> Result<HWND> {
+    unsafe {
         create_control(
             parent,
             instance,
@@ -185,7 +238,8 @@ pub(super) unsafe fn create_checkbox(
                 | WS_VISIBLE
                 | WS_TABSTOP
                 | WS_CLIPSIBLINGS
-                | WINDOW_STYLE(BS_AUTOCHECKBOX as u32),
+                | WINDOW_STYLE(BS_AUTOCHECKBOX as u32)
+                | extra_style,
             WINDOW_EX_STYLE(0),
             x,
             y,

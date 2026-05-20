@@ -445,6 +445,10 @@ fn backup_invalid_config_with_timestamp(path: &Path, timestamp: u64) -> io::Resu
             let _ = fs::remove_file(&backup_path);
             return Err(error);
         }
+        if let Err(error) = backup.sync_all() {
+            let _ = fs::remove_file(&backup_path);
+            return Err(error);
+        }
         return Ok(backup_path);
     }
 

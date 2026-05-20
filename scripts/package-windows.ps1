@@ -127,6 +127,7 @@ function Assert-PackageZip {
     $ZipFile = [System.IO.Compression.ZipFile]::OpenRead($Path)
     try {
         $Entries = [System.Collections.Generic.Dictionary[string, System.IO.Compression.ZipArchiveEntry]]::new([System.StringComparer]::Ordinal)
+        $WindowsEntryNames = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
         $ExpectedEntries = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::Ordinal)
         foreach ($RequiredEntry in $RequiredEntries) {
             $null = $ExpectedEntries.Add($RequiredEntry)
@@ -136,8 +137,12 @@ function Assert-PackageZip {
             if ($EntryName.EndsWith('/')) {
                 continue
             }
+            Assert-ZipEntryName $EntryName
             if ($Entries.ContainsKey($EntryName)) {
                 throw "Package ZIP contains duplicate entry $EntryName"
+            }
+            if (-not $WindowsEntryNames.Add($EntryName)) {
+                throw "Package ZIP contains a case-insensitive duplicate entry $EntryName"
             }
             $Entries.Add($EntryName, $Entry)
         }
@@ -180,6 +185,24 @@ function Assert-PackageZip {
     }
 }
 
+function Assert-ZipEntryName {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$EntryName
+    )
+
+    if ([System.IO.Path]::IsPathRooted($EntryName)) {
+        throw "Package ZIP contains absolute entry $EntryName"
+    }
+
+    $Segments = $EntryName -split '/'
+    foreach ($Segment in $Segments) {
+        if ($Segment.Length -eq 0 -or $Segment -eq "." -or $Segment -eq "..") {
+            throw "Package ZIP contains unsafe entry $EntryName"
+        }
+    }
+}
+
 Push-Location $RepoRoot
 try {
     cargo build --release --target $Target --locked
@@ -199,7 +222,7 @@ try {
     $DocFiles = @()
     if (Test-Path "docs" -PathType Container) {
         $DocFiles = @(
-            Get-ChildItem "docs" -File |
+            Get-ChildItem "docs" -File -Filter "*.md" |
                 Where-Object { $_.Name -ne "README.en.md" } |
                 Sort-Object Name
         )

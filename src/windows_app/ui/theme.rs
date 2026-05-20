@@ -51,15 +51,17 @@ impl AppTheme {
         }
     }
 
-    pub(super) fn set_font_language(&mut self, language: Language) -> bool {
-        let font_point_size = ui_font_point_size(language);
-        if self.font_point_size != font_point_size {
-            self.font = UiFont::new(font_point_size);
-            self.font_point_size = font_point_size;
-            true
-        } else {
-            false
-        }
+    pub(super) fn needs_font_language(&self, language: Language) -> bool {
+        self.font_point_size != ui_font_point_size(language)
+    }
+
+    pub(super) fn font_for_language(language: Language) -> UiFont {
+        UiFont::new(ui_font_point_size(language))
+    }
+
+    pub(super) fn replace_font_for_language(&mut self, language: Language, font: UiFont) {
+        self.font = font;
+        self.font_point_size = ui_font_point_size(language);
     }
 }
 

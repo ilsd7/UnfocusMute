@@ -56,10 +56,8 @@ impl AudioController {
         if let Some(notification) = &self.endpoint_notification {
             notification.take_changed()
         } else {
-            unsafe {
-                active_render_endpoint_ids(&self.enumerator)
-                    .is_ok_and(|endpoint_ids| endpoint_ids != self.endpoint_ids)
-            }
+            unsafe { active_render_endpoint_ids(&self.enumerator) }
+                .map_or(true, |endpoint_ids| endpoint_ids != self.endpoint_ids)
         }
     }
 
@@ -201,10 +199,6 @@ impl AudioSessionControl<'_> {
 
     fn volume(&self) -> Option<ISimpleAudioVolume> {
         self.control.cast().ok()
-    }
-
-    fn muted(&self, volume: &ISimpleAudioVolume) -> bool {
-        self.try_muted(volume).unwrap_or(false)
     }
 
     fn try_muted(&self, volume: &ISimpleAudioVolume) -> windows::core::Result<bool> {
@@ -382,18 +376,33 @@ fn apply_plan_to_session(
         }
         return;
     };
-    let muted = session.muted(&volume);
-    let Some(mute) = planner.plan_identity_with_match(
-        match_kind,
-        session.process_name,
-        session.pid,
-        managed,
-        muted,
-    ) else {
-        if managed {
-            result.keep_active_session(session, key);
+    let mute = match session.try_muted(&volume) {
+        Ok(muted) => {
+            let Some(mute) = planner.plan_identity_with_match(
+                match_kind,
+                session.process_name,
+                session.pid,
+                managed,
+                muted,
+            ) else {
+                if managed {
+                    result.keep_active_session(session, key);
+                }
+                return;
+            };
+            mute
         }
-        return;
+        Err(_) => {
+            let Some(mute) = planner.desired_mute_with_match(
+                match_kind,
+                session.process_name,
+                session.pid,
+                managed,
+            ) else {
+                return;
+            };
+            mute
+        }
     };
 
     if unsafe { volume.SetMute(mute, std::ptr::null()) }.is_err() {

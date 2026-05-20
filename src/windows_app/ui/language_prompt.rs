@@ -5,13 +5,14 @@ use super::constants::{
 };
 use super::theme::{OwnedBrush, UiFont, ui_font_point_size};
 use super::win32::{
-    WindowClassRegistration, add_combo_item_with_buffer, create_checkbox, create_control,
+    WindowClassRegistration, add_combo_item_with_buffer, create_control, create_multiline_checkbox,
     create_primary_button, get_message, hiword, is_checked, loword, measure_text_width,
-    set_checkbox, set_text, to_wide,
+    reserve_combo_items, set_checkbox, set_text, to_wide,
 };
 use crate::i18n::Language;
 use crate::windows_app::error::{Context, Result};
 use std::ffi::c_void;
+use std::mem::size_of;
 use windows::Win32::Foundation::{HINSTANCE, HWND, LPARAM, LRESULT, WPARAM};
 use windows::Win32::Graphics::Gdi::{HDC, SetBkMode, SetTextColor, TRANSPARENT};
 use windows::Win32::System::LibraryLoader::GetModuleHandleW;
@@ -48,6 +49,12 @@ const LANGUAGE_PROMPT_WIDTH: i32 = 620;
 const LANGUAGE_PROMPT_HEIGHT: i32 = 270;
 const LANGUAGE_PROMPT_MARGIN: i32 = 32;
 const LANGUAGE_PROMPT_CONTENT_WIDTH: i32 = LANGUAGE_PROMPT_WIDTH - LANGUAGE_PROMPT_MARGIN * 2;
+const LANGUAGE_PROMPT_STARTUP_Y: i32 = 136;
+const LANGUAGE_PROMPT_STARTUP_HEIGHT: i32 = 26;
+const LANGUAGE_PROMPT_STARTUP_TALL_HEIGHT: i32 = 44;
+const LANGUAGE_PROMPT_STARTUP_TEXT_PADDING: i32 = 28;
+const LANGUAGE_PROMPT_BUTTON_TOP_GAP: i32 = 12;
+const LANGUAGE_PROMPT_BUTTON_HEIGHT: i32 = 34;
 
 #[derive(Clone, Copy)]
 pub(super) struct InitialPreferences {
@@ -125,7 +132,7 @@ impl LanguagePrompt {
             )?
         };
         self.launch_on_startup_check = unsafe {
-            create_checkbox(
+            create_multiline_checkbox(
                 hwnd,
                 instance,
                 strings.launch_on_startup,
@@ -150,7 +157,12 @@ impl LanguagePrompt {
         };
 
         unsafe {
-            self.apply_font();
+            self.apply_font(&self.font);
+            reserve_combo_items(
+                self.combo,
+                Language::ALL.len(),
+                language_name_storage_bytes_hint(),
+            );
             let mut text_buffer = Vec::new();
             for language in Language::ALL {
                 add_combo_item_with_buffer(self.combo, language.native_name(), &mut text_buffer);
@@ -173,7 +185,7 @@ impl LanguagePrompt {
         Ok(())
     }
 
-    unsafe fn apply_font(&self) {
+    unsafe fn apply_font(&self, font: &UiFont) {
         unsafe {
             for control in [
                 self.title_label,
@@ -182,12 +194,7 @@ impl LanguagePrompt {
                 self.launch_on_startup_check,
                 self.start_button,
             ] {
-                SendMessageW(
-                    control,
-                    WM_SETFONT,
-                    Some(self.font.wparam()),
-                    Some(LPARAM(1)),
-                );
+                SendMessageW(control, WM_SETFONT, Some(font.wparam()), Some(LPARAM(1)));
             }
         }
     }
@@ -202,24 +209,42 @@ impl LanguagePrompt {
 
     fn refresh_prompt_text(&mut self) {
         let language = self.selected_language();
-        self.font = UiFont::new(ui_font_point_size(language));
+        let font = UiFont::new(ui_font_point_size(language));
         let strings = language.strings();
         unsafe {
-            self.apply_font();
+            self.apply_font(&font);
             set_text(self.hwnd, strings.first_run_window_title);
             set_text(self.title_label, strings.first_run_language_title);
             set_text(self.subtitle_label, strings.first_run_language_subtitle);
             set_text(self.launch_on_startup_check, strings.launch_on_startup);
             set_text(self.start_button, strings.first_run_start);
-            self.layout_controls(strings);
         }
+        self.font = font;
+        self.layout_controls(strings);
     }
 
     fn layout_controls(&self, strings: &crate::i18n::Strings) {
+        let startup_height = startup_checkbox_height(self.text_width(strings.launch_on_startup));
         let start_width = (self.text_width(strings.first_run_start) + 44).clamp(96, 180);
         let start_x = LANGUAGE_PROMPT_WIDTH - LANGUAGE_PROMPT_MARGIN - start_width;
+        let start_y = LANGUAGE_PROMPT_STARTUP_Y + startup_height + LANGUAGE_PROMPT_BUTTON_TOP_GAP;
         unsafe {
-            let _ = MoveWindow(self.start_button, start_x, 174, start_width, 34, true);
+            let _ = MoveWindow(
+                self.launch_on_startup_check,
+                LANGUAGE_PROMPT_MARGIN,
+                LANGUAGE_PROMPT_STARTUP_Y,
+                LANGUAGE_PROMPT_CONTENT_WIDTH,
+                startup_height,
+                true,
+            );
+            let _ = MoveWindow(
+                self.start_button,
+                start_x,
+                start_y,
+                start_width,
+                LANGUAGE_PROMPT_BUTTON_HEIGHT,
+                true,
+            );
         }
     }
 
@@ -234,6 +259,21 @@ impl LanguagePrompt {
         });
         self.done = true;
     }
+}
+
+fn startup_checkbox_height(text_width: i32) -> i32 {
+    if text_width + LANGUAGE_PROMPT_STARTUP_TEXT_PADDING > LANGUAGE_PROMPT_CONTENT_WIDTH {
+        LANGUAGE_PROMPT_STARTUP_TALL_HEIGHT
+    } else {
+        LANGUAGE_PROMPT_STARTUP_HEIGHT
+    }
+}
+
+fn language_name_storage_bytes_hint() -> usize {
+    Language::ALL
+        .iter()
+        .map(|language| language.native_name().len() * size_of::<u16>())
+        .sum()
 }
 
 pub(super) unsafe fn prompt_initial_language(
@@ -365,4 +405,22 @@ unsafe extern "system" fn language_prompt_proc(
     }
 
     unsafe { DefWindowProcW(hwnd, message, wparam, lparam) }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn startup_checkbox_uses_single_line_height_when_text_fits() {
+        assert_eq!(startup_checkbox_height(200), LANGUAGE_PROMPT_STARTUP_HEIGHT);
+    }
+
+    #[test]
+    fn startup_checkbox_uses_taller_height_when_text_wraps() {
+        assert_eq!(
+            startup_checkbox_height(LANGUAGE_PROMPT_CONTENT_WIDTH),
+            LANGUAGE_PROMPT_STARTUP_TALL_HEIGHT
+        );
+    }
 }

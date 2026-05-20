@@ -66,7 +66,7 @@ use constants::*;
 use controls::Controls;
 use language_prompt::prompt_initial_language;
 use process_choice::{ProcessChoice, search_terms};
-use theme::{AppTheme, OwnedBrush};
+use theme::{AppTheme, OwnedBrush, UiFont};
 use win32::{
     WindowClassRegistration, add_combo_item_with_buffer, add_list_item_with_buffer,
     copy_wide_fixed, create_button, create_checkbox, create_control, create_primary_button,
@@ -492,6 +492,8 @@ struct AppWindow {
     process_query: String,
     manual_process_text: String,
     status_detail_text: String,
+    display_text_buffer: String,
+    wide_text_buffer: Vec<u16>,
     foreground_process_name_cache: Option<(u32, Option<String>)>,
     processes_loaded: bool,
     last_process_refresh: Instant,
@@ -739,6 +741,8 @@ impl AppWindow {
             process_query: String::new(),
             manual_process_text: String::new(),
             status_detail_text: String::new(),
+            display_text_buffer: String::new(),
+            wide_text_buffer: Vec::new(),
             foreground_process_name_cache: None,
             processes_loaded: false,
             last_process_refresh: Instant::now(),
@@ -1094,8 +1098,13 @@ impl AppWindow {
 
     fn refresh_text(&mut self) {
         self.strings = self.config.language.strings();
-        let font_changed = self.theme.set_font_language(self.config.language);
-        if font_changed || !self.font_applied {
+        if self.theme.needs_font_language(self.config.language) {
+            let font = AppTheme::font_for_language(self.config.language);
+            self.apply_font_to_controls(&font);
+            self.theme
+                .replace_font_for_language(self.config.language, font);
+            self.font_applied = true;
+        } else if !self.font_applied {
             self.apply_default_font();
             self.font_applied = true;
         }
@@ -1137,18 +1146,15 @@ impl AppWindow {
             set_text(self.controls.quit_button, self.strings.quit);
             set_text(self.controls.open_config_button, self.strings.open_config);
 
-            let mut cue_banner_buffer = Vec::new();
-            write_wide_buffer(self.strings.manual_placeholder, &mut cue_banner_buffer);
+            let cue_banner_buffer = &mut self.wide_text_buffer;
+            write_wide_buffer(self.strings.manual_placeholder, cue_banner_buffer);
             SendMessageW(
                 self.controls.manual_edit,
                 EM_SETCUEBANNER,
                 Some(WPARAM(0)),
                 Some(LPARAM(cue_banner_buffer.as_ptr() as isize)),
             );
-            write_wide_buffer(
-                self.strings.process_search_placeholder,
-                &mut cue_banner_buffer,
-            );
+            write_wide_buffer(self.strings.process_search_placeholder, cue_banner_buffer);
             SendMessageW(
                 self.controls.running_combo,
                 CB_SETCUEBANNER,
@@ -1217,6 +1223,7 @@ impl AppWindow {
         let manual_button_y = button_y + 48;
         let manual_edit_y = manual_button_y + 4;
         let manual_label_y = manual_button_y + 8;
+        let settings_checkbox_width = content_right - right_panel_left;
 
         let refresh_width = self.button_width(self.strings.refresh, 108, 150);
         let refresh_x = content_right - refresh_width;
@@ -1319,6 +1326,26 @@ impl AppWindow {
         let open_config_x = content_right - open_config_width;
         let _ = unsafe {
             MoveWindow(
+                self.controls.start_minimized_check,
+                right_panel_left,
+                430,
+                settings_checkbox_width,
+                26,
+                true,
+            )
+        };
+        let _ = unsafe {
+            MoveWindow(
+                self.controls.launch_startup_check,
+                right_panel_left,
+                456,
+                settings_checkbox_width,
+                26,
+                true,
+            )
+        };
+        let _ = unsafe {
+            MoveWindow(
                 self.controls.restore_exit_check,
                 right_panel_left,
                 490,
@@ -1337,6 +1364,32 @@ impl AppWindow {
                 true,
             )
         };
+        self.layout_footer_buttons(content_right);
+    }
+
+    fn layout_footer_buttons(&self, content_right: i32) {
+        let content_left = 36;
+        let gap = 12;
+        let quit_width = self.button_width(self.strings.quit, 120, 180);
+        let pause_width = self.button_width(self.pause_button_text(), 120, 220);
+        let hide_width = self.button_width(self.strings.hide, 132, 320);
+        let total_width = quit_width + pause_width + hide_width + gap * 2;
+        let x = (content_right - total_width).max(content_left);
+
+        let _ = unsafe { MoveWindow(self.controls.quit_button, x, 552, quit_width, 38, true) };
+        let pause_x = x + quit_width + gap;
+        let _ = unsafe {
+            MoveWindow(
+                self.controls.pause_button,
+                pause_x,
+                552,
+                pause_width,
+                38,
+                true,
+            )
+        };
+        let hide_x = pause_x + pause_width + gap;
+        let _ = unsafe { MoveWindow(self.controls.hide_button, hide_x, 552, hide_width, 38, true) };
     }
 
     fn button_width(&self, text: &str, min_width: i32, max_width: i32) -> i32 {
@@ -1360,26 +1413,25 @@ impl AppWindow {
             .map(target_display_storage_bytes_hint)
             .sum();
         unsafe {
-            SendMessageW(self.controls.target_list, LB_RESETCONTENT, None, None);
+            let controls = self.controls;
+            let display_buffer = &mut self.display_text_buffer;
+            let text_buffer = &mut self.wide_text_buffer;
+            SendMessageW(controls.target_list, LB_RESETCONTENT, None, None);
             reserve_list_items(
-                self.controls.target_list,
+                controls.target_list,
                 self.config.targets.len(),
                 target_text_bytes,
             );
-            let mut display_buffer = String::new();
-            let mut text_buffer = Vec::new();
+            display_buffer.clear();
+            text_buffer.clear();
             for target in &self.config.targets {
                 let display_name = if target.pid.is_some() {
-                    target.display_name_into(&mut display_buffer);
+                    target.display_name_into(display_buffer);
                     display_buffer.as_str()
                 } else {
                     &target.name
                 };
-                add_list_item_with_buffer(
-                    self.controls.target_list,
-                    display_name,
-                    &mut text_buffer,
-                );
+                add_list_item_with_buffer(controls.target_list, display_name, text_buffer);
             }
         }
         self.update_status();
@@ -1423,35 +1475,37 @@ impl AppWindow {
         }
 
         unsafe {
+            let controls = self.controls;
+            let text_buffer = &mut self.wide_text_buffer;
             self.updating_process_combo = true;
             let process_text_bytes = self
                 .process_choice_indices
                 .iter()
                 .map(|index| storage_bytes_hint(self.all_process_choices[*index].display_name()))
                 .sum();
-            SendMessageW(self.controls.running_combo, CB_RESETCONTENT, None, None);
+            SendMessageW(controls.running_combo, CB_RESETCONTENT, None, None);
             reserve_combo_items(
-                self.controls.running_combo,
+                controls.running_combo,
                 self.process_choice_indices.len(),
                 process_text_bytes,
             );
-            let mut text_buffer = Vec::new();
+            text_buffer.clear();
             for index in &self.process_choice_indices {
                 add_combo_item_with_buffer(
-                    self.controls.running_combo,
+                    controls.running_combo,
                     self.all_process_choices[*index].display_name(),
-                    &mut text_buffer,
+                    text_buffer,
                 );
             }
             SendMessageW(
-                self.controls.running_combo,
+                controls.running_combo,
                 CB_SETCURSEL,
                 Some(WPARAM(usize::MAX)),
                 None,
             );
-            set_text(self.controls.running_combo, &self.process_query);
+            set_text(controls.running_combo, &self.process_query);
             if !self.process_query.is_empty() {
-                set_combo_edit_caret(self.controls.running_combo, &self.process_query);
+                set_combo_edit_caret(controls.running_combo, &self.process_query);
             }
             self.updating_process_combo = false;
         }
@@ -2026,8 +2080,11 @@ impl AppWindow {
 
     fn open_running_process_picker(&mut self) {
         if self.process_query.trim().is_empty() {
+            let had_whitespace_query = !self.process_query.is_empty();
             self.process_query.clear();
-            if !self.refresh_processes_if_stale() && !self.process_filter_is_unfiltered() {
+            if !self.refresh_processes_if_stale()
+                && (had_whitespace_query || !self.process_filter_is_unfiltered())
+            {
                 self.apply_process_filter();
             }
         } else {
@@ -2261,6 +2318,7 @@ impl AppWindow {
     fn toggle_pause(&mut self) {
         self.paused = !self.paused;
         self.update_pause_button_text();
+        self.layout_footer_buttons(WINDOW_WIDTH - 52);
         if self.paused {
             self.restore_managed_mutes();
             self.foreground_hook = None;
@@ -2273,14 +2331,15 @@ impl AppWindow {
 
     fn update_pause_button_text(&self) {
         unsafe {
-            set_text(
-                self.controls.pause_button,
-                if self.paused {
-                    self.strings.resume
-                } else {
-                    self.strings.pause
-                },
-            );
+            set_text(self.controls.pause_button, self.pause_button_text());
+        }
+    }
+
+    fn pause_button_text(&self) -> &'static str {
+        if self.paused {
+            self.strings.resume
+        } else {
+            self.strings.pause
         }
     }
 
@@ -2336,12 +2395,13 @@ impl AppWindow {
         self.set_language(language);
     }
 
-    unsafe fn pick_language_from_menu(&self) -> Option<Language> {
+    unsafe fn pick_language_from_menu(&mut self) -> Option<Language> {
         let menu = (unsafe { PopupMenu::create() })?;
-        let mut text_buffer = Vec::new();
+        let text_buffer = &mut self.wide_text_buffer;
+        let current_language = self.config.language;
         for (index, language) in Language::ALL.iter().enumerate() {
-            write_wide_buffer(language.native_name(), &mut text_buffer);
-            let flags = if *language == self.config.language {
+            write_wide_buffer(language.native_name(), text_buffer);
+            let flags = if *language == current_language {
                 MF_STRING | MF_CHECKED
             } else {
                 MF_STRING
@@ -2479,7 +2539,7 @@ impl AppWindow {
             let Some(menu) = PopupMenu::create() else {
                 return;
             };
-            let mut text_buffer = Vec::new();
+            let text_buffer = &mut self.wide_text_buffer;
             let window_visible = IsWindowVisible(self.hwnd).as_bool();
             let visibility_command = if window_visible { ID_HIDE } else { ID_SHOW };
             write_wide_buffer(
@@ -2488,7 +2548,7 @@ impl AppWindow {
                 } else {
                     self.strings.show
                 },
-                &mut text_buffer,
+                text_buffer,
             );
             let _ = AppendMenuW(
                 menu.handle(),
@@ -2502,7 +2562,7 @@ impl AppWindow {
                 } else {
                     self.strings.pause
                 },
-                &mut text_buffer,
+                text_buffer,
             );
             let _ = AppendMenuW(
                 menu.handle(),
@@ -2511,7 +2571,7 @@ impl AppWindow {
                 PCWSTR(text_buffer.as_ptr()),
             );
             let _ = AppendMenuW(menu.handle(), MF_SEPARATOR, 0, PCWSTR::null());
-            write_wide_buffer(self.strings.quit, &mut text_buffer);
+            write_wide_buffer(self.strings.quit, text_buffer);
             let _ = AppendMenuW(
                 menu.handle(),
                 MF_STRING,
@@ -2589,15 +2649,14 @@ impl AppWindow {
     }
 
     fn apply_default_font(&self) {
+        self.apply_font_to_controls(&self.theme.font);
+    }
+
+    fn apply_font_to_controls(&self, font: &UiFont) {
         unsafe {
             for hwnd in self.controls.all() {
                 if hwnd != HWND::default() {
-                    SendMessageW(
-                        hwnd,
-                        WM_SETFONT,
-                        Some(self.theme.font.wparam()),
-                        Some(LPARAM(1)),
-                    );
+                    SendMessageW(hwnd, WM_SETFONT, Some(font.wparam()), Some(LPARAM(1)));
                 }
             }
         }

@@ -271,6 +271,17 @@ impl<'a> MutePlanner<'a> {
         managed: bool,
         muted: bool,
     ) -> Option<bool> {
+        let should_mute = self.desired_mute_with_match(match_kind, process_name, pid, managed)?;
+        (should_mute != muted).then_some(should_mute)
+    }
+
+    pub(crate) fn desired_mute_with_match(
+        &self,
+        match_kind: Option<TargetMatchKind>,
+        process_name: &str,
+        pid: u32,
+        managed: bool,
+    ) -> Option<bool> {
         if match_kind.is_none() && !managed {
             return None;
         }
@@ -283,13 +294,8 @@ impl<'a> MutePlanner<'a> {
             Some(TargetMatchKind::Pid) => self.foreground_pid != Some(pid),
             None => false,
         };
-        let should_change = if should_mute {
-            !muted
-        } else {
-            muted && managed
-        };
 
-        should_change.then_some(should_mute)
+        (should_mute || managed).then_some(should_mute)
     }
 }
 
@@ -367,6 +373,22 @@ mod tests {
         assert_eq!(
             planner.plan_identity_with_managed("browser.exe", 10, false, false),
             None
+        );
+    }
+
+    #[test]
+    fn desired_mute_enforces_managed_sessions_without_current_state() {
+        let matcher = TargetMatcher::new(&[TargetProcess::new("game.exe").unwrap()]);
+        let planner = MutePlanner::new(&matcher, Some(10), Some("game.exe"));
+
+        assert_eq!(
+            planner.desired_mute_with_match(
+                planner.match_kind("game.exe", 10),
+                "game.exe",
+                10,
+                true,
+            ),
+            Some(false)
         );
     }
 

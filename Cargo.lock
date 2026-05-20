@@ -88,7 +88,7 @@ dependencies = [
 
 [[package]]
 name = "unfocusmute"
-version = "1.0.130"
+version = "1.0.142"
 dependencies = [
  "serde",
  "serde_json",

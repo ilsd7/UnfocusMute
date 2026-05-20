@@ -176,7 +176,7 @@ impl ProcessNameCache {
         match self {
             Self::One { name, .. } => name,
             Self::Two { second_name, .. } => second_name,
-            Self::Many { names } => &names.last().expect("inserted process name").1,
+            Self::Many { names } => &names[names.len() - 1].1,
             Self::Empty => unreachable!("insert always stores a process name"),
         }
     }
