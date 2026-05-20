@@ -1,21 +1,35 @@
-use std::error::Error;
+use std::borrow::Cow;
 use std::fmt;
 
-pub type Result<T> = std::result::Result<T, Box<dyn Error + Send + Sync + 'static>>;
+pub type Result<T> = std::result::Result<T, AppError>;
 
 #[derive(Debug)]
-struct AppError(String);
+pub struct AppError {
+    message: Cow<'static, str>,
+}
 
-impl fmt::Display for AppError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str(&self.0)
+impl AppError {
+    fn new(message: impl Into<Cow<'static, str>>) -> Self {
+        Self {
+            message: message.into(),
+        }
     }
 }
 
-impl Error for AppError {}
+impl fmt::Display for AppError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(&self.message)
+    }
+}
 
-pub fn message_error(message: impl Into<String>) -> Box<dyn Error + Send + Sync + 'static> {
-    Box::new(AppError(message.into()))
+impl From<windows::core::Error> for AppError {
+    fn from(error: windows::core::Error) -> Self {
+        Self::new(error.to_string())
+    }
+}
+
+pub fn message_error(message: impl Into<Cow<'static, str>>) -> AppError {
+    AppError::new(message)
 }
 
 pub trait Context<T> {
@@ -24,7 +38,7 @@ pub trait Context<T> {
 
 impl<T, E> Context<T> for std::result::Result<T, E>
 where
-    E: Error + Send + Sync + 'static,
+    E: fmt::Display,
 {
     fn context(self, message: &'static str) -> Result<T> {
         self.map_err(|error| message_error(format!("{message}: {error}")))

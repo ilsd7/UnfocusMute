@@ -10,7 +10,6 @@ use crate::windows_app::process::{self, ProcessInfo};
 use crate::windows_app::startup;
 use std::collections::HashSet;
 use std::ffi::c_void;
-use std::fmt::Write as _;
 use std::fs;
 use std::io::ErrorKind;
 use std::mem::size_of;
@@ -529,26 +528,40 @@ struct IssueState {
 
 impl IssueState {
     fn set(&mut self, issue: StatusIssue) -> bool {
+        let bit = issue.bit();
+        if self.flags & bit != 0 {
+            return false;
+        }
+
         let old_visible = self.visible;
-        self.flags |= issue.bit();
+        self.flags |= bit;
         self.refresh_visible();
         old_visible != self.visible
     }
 
     fn clear(&mut self, issue: StatusIssue) -> bool {
-        if self.flags & issue.bit() == 0 {
+        self.clear_mask(issue.bit())
+    }
+
+    fn clear_mask(&mut self, mask: u8) -> bool {
+        if self.flags & mask == 0 {
             return false;
         }
 
         let old_visible = self.visible;
-        self.flags &= !issue.bit();
+        self.flags &= !mask;
         self.refresh_visible();
         old_visible != self.visible
     }
 
     fn merge(&mut self, issues: Self) -> bool {
+        let flags = self.flags | issues.flags;
+        if flags == self.flags {
+            return false;
+        }
+
         let old_visible = self.visible;
-        self.flags |= issues.flags;
+        self.flags = flags;
         self.refresh_visible();
         old_visible != self.visible
     }
@@ -1597,11 +1610,11 @@ impl AppWindow {
         } else {
             self.status_detail_text.push_str(self.strings.target_count);
             self.status_detail_text.push(' ');
-            let _ = write!(self.status_detail_text, "{}", snapshot.target_count);
+            push_decimal_usize(&mut self.status_detail_text, snapshot.target_count);
             self.status_detail_text.push_str(" · ");
             self.status_detail_text.push_str(self.strings.muted_count);
             self.status_detail_text.push(' ');
-            let _ = write!(self.status_detail_text, "{}", snapshot.muted_count);
+            push_decimal_usize(&mut self.status_detail_text, snapshot.muted_count);
         }
         unsafe {
             set_text(self.controls.status, status);
@@ -1683,9 +1696,8 @@ impl AppWindow {
     }
 
     fn clear_audio_issues(&mut self) {
-        let audio_unavailable_changed = self.issues.clear(StatusIssue::AudioUnavailable);
-        let audio_update_changed = self.issues.clear(StatusIssue::AudioUpdateFailed);
-        if audio_unavailable_changed || audio_update_changed {
+        let mask = StatusIssue::AudioUnavailable.bit() | StatusIssue::AudioUpdateFailed.bit();
+        if self.issues.clear_mask(mask) {
             self.last_status = None;
             self.update_status();
         }
@@ -1914,9 +1926,8 @@ impl AppWindow {
     }
 
     fn clear_config_issues(&mut self) {
-        let load_changed = self.issues.clear(StatusIssue::ConfigLoadFailed);
-        let save_changed = self.issues.clear(StatusIssue::ConfigSaveFailed);
-        if load_changed || save_changed {
+        let mask = StatusIssue::ConfigLoadFailed.bit() | StatusIssue::ConfigSaveFailed.bit();
+        if self.issues.clear_mask(mask) {
             self.last_status = None;
             self.update_status();
         }
@@ -2042,7 +2053,14 @@ impl AppWindow {
 
     fn toggle_process_details(&mut self) {
         self.show_process_details = !self.show_process_details;
-        self.refresh_processes();
+        if !self.processes_loaded
+            || self.last_process_refresh.elapsed() >= PROCESS_REFRESH_STALE_INTERVAL
+        {
+            self.refresh_processes();
+        } else {
+            self.rebuild_process_choices();
+            self.apply_process_filter();
+        }
         self.refresh_process_details_ui();
         unsafe {
             SendMessageW(
@@ -2599,6 +2617,22 @@ fn decimal_digit_count(value: u32) -> usize {
         return 1;
     }
     value.ilog10() as usize + 1
+}
+
+fn push_decimal_usize(output: &mut String, mut number: usize) {
+    let mut digits = [0u8; 20];
+    let mut len = 0;
+    loop {
+        digits[len] = b'0' + (number % 10) as u8;
+        len += 1;
+        number /= 10;
+        if number == 0 {
+            break;
+        }
+    }
+    for digit in digits[..len].iter().rev() {
+        output.push(*digit as char);
+    }
 }
 
 fn restore_mute_set(audio: &AudioController, muted_by_app: &mut HashSet<AudioSessionKey>) -> bool {

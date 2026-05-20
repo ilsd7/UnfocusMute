@@ -5,7 +5,6 @@ use serde::{Deserialize, Serialize};
 use std::borrow::Cow;
 use std::cmp::Ordering;
 use std::env;
-use std::fmt::Write as _;
 use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
@@ -61,7 +60,9 @@ impl TargetProcess {
         output.clear();
         output.push_str(&self.name);
         if let Some(pid) = self.pid {
-            let _ = write!(output, " (PID {pid})");
+            output.push_str(" (PID ");
+            push_decimal_u32(output, pid);
+            output.push(')');
         }
     }
 }
@@ -552,6 +553,22 @@ fn trim_ascii_quote_utf16(mut input: &[u16]) -> &[u16] {
 
 fn is_ascii_whitespace_u16(ch: u16) -> bool {
     matches!(ch, 0x09..=0x0d | 0x20)
+}
+
+fn push_decimal_u32(output: &mut String, mut number: u32) {
+    let mut digits = [0u8; 10];
+    let mut len = 0;
+    loop {
+        digits[len] = b'0' + (number % 10) as u8;
+        len += 1;
+        number /= 10;
+        if number == 0 {
+            break;
+        }
+    }
+    for digit in digits[..len].iter().rev() {
+        output.push(*digit as char);
+    }
 }
 
 pub fn config_dir() -> io::Result<PathBuf> {

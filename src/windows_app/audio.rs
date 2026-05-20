@@ -246,7 +246,8 @@ enum ManagedSessionLookup<'a> {
         second_process_name: &'a str,
     },
     Few {
-        identities: Vec<(u32, &'a str)>,
+        identities: [(u32, &'a str); LINEAR_MANAGED_SESSION_LIMIT],
+        len: usize,
     },
     // Prefilter only; exact AudioSessionKey lookup still decides ownership.
     Many {
@@ -277,11 +278,15 @@ impl<'a> ManagedSessionLookup<'a> {
         }
 
         if session_keys.len() <= LINEAR_MANAGED_SESSION_LIMIT {
-            let mut identities = Vec::with_capacity(session_keys.len());
-            identities.push((first.pid, first.process_name.as_str()));
-            identities.push((second.pid, second.process_name.as_str()));
-            identities.extend(keys.map(|key| (key.pid, key.process_name.as_str())));
-            return Self::Few { identities };
+            let mut identities = [(0, ""); LINEAR_MANAGED_SESSION_LIMIT];
+            identities[0] = (first.pid, first.process_name.as_str());
+            identities[1] = (second.pid, second.process_name.as_str());
+            let mut len = 2;
+            for key in keys {
+                identities[len] = (key.pid, key.process_name.as_str());
+                len += 1;
+            }
+            return Self::Few { identities, len };
         }
 
         let mut identities = HashSet::with_capacity(session_keys.len());
@@ -308,7 +313,7 @@ impl<'a> ManagedSessionLookup<'a> {
                 second_pid,
                 ..
             } => *first_pid == pid || *second_pid == pid,
-            Self::Few { identities } => identities
+            Self::Few { identities, len } => identities[..*len]
                 .iter()
                 .any(|(managed_pid, _)| *managed_pid == pid),
             Self::Many { pids, .. } => pids.contains(&pid),
@@ -331,8 +336,8 @@ impl<'a> ManagedSessionLookup<'a> {
                 (*first_pid == pid && *first_process_name == process_name)
                     || (*second_pid == pid && *second_process_name == process_name)
             }
-            Self::Few { identities } => {
-                identities
+            Self::Few { identities, len } => {
+                identities[..*len]
                     .iter()
                     .any(|(managed_pid, managed_process_name)| {
                         *managed_pid == pid && *managed_process_name == process_name

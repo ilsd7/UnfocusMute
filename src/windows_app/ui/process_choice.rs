@@ -67,8 +67,8 @@ impl SearchTerms<'_> {
 }
 
 fn lowercase_if_needed(text: &str) -> Cow<'_, str> {
-    if text.chars().any(char::is_uppercase) {
-        Cow::Owned(text.to_lowercase())
+    if text.bytes().any(|byte| byte.is_ascii_uppercase()) {
+        Cow::Owned(text.to_ascii_lowercase())
     } else {
         Cow::Borrowed(text)
     }

@@ -1,5 +1,5 @@
 use crate::config::normalize_process_name_utf16;
-use std::collections::{HashMap, hash_map::Entry};
+use std::collections::HashMap;
 use std::mem::size_of;
 use windows::Win32::Foundation::{CloseHandle, ERROR_INSUFFICIENT_BUFFER, HANDLE, HWND};
 use windows::Win32::System::Diagnostics::ToolHelp::{
@@ -23,7 +23,7 @@ pub struct ProcessInfo {
 
 #[derive(Default)]
 pub struct ProcessNameResolver {
-    names: HashMap<u32, Option<String>>,
+    names: ProcessNameCache,
     snapshot_names: Option<HashMap<u32, String>>,
     prefer_snapshot: bool,
 }
@@ -42,30 +42,148 @@ impl ProcessNameResolver {
 
     pub fn name(&mut self, pid: u32) -> Option<&str> {
         if self.prefer_snapshot {
-            let snapshot_names = self
-                .snapshot_names
-                .get_or_insert_with(process_names_from_snapshot);
-            if let Some(name) = snapshot_names.get(&pid) {
-                return Some(name);
+            {
+                let snapshot_names = self
+                    .snapshot_names
+                    .get_or_insert_with(process_names_from_snapshot);
+                if let Some(name) = snapshot_names.get(&pid) {
+                    return Some(name);
+                }
             }
 
-            return match self.names.entry(pid) {
-                Entry::Occupied(entry) => entry.into_mut().as_deref(),
-                Entry::Vacant(entry) => entry.insert(process_image_name(pid)).as_deref(),
-            };
+            return self.names.get_or_insert_with(pid, process_image_name);
         }
 
-        match self.names.entry(pid) {
-            Entry::Occupied(entry) => entry.into_mut().as_deref(),
-            Entry::Vacant(entry) => {
-                let name = process_image_name(pid).or_else(|| {
-                    let names = self
-                        .snapshot_names
-                        .get_or_insert_with(process_names_from_snapshot);
-                    names.get(&pid).cloned()
-                });
-                entry.insert(name).as_deref()
+        if let Some(position) = self.names.position(pid) {
+            return self.names.name_at(position);
+        }
+        let name = process_image_name(pid).or_else(|| {
+            let names = self
+                .snapshot_names
+                .get_or_insert_with(process_names_from_snapshot);
+            names.get(&pid).cloned()
+        });
+        self.names.insert(pid, name)
+    }
+}
+
+#[derive(Clone, Copy)]
+enum ProcessNameCachePosition {
+    One,
+    TwoFirst,
+    TwoSecond,
+    Many(usize),
+}
+
+#[derive(Default)]
+enum ProcessNameCache {
+    #[default]
+    Empty,
+    One {
+        pid: u32,
+        name: Option<String>,
+    },
+    Two {
+        first_pid: u32,
+        first_name: Option<String>,
+        second_pid: u32,
+        second_name: Option<String>,
+    },
+    Many {
+        names: Vec<(u32, Option<String>)>,
+    },
+}
+
+impl ProcessNameCache {
+    fn position(&self, pid: u32) -> Option<ProcessNameCachePosition> {
+        match self {
+            Self::Empty => None,
+            Self::One {
+                pid: cached_pid, ..
+            } => (*cached_pid == pid).then_some(ProcessNameCachePosition::One),
+            Self::Two {
+                first_pid,
+                second_pid,
+                ..
+            } => {
+                if *first_pid == pid {
+                    Some(ProcessNameCachePosition::TwoFirst)
+                } else if *second_pid == pid {
+                    Some(ProcessNameCachePosition::TwoSecond)
+                } else {
+                    None
+                }
             }
+            Self::Many { names } => names
+                .iter()
+                .position(|(cached_pid, _)| *cached_pid == pid)
+                .map(ProcessNameCachePosition::Many),
+        }
+    }
+
+    fn name_at(&self, position: ProcessNameCachePosition) -> Option<&str> {
+        match (self, position) {
+            (Self::One { name, .. }, ProcessNameCachePosition::One) => name.as_deref(),
+            (Self::Two { first_name, .. }, ProcessNameCachePosition::TwoFirst) => {
+                first_name.as_deref()
+            }
+            (Self::Two { second_name, .. }, ProcessNameCachePosition::TwoSecond) => {
+                second_name.as_deref()
+            }
+            (Self::Many { names }, ProcessNameCachePosition::Many(index)) => {
+                names[index].1.as_deref()
+            }
+            _ => None,
+        }
+    }
+
+    fn get_or_insert_with(
+        &mut self,
+        pid: u32,
+        load: impl FnOnce(u32) -> Option<String>,
+    ) -> Option<&str> {
+        if let Some(position) = self.position(pid) {
+            return self.name_at(position);
+        }
+
+        self.insert(pid, load(pid))
+    }
+
+    fn insert(&mut self, pid: u32, name: Option<String>) -> Option<&str> {
+        *self = match std::mem::take(self) {
+            Self::Empty => Self::One { pid, name },
+            Self::One {
+                pid: first_pid,
+                name: first_name,
+            } => Self::Two {
+                first_pid,
+                first_name,
+                second_pid: pid,
+                second_name: name,
+            },
+            Self::Two {
+                first_pid,
+                first_name,
+                second_pid,
+                second_name,
+            } => {
+                let mut names = Vec::with_capacity(4);
+                names.push((first_pid, first_name));
+                names.push((second_pid, second_name));
+                names.push((pid, name));
+                Self::Many { names }
+            }
+            Self::Many { mut names } => {
+                names.push((pid, name));
+                Self::Many { names }
+            }
+        };
+
+        match self {
+            Self::One { name, .. } => name.as_deref(),
+            Self::Two { second_name, .. } => second_name.as_deref(),
+            Self::Many { names } => names.last().and_then(|(_, name)| name.as_deref()),
+            Self::Empty => None,
         }
     }
 }
