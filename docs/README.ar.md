@@ -30,7 +30,7 @@ UnfocusMute تطبيق صغير وخفيف لعلبة نظام Windows يكتم 
 لأنه مبني كتطبيق Rust أصلي، يعمل مباشرة دون runtime منفصل. حجم ملف Windows التنفيذي الحالي أقل من 1MB.
 
 <p align="center">
-  <img src="../assets/screenshot.png" alt="نافذة تطبيق UnfocusMute" width="760">
+  <img src="../assets/screenshot.png" alt="نافذة تطبيق UnfocusMute" width="760" loading="lazy" decoding="async">
 </p>
 
 سجّل التطبيقات التي تريد إدارتها؛ عندما لا تكون في المقدمة، يكتم UnfocusMute جلسات الصوت الخاصة بها فقط. وعندما يعود التطبيق إلى المقدمة، يعيد UnfocusMute صوت الجلسات التي كتمها بنفسه فقط، ولا يغيّر أي كتم قمت به يدويًا.
@@ -144,7 +144,7 @@ powershell -ExecutionPolicy Bypass -File scripts\package-windows.ps1
 cargo about generate about.hbs -c about.toml --locked --offline -o THIRD_PARTY_NOTICES.md
 ```
 
-يتم إنشاء الحزمة في `dist\UnfocusMute-<version>-windows-x64.zip` وتتضمن الملف التنفيذي و`LICENSE` و`THIRD_PARTY_NOTICES.md` و`README_ko.md` و`README_en.md` في الجذر، وبقية الوثائق المترجمة داخل `docs`.
+يتم إنشاء الحزمة في `dist\UnfocusMute-<version>-windows-x64.zip` وتتضمن الملف التنفيذي و`LICENSE` و`THIRD_PARTY_NOTICES.md` و`README_ko.md` و`README_en.md` في الجذر، وأصول الأيقونة ولقطة الشاشة داخل `assets`، وبقية الوثائق المترجمة داخل `docs`.
 
 ---
 

@@ -30,7 +30,7 @@ UnfocusMute 是一款小巧轻量的 Windows 托盘应用，会在所选游戏�
 它是 Rust 原生应用，无需额外运行时即可直接运行。当前 Windows 可执行文件小于 1MB。
 
 <p align="center">
-  <img src="../assets/screenshot.png" alt="UnfocusMute 应用窗口" width="760">
+  <img src="../assets/screenshot.png" alt="UnfocusMute 应用窗口" width="760" loading="lazy" decoding="async">
 </p>
 
 注册要管理的应用后，当它们不在前台时，UnfocusMute 只会静音对应的音频会话。应用回到前台后，UnfocusMute 只恢复它自己静音过的会话，不会改变你手动设置的静音状态。
@@ -144,7 +144,7 @@ powershell -ExecutionPolicy Bypass -File scripts\package-windows.ps1
 cargo about generate about.hbs -c about.toml --locked --offline -o THIRD_PARTY_NOTICES.md
 ```
 
-生成的包位于 `dist\UnfocusMute-<version>-windows-x64.zip`，包含可执行文件、`LICENSE`、`THIRD_PARTY_NOTICES.md`、根目录的 `README_ko.md` 和 `README_en.md`，以及 `docs` 下的其他本地化文档。
+生成的包位于 `dist\UnfocusMute-<version>-windows-x64.zip`，包含可执行文件、`LICENSE`、`THIRD_PARTY_NOTICES.md`、根目录的 `README_ko.md` 和 `README_en.md`、`assets` 下的图标/截图资源，以及 `docs` 下的其他本地化文档。
 
 ---
 

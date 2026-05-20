@@ -3,7 +3,7 @@
 
   <h1>UnfocusMute</h1>
 
-  <p><strong>Lightweight, portable Windows tray app that mutes selected background apps and restores only the audio it changed.</strong></p>
+  <p><strong>선택한 백그라운드 앱만 음소거하고, UnfocusMute가 바꾼 오디오만 복원하는 가벼운 Windows 트레이 앱입니다.</strong></p>
 
   <p>
     <a href="https://github.com/ilsd7/UnfocusMute/releases">다운로드</a>
@@ -14,10 +14,10 @@
 
   <p>
     <code>Windows 10/11</code>
-    <code>Portable</code>
-    <code>Rust Native</code>
+    <code>포터블</code>
+    <code>Rust 네이티브</code>
     <code>&lt;1MB</code>
-    <code>No telemetry</code>
+    <code>텔레메트리 없음</code>
   </p>
 
   <p>
@@ -30,7 +30,7 @@ UnfocusMute는 선택한 게임이나 앱이 백그라운드로 전환될 때 �
 Rust 네이티브 앱으로 빌드해 별도 런타임 없이 바로 실행됩니다. 현재 Windows용 실행 파일은 1MB 미만입니다.
 
 <p align="center">
-  <img src="assets/screenshot.png" alt="UnfocusMute 앱 화면" width="760">
+  <img src="assets/screenshot.png" alt="UnfocusMute 앱 화면" width="760" loading="lazy" decoding="async">
 </p>
 
 등록한 앱이 전면에 없을 때만 해당 앱의 오디오 세션을 음소거하고, 다시 전면으로 돌아오면 UnfocusMute가 직접 음소거했던 세션만 되돌립니다. 사용자가 직접 음소거해 둔 상태는 건드리지 않습니다.
@@ -144,7 +144,7 @@ powershell -ExecutionPolicy Bypass -File scripts\package-windows.ps1
 cargo about generate about.hbs -c about.toml --locked --offline -o THIRD_PARTY_NOTICES.md
 ```
 
-결과물은 `dist\UnfocusMute-<version>-windows-x64.zip`에 생성되며, 실행 파일, `LICENSE`, `THIRD_PARTY_NOTICES.md`, 루트의 `README_ko.md`와 `README_en.md`, `docs` 폴더의 기타 언어 문서가 포함됩니다.
+결과물은 `dist\UnfocusMute-<version>-windows-x64.zip`에 생성되며, 실행 파일, `LICENSE`, `THIRD_PARTY_NOTICES.md`, 루트의 `README_ko.md`와 `README_en.md`, `assets` 폴더의 아이콘/스크린샷, `docs` 폴더의 기타 언어 문서가 포함됩니다.
 
 ---
 

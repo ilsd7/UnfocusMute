@@ -30,7 +30,7 @@ UnfocusMute é um app leve e portátil para a bandeja do Windows que silencia ap
 Criado como app nativo em Rust, ele roda sem runtime separado. O executável atual para Windows tem menos de 1 MB.
 
 <p align="center">
-  <img src="../assets/screenshot.png" alt="Janela do UnfocusMute" width="760">
+  <img src="../assets/screenshot.png" alt="Janela do UnfocusMute" width="760" loading="lazy" decoding="async">
 </p>
 
 Registre os apps que você quer gerenciar, e o UnfocusMute silencia apenas as sessões de áudio deles enquanto não estão em foco. Quando um app volta ao primeiro plano, o UnfocusMute restaura somente as sessões que ele mesmo silenciou, sem alterar os silenciamentos feitos manualmente.
@@ -144,7 +144,7 @@ Atualizar avisos de licença de terceiros:
 cargo about generate about.hbs -c about.toml --locked --offline -o THIRD_PARTY_NOTICES.md
 ```
 
-O pacote é criado em `dist\UnfocusMute-<version>-windows-x64.zip` e inclui o executável, `LICENSE`, `THIRD_PARTY_NOTICES.md`, `README_ko.md` e `README_en.md` na raiz, além dos outros documentos localizados em `docs`.
+O pacote é criado em `dist\UnfocusMute-<version>-windows-x64.zip` e inclui o executável, `LICENSE`, `THIRD_PARTY_NOTICES.md`, `README_ko.md` e `README_en.md` na raiz, os recursos de ícone e captura em `assets`, além dos outros documentos localizados em `docs`.
 
 ---
 

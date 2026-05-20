@@ -1,6 +1,6 @@
 [package]
 name = "unfocusmute"
-version = "1.0.105"
+version = "1.0.110"
 edition = "2024"
 description = "Automatically mutes selected Windows app audio sessions while they are not focused."
 license = "Apache-2.0"
@@ -11,7 +11,7 @@ build = "build.rs"
 [target.'cfg(windows)'.dependencies]
 serde = { version = "1.0", default-features = false, features = ["derive"] }
 serde_json = { version = "1.0", default-features = false, features = ["std"] }
-windows-core = "0.62.2"
+windows-core = { version = "0.62.2", default-features = false }
 windows = { version = "0.62.2", default-features = false, features = [
     "Win32_Foundation",
     "Win32_Graphics_Gdi",

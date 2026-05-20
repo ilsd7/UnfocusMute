@@ -30,7 +30,7 @@ UnfocusMute is a small, lightweight Windows tray app that automatically mutes se
 Built as a native Rust app, it runs without a separate runtime. The current Windows executable is under 1 MB.
 
 <p align="center">
-  <img src="assets/screenshot.png" alt="UnfocusMute app window" width="760">
+  <img src="assets/screenshot.png" alt="UnfocusMute app window" width="760" loading="lazy" decoding="async">
 </p>
 
 Register the apps you want to manage, and UnfocusMute mutes only their audio sessions while they are not in the foreground. When an app returns to the foreground, UnfocusMute restores only the sessions it muted itself, so manually muted sessions stay untouched.
@@ -144,7 +144,7 @@ Refresh third-party license notices:
 cargo about generate about.hbs -c about.toml --locked --offline -o THIRD_PARTY_NOTICES.md
 ```
 
-The package is created under `dist\UnfocusMute-<version>-windows-x64.zip` and includes the executable, `LICENSE`, `THIRD_PARTY_NOTICES.md`, root-level `README_ko.md` and `README_en.md`, plus the other localized docs under `docs`.
+The package is created under `dist\UnfocusMute-<version>-windows-x64.zip` and includes the executable, `LICENSE`, `THIRD_PARTY_NOTICES.md`, root-level `README_ko.md` and `README_en.md`, icon/screenshot assets under `assets`, plus the other localized docs under `docs`.
 
 ---
 

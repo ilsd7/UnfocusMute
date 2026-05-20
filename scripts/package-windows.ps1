@@ -33,54 +33,16 @@ $Zip = Join-Path $Dist "$PackageName.zip"
 $TempZip = Join-Path $Dist "$PackageName.$PID.tmp.zip"
 $Utf8NoBom = [System.Text.UTF8Encoding]::new($false)
 
-function Remove-ReadmeLanguageLinks {
-    param(
-        [Parameter(Mandatory = $true)]
-        [string]$Content
-    )
-
-    return [System.Text.RegularExpressions.Regex]::Replace(
-        $Content,
-        '(?m)^[ \t]*(?=[^\r\n]*\|)(?=[^\r\n]*README)(?=[^\r\n]*\.md)[^\r\n]*(?:\r?\n[ \t]*\r?\n|\r?\n|$)',
-        ''
-    )
-}
-
-function Remove-ReadmeHeaderBlock {
-    param(
-        [Parameter(Mandatory = $true)]
-        [string]$Content
-    )
-
-    return [System.Text.RegularExpressions.Regex]::Replace(
-        $Content,
-        '(?ms)^\s*<div align="center">\s*<img src="(?:\.\./)?assets/app-icon\.png"[\s\S]*?</div>\s*',
-        "# UnfocusMute`r`n`r`n"
-    )
-}
-
-function Remove-ReadmeScreenshotBlock {
-    param(
-        [Parameter(Mandatory = $true)]
-        [string]$Content
-    )
-
-    return [System.Text.RegularExpressions.Regex]::Replace(
-        $Content,
-        '(?ms)^[ \t]*<p align="center">\s*<img src="(?:\.\./)?assets/screenshot\.png"[^>]*>\s*</p>\s*',
-        ''
-    )
-}
-
 function Convert-ReadmeForPackage {
     param(
         [Parameter(Mandatory = $true)]
         [string]$Content
     )
 
-    $Content = Remove-ReadmeHeaderBlock $Content
-    $Content = Remove-ReadmeLanguageLinks $Content
-    $Content = Remove-ReadmeScreenshotBlock $Content
+    $Content = $Content.Replace('href="README.md"', 'href="README_ko.md"')
+    $Content = $Content.Replace('href="../README.md"', 'href="../README_ko.md"')
+    $Content = $Content.Replace('src="assets/app-icon.png"', 'src="assets/app-icon.ico"')
+    $Content = $Content.Replace('src="../assets/app-icon.png"', 'src="../assets/app-icon.ico"')
     return $Content.TrimStart()
 }
 
@@ -96,6 +58,10 @@ try {
     Copy-Item "target\$Target\release\unfocusmute.exe" (Join-Path $Stage "UnfocusMute.exe")
     Copy-Item "LICENSE" $Stage
     Copy-Item "THIRD_PARTY_NOTICES.md" $Stage
+    $AssetsStage = Join-Path $Stage "assets"
+    New-Item -ItemType Directory -Force -Path $AssetsStage | Out-Null
+    Copy-Item "assets\app-icon.ico" $AssetsStage
+    Copy-Item "assets\screenshot.png" $AssetsStage
 
     $ReadmeKo = [System.IO.File]::ReadAllText((Join-Path $RepoRoot "README.md"), [System.Text.Encoding]::UTF8)
     $ReadmeKo = Convert-ReadmeForPackage $ReadmeKo

@@ -478,6 +478,13 @@ pub fn normalize_process_name_owned(mut input: String) -> Option<String> {
 
 pub(crate) fn normalize_process_name_utf16(input: &[u16]) -> Option<String> {
     let candidate = utf16_process_name_candidate(input)?;
+    if candidate.is_ascii {
+        return Some(ascii_utf16_process_name(
+            candidate.name,
+            candidate.has_uppercase,
+        ));
+    }
+
     let mut name = String::from_utf16_lossy(candidate.name);
     if candidate.has_uppercase {
         name.make_ascii_lowercase();
@@ -496,6 +503,7 @@ pub fn is_normalized_process_name(input: &str) -> bool {
 struct Utf16ProcessNameCandidate<'a> {
     name: &'a [u16],
     has_uppercase: bool,
+    is_ascii: bool,
 }
 
 fn utf16_process_name_candidate(input: &[u16]) -> Option<Utf16ProcessNameCandidate<'_>> {
@@ -514,13 +522,34 @@ fn utf16_process_name_candidate(input: &[u16]) -> Option<Utf16ProcessNameCandida
         return None;
     }
 
-    let has_uppercase = name
-        .iter()
-        .any(|ch| *ch <= 0x7f && (*ch as u8).is_ascii_uppercase());
+    let mut has_uppercase = false;
+    let mut is_ascii = true;
+    for ch in name {
+        if *ch > 0x7f {
+            is_ascii = false;
+        } else {
+            has_uppercase |= (*ch as u8).is_ascii_uppercase();
+        }
+    }
     Some(Utf16ProcessNameCandidate {
         name,
         has_uppercase,
+        is_ascii,
     })
+}
+
+fn ascii_utf16_process_name(input: &[u16], has_uppercase: bool) -> String {
+    let mut output = String::with_capacity(input.len());
+    if has_uppercase {
+        for ch in input {
+            output.push((*ch as u8).to_ascii_lowercase() as char);
+        }
+    } else {
+        for ch in input {
+            output.push(*ch as u8 as char);
+        }
+    }
+    output
 }
 
 fn trim_ascii_utf16(mut input: &[u16]) -> &[u16] {
@@ -671,6 +700,24 @@ mod tests {
         assert_eq!(
             normalize_process_name_utf16(&wide_null_terminated("")),
             None
+        );
+    }
+
+    #[test]
+    fn utf16_normalization_preserves_non_ascii_names() {
+        let name = [
+            0xac8c,
+            0xc784,
+            b'.' as u16,
+            b'E' as u16,
+            b'X' as u16,
+            b'E' as u16,
+            0,
+        ];
+
+        assert_eq!(
+            normalize_process_name_utf16(&name),
+            Some("\u{ac8c}\u{c784}.exe".to_owned())
         );
     }
 

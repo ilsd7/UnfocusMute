@@ -40,8 +40,8 @@ use windows::Win32::UI::WindowsAndMessaging::{
     EN_CHANGE, ES_AUTOHSCROLL, EVENT_SYSTEM_FOREGROUND, FindWindowW, GWLP_USERDATA, GetCursorPos,
     GetSystemMetrics, GetWindowRect, HICON, HMENU, ICON_BIG, ICON_SMALL, IDC_ARROW,
     IsWindowVisible, KillTimer, LB_GETCURSEL, LB_RESETCONTENT, LB_SETCURSEL, LBN_SELCHANGE,
-    LBS_NOTIFY, LoadCursorW, MB_ICONINFORMATION, MB_ICONWARNING, MB_OK, MF_SEPARATOR, MF_STRING,
-    MSG, MessageBoxW, MoveWindow, PostMessageW, PostQuitMessage, RegisterClassW,
+    LBS_NOTIFY, LoadCursorW, MB_ICONINFORMATION, MB_ICONWARNING, MB_OK, MF_CHECKED, MF_SEPARATOR,
+    MF_STRING, MSG, MessageBoxW, MoveWindow, PostMessageW, PostQuitMessage, RegisterClassW,
     RegisterWindowMessageW, SM_CXSCREEN, SM_CXVIRTUALSCREEN, SM_CYSCREEN, SM_CYVIRTUALSCREEN,
     SM_XVIRTUALSCREEN, SM_YVIRTUALSCREEN, SPI_GETWORKAREA, SW_HIDE, SW_RESTORE, SW_SHOW,
     SYSTEM_PARAMETERS_INFO_UPDATE_FLAGS, SendMessageW, SetForegroundWindow, SetTimer,
@@ -1458,6 +1458,11 @@ impl AppWindow {
         self.update_action_buttons();
     }
 
+    fn process_filter_is_unfiltered(&self) -> bool {
+        self.process_query.is_empty()
+            && self.process_choice_indices.len() == self.all_process_choices.len()
+    }
+
     fn rebuild_process_choices(&mut self) {
         self.all_process_choices.clear();
         if self.show_process_details {
@@ -2024,7 +2029,7 @@ impl AppWindow {
     fn open_running_process_picker(&mut self) {
         if self.process_query.trim().is_empty() {
             self.process_query.clear();
-            if !self.refresh_processes_if_stale() {
+            if !self.refresh_processes_if_stale() && !self.process_filter_is_unfiltered() {
                 self.apply_process_filter();
             }
         } else {
@@ -2338,10 +2343,15 @@ impl AppWindow {
         let mut text_buffer = Vec::new();
         for (index, language) in Language::ALL.iter().enumerate() {
             write_wide_buffer(language.native_name(), &mut text_buffer);
+            let flags = if *language == self.config.language {
+                MF_STRING | MF_CHECKED
+            } else {
+                MF_STRING
+            };
             unsafe {
                 let _ = AppendMenuW(
                     menu.handle(),
-                    MF_STRING,
+                    flags,
                     (ID_LANGUAGE_MENU_BASE + index as i32) as usize,
                     PCWSTR(text_buffer.as_ptr()),
                 );

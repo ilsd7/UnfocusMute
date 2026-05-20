@@ -12,6 +12,8 @@ use windows::Win32::System::Registry::{
 };
 use windows::core::{PCWSTR, w};
 
+const STARTUP_VALUE_STACK_BUFFER_LEN: usize = 512;
+
 pub fn set_launch_on_startup(enabled: bool) -> Result<()> {
     if enabled {
         let key = create_run_key()?;
@@ -116,22 +118,37 @@ fn startup_value_matches(key: HKEY, expected: &[u8]) -> bool {
         return false;
     }
 
+    if size as usize <= STARTUP_VALUE_STACK_BUFFER_LEN {
+        let mut existing = [0; STARTUP_VALUE_STACK_BUFFER_LEN];
+        return startup_value_bytes_match(key, expected, &mut existing, size, &mut value_type);
+    }
+
     let mut existing = vec![0; size as usize];
+    startup_value_bytes_match(key, expected, &mut existing, size, &mut value_type)
+}
+
+fn startup_value_bytes_match(
+    key: HKEY,
+    expected: &[u8],
+    existing: &mut [u8],
+    mut size: u32,
+    value_type: &mut REG_VALUE_TYPE,
+) -> bool {
     let result = unsafe {
         RegQueryValueExW(
             key,
             w!("UnfocusMute"),
             None,
-            Some(&mut value_type),
+            Some(value_type),
             Some(existing.as_mut_ptr()),
             Some(&mut size),
         )
     };
 
     result == ERROR_SUCCESS
-        && value_type == REG_SZ
+        && *value_type == REG_SZ
         && size as usize == expected.len()
-        && existing == expected
+        && &existing[..expected.len()] == expected
 }
 
 struct RunKey(HKEY);

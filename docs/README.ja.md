@@ -30,7 +30,7 @@ UnfocusMuteは、選択したゲームやアプリがバックグラウンドに
 Rust製のネイティブアプリなので、別途ランタイムなしでそのまま実行できます。現在のWindows実行ファイルは1MB未満です。
 
 <p align="center">
-  <img src="../assets/screenshot.png" alt="UnfocusMuteのアプリ画面" width="760">
+  <img src="../assets/screenshot.png" alt="UnfocusMuteのアプリ画面" width="760" loading="lazy" decoding="async">
 </p>
 
 管理したいアプリを登録しておくと、前面にない間だけそのアプリのオーディオセッションをミュートします。前面に戻ったときはUnfocusMuteがミュートしたセッションだけを元に戻すため、手動でミュートした状態はそのまま保たれます。
@@ -144,7 +144,7 @@ powershell -ExecutionPolicy Bypass -File scripts\package-windows.ps1
 cargo about generate about.hbs -c about.toml --locked --offline -o THIRD_PARTY_NOTICES.md
 ```
 
-パッケージは `dist\UnfocusMute-<version>-windows-x64.zip` に作成され、実行ファイル、`LICENSE`、`THIRD_PARTY_NOTICES.md`、ルートの `README_ko.md` と `README_en.md`、`docs` 配下のその他の言語ドキュメントが含まれます。
+パッケージは `dist\UnfocusMute-<version>-windows-x64.zip` に作成され、実行ファイル、`LICENSE`、`THIRD_PARTY_NOTICES.md`、ルートの `README_ko.md` と `README_en.md`、`assets` 配下のアイコン/スクリーンショット、`docs` 配下のその他の言語ドキュメントが含まれます。
 
 ---
 

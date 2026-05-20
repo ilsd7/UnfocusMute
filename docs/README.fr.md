@@ -30,7 +30,7 @@ UnfocusMute est une petite application légère pour la zone de notification Win
 Compilée comme application native Rust, elle s’exécute sans runtime séparé. L’exécutable Windows actuel fait moins de 1 Mo.
 
 <p align="center">
-  <img src="../assets/screenshot.png" alt="Fenêtre de l’application UnfocusMute" width="760">
+  <img src="../assets/screenshot.png" alt="Fenêtre de l’application UnfocusMute" width="760" loading="lazy" decoding="async">
 </p>
 
 Enregistrez les applications à gérer, et UnfocusMute ne coupe leurs sessions audio que lorsqu’elles ne sont plus au premier plan. Quand une application revient au premier plan, l’application ne réactive que les sessions qu’elle avait elle-même coupées, sans toucher aux coupures manuelles.
@@ -144,7 +144,7 @@ Actualiser les avis de licence tiers :
 cargo about generate about.hbs -c about.toml --locked --offline -o THIRD_PARTY_NOTICES.md
 ```
 
-Le paquet est créé dans `dist\UnfocusMute-<version>-windows-x64.zip` et contient l’exécutable, `LICENSE`, `THIRD_PARTY_NOTICES.md`, `README_ko.md` et `README_en.md` à la racine, ainsi que les autres documents localisés dans `docs`.
+Le paquet est créé dans `dist\UnfocusMute-<version>-windows-x64.zip` et contient l’exécutable, `LICENSE`, `THIRD_PARTY_NOTICES.md`, `README_ko.md` et `README_en.md` à la racine, les ressources d’icône et de capture dans `assets`, ainsi que les autres documents localisés dans `docs`.
 
 ---
 

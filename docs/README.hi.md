@@ -30,7 +30,7 @@ UnfocusMute Windows ट्रे के लिए एक छोटा और ह
 Rust native app के रूप में build होने के कारण यह अलग runtime के बिना सीधे चलता है। मौजूदा Windows executable 1 MB से कम है।
 
 <p align="center">
-  <img src="../assets/screenshot.png" alt="UnfocusMute ऐप विंडो" width="760">
+  <img src="../assets/screenshot.png" alt="UnfocusMute ऐप विंडो" width="760" loading="lazy" decoding="async">
 </p>
 
 जिन ऐप्स को संभालना है उन्हें रजिस्टर करें; जब वे सामने नहीं होते, UnfocusMute सिर्फ उनके ऑडियो सेशन म्यूट करता है। जब ऐप फिर से सामने आता है, तो UnfocusMute सिर्फ वही सेशन अनम्यूट करता है जिन्हें उसने खुद म्यूट किया था, इसलिए आपके मैन्युअल म्यूट वैसे ही रहते हैं।
@@ -144,7 +144,7 @@ Third-party license notices refresh करें:
 cargo about generate about.hbs -c about.toml --locked --offline -o THIRD_PARTY_NOTICES.md
 ```
 
-पैकेज `dist\UnfocusMute-<version>-windows-x64.zip` में बनता है और इसमें executable फ़ाइल, `LICENSE`, `THIRD_PARTY_NOTICES.md`, root में `README_ko.md` और `README_en.md`, और `docs` में बाकी स्थानीयकृत दस्तावेज़ शामिल होते हैं।
+पैकेज `dist\UnfocusMute-<version>-windows-x64.zip` में बनता है और इसमें executable फ़ाइल, `LICENSE`, `THIRD_PARTY_NOTICES.md`, root में `README_ko.md` और `README_en.md`, `assets` में आइकन/स्क्रीनशॉट संसाधन, और `docs` में बाकी स्थानीयकृत दस्तावेज़ शामिल होते हैं।
 
 ---
 
