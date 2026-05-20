@@ -16,7 +16,7 @@
     <code>Windows 10/11</code>
     <code>Portable</code>
     <code>Rust Native</code>
-    <code>&lt;1MB</code>
+    <code>~477KB</code>
     <code>No telemetry</code>
   </p>
 
@@ -27,7 +27,7 @@
 
 UnfocusMute est une petite application légère pour la zone de notification Windows qui coupe uniquement le son des jeux ou applications sélectionnés lorsqu’ils passent en arrière-plan.
 
-Compilée comme application native Rust, elle s’exécute sans runtime séparé. L’exécutable Windows actuel fait moins de 1 Mo.
+Compilée comme application native Rust, elle s’exécute sans runtime séparé. L’exécutable Windows actuel fait environ 477 Ko, soit moins de 1 Mo.
 
 <p align="center">
   <img src="../assets/screenshot.png" alt="Fenêtre de l’application UnfocusMute" width="760" loading="lazy" decoding="async">
@@ -46,7 +46,7 @@ Téléchargez le ZIP pour Windows 10/11 depuis [GitHub Releases](https://github.
 ## Utilisation
 
 1. Lancez UnfocusMute.
-2. Sélectionnez une langue au premier lancement. 한국어 est sélectionné par défaut.
+2. Sélectionnez une langue au premier lancement. English est sélectionné par défaut.
 3. Ouvrez le jeu ou l’application à gérer.
 4. Actualisez la liste des applications en cours, sélectionnez un élément, puis cliquez sur `Ajouter la sélection`.
 5. Utilisez `Afficher les PID` uniquement si vous devez enregistrer une instance précise. Une cible enregistrée par PID ne s’applique qu’à l’instance en cours ; si l’application redémarre avec un autre PID, sélectionnez-la à nouveau.
@@ -144,7 +144,7 @@ Actualiser les avis de licence tiers :
 cargo about generate about.hbs -c about.toml --locked --offline -o THIRD_PARTY_NOTICES.md
 ```
 
-Le paquet est créé dans `dist\UnfocusMute-<version>-windows-x64.zip`, avec un fichier de vérification SHA-256 dans `dist\UnfocusMute-<version>-windows-x64.zip.sha256`. Le ZIP contient l’exécutable, `LICENSE`, `THIRD_PARTY_NOTICES.md`, `README_ko.md` et `README_en.md` à la racine, les ressources d’icône et de capture dans `assets`, ainsi que les autres documents localisés dans `docs`.
+Le paquet est créé dans `dist\UnfocusMute-<version>-windows-x64.zip`, avec un fichier de vérification SHA-256 dans `dist\UnfocusMute-<version>-windows-x64.zip.sha256`. Le ZIP contient l’exécutable, `LICENSE`, `THIRD_PARTY_NOTICES.md`, `README_ko.md` et `README_en.md` à la racine, ainsi que les autres documents localisés dans `docs`.
 
 ---
 

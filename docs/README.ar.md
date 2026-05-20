@@ -16,7 +16,7 @@
     <code>Windows 10/11</code>
     <code>Portable</code>
     <code>Rust Native</code>
-    <code>&lt;1MB</code>
+    <code>~477KB</code>
     <code>No telemetry</code>
   </p>
 
@@ -27,7 +27,7 @@
 
 UnfocusMute تطبيق صغير وخفيف لعلبة نظام Windows يكتم صوت اللعبة أو التطبيق الذي تختاره فقط عندما ينتقل إلى الخلفية.
 
-لأنه مبني كتطبيق Rust أصلي، يعمل مباشرة دون runtime منفصل. حجم ملف Windows التنفيذي الحالي أقل من 1MB.
+لأنه مبني كتطبيق Rust أصلي، يعمل مباشرة دون runtime منفصل. حجم ملف Windows التنفيذي الحالي نحو 477KB، أي أقل من 1MB.
 
 <p align="center">
   <img src="../assets/screenshot.png" alt="نافذة تطبيق UnfocusMute" width="760" loading="lazy" decoding="async">
@@ -46,7 +46,7 @@ UnfocusMute تطبيق صغير وخفيف لعلبة نظام Windows يكتم 
 ## الاستخدام
 
 1. شغّل UnfocusMute.
-2. اختر اللغة عند أول تشغيل. اللغة الافتراضية هي 한국어.
+2. اختر اللغة عند أول تشغيل. اللغة الافتراضية هي English.
 3. افتح اللعبة أو التطبيق الذي تريد إدارته.
 4. حدّث قائمة التطبيقات قيد التشغيل، اختر عنصرًا، ثم اضغط `إضافة المحدد`.
 5. استخدم `إظهار تفاصيل PID` فقط عندما تحتاج إلى تسجيل نسخة عملية محددة. الهدف المسجّل بواسطة PID ينطبق فقط على النسخة الحالية؛ إذا أُعيد تشغيل التطبيق وتغيّر PID، فاختره من جديد.
@@ -144,7 +144,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts\package-windows.ps1
 cargo about generate about.hbs -c about.toml --locked --offline -o THIRD_PARTY_NOTICES.md
 ```
 
-يتم إنشاء الحزمة في `dist\UnfocusMute-<version>-windows-x64.zip`، ويتم إنشاء ملف تحقق SHA-256 في `dist\UnfocusMute-<version>-windows-x64.zip.sha256`. يتضمن ملف ZIP الملف التنفيذي و`LICENSE` و`THIRD_PARTY_NOTICES.md` و`README_ko.md` و`README_en.md` في الجذر، وأصول الأيقونة ولقطة الشاشة داخل `assets`، وبقية الوثائق المترجمة داخل `docs`.
+يتم إنشاء الحزمة في `dist\UnfocusMute-<version>-windows-x64.zip`، ويتم إنشاء ملف تحقق SHA-256 في `dist\UnfocusMute-<version>-windows-x64.zip.sha256`. يتضمن ملف ZIP الملف التنفيذي و`LICENSE` و`THIRD_PARTY_NOTICES.md` و`README_ko.md` و`README_en.md` في الجذر، وبقية الوثائق المترجمة داخل `docs`.
 
 ---
 

@@ -16,7 +16,7 @@
     <code>Windows 10/11</code>
     <code>Portable</code>
     <code>Rust Native</code>
-    <code>&lt;1MB</code>
+    <code>~477KB</code>
     <code>No telemetry</code>
   </p>
 
@@ -27,7 +27,7 @@
 
 UnfocusMute es una app ligera y portátil para la bandeja de Windows que silencia solo el audio de los juegos o aplicaciones que elijas cuando pasan a segundo plano.
 
-Al estar compilada como app nativa en Rust, se ejecuta sin un runtime adicional. El ejecutable actual para Windows ocupa menos de 1 MB.
+Al estar compilada como app nativa en Rust, se ejecuta sin un runtime adicional. El ejecutable actual para Windows ocupa unos 477 KB, menos de 1 MB.
 
 <p align="center">
   <img src="../assets/screenshot.png" alt="Ventana de UnfocusMute" width="760" loading="lazy" decoding="async">
@@ -46,7 +46,7 @@ Descarga el ZIP para Windows 10/11 desde [GitHub Releases](https://github.com/il
 ## Uso
 
 1. Inicia UnfocusMute.
-2. Selecciona un idioma en el primer inicio. 한국어 está seleccionado por defecto.
+2. Selecciona un idioma en el primer inicio. English está seleccionado por defecto.
 3. Abre el juego o app que quieras gestionar.
 4. Actualiza la lista de apps en ejecución, selecciona un elemento y pulsa `Añadir selección`.
 5. Usa `Ver PID` solo cuando necesites registrar una instancia concreta. Los objetivos registrados por PID solo se aplican a la instancia que está en ejecución; si la app se reinicia con otro PID, selecciónalo de nuevo.
@@ -144,7 +144,7 @@ Actualizar los avisos de licencia de terceros:
 cargo about generate about.hbs -c about.toml --locked --offline -o THIRD_PARTY_NOTICES.md
 ```
 
-El paquete se crea en `dist\UnfocusMute-<version>-windows-x64.zip`, junto con un archivo de verificación SHA-256 en `dist\UnfocusMute-<version>-windows-x64.zip.sha256`. El ZIP incluye el ejecutable, `LICENSE`, `THIRD_PARTY_NOTICES.md`, `README_ko.md` y `README_en.md` en la raíz, los recursos de icono y captura en `assets`, además del resto de documentación localizada en `docs`.
+El paquete se crea en `dist\UnfocusMute-<version>-windows-x64.zip`, junto con un archivo de verificación SHA-256 en `dist\UnfocusMute-<version>-windows-x64.zip.sha256`. El ZIP incluye el ejecutable, `LICENSE`, `THIRD_PARTY_NOTICES.md`, `README_ko.md` y `README_en.md` en la raíz, además del resto de documentación localizada en `docs`.
 
 ---
 

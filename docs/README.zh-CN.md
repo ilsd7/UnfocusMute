@@ -16,7 +16,7 @@
     <code>Windows 10/11</code>
     <code>Portable</code>
     <code>Rust Native</code>
-    <code>&lt;1MB</code>
+    <code>~477KB</code>
     <code>No telemetry</code>
   </p>
 
@@ -27,7 +27,7 @@
 
 UnfocusMute 是一款小巧轻量的 Windows 托盘应用，会在所选游戏或应用进入后台时，只自动静音该应用的声音。
 
-它是 Rust 原生应用，无需额外运行时即可直接运行。当前 Windows 可执行文件小于 1MB。
+它是 Rust 原生应用，无需额外运行时即可直接运行。当前 Windows 可执行文件约 477KB，小于 1MB。
 
 <p align="center">
   <img src="../assets/screenshot.png" alt="UnfocusMute 应用窗口" width="760" loading="lazy" decoding="async">
@@ -46,7 +46,7 @@ UnfocusMute 是一款小巧轻量的 Windows 托盘应用，会在所选游戏�
 ## 使用方法
 
 1. 启动 UnfocusMute。
-2. 首次运行时选择语言。默认选择 한국어。
+2. 首次运行时选择语言。默认选择 English。
 3. 启动要管理的游戏或应用。
 4. 刷新正在运行的应用列表，选择目标并点击 `添加所选`。
 5. 如果只需要注册某个 PID，请使用 `显示 PID`。按 PID 注册的目标只适用于当前运行的进程实例；如果应用重启后 PID 变化，请重新选择。
@@ -144,7 +144,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts\package-windows.ps1
 cargo about generate about.hbs -c about.toml --locked --offline -o THIRD_PARTY_NOTICES.md
 ```
 
-生成的包位于 `dist\UnfocusMute-<version>-windows-x64.zip`，并会在 `dist\UnfocusMute-<version>-windows-x64.zip.sha256` 生成 SHA-256 校验文件。ZIP 包含可执行文件、`LICENSE`、`THIRD_PARTY_NOTICES.md`、根目录的 `README_ko.md` 和 `README_en.md`、`assets` 下的图标/截图资源，以及 `docs` 下的其他本地化文档。
+生成的包位于 `dist\UnfocusMute-<version>-windows-x64.zip`，并会在 `dist\UnfocusMute-<version>-windows-x64.zip.sha256` 生成 SHA-256 校验文件。ZIP 包含可执行文件、`LICENSE`、`THIRD_PARTY_NOTICES.md`、根目录的 `README_ko.md` 和 `README_en.md`，以及 `docs` 下的其他本地化文档。
 
 ---
 

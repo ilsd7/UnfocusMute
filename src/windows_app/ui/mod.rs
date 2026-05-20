@@ -87,7 +87,13 @@ const RESTORE_CHECK_HEIGHT: i32 = 26;
 const RESTORE_CHECK_TALL_HEIGHT: i32 = 44;
 const RESTORE_CHECK_Y: i32 = 490;
 const RESTORE_CHECK_TALL_Y: i32 = 482;
+const SETTINGS_LANGUAGE_BUTTON_Y: i32 = 398;
+const SETTINGS_LANGUAGE_BUTTON_HEIGHT: i32 = 30;
+const START_MINIMIZED_CHECK_Y: i32 = 430;
 const PID_DISPLAY_DECORATION_UTF16_UNITS: usize = " (PID )".len();
+const _: () = assert!(
+    SETTINGS_LANGUAGE_BUTTON_Y + SETTINGS_LANGUAGE_BUTTON_HEIGHT <= START_MINIMIZED_CHECK_Y
+);
 
 pub fn run() -> Result<()> {
     let _com = unsafe { ComApartment::initialize()? };
@@ -1186,8 +1192,18 @@ impl AppWindow {
                 0,
             )?
         };
-        self.controls.language_button =
-            unsafe { create_button(self.hwnd, instance, "", 798, 398, 130, 34, ID_LANGUAGE)? };
+        self.controls.language_button = unsafe {
+            create_button(
+                self.hwnd,
+                instance,
+                "",
+                798,
+                SETTINGS_LANGUAGE_BUTTON_Y,
+                130,
+                SETTINGS_LANGUAGE_BUTTON_HEIGHT,
+                ID_LANGUAGE,
+            )?
+        };
         self.controls.open_config_button =
             unsafe { create_button(self.hwnd, instance, "", 724, 484, 220, 34, ID_OPEN_CONFIG)? };
 
@@ -1457,7 +1473,7 @@ impl AppWindow {
             MoveWindow(
                 self.controls.start_minimized_check,
                 right_panel_left,
-                430,
+                START_MINIMIZED_CHECK_Y,
                 settings_checkbox_width,
                 26,
                 true,
@@ -1698,10 +1714,7 @@ impl AppWindow {
         if self.paused {
             self.foreground_hook = None;
             self.restore_managed_mutes();
-            if self.muted_by_app.is_empty() {
-                self.audio = None;
-                self.clear_audio_issues();
-            }
+            self.release_idle_audio_while_paused();
             self.sync_audio_fallback_timer();
             self.update_status();
             return;
@@ -1852,6 +1865,13 @@ impl AppWindow {
         if let Some(audio) = &self.audio {
             let had_failures = restore_mute_set(audio, &mut self.muted_by_app);
             self.apply_audio_update_result(had_failures);
+        }
+    }
+
+    fn release_idle_audio_while_paused(&mut self) {
+        if should_release_idle_audio_while_paused(self.paused, self.muted_by_app.len()) {
+            self.audio = None;
+            self.clear_audio_issues();
         }
     }
 
@@ -2148,10 +2168,7 @@ impl AppWindow {
             ID_MANUAL if notification == EN_CHANGE as u16 => self.update_manual_process_text(),
             ID_OPEN_CONFIG => self.open_config_folder(),
             ID_PAUSE => self.toggle_pause(),
-            ID_HIDE => unsafe {
-                self.save_window_position();
-                let _ = ShowWindow(self.hwnd, SW_HIDE);
-            },
+            ID_HIDE => self.hide_to_tray(),
             ID_QUIT => unsafe {
                 let _ = DestroyWindow(self.hwnd);
             },
@@ -2187,7 +2204,7 @@ impl AppWindow {
         };
         if added {
             self.finish_target_change();
-            self.clear_process_search();
+            self.clear_process_search_after_add();
         }
     }
 
@@ -2239,6 +2256,29 @@ impl AppWindow {
     fn clear_process_search(&mut self) {
         self.process_query.clear();
         self.apply_process_filter();
+    }
+
+    fn clear_process_search_after_add(&mut self) {
+        if self.process_query.is_empty() && self.process_filter_is_unfiltered() {
+            self.clear_running_process_selection();
+        } else {
+            self.clear_process_search();
+        }
+    }
+
+    fn clear_running_process_selection(&mut self) {
+        unsafe {
+            self.updating_process_combo = true;
+            SendMessageW(
+                self.controls.running_combo,
+                CB_SETCURSEL,
+                Some(WPARAM(usize::MAX)),
+                None,
+            );
+            set_text(self.controls.running_combo, "");
+            self.updating_process_combo = false;
+        }
+        self.update_action_buttons();
     }
 
     fn release_running_process_focus(&self) {
@@ -2462,6 +2502,7 @@ impl AppWindow {
         if self.paused {
             self.restore_managed_mutes();
             self.foreground_hook = None;
+            self.release_idle_audio_while_paused();
         } else {
             self.tick();
         }
@@ -2619,6 +2660,20 @@ impl AppWindow {
         self.reload_config_if_changed();
         if self.remember_window_position() {
             self.save_config();
+        }
+    }
+
+    fn hide_to_tray(&mut self) {
+        if should_retry_tray_icon_before_hide(self.tray_added) {
+            self.add_tray_icon();
+        }
+        if !should_hide_to_tray(self.tray_added) {
+            return;
+        }
+
+        self.save_window_position();
+        unsafe {
+            let _ = ShowWindow(self.hwnd, SW_HIDE);
         }
     }
 
@@ -2925,6 +2980,18 @@ fn restore_checkbox_layout(text_width: i32, control_width: i32) -> (i32, i32) {
     }
 }
 
+fn should_hide_to_tray(tray_added: bool) -> bool {
+    tray_added
+}
+
+fn should_retry_tray_icon_before_hide(tray_added: bool) -> bool {
+    !tray_added
+}
+
+fn should_release_idle_audio_while_paused(paused: bool, muted_count: usize) -> bool {
+    paused && muted_count == 0
+}
+
 #[cfg(test)]
 mod layout_tests {
     use super::*;
@@ -2943,6 +3010,25 @@ mod layout_tests {
             restore_checkbox_layout(100, 100 + RESTORE_CHECK_TEXT_PADDING - 1),
             (RESTORE_CHECK_TALL_Y, RESTORE_CHECK_TALL_HEIGHT)
         );
+    }
+
+    #[test]
+    fn window_hides_only_when_tray_icon_is_available() {
+        assert!(should_hide_to_tray(true));
+        assert!(!should_hide_to_tray(false));
+    }
+
+    #[test]
+    fn missing_tray_icon_is_retried_before_hiding() {
+        assert!(should_retry_tray_icon_before_hide(false));
+        assert!(!should_retry_tray_icon_before_hide(true));
+    }
+
+    #[test]
+    fn paused_idle_audio_is_released_only_after_mutes_are_restored() {
+        assert!(should_release_idle_audio_while_paused(true, 0));
+        assert!(!should_release_idle_audio_while_paused(true, 1));
+        assert!(!should_release_idle_audio_while_paused(false, 0));
     }
 }
 
@@ -3086,10 +3172,7 @@ unsafe extern "system" fn window_proc(
                 return LRESULT(0);
             }
             WM_CLOSE => {
-                app.save_window_position();
-                unsafe {
-                    let _ = ShowWindow(hwnd, SW_HIDE);
-                }
+                app.hide_to_tray();
                 return LRESULT(0);
             }
             WM_CTLCOLORSTATIC | WM_CTLCOLOREDIT | WM_CTLCOLORLISTBOX => {

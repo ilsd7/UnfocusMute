@@ -16,7 +16,7 @@
     <code>Windows 10/11</code>
     <code>Portable</code>
     <code>Rust Native</code>
-    <code>&lt;1MB</code>
+    <code>~477KB</code>
     <code>No telemetry</code>
   </p>
 
@@ -27,7 +27,7 @@
 
 UnfocusMuteは、選択したゲームやアプリがバックグラウンドに回ったとき、そのアプリの音だけを自動でミュートする小さく軽量なWindowsトレイアプリです。
 
-Rust製のネイティブアプリなので、別途ランタイムなしでそのまま実行できます。現在のWindows実行ファイルは1MB未満です。
+Rust製のネイティブアプリなので、別途ランタイムなしでそのまま実行できます。現在のWindows実行ファイルは約477KBで、1MB未満です。
 
 <p align="center">
   <img src="../assets/screenshot.png" alt="UnfocusMuteのアプリ画面" width="760" loading="lazy" decoding="async">
@@ -46,7 +46,7 @@ Rust製のネイティブアプリなので、別途ランタイムなしでそ�
 ## 使い方
 
 1. UnfocusMuteを起動します。
-2. 初回起動時に言語を選択します。既定では 한국어 が選択されています。
+2. 初回起動時に言語を選択します。既定では English が選択されています。
 3. 管理したいゲームまたはアプリを起動します。
 4. 実行中アプリ一覧を更新し、対象を選んで `選択を追加` を押します。
 5. 特定のPIDだけを登録したい場合は `PID詳細を表示` を使います。PIDで登録した対象は現在実行中のインスタンスだけに適用されるため、アプリを再起動してPIDが変わった場合は選び直してください。
@@ -144,7 +144,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts\package-windows.ps1
 cargo about generate about.hbs -c about.toml --locked --offline -o THIRD_PARTY_NOTICES.md
 ```
 
-パッケージは `dist\UnfocusMute-<version>-windows-x64.zip` に作成され、SHA-256 検証ファイルは `dist\UnfocusMute-<version>-windows-x64.zip.sha256` に作成されます。ZIP には実行ファイル、`LICENSE`、`THIRD_PARTY_NOTICES.md`、ルートの `README_ko.md` と `README_en.md`、`assets` 配下のアイコン/スクリーンショット、`docs` 配下のその他の言語ドキュメントが含まれます。
+パッケージは `dist\UnfocusMute-<version>-windows-x64.zip` に作成され、SHA-256 検証ファイルは `dist\UnfocusMute-<version>-windows-x64.zip.sha256` に作成されます。ZIP には実行ファイル、`LICENSE`、`THIRD_PARTY_NOTICES.md`、ルートの `README_ko.md` と `README_en.md`、`docs` 配下のその他の言語ドキュメントが含まれます。
 
 ---
 

@@ -16,7 +16,7 @@
     <code>Windows 10/11</code>
     <code>Portable</code>
     <code>Rust Native</code>
-    <code>&lt;1MB</code>
+    <code>~477KB</code>
     <code>No telemetry</code>
   </p>
 
@@ -27,7 +27,7 @@
 
 UnfocusMute Windows ट्रे के लिए एक छोटा और हल्का ऐप है। जब चुना गया गेम या ऐप बैकग्राउंड में जाता है, तो यह सिर्फ उसी ऐप की आवाज अपने आप म्यूट करता है।
 
-Rust native app के रूप में build होने के कारण यह अलग runtime के बिना सीधे चलता है। मौजूदा Windows executable 1 MB से कम है।
+Rust native app के रूप में build होने के कारण यह अलग runtime के बिना सीधे चलता है। मौजूदा Windows executable लगभग 477 KB है, यानी 1 MB से कम।
 
 <p align="center">
   <img src="../assets/screenshot.png" alt="UnfocusMute ऐप विंडो" width="760" loading="lazy" decoding="async">
@@ -46,7 +46,7 @@ Rust native app के रूप में build होने के कार�
 ## उपयोग
 
 1. UnfocusMute चलाएं।
-2. पहली बार खुलने पर भाषा चुनें। डिफॉल्ट भाषा 한국어 है।
+2. पहली बार खुलने पर भाषा चुनें। डिफॉल्ट भाषा English है।
 3. जिस गेम या ऐप को मैनेज करना है, उसे शुरू करें।
 4. चल रहे ऐप्स की सूची refresh करें, कोई item चुनें और `चयनित जोड़ें` दबाएं।
 5. किसी खास process instance को register करना हो तो ही `PID विवरण दिखाएं` इस्तेमाल करें। PID से register किया गया target सिर्फ अभी चल रहे instance पर लागू होता है; app restart होकर PID बदल जाए तो उसे फिर से चुनें।
@@ -144,7 +144,7 @@ Third-party license notices refresh करें:
 cargo about generate about.hbs -c about.toml --locked --offline -o THIRD_PARTY_NOTICES.md
 ```
 
-पैकेज `dist\UnfocusMute-<version>-windows-x64.zip` में बनता है, और SHA-256 सत्यापन फ़ाइल `dist\UnfocusMute-<version>-windows-x64.zip.sha256` में बनती है। ZIP में executable फ़ाइल, `LICENSE`, `THIRD_PARTY_NOTICES.md`, root में `README_ko.md` और `README_en.md`, `assets` में आइकन/स्क्रीनशॉट संसाधन, और `docs` में बाकी स्थानीयकृत दस्तावेज़ शामिल होते हैं।
+पैकेज `dist\UnfocusMute-<version>-windows-x64.zip` में बनता है, और SHA-256 सत्यापन फ़ाइल `dist\UnfocusMute-<version>-windows-x64.zip.sha256` में बनती है। ZIP में executable फ़ाइल, `LICENSE`, `THIRD_PARTY_NOTICES.md`, root में `README_ko.md` और `README_en.md`, और `docs` में बाकी स्थानीयकृत दस्तावेज़ शामिल होते हैं।
 
 ---
 

@@ -16,7 +16,7 @@
     <code>Windows 10/11</code>
     <code>Portable</code>
     <code>Rust Native</code>
-    <code>&lt;1MB</code>
+    <code>~477KB</code>
     <code>No telemetry</code>
   </p>
 
@@ -27,7 +27,7 @@
 
 UnfocusMute is a small, lightweight Windows tray app that automatically mutes selected games or apps only while they are in the background.
 
-Built as a native Rust app, it runs without a separate runtime. The current Windows executable is under 1 MB.
+Built as a native Rust app, it runs without a separate runtime. The current Windows executable is about 477 KB, under 1 MB.
 
 <p align="center">
   <img src="assets/screenshot.png" alt="UnfocusMute app window" width="760" loading="lazy" decoding="async">
@@ -46,7 +46,7 @@ Download the Windows 10/11 ZIP from [GitHub Releases](https://github.com/ilsd7/U
 ## Usage
 
 1. Launch UnfocusMute.
-2. Select a language on first run. Korean is selected by default.
+2. Select a language on first run. English is selected by default.
 3. Start the game or app you want to manage.
 4. Refresh the running app list, select an item, and click `Add selected`.
 5. Use `Show PIDs` only when you need to register one specific process instance. Targets registered by PID apply only to the currently running instance, so choose it again if the app restarts with a different PID.
@@ -144,7 +144,7 @@ Refresh third-party license notices:
 cargo about generate about.hbs -c about.toml --locked --offline -o THIRD_PARTY_NOTICES.md
 ```
 
-The package is created under `dist\UnfocusMute-<version>-windows-x64.zip`, with a SHA-256 verification file at `dist\UnfocusMute-<version>-windows-x64.zip.sha256`. The ZIP includes the executable, `LICENSE`, `THIRD_PARTY_NOTICES.md`, root-level `README_ko.md` and `README_en.md`, icon/screenshot assets under `assets`, plus the other localized docs under `docs`.
+The package is created under `dist\UnfocusMute-<version>-windows-x64.zip`, with a SHA-256 verification file at `dist\UnfocusMute-<version>-windows-x64.zip.sha256`. The ZIP includes the executable, `LICENSE`, `THIRD_PARTY_NOTICES.md`, root-level `README_ko.md` and `README_en.md`, plus the other localized docs under `docs`.
 
 ---
 

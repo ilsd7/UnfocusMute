@@ -93,6 +93,13 @@ pub struct TargetMatcher {
 
 impl TargetMatcher {
     pub fn new(targets: &[TargetProcess]) -> Self {
+        if targets.is_empty() {
+            return Self::default();
+        }
+        if let [target] = targets {
+            return Self::from_single_target(target);
+        }
+
         let (name_count, pid_count) = target_kind_counts(targets);
         let mut names = Vec::with_capacity(name_count);
         let mut names_by_pid = Vec::with_capacity(pid_count);
@@ -118,6 +125,25 @@ impl TargetMatcher {
         Self {
             names,
             names_by_pid,
+        }
+    }
+
+    fn from_single_target(target: &TargetProcess) -> Self {
+        if !target.enabled {
+            return Self::default();
+        }
+        debug_assert!(is_normalized_process_name(&target.name));
+
+        if let Some(pid) = target.pid {
+            Self {
+                names: Vec::new(),
+                names_by_pid: vec![(pid, target.name.clone())],
+            }
+        } else {
+            Self {
+                names: vec![target.name.clone()],
+                names_by_pid: Vec::new(),
+            }
         }
     }
 
@@ -406,6 +432,25 @@ mod tests {
             Some(TargetMatchKind::Pid)
         );
         assert_eq!(pid_matcher.match_kind("chat.exe", 21), None);
+    }
+
+    #[test]
+    fn single_disabled_target_is_ignored() {
+        let mut target = TargetProcess::new("game.exe").unwrap();
+        target.enabled = false;
+
+        let matcher = TargetMatcher::new(&[target]);
+
+        assert!(matcher.is_empty());
+        assert!(!matcher.needs_foreground_process_name());
+    }
+
+    #[test]
+    fn empty_targets_create_empty_matcher() {
+        let matcher = TargetMatcher::new(&[]);
+
+        assert!(matcher.is_empty());
+        assert!(!matcher.needs_foreground_process_name());
     }
 
     #[test]

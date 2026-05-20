@@ -52,11 +52,49 @@ function Convert-ReadmeForPackage {
         [string]$Content
     )
 
-    $Content = $Content.Replace('href="README.md"', 'href="README_ko.md"')
-    $Content = $Content.Replace('href="../README.md"', 'href="../README_ko.md"')
-    $Content = $Content.Replace('src="assets/app-icon.png"', 'src="assets/app-icon.ico"')
-    $Content = $Content.Replace('src="../assets/app-icon.png"', 'src="../assets/app-icon.ico"')
+    $Content = Remove-ReadmeHeaderBlock $Content
+    $Content = Remove-ReadmeLanguageLinks $Content
+    $Content = Remove-ReadmeScreenshotBlock $Content
     return $Content.TrimStart()
+}
+
+function Remove-ReadmeLanguageLinks {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$Content
+    )
+
+    return [System.Text.RegularExpressions.Regex]::Replace(
+        $Content,
+        '(?m)^[ \t]*(?=[^\r\n]*\|)(?=[^\r\n]*README)(?=[^\r\n]*\.md)[^\r\n]*(?:\r?\n[ \t]*\r?\n|\r?\n|$)',
+        ''
+    )
+}
+
+function Remove-ReadmeHeaderBlock {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$Content
+    )
+
+    return [System.Text.RegularExpressions.Regex]::Replace(
+        $Content,
+        '(?ms)^\s*<div align="center">\s*<img src="(?:\.\./)?assets/app-icon\.png"[\s\S]*?</div>\s*',
+        "# UnfocusMute`r`n`r`n"
+    )
+}
+
+function Remove-ReadmeScreenshotBlock {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$Content
+    )
+
+    return [System.Text.RegularExpressions.Regex]::Replace(
+        $Content,
+        '(?ms)^[ \t]*<p align="center">\s*<img src="(?:\.\./)?assets/screenshot\.png"[^>]*>\s*</p>\s*',
+        ''
+    )
 }
 
 function Replace-PackageZip {
@@ -185,8 +223,8 @@ function Assert-PackageZip {
             if ($Content.Contains('src="assets/app-icon.png"') -or $Content.Contains('src="../assets/app-icon.png"')) {
                 throw "Package README $($Entry.FullName) still references app-icon.png"
             }
-            if ($Content.Contains('href="README.md"') -or $Content.Contains('href="../README.md"')) {
-                throw "Package README $($Entry.FullName) still references README.md instead of README_ko.md"
+            if ($Content.Contains('src="assets/screenshot.png"') -or $Content.Contains('src="../assets/screenshot.png"')) {
+                throw "Package README $($Entry.FullName) still references screenshot.png"
             }
         }
     }
@@ -225,10 +263,6 @@ try {
     Copy-Item "target\$Target\release\unfocusmute.exe" (Join-Path $Stage "UnfocusMute.exe")
     Copy-Item "LICENSE" $Stage
     Copy-Item "THIRD_PARTY_NOTICES.md" $Stage
-    $AssetsStage = Join-Path $Stage "assets"
-    New-Item -ItemType Directory -Force -Path $AssetsStage | Out-Null
-    Copy-Item "assets\app-icon.ico" $AssetsStage
-    Copy-Item "assets\screenshot.png" $AssetsStage
     $DocFiles = @()
     if (Test-Path "docs" -PathType Container) {
         $DocFiles = @(
@@ -260,9 +294,7 @@ try {
         "LICENSE",
         "THIRD_PARTY_NOTICES.md",
         "README_ko.md",
-        "README_en.md",
-        "assets/app-icon.ico",
-        "assets/screenshot.png"
+        "README_en.md"
     )
     if ($DocFiles.Count -gt 0) {
         $RequiredEntries += $DocFiles | ForEach-Object { "docs/$($_.Name)" }

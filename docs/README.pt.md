@@ -16,7 +16,7 @@
     <code>Windows 10/11</code>
     <code>Portable</code>
     <code>Rust Native</code>
-    <code>&lt;1MB</code>
+    <code>~477KB</code>
     <code>No telemetry</code>
   </p>
 
@@ -27,7 +27,7 @@
 
 UnfocusMute é um app leve e portátil para a bandeja do Windows que silencia apenas o áudio dos jogos ou apps que você escolher quando eles ficam em segundo plano.
 
-Criado como app nativo em Rust, ele roda sem runtime separado. O executável atual para Windows tem menos de 1 MB.
+Criado como app nativo em Rust, ele roda sem runtime separado. O executável atual para Windows tem cerca de 477 KB, menos de 1 MB.
 
 <p align="center">
   <img src="../assets/screenshot.png" alt="Janela do UnfocusMute" width="760" loading="lazy" decoding="async">
@@ -46,7 +46,7 @@ Baixe o ZIP para Windows 10/11 em [GitHub Releases](https://github.com/ilsd7/Unf
 ## Uso
 
 1. Abra o UnfocusMute.
-2. Selecione um idioma no primeiro uso. 한국어 vem selecionado por padrão.
+2. Selecione um idioma no primeiro uso. English vem selecionado por padrão.
 3. Inicie o jogo ou app que você quer gerenciar.
 4. Atualize a lista de apps em execução, selecione um item e clique em `Adicionar seleção`.
 5. Use `Mostrar PIDs` somente quando precisar registrar uma instância específica. Um alvo registrado por PID vale apenas para a instância em execução; se o app reiniciar com outro PID, selecione-o novamente.
@@ -144,7 +144,7 @@ Atualizar avisos de licença de terceiros:
 cargo about generate about.hbs -c about.toml --locked --offline -o THIRD_PARTY_NOTICES.md
 ```
 
-O pacote é criado em `dist\UnfocusMute-<version>-windows-x64.zip`, com um arquivo de verificação SHA-256 em `dist\UnfocusMute-<version>-windows-x64.zip.sha256`. O ZIP inclui o executável, `LICENSE`, `THIRD_PARTY_NOTICES.md`, `README_ko.md` e `README_en.md` na raiz, os recursos de ícone e captura em `assets`, além dos outros documentos localizados em `docs`.
+O pacote é criado em `dist\UnfocusMute-<version>-windows-x64.zip`, com um arquivo de verificação SHA-256 em `dist\UnfocusMute-<version>-windows-x64.zip.sha256`. O ZIP inclui o executável, `LICENSE`, `THIRD_PARTY_NOTICES.md`, `README_ko.md` e `README_en.md` na raiz, além dos outros documentos localizados em `docs`.
 
 ---
 

@@ -3,7 +3,7 @@
 
   <h1>UnfocusMute</h1>
 
-  <p><strong>선택한 백그라운드 앱만 음소거하고, UnfocusMute가 바꾼 오디오만 복원하는 가벼운 Windows 트레이 앱입니다.</strong></p>
+  <p><strong>Lightweight, portable Windows tray app that mutes selected background apps and restores only the audio it changed.</strong></p>
 
   <p>
     <a href="https://github.com/ilsd7/UnfocusMute/releases">다운로드</a>
@@ -14,10 +14,10 @@
 
   <p>
     <code>Windows 10/11</code>
-    <code>포터블</code>
-    <code>Rust 네이티브</code>
-    <code>&lt;1MB</code>
-    <code>텔레메트리 없음</code>
+    <code>Portable</code>
+    <code>Rust Native</code>
+    <code>~477KB</code>
+    <code>No telemetry</code>
   </p>
 
   <p>
@@ -27,7 +27,7 @@
 
 UnfocusMute는 선택한 게임이나 앱이 백그라운드로 전환될 때 그 앱의 소리만 자동으로 음소거하는 작고 가벼운 Windows용 트레이 앱입니다.
 
-Rust 네이티브 앱으로 빌드해 별도 런타임 없이 바로 실행됩니다. 현재 Windows용 실행 파일은 1MB 미만입니다.
+Rust 네이티브 앱으로 빌드해 별도 런타임 없이 바로 실행됩니다. 현재 Windows용 실행 파일은 약 477KB로 1MB 미만입니다.
 
 <p align="center">
   <img src="assets/screenshot.png" alt="UnfocusMute 앱 화면" width="760" loading="lazy" decoding="async">
@@ -46,7 +46,7 @@ Windows 10/11용 배포 ZIP을 [GitHub Releases](https://github.com/ilsd7/Unfocu
 ## 사용 방법
 
 1. UnfocusMute를 실행합니다.
-2. 첫 실행 언어 선택 창에서 사용할 언어를 고릅니다. 기본 선택은 한국어입니다.
+2. 첫 실행 언어 선택 창에서 사용할 언어를 고릅니다. 기본 선택은 English입니다.
 3. 음소거 대상으로 등록할 게임이나 앱을 실행합니다.
 4. `실행 중인 앱` 목록을 새로 고친 뒤 항목을 선택하고 `선택 추가`를 누릅니다.
 5. 특정 PID만 등록해야 하면 `세부 PID 보기`를 눌러 개별 항목을 선택합니다. PID로 등록한 대상은 현재 실행 중인 인스턴스에만 해당하므로 앱을 다시 실행한 뒤 PID가 바뀌면 다시 선택하세요.
@@ -144,7 +144,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts\package-windows.ps1
 cargo about generate about.hbs -c about.toml --locked --offline -o THIRD_PARTY_NOTICES.md
 ```
 
-결과물은 `dist\UnfocusMute-<version>-windows-x64.zip`에 생성되며, 같은 위치에 SHA-256 확인용 `dist\UnfocusMute-<version>-windows-x64.zip.sha256`도 생성됩니다. ZIP에는 실행 파일, `LICENSE`, `THIRD_PARTY_NOTICES.md`, 루트의 `README_ko.md`와 `README_en.md`, `assets` 폴더의 아이콘/스크린샷, `docs` 폴더의 기타 언어 문서가 포함됩니다.
+결과물은 `dist\UnfocusMute-<version>-windows-x64.zip`에 생성되며, 같은 위치에 SHA-256 확인용 `dist\UnfocusMute-<version>-windows-x64.zip.sha256`도 생성됩니다. ZIP에는 실행 파일, `LICENSE`, `THIRD_PARTY_NOTICES.md`, 루트의 `README_ko.md`와 `README_en.md`, `docs` 폴더의 기타 언어 문서가 포함됩니다.
 
 ---
 
