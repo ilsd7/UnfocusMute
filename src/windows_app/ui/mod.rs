@@ -371,7 +371,6 @@ unsafe fn bring_existing_window_to_front() {
 
 fn show_main_window(hwnd: HWND) {
     unsafe {
-        let _ = ShowWindow(hwnd, SW_SHOW);
         let _ = ShowWindow(hwnd, SW_RESTORE);
         let _ = SetForegroundWindow(hwnd);
     }
@@ -1396,6 +1395,8 @@ impl AppWindow {
     fn apply_process_filter(&mut self) {
         let terms = search_terms(&self.process_query);
         self.process_choice_indices.clear();
+        self.process_choice_indices
+            .reserve(self.all_process_choices.len());
         if terms.is_empty() {
             self.process_choice_indices
                 .extend(0..self.all_process_choices.len());

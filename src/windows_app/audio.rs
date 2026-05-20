@@ -15,6 +15,8 @@ use windows::Win32::Media::Audio::{
 use windows::Win32::System::Com::{CLSCTX_ALL, CoCreateInstance, CoTaskMemFree};
 use windows::core::{Interface, PCWSTR, PWSTR, implement};
 
+const LINEAR_MANAGED_SESSION_LIMIT: usize = 8;
+
 pub struct AudioController {
     enumerator: IMMDeviceEnumerator,
     managers: Vec<IAudioSessionManager2>,
@@ -243,6 +245,9 @@ enum ManagedSessionLookup<'a> {
         second_pid: u32,
         second_process_name: &'a str,
     },
+    Few {
+        identities: Vec<(u32, &'a str)>,
+    },
     // Prefilter only; exact AudioSessionKey lookup still decides ownership.
     Many {
         identities: HashSet<(u32, &'a str)>,
@@ -262,23 +267,29 @@ impl<'a> ManagedSessionLookup<'a> {
                 process_name: &first.process_name,
             };
         };
-        let Some(third) = keys.next() else {
+        if session_keys.len() == 2 {
             return Self::Two {
                 first_pid: first.pid,
                 first_process_name: &first.process_name,
                 second_pid: second.pid,
                 second_process_name: &second.process_name,
             };
-        };
+        }
+
+        if session_keys.len() <= LINEAR_MANAGED_SESSION_LIMIT {
+            let mut identities = Vec::with_capacity(session_keys.len());
+            identities.push((first.pid, first.process_name.as_str()));
+            identities.push((second.pid, second.process_name.as_str()));
+            identities.extend(keys.map(|key| (key.pid, key.process_name.as_str())));
+            return Self::Few { identities };
+        }
 
         let mut identities = HashSet::with_capacity(session_keys.len());
         let mut pids = HashSet::with_capacity(session_keys.len());
         identities.insert((first.pid, first.process_name.as_str()));
         identities.insert((second.pid, second.process_name.as_str()));
-        identities.insert((third.pid, third.process_name.as_str()));
         pids.insert(first.pid);
         pids.insert(second.pid);
-        pids.insert(third.pid);
         for key in keys {
             identities.insert((key.pid, key.process_name.as_str()));
             pids.insert(key.pid);
@@ -297,6 +308,9 @@ impl<'a> ManagedSessionLookup<'a> {
                 second_pid,
                 ..
             } => *first_pid == pid || *second_pid == pid,
+            Self::Few { identities } => identities
+                .iter()
+                .any(|(managed_pid, _)| *managed_pid == pid),
             Self::Many { pids, .. } => pids.contains(&pid),
         }
     }
@@ -316,6 +330,13 @@ impl<'a> ManagedSessionLookup<'a> {
             } => {
                 (*first_pid == pid && *first_process_name == process_name)
                     || (*second_pid == pid && *second_process_name == process_name)
+            }
+            Self::Few { identities } => {
+                identities
+                    .iter()
+                    .any(|(managed_pid, managed_process_name)| {
+                        *managed_pid == pid && *managed_process_name == process_name
+                    })
             }
             Self::Many { identities, .. } => identities.contains(&(pid, process_name)),
         }
@@ -430,7 +451,7 @@ impl EndpointNotification {
     }
 
     fn take_changed(&self) -> bool {
-        self.changed.swap(false, Ordering::AcqRel)
+        self.changed.swap(false, Ordering::Relaxed)
     }
 }
 
@@ -456,17 +477,17 @@ impl IMMNotificationClient_Impl for EndpointNotificationClient_Impl {
         _pwstrdeviceid: &PCWSTR,
         _dwnewstate: DEVICE_STATE,
     ) -> windows::core::Result<()> {
-        self.changed.store(true, Ordering::Release);
+        self.changed.store(true, Ordering::Relaxed);
         Ok(())
     }
 
     fn OnDeviceAdded(&self, _pwstrdeviceid: &PCWSTR) -> windows::core::Result<()> {
-        self.changed.store(true, Ordering::Release);
+        self.changed.store(true, Ordering::Relaxed);
         Ok(())
     }
 
     fn OnDeviceRemoved(&self, _pwstrdeviceid: &PCWSTR) -> windows::core::Result<()> {
-        self.changed.store(true, Ordering::Release);
+        self.changed.store(true, Ordering::Relaxed);
         Ok(())
     }
 
@@ -477,7 +498,7 @@ impl IMMNotificationClient_Impl for EndpointNotificationClient_Impl {
         _pwstrdefaultdeviceid: &PCWSTR,
     ) -> windows::core::Result<()> {
         if flow == eRender && role == eMultimedia {
-            self.changed.store(true, Ordering::Release);
+            self.changed.store(true, Ordering::Relaxed);
         }
         Ok(())
     }
@@ -487,7 +508,7 @@ impl IMMNotificationClient_Impl for EndpointNotificationClient_Impl {
         _pwstrdeviceid: &PCWSTR,
         _key: &PROPERTYKEY,
     ) -> windows::core::Result<()> {
-        self.changed.store(true, Ordering::Release);
+        self.changed.store(true, Ordering::Relaxed);
         Ok(())
     }
 }

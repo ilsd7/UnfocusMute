@@ -95,7 +95,6 @@ impl Language {
                 timer_setup_failed: "타이머 설정 실패",
                 tray_icon_unavailable: "트레이 아이콘을 표시할 수 없습니다",
                 open_config_failed: "설정 폴더 열기 실패",
-                unsupported_os: "UnfocusMute는 Windows용 앱입니다. 이 환경에서는 코어 테스트와 문서 작업만 실행할 수 있습니다.",
             },
             Language::En => &Strings {
                 app_title: "UnfocusMute",
@@ -144,7 +143,6 @@ impl Language {
                 timer_setup_failed: "Could not set app timer",
                 tray_icon_unavailable: "Could not show tray icon",
                 open_config_failed: "Could not open config folder",
-                unsupported_os: "UnfocusMute is a Windows app. This environment can run only core tests and documentation tasks.",
             },
             Language::Ja => &Strings {
                 app_title: "UnfocusMute",
@@ -193,7 +191,6 @@ impl Language {
                 timer_setup_failed: "タイマーを設定できませんでした",
                 tray_icon_unavailable: "トレイアイコンを表示できません",
                 open_config_failed: "設定フォルダーを開けませんでした",
-                unsupported_os: "UnfocusMuteはWindows向けアプリです。この環境ではコアテストとドキュメント作業のみ実行できます。",
             },
             Language::ZhHans => &Strings {
                 app_title: "UnfocusMute",
@@ -242,7 +239,6 @@ impl Language {
                 timer_setup_failed: "无法设置计时器",
                 tray_icon_unavailable: "无法显示托盘图标",
                 open_config_failed: "无法打开配置文件夹",
-                unsupported_os: "UnfocusMute 是 Windows 应用。此环境只能运行核心测试和文档任务。",
             },
             Language::Es => &Strings {
                 app_title: "UnfocusMute",
@@ -291,7 +287,6 @@ impl Language {
                 timer_setup_failed: "No se pudo configurar el temporizador",
                 tray_icon_unavailable: "No se pudo mostrar el icono de bandeja",
                 open_config_failed: "No se pudo abrir la carpeta de configuración",
-                unsupported_os: "UnfocusMute es una app para Windows. En este entorno solo se pueden ejecutar pruebas del núcleo y tareas de documentación.",
             },
             Language::Fr => &Strings {
                 app_title: "UnfocusMute",
@@ -340,7 +335,6 @@ impl Language {
                 timer_setup_failed: "Impossible de configurer le minuteur",
                 tray_icon_unavailable: "Impossible d’afficher l’icône de notification",
                 open_config_failed: "Impossible d’ouvrir le dossier de configuration",
-                unsupported_os: "UnfocusMute est une application pour Windows. Cet environnement ne peut exécuter que les tests du cœur et les tâches de documentation.",
             },
             Language::Pt => &Strings {
                 app_title: "UnfocusMute",
@@ -389,7 +383,6 @@ impl Language {
                 timer_setup_failed: "Não foi possível configurar o temporizador",
                 tray_icon_unavailable: "Não foi possível mostrar o ícone da bandeja",
                 open_config_failed: "Não foi possível abrir a pasta de configuração",
-                unsupported_os: "UnfocusMute é um app para Windows. Neste ambiente, só é possível executar testes principais e tarefas de documentação.",
             },
             Language::Hi => &Strings {
                 app_title: "UnfocusMute",
@@ -438,7 +431,6 @@ impl Language {
                 timer_setup_failed: "टाइमर सेट नहीं हो सका",
                 tray_icon_unavailable: "ट्रे आइकन नहीं दिखाया जा सका",
                 open_config_failed: "कॉन्फिग फ़ोल्डर नहीं खुल सका",
-                unsupported_os: "UnfocusMute Windows ऐप है। इस वातावरण में केवल कोर टेस्ट और दस्तावेज़ कार्य चल सकते हैं।",
             },
             Language::Ar => &Strings {
                 app_title: "UnfocusMute",
@@ -487,7 +479,6 @@ impl Language {
                 timer_setup_failed: "تعذر إعداد المؤقت",
                 tray_icon_unavailable: "تعذر عرض أيقونة علبة النظام",
                 open_config_failed: "تعذر فتح مجلد الإعدادات",
-                unsupported_os: "UnfocusMute تطبيق لنظام Windows. في هذه البيئة يمكن تشغيل الاختبارات الأساسية وأعمال التوثيق فقط.",
             },
         }
     }
@@ -541,7 +532,6 @@ pub struct Strings {
     pub timer_setup_failed: &'static str,
     pub tray_icon_unavailable: &'static str,
     pub open_config_failed: &'static str,
-    pub unsupported_os: &'static str,
 }
 
 #[cfg(test)]

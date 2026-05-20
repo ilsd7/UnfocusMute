@@ -106,10 +106,14 @@ impl TargetMatcher {
                 names.push(name);
             }
         }
-        names.sort_unstable();
-        names.dedup();
-        names_by_pid.sort_unstable();
-        names_by_pid.dedup();
+        if names.len() > 1 {
+            names.sort_unstable();
+            names.dedup();
+        }
+        if names_by_pid.len() > 1 {
+            names_by_pid.sort_unstable();
+            names_by_pid.dedup();
+        }
 
         Self {
             names,
@@ -273,8 +277,8 @@ impl<'a> MutePlanner<'a> {
 
         let should_mute = match match_kind {
             Some(TargetMatchKind::ProcessName) => {
-                self.foreground_process_name.as_deref() != Some(process_name)
-                    && self.foreground_pid != Some(pid)
+                self.foreground_pid != Some(pid)
+                    && self.foreground_process_name.as_deref() != Some(process_name)
             }
             Some(TargetMatchKind::Pid) => self.foreground_pid != Some(pid),
             None => false,

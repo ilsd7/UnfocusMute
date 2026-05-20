@@ -105,10 +105,11 @@ try {
     $ReadmeEn = Convert-ReadmeForPackage $ReadmeEn
     [System.IO.File]::WriteAllText((Join-Path $Stage "README_en.md"), $ReadmeEn, $Utf8NoBom)
 
-    if (Test-Path "docs") {
+    if (Test-Path "docs" -PathType Container) {
         $DocsStage = Join-Path $Stage "docs"
         New-Item -ItemType Directory -Force -Path $DocsStage | Out-Null
         Get-ChildItem "docs" -File |
+            Sort-Object Name |
             Where-Object { $_.Name -ne "README.en.md" } |
             ForEach-Object {
                 $Readme = [System.IO.File]::ReadAllText($_.FullName, [System.Text.Encoding]::UTF8)

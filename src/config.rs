@@ -3,6 +3,7 @@
 use crate::i18n::Language;
 use serde::{Deserialize, Serialize};
 use std::borrow::Cow;
+use std::cmp::Ordering;
 use std::env;
 use std::fmt::Write as _;
 use std::fs;
@@ -208,16 +209,16 @@ impl AppConfig {
                 .iter()
                 .all(|target| is_normalized_process_name(&target.name))
         );
-        if self
+        match self
             .targets
-            .iter()
-            .any(|existing| existing.name == target.name && existing.pid == target.pid)
+            .binary_search_by(|existing| compare_targets(existing, &target))
         {
-            return false;
+            Ok(_) => false,
+            Err(index) => {
+                self.targets.insert(index, target);
+                true
+            }
         }
-        self.targets.push(target);
-        self.sort_targets();
-        true
     }
 
     pub fn remove_target_at(&mut self, index: usize) -> bool {
@@ -261,12 +262,14 @@ impl AppConfig {
     }
 
     fn sort_targets(&mut self) {
-        self.targets.sort_by(|left, right| {
-            left.name
-                .cmp(&right.name)
-                .then_with(|| left.pid.unwrap_or(0).cmp(&right.pid.unwrap_or(0)))
-        });
+        self.targets.sort_by(compare_targets);
     }
+}
+
+fn compare_targets(left: &TargetProcess, right: &TargetProcess) -> Ordering {
+    left.name
+        .cmp(&right.name)
+        .then_with(|| left.pid.unwrap_or(0).cmp(&right.pid.unwrap_or(0)))
 }
 
 fn load_or_default_from_path(path: &Path) -> io::Result<AppConfigLoad> {
