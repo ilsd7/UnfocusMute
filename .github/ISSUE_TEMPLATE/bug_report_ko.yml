@@ -1,0 +1,115 @@
+name: 버그 제보
+description: 음소거, 복원, 트레이, 설정 저장 등 앱 동작 문제를 제보합니다.
+title: "[Bug]: "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        제보 전에 최신 GitHub Releases 버전에서도 같은 문제가 재현되는지 확인해 주세요.
+        비밀값, 전체 프로세스 목록, 개인 정보가 들어간 스크린샷은 첨부하지 말고, 문제와 관련된 앱 이름만 적어 주세요.
+
+  - type: input
+    id: version
+    attributes:
+      label: UnfocusMute 버전
+      description: 앱 파일 이름, Releases 페이지, 또는 ZIP 이름에서 확인한 버전을 적어 주세요.
+      placeholder: "예: 2.0.0"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: windows_version
+    attributes:
+      label: Windows 버전
+      options:
+        - Windows 11
+        - Windows 10
+        - 기타
+    validations:
+      required: true
+
+  - type: dropdown
+    id: install_source
+    attributes:
+      label: 실행 방식
+      options:
+        - GitHub Releases ZIP
+        - 직접 빌드
+        - 기타
+    validations:
+      required: true
+
+  - type: textarea
+    id: summary
+    attributes:
+      label: 문제 요약
+      description: 어떤 상황에서 무엇이 잘못됐는지 짧게 설명해 주세요.
+      placeholder: "예: game.exe를 등록했지만 Alt+Tab 후 음소거되지 않습니다."
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: 재현 방법
+      description: 같은 문제를 다시 확인할 수 있는 순서대로 적어 주세요.
+      placeholder: |
+        1. UnfocusMute를 실행합니다.
+        2. game.exe를 등록합니다.
+        3. 게임에서 다른 창으로 전환합니다.
+        4. ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: 기대한 동작
+      placeholder: "예: 등록한 앱만 백그라운드에서 자동 음소거되어야 합니다."
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: 실제 동작
+      placeholder: "예: 음소거되지 않거나, 다시 전면으로 돌아와도 복원되지 않습니다."
+    validations:
+      required: true
+
+  - type: input
+    id: target_app
+    attributes:
+      label: 등록한 앱 / 프로세스
+      description: 문제가 발생한 대상 앱 이름만 적어 주세요. PID를 사용했다면 PID 모드였다고 함께 적어 주세요.
+      placeholder: "예: game.exe, PID 모드 사용"
+
+  - type: textarea
+    id: audio_context
+    attributes:
+      label: 오디오 환경
+      description: 문제와 관련이 있어 보이는 오디오 장치, 출력 전환, 블루투스, 볼륨 믹서 상태 등을 적어 주세요.
+      placeholder: "예: USB 헤드셋 사용, 실행 중 출력 장치를 스피커에서 헤드셋으로 변경"
+
+  - type: dropdown
+    id: frequency
+    attributes:
+      label: 발생 빈도
+      options:
+        - 항상 재현됨
+        - 자주 재현됨
+        - 가끔 재현됨
+        - 한 번만 발생함
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: checklist
+    attributes:
+      label: 확인 사항
+      options:
+        - label: 최신 릴리스 버전에서 재현되는지 확인했습니다.
+          required: true
+        - label: 민감한 정보나 전체 프로세스 목록을 포함하지 않았습니다.
+          required: true

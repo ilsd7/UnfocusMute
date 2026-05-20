@@ -1,0 +1,8 @@
+blank_issues_enabled: true
+contact_links:
+  - name: README
+    url: https://github.com/ilsd7/UnfocusMute#readme
+    about: 설치, 사용 방법, 보안 및 개인정보 설명을 먼저 확인할 수 있습니다.
+  - name: Releases
+    url: https://github.com/ilsd7/UnfocusMute/releases
+    about: 최신 Windows 배포 ZIP과 체크섬을 확인할 수 있습니다.

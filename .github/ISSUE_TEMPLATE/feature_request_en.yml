@@ -1,0 +1,65 @@
+name: Feature request
+description: Suggest a feature, UX improvement, documentation change, or release improvement.
+title: "[Feature]: "
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        UnfocusMute aims to stay small, portable, local-first, and privacy-preserving.
+        Please describe how the proposal fits that direction.
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - Mute / restore behavior
+        - Running app selection UX
+        - Tray / startup behavior
+        - Settings / portable release
+        - Localization / documentation
+        - Build / release
+        - Other
+    validations:
+      required: true
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem to solve
+      description: Describe what is difficult today and what workflow this affects.
+      placeholder: "Example: When a launcher starts multiple processes, it is hard to know which entry to choose."
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed behavior
+      description: Describe what you want UnfocusMute to do.
+      placeholder: "Example: Show the window title or part of the executable path in PID mode."
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives or current workaround
+      description: Mention any workaround you use today or alternatives you considered.
+
+  - type: textarea
+    id: context
+    attributes:
+      label: Additional context
+      description: Add relevant app names, audio setup details, or screenshots if useful.
+
+  - type: checkboxes
+    id: checklist
+    attributes:
+      label: Checklist
+      options:
+        - label: I considered whether this can work without network requests, accounts, or telemetry.
+          required: true
+        - label: I did not include secrets, personal information, or a full process list.
+          required: true

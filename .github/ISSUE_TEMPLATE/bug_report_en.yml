@@ -1,0 +1,115 @@
+name: Bug report
+description: Report issues with muting, restoring, tray behavior, settings, or app startup.
+title: "[Bug]: "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Before reporting, please check whether the issue also happens on the latest GitHub Releases build.
+        Do not attach secrets, full process lists, or screenshots containing personal information. Include only the app names needed to understand the issue.
+
+  - type: input
+    id: version
+    attributes:
+      label: UnfocusMute version
+      description: Use the version shown in the release, ZIP file name, or executable package.
+      placeholder: "Example: 2.0.0"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: windows_version
+    attributes:
+      label: Windows version
+      options:
+        - Windows 11
+        - Windows 10
+        - Other
+    validations:
+      required: true
+
+  - type: dropdown
+    id: install_source
+    attributes:
+      label: How are you running UnfocusMute?
+      options:
+        - GitHub Releases ZIP
+        - Built from source
+        - Other
+    validations:
+      required: true
+
+  - type: textarea
+    id: summary
+    attributes:
+      label: Summary
+      description: Briefly describe what went wrong and when it happens.
+      placeholder: "Example: game.exe does not mute after I Alt+Tab away."
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: List the exact steps needed to reproduce the issue.
+      placeholder: |
+        1. Launch UnfocusMute.
+        2. Add game.exe.
+        3. Switch from the game to another window.
+        4. ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+      placeholder: "Example: Only the registered background app should be muted."
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+      placeholder: "Example: The app does not mute, or it stays muted after returning to the foreground."
+    validations:
+      required: true
+
+  - type: input
+    id: target_app
+    attributes:
+      label: Registered app / process
+      description: Include only the relevant target app name. If you used PID mode, mention that too.
+      placeholder: "Example: game.exe, PID mode"
+
+  - type: textarea
+    id: audio_context
+    attributes:
+      label: Audio setup
+      description: Include relevant audio devices, output switching, Bluetooth devices, or Volume Mixer details.
+      placeholder: "Example: USB headset; output changed from speakers to headset while UnfocusMute was running"
+
+  - type: dropdown
+    id: frequency
+    attributes:
+      label: Frequency
+      options:
+        - Always
+        - Often
+        - Sometimes
+        - Happened once
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: checklist
+    attributes:
+      label: Checklist
+      options:
+        - label: I tested this with the latest release.
+          required: true
+        - label: I did not include secrets, personal information, or a full process list.
+          required: true

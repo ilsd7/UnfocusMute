@@ -1,0 +1,50 @@
+name: Question
+description: Ask about usage, builds, settings, or release files.
+title: "[Question]: "
+labels: ["question"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Please check the README usage and security/privacy sections first.
+        If this is clearly a bug, the bug report template is usually better.
+
+  - type: dropdown
+    id: topic
+    attributes:
+      label: Topic
+      options:
+        - Usage
+        - Registering a specific app
+        - PID mode
+        - Startup / tray behavior
+        - Building from source
+        - Release ZIP / checksum
+        - Other
+    validations:
+      required: true
+
+  - type: textarea
+    id: question
+    attributes:
+      label: Question
+      description: Describe what you want to know.
+      placeholder: "Example: For apps that start multiple processes, should I use exe mode or PID mode?"
+    validations:
+      required: true
+
+  - type: textarea
+    id: context
+    attributes:
+      label: Context
+      description: Include only the app name, Windows version, build source, or other details needed to answer.
+
+  - type: checkboxes
+    id: checklist
+    attributes:
+      label: Checklist
+      options:
+        - label: I checked the README for related information.
+          required: true
+        - label: I did not include secrets, personal information, or a full process list.
+          required: true

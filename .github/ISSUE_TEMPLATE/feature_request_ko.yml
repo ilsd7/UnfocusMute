@@ -1,0 +1,65 @@
+name: 기능 제안
+description: 새 기능, UX 개선, 문서 개선, 배포 개선을 제안합니다.
+title: "[Feature]: "
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        UnfocusMute는 작은 포터블 Windows 트레이 앱을 지향합니다.
+        제안은 로컬 우선, 낮은 권한, 무텔레메트리 방향과 잘 맞는지 함께 적어 주시면 검토가 쉬워집니다.
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: 제안 영역
+      options:
+        - 음소거 / 복원 동작
+        - 실행 중인 앱 선택 UX
+        - 트레이 / 시작 프로그램
+        - 설정 / 포터블 배포
+        - 다국어 / 문서
+        - 빌드 / 릴리스
+        - 기타
+    validations:
+      required: true
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: 해결하려는 문제
+      description: 지금 어떤 점이 불편한지, 어떤 사용 흐름에서 필요한지 설명해 주세요.
+      placeholder: "예: 같은 게임 런처가 여러 프로세스를 띄울 때 어느 항목을 골라야 할지 헷갈립니다."
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: 원하는 동작
+      description: 앱이 어떻게 동작하면 좋을지 구체적으로 적어 주세요.
+      placeholder: "예: PID 목록에 창 제목이나 실행 경로 일부를 함께 보여 주면 좋겠습니다."
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: 대안 또는 현재 우회 방법
+      description: 이미 사용 중인 우회 방법이나 고려한 대안이 있으면 적어 주세요.
+
+  - type: textarea
+    id: context
+    attributes:
+      label: 추가 맥락
+      description: 관련 앱, 오디오 장치, 스크린샷 등 검토에 도움이 되는 정보가 있으면 적어 주세요.
+
+  - type: checkboxes
+    id: checklist
+    attributes:
+      label: 확인 사항
+      options:
+        - label: 제안이 네트워크 요청, 계정, 텔레메트리 없이도 구현될 수 있는지 고려했습니다.
+          required: true
+        - label: 민감한 정보나 전체 프로세스 목록을 포함하지 않았습니다.
+          required: true

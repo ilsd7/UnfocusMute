@@ -1,0 +1,50 @@
+name: 사용 질문
+description: 사용 방법, 빌드, 설정, 배포 파일에 대해 질문합니다.
+title: "[Question]: "
+labels: ["question"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        README의 사용 방법과 보안/개인정보 섹션을 먼저 확인해 주세요.
+        버그가 확실하다면 "버그 제보" 템플릿을 사용하는 편이 더 빠릅니다.
+
+  - type: dropdown
+    id: topic
+    attributes:
+      label: 질문 주제
+      options:
+        - 사용 방법
+        - 특정 앱 등록
+        - PID 모드
+        - 시작 프로그램 / 트레이
+        - 직접 빌드
+        - 배포 ZIP / 체크섬
+        - 기타
+    validations:
+      required: true
+
+  - type: textarea
+    id: question
+    attributes:
+      label: 질문
+      description: 알고 싶은 내용을 구체적으로 적어 주세요.
+      placeholder: "예: 여러 프로세스를 띄우는 앱은 exe 모드와 PID 모드 중 무엇을 써야 하나요?"
+    validations:
+      required: true
+
+  - type: textarea
+    id: context
+    attributes:
+      label: 상황 설명
+      description: 답변에 필요한 앱 이름, Windows 버전, 빌드 방식 등을 필요한 만큼만 적어 주세요.
+
+  - type: checkboxes
+    id: checklist
+    attributes:
+      label: 확인 사항
+      options:
+        - label: README에서 관련 내용을 먼저 찾아봤습니다.
+          required: true
+        - label: 민감한 정보나 전체 프로세스 목록을 포함하지 않았습니다.
+          required: true
