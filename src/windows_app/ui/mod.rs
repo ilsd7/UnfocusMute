@@ -1,6 +1,6 @@
 use crate::config::{
-    AppConfig, TargetProcess, WindowPosition, config_dir, is_normalized_process_name,
-    normalize_process_name, normalize_process_name_cow,
+    AppConfig, AppConfigLoad, TargetProcess, WindowPosition, config_dir,
+    is_normalized_process_name, normalize_process_name, normalize_process_name_cow,
 };
 use crate::engine::{AudioSessionKey, TargetMatcher};
 use crate::i18n::{Language, Strings};
@@ -130,19 +130,45 @@ unsafe fn run_window() -> Result<()> {
     let _class_registration = (unsafe { RegisterClassW(&class) } != 0)
         .then(|| WindowClassRegistration::new(CLASS_NAME, instance));
 
-    let config_load = AppConfig::load_or_default_with_status().unwrap_or_default();
+    let (config_load, mut initial_issues, can_sync_startup) =
+        match AppConfig::load_or_default_with_status() {
+            Ok(config_load) => (config_load, IssueState::default(), true),
+            Err(_) => {
+                let mut issues = IssueState::default();
+                issues.set(StatusIssue::ConfigLoadFailed);
+                (
+                    AppConfigLoad {
+                        config: AppConfig::default(),
+                        first_run: false,
+                        recovered_invalid_config: false,
+                    },
+                    issues,
+                    false,
+                )
+            }
+        };
+    if config_load.recovered_invalid_config {
+        initial_issues.set(StatusIssue::ConfigLoadFailed);
+    }
     let first_run = config_load.first_run;
     let mut config = config_load.config;
-    if first_run {
-        if let Some(preferences) = unsafe {
+    if first_run
+        && let Some(preferences) = unsafe {
             prompt_initial_language(instance, icon, config.language, config.launch_on_startup)?
-        } {
-            config.language = preferences.language;
-            config.launch_on_startup = preferences.launch_on_startup;
         }
-        let _ = config.save();
+    {
+        config.language = preferences.language;
+        config.launch_on_startup = preferences.launch_on_startup;
     }
-    let initial_issues = sync_startup_setting(&mut config);
+    let startup_sync = if can_sync_startup {
+        sync_startup_setting(&mut config)
+    } else {
+        StartupSyncResult::default()
+    };
+    initial_issues.merge(startup_sync.issues);
+    if (first_run || startup_sync.config_changed) && config.save().is_err() {
+        initial_issues.set(StatusIssue::ConfigSaveFailed);
+    }
 
     let forced_minimized = std::env::args().any(|arg| arg == "--minimized");
     let start_hidden = should_start_hidden(first_run, forced_minimized, config.start_minimized);
@@ -328,17 +354,25 @@ unsafe fn bring_existing_window_to_front() {
     }
 }
 
-fn sync_startup_setting(config: &mut AppConfig) -> IssueState {
+#[derive(Default)]
+struct StartupSyncResult {
+    issues: IssueState,
+    config_changed: bool,
+}
+
+fn sync_startup_setting(config: &mut AppConfig) -> StartupSyncResult {
     let mut issues = IssueState::default();
+    let mut config_changed = false;
     let result = startup::set_launch_on_startup(config.launch_on_startup);
     if result.is_err() && config.launch_on_startup {
         config.launch_on_startup = false;
+        config_changed = true;
         issues.set(StatusIssue::StartupUpdateFailed);
-        if config.save().is_err() {
-            issues.set(StatusIssue::ConfigSaveFailed);
-        }
     }
-    issues
+    StartupSyncResult {
+        issues,
+        config_changed,
+    }
 }
 
 fn should_start_hidden(first_run: bool, forced_minimized: bool, start_minimized: bool) -> bool {
@@ -386,6 +420,8 @@ struct AppWindow {
     paused: bool,
     show_process_details: bool,
     tray_added: bool,
+    config_reload_timer_ready: bool,
+    audio_fallback_timer_ready: bool,
     issues: IssueState,
     last_status: Option<StatusSnapshot>,
     config_stamp: Option<ConfigFileStamp>,
@@ -427,6 +463,13 @@ impl IssueState {
         old_visible != self.visible
     }
 
+    fn merge(&mut self, issues: Self) -> bool {
+        let old_visible = self.visible;
+        self.flags |= issues.flags;
+        self.refresh_visible();
+        old_visible != self.visible
+    }
+
     fn contains(self, issue: StatusIssue) -> bool {
         self.flags & issue.bit() != 0
     }
@@ -443,10 +486,11 @@ impl IssueState {
     }
 }
 
-const STATUS_ISSUE_PRIORITY_ORDER: [StatusIssue; 6] = [
+const STATUS_ISSUE_PRIORITY_ORDER: [StatusIssue; 7] = [
     StatusIssue::ConfigSaveFailed,
     StatusIssue::ConfigLoadFailed,
     StatusIssue::StartupUpdateFailed,
+    StatusIssue::TimerSetupFailed,
     StatusIssue::OpenConfigFailed,
     StatusIssue::AudioUnavailable,
     StatusIssue::AudioUpdateFailed,
@@ -460,6 +504,7 @@ enum StatusIssue {
     ConfigLoadFailed,
     ConfigSaveFailed,
     StartupUpdateFailed,
+    TimerSetupFailed,
     OpenConfigFailed,
 }
 
@@ -506,6 +551,30 @@ mod issue_state_tests {
         assert!(issues.contains(StatusIssue::ConfigLoadFailed));
         assert!(!issues.contains(StatusIssue::ConfigSaveFailed));
     }
+
+    #[test]
+    fn merging_issues_preserves_priority_order() {
+        let mut issues = IssueState::default();
+        let mut incoming = IssueState::default();
+
+        issues.set(StatusIssue::AudioUnavailable);
+        incoming.set(StatusIssue::ConfigLoadFailed);
+
+        assert!(issues.merge(incoming));
+        assert!(issues.contains(StatusIssue::AudioUnavailable));
+        assert!(issues.contains(StatusIssue::ConfigLoadFailed));
+        assert_eq!(issues.visible(), Some(StatusIssue::ConfigLoadFailed));
+    }
+
+    #[test]
+    fn timer_setup_issue_is_prioritized_before_open_config() {
+        let mut issues = IssueState::default();
+
+        issues.set(StatusIssue::OpenConfigFailed);
+        issues.set(StatusIssue::TimerSetupFailed);
+
+        assert_eq!(issues.visible(), Some(StatusIssue::TimerSetupFailed));
+    }
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -514,6 +583,21 @@ struct StatusSnapshot {
     issue: Option<StatusIssue>,
     target_count: usize,
     muted_count: usize,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+struct ConfigReloadResult {
+    targets_changed: bool,
+}
+
+impl ConfigReloadResult {
+    const UNCHANGED: Self = Self {
+        targets_changed: false,
+    };
+
+    const fn changed(targets_changed: bool) -> Self {
+        Self { targets_changed }
+    }
 }
 
 impl AppWindow {
@@ -547,6 +631,8 @@ impl AppWindow {
             paused: false,
             show_process_details: false,
             tray_added: false,
+            config_reload_timer_ready: false,
+            audio_fallback_timer_ready: false,
             issues: initial_issues,
             last_status: None,
             config_stamp: current_config_stamp(),
@@ -1299,7 +1385,8 @@ impl AppWindow {
 
     fn timer_tick(&mut self, timer_id: usize) {
         match timer_id {
-            CONFIG_RELOAD_TIMER_ID => self.reload_config_if_due(),
+            CONFIG_RELOAD_TIMER_ID if self.reload_config_if_due().targets_changed => self.tick(),
+            CONFIG_RELOAD_TIMER_ID => {}
             AUDIO_FALLBACK_TIMER_ID => self.tick(),
             _ => {}
         }
@@ -1319,6 +1406,8 @@ impl AppWindow {
             self.update_status();
             return;
         }
+
+        self.ensure_foreground_hook();
 
         if self
             .audio
@@ -1507,46 +1596,47 @@ impl AppWindow {
             StatusIssue::ConfigLoadFailed => self.strings.config_load_failed,
             StatusIssue::ConfigSaveFailed => self.strings.config_save_failed,
             StatusIssue::StartupUpdateFailed => self.strings.startup_update_failed,
+            StatusIssue::TimerSetupFailed => self.strings.timer_setup_failed,
             StatusIssue::OpenConfigFailed => self.strings.open_config_failed,
         }
     }
 
-    fn reload_config_if_due(&mut self) {
+    fn reload_config_if_due(&mut self) -> ConfigReloadResult {
         let now = Instant::now();
         if now < self.next_config_check {
-            return;
+            return ConfigReloadResult::UNCHANGED;
         }
         self.next_config_check = now + CONFIG_RELOAD_CHECK_INTERVAL;
-        self.reload_config_if_changed();
+        self.reload_config_if_changed()
     }
 
-    fn reload_config_if_changed(&mut self) -> bool {
+    fn reload_config_if_changed(&mut self) -> ConfigReloadResult {
         let stamp = current_config_stamp();
         if stamp == self.config_stamp {
-            return true;
+            return ConfigReloadResult::UNCHANGED;
         }
 
         match AppConfig::load_existing() {
             Ok(config) => {
                 self.config_stamp = stamp;
-                self.apply_external_config(config);
+                let targets_changed = self.apply_external_config(config);
                 self.clear_issue(StatusIssue::ConfigLoadFailed);
-                true
+                ConfigReloadResult::changed(targets_changed)
             }
             Err(error) if error.kind() == ErrorKind::NotFound => {
                 self.config_stamp = None;
                 self.clear_issue(StatusIssue::ConfigLoadFailed);
-                true
+                ConfigReloadResult::UNCHANGED
             }
             Err(_) => {
                 self.config_stamp = stamp;
                 self.set_issue(StatusIssue::ConfigLoadFailed);
-                true
+                ConfigReloadResult::UNCHANGED
             }
         }
     }
 
-    fn apply_external_config(&mut self, mut config: AppConfig) {
+    fn apply_external_config(&mut self, mut config: AppConfig) -> bool {
         let language_changed = self.config.language != config.language;
         let targets_changed = self.config.targets != config.targets;
         let checkboxes_changed = self.config.start_minimized != config.start_minimized
@@ -1581,6 +1671,7 @@ impl AppWindow {
         } else {
             self.update_status();
         }
+        targets_changed
     }
 
     fn install_foreground_hook(&mut self) {
@@ -1590,26 +1681,39 @@ impl AppWindow {
         }
     }
 
-    fn reset_timers(&self) {
-        unsafe {
-            SetTimer(
-                Some(self.hwnd),
-                CONFIG_RELOAD_TIMER_ID,
-                CONFIG_RELOAD_TIMER_INTERVAL_MS,
-                None,
-            );
+    fn ensure_foreground_hook(&mut self) {
+        if self.foreground_hook.is_none() {
+            self.install_foreground_hook();
         }
-        self.reset_polling_timer();
     }
 
-    fn reset_polling_timer(&self) {
-        unsafe {
-            SetTimer(
-                Some(self.hwnd),
-                AUDIO_FALLBACK_TIMER_ID,
-                self.config.polling_interval_ms as u32,
-                None,
-            );
+    fn reset_timers(&mut self) {
+        self.config_reload_timer_ready =
+            self.set_timer(CONFIG_RELOAD_TIMER_ID, CONFIG_RELOAD_TIMER_INTERVAL_MS);
+        self.audio_fallback_timer_ready = self.set_timer(
+            AUDIO_FALLBACK_TIMER_ID,
+            self.config.polling_interval_ms as u32,
+        );
+        self.update_timer_setup_issue();
+    }
+
+    fn reset_polling_timer(&mut self) {
+        self.audio_fallback_timer_ready = self.set_timer(
+            AUDIO_FALLBACK_TIMER_ID,
+            self.config.polling_interval_ms as u32,
+        );
+        self.update_timer_setup_issue();
+    }
+
+    fn set_timer(&self, timer_id: usize, interval_ms: u32) -> bool {
+        (unsafe { SetTimer(Some(self.hwnd), timer_id, interval_ms, None) }) != 0
+    }
+
+    fn update_timer_setup_issue(&mut self) {
+        if self.config_reload_timer_ready && self.audio_fallback_timer_ready {
+            self.clear_issue(StatusIssue::TimerSetupFailed);
+        } else {
+            self.set_issue(StatusIssue::TimerSetupFailed);
         }
     }
 
@@ -1682,9 +1786,7 @@ impl AppWindow {
         let Some(choice_index) = self.selected_process_choice_index() else {
             return;
         };
-        if !self.reload_config_if_changed() {
-            return;
-        }
+        self.reload_config_if_changed();
 
         let (name, pid) = {
             let Some(choice) = self.all_process_choices.get(choice_index) else {
@@ -1795,9 +1897,7 @@ impl AppWindow {
             self.show_manual_process_exe_required();
             return;
         }
-        if !self.reload_config_if_changed() {
-            return;
-        }
+        self.reload_config_if_changed();
         if self.config.add_normalized_target(name) {
             self.finish_target_change();
             self.manual_process_text.clear();
@@ -1828,9 +1928,7 @@ impl AppWindow {
     }
 
     fn remove_selected_target(&mut self) {
-        if !self.reload_config_if_changed() {
-            return;
-        }
+        self.reload_config_if_changed();
         let index = unsafe { SendMessageW(self.controls.target_list, LB_GETCURSEL, None, None).0 };
         if index < 0 {
             return;
@@ -1975,10 +2073,7 @@ impl AppWindow {
             ID_RESTORE_EXIT => unsafe { is_checked(self.controls.restore_exit_check) },
             _ => return,
         };
-        if !self.reload_config_if_changed() {
-            self.refresh_checkboxes();
-            return;
-        }
+        self.reload_config_if_changed();
 
         match id {
             ID_START_MINIMIZED => {
@@ -2064,9 +2159,7 @@ impl AppWindow {
     }
 
     fn set_language(&mut self, language: Language) {
-        if !self.reload_config_if_changed() {
-            return;
-        }
+        self.reload_config_if_changed();
         if self.config.language == language {
             return;
         }
@@ -2091,9 +2184,7 @@ impl AppWindow {
     }
 
     fn save_window_position(&mut self) {
-        if !self.reload_config_if_changed() {
-            return;
-        }
+        self.reload_config_if_changed();
         if self.remember_window_position() {
             self.save_config();
         }

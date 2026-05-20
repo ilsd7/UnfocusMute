@@ -92,6 +92,7 @@ impl Language {
                 config_save_failed: "설정 저장 실패",
                 config_load_failed: "설정 읽기 실패",
                 startup_update_failed: "자동 실행 설정 실패",
+                timer_setup_failed: "타이머 설정 실패",
                 open_config_failed: "설정 폴더 열기 실패",
                 unsupported_os: "UnfocusMute는 Windows용 앱입니다. 이 환경에서는 코어 테스트와 문서 작업만 실행할 수 있습니다.",
             },
@@ -139,6 +140,7 @@ impl Language {
                 config_save_failed: "Could not save settings",
                 config_load_failed: "Could not read settings",
                 startup_update_failed: "Could not update auto-start",
+                timer_setup_failed: "Could not set app timer",
                 open_config_failed: "Could not open config folder",
                 unsupported_os: "UnfocusMute is a Windows app. This environment can run only core tests and documentation tasks.",
             },
@@ -186,6 +188,7 @@ impl Language {
                 config_save_failed: "設定を保存できませんでした",
                 config_load_failed: "設定を読み込めませんでした",
                 startup_update_failed: "自動起動設定を変更できませんでした",
+                timer_setup_failed: "タイマーを設定できませんでした",
                 open_config_failed: "設定フォルダーを開けませんでした",
                 unsupported_os: "UnfocusMuteはWindows向けアプリです。この環境ではコアテストとドキュメント作業のみ実行できます。",
             },
@@ -233,6 +236,7 @@ impl Language {
                 config_save_failed: "无法保存设置",
                 config_load_failed: "无法读取设置",
                 startup_update_failed: "无法更新自动启动",
+                timer_setup_failed: "无法设置计时器",
                 open_config_failed: "无法打开配置文件夹",
                 unsupported_os: "UnfocusMute 是 Windows 应用。此环境只能运行核心测试和文档任务。",
             },
@@ -280,6 +284,7 @@ impl Language {
                 config_save_failed: "No se pudo guardar la configuración",
                 config_load_failed: "No se pudo leer la configuración",
                 startup_update_failed: "No se pudo cambiar el inicio automático",
+                timer_setup_failed: "No se pudo configurar el temporizador",
                 open_config_failed: "No se pudo abrir la carpeta de configuración",
                 unsupported_os: "UnfocusMute es una app para Windows. En este entorno solo se pueden ejecutar pruebas del núcleo y tareas de documentación.",
             },
@@ -327,6 +332,7 @@ impl Language {
                 config_save_failed: "Impossible d’enregistrer les réglages",
                 config_load_failed: "Impossible de lire les réglages",
                 startup_update_failed: "Impossible de modifier le démarrage auto",
+                timer_setup_failed: "Impossible de configurer le minuteur",
                 open_config_failed: "Impossible d’ouvrir le dossier de configuration",
                 unsupported_os: "UnfocusMute est une application pour Windows. Cet environnement ne peut exécuter que les tests du cœur et les tâches de documentation.",
             },
@@ -374,6 +380,7 @@ impl Language {
                 config_save_failed: "Não foi possível salvar as configurações",
                 config_load_failed: "Não foi possível ler as configurações",
                 startup_update_failed: "Não foi possível mudar o início automático",
+                timer_setup_failed: "Não foi possível configurar o temporizador",
                 open_config_failed: "Não foi possível abrir a pasta de configuração",
                 unsupported_os: "UnfocusMute é um app para Windows. Neste ambiente, só é possível executar testes principais e tarefas de documentação.",
             },
@@ -421,6 +428,7 @@ impl Language {
                 config_save_failed: "सेटिंग सहेजी नहीं जा सकी",
                 config_load_failed: "सेटिंग पढ़ी नहीं जा सकी",
                 startup_update_failed: "ऑटो-स्टार्ट सेटिंग बदली नहीं जा सकी",
+                timer_setup_failed: "टाइमर सेट नहीं हो सका",
                 open_config_failed: "कॉन्फिग फ़ोल्डर नहीं खुल सका",
                 unsupported_os: "UnfocusMute Windows ऐप है। इस वातावरण में केवल कोर टेस्ट और दस्तावेज़ कार्य चल सकते हैं।",
             },
@@ -468,6 +476,7 @@ impl Language {
                 config_save_failed: "تعذر حفظ الإعدادات",
                 config_load_failed: "تعذر قراءة الإعدادات",
                 startup_update_failed: "تعذر تغيير التشغيل التلقائي",
+                timer_setup_failed: "تعذر إعداد المؤقت",
                 open_config_failed: "تعذر فتح مجلد الإعدادات",
                 unsupported_os: "UnfocusMute تطبيق لنظام Windows. في هذه البيئة يمكن تشغيل الاختبارات الأساسية وأعمال التوثيق فقط.",
             },
@@ -520,6 +529,7 @@ pub struct Strings {
     pub config_save_failed: &'static str,
     pub config_load_failed: &'static str,
     pub startup_update_failed: &'static str,
+    pub timer_setup_failed: &'static str,
     pub open_config_failed: &'static str,
     pub unsupported_os: &'static str,
 }
@@ -546,6 +556,7 @@ mod tests {
             assert!(!language.strings().config_save_failed.is_empty());
             assert!(!language.strings().config_load_failed.is_empty());
             assert!(!language.strings().startup_update_failed.is_empty());
+            assert!(!language.strings().timer_setup_failed.is_empty());
             assert!(!language.strings().open_config_failed.is_empty());
             assert!(!language.native_name().is_empty());
         }

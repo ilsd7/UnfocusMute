@@ -83,6 +83,7 @@ pub struct AppConfig {
 pub struct AppConfigLoad {
     pub config: AppConfig,
     pub first_run: bool,
+    pub recovered_invalid_config: bool,
 }
 
 impl Default for AppConfig {
@@ -105,6 +106,7 @@ impl Default for AppConfigLoad {
         Self {
             config: AppConfig::default(),
             first_run: true,
+            recovered_invalid_config: false,
         }
     }
 }
@@ -112,29 +114,7 @@ impl Default for AppConfigLoad {
 impl AppConfig {
     pub fn load_or_default_with_status() -> io::Result<AppConfigLoad> {
         let path = config_file_path()?;
-        let file = match fs::File::open(&path) {
-            Ok(file) => file,
-            Err(error) if error.kind() == io::ErrorKind::NotFound => {
-                return Ok(AppConfigLoad::default());
-            }
-            Err(error) => return Err(error),
-        };
-        match parse_config_file(file) {
-            Ok(mut config) => {
-                config.sanitize();
-                Ok(AppConfigLoad {
-                    config,
-                    first_run: false,
-                })
-            }
-            Err(_) => {
-                let _ = backup_invalid_config(&path);
-                Ok(AppConfigLoad {
-                    config: Self::default(),
-                    first_run: false,
-                })
-            }
-        }
+        load_or_default_from_path(&path)
     }
 
     pub fn load_existing() -> io::Result<Self> {
@@ -276,6 +256,34 @@ impl AppConfig {
                 .cmp(&right.name)
                 .then_with(|| left.pid.unwrap_or(0).cmp(&right.pid.unwrap_or(0)))
         });
+    }
+}
+
+fn load_or_default_from_path(path: &Path) -> io::Result<AppConfigLoad> {
+    let file = match fs::File::open(path) {
+        Ok(file) => file,
+        Err(error) if error.kind() == io::ErrorKind::NotFound => {
+            return Ok(AppConfigLoad::default());
+        }
+        Err(error) => return Err(error),
+    };
+    match parse_config_file(file) {
+        Ok(mut config) => {
+            config.sanitize();
+            Ok(AppConfigLoad {
+                config,
+                first_run: false,
+                recovered_invalid_config: false,
+            })
+        }
+        Err(_) => {
+            let _ = backup_invalid_config(path);
+            Ok(AppConfigLoad {
+                config: AppConfig::default(),
+                first_run: false,
+                recovered_invalid_config: true,
+            })
+        }
     }
 }
 
@@ -836,6 +844,19 @@ mod tests {
         assert_ne!(backup_path, config_path);
         assert_eq!(fs::read_to_string(backup_path).unwrap(), "{not valid json");
         assert_eq!(fs::read_to_string(config_path).unwrap(), "{not valid json");
+    }
+
+    #[test]
+    fn invalid_config_load_reports_recovery() {
+        let dir = TestDir::new();
+        let config_path = dir.path().join("config.json");
+        fs::write(&config_path, "{not valid json").unwrap();
+
+        let loaded = load_or_default_from_path(&config_path).unwrap();
+
+        assert!(!loaded.first_run);
+        assert!(loaded.recovered_invalid_config);
+        assert_eq!(loaded.config, AppConfig::default());
     }
 
     #[test]
