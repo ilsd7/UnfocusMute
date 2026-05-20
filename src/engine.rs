@@ -130,28 +130,47 @@ impl TargetMatcher {
     }
 
     pub(crate) fn has_pid_target(&self, pid: u32) -> bool {
-        self.names_by_pid
-            .binary_search_by(|(target_pid, _)| target_pid.cmp(&pid))
-            .is_ok()
+        match self.names_by_pid.as_slice() {
+            [] => false,
+            [(target_pid, _)] => *target_pid == pid,
+            targets => targets
+                .binary_search_by(|(target_pid, _)| target_pid.cmp(&pid))
+                .is_ok(),
+        }
     }
 
     fn match_kind(&self, name: &str, pid: u32) -> Option<TargetMatchKind> {
-        if self
-            .names
-            .binary_search_by(|target| target.as_str().cmp(name))
-            .is_ok()
-        {
-            return Some(TargetMatchKind::ProcessName);
+        match self.names.as_slice() {
+            [] => {}
+            [target] => {
+                if target == name {
+                    return Some(TargetMatchKind::ProcessName);
+                }
+            }
+            targets => {
+                if targets
+                    .binary_search_by(|target| target.as_str().cmp(name))
+                    .is_ok()
+                {
+                    return Some(TargetMatchKind::ProcessName);
+                }
+            }
         }
 
-        self.names_by_pid
-            .binary_search_by(|(target_pid, target_name)| {
-                target_pid
-                    .cmp(&pid)
-                    .then_with(|| target_name.as_str().cmp(name))
-            })
-            .is_ok()
-            .then_some(TargetMatchKind::Pid)
+        match self.names_by_pid.as_slice() {
+            [] => None,
+            [(target_pid, target_name)] => {
+                (*target_pid == pid && target_name == name).then_some(TargetMatchKind::Pid)
+            }
+            targets => targets
+                .binary_search_by(|(target_pid, target_name)| {
+                    target_pid
+                        .cmp(&pid)
+                        .then_with(|| target_name.as_str().cmp(name))
+                })
+                .is_ok()
+                .then_some(TargetMatchKind::Pid),
+        }
     }
 }
 
@@ -362,6 +381,31 @@ mod tests {
         assert!(matcher.has_pid_target(10));
         assert!(matcher.has_pid_target(20));
         assert!(!matcher.has_pid_target(30));
+    }
+
+    #[test]
+    fn single_pid_target_prefilter_matches_without_binary_search() {
+        let matcher = TargetMatcher::new(&[TargetProcess::for_pid("game.exe", 10).unwrap()]);
+
+        assert!(matcher.has_pid_target(10));
+        assert!(!matcher.has_pid_target(20));
+    }
+
+    #[test]
+    fn single_targets_match_by_identity() {
+        let exe_matcher = TargetMatcher::new(&[TargetProcess::new("game.exe").unwrap()]);
+        let pid_matcher = TargetMatcher::new(&[TargetProcess::for_pid("chat.exe", 20).unwrap()]);
+
+        assert_eq!(
+            exe_matcher.match_kind("game.exe", 10),
+            Some(TargetMatchKind::ProcessName)
+        );
+        assert_eq!(exe_matcher.match_kind("chat.exe", 10), None);
+        assert_eq!(
+            pid_matcher.match_kind("chat.exe", 20),
+            Some(TargetMatchKind::Pid)
+        );
+        assert_eq!(pid_matcher.match_kind("chat.exe", 21), None);
     }
 
     #[test]

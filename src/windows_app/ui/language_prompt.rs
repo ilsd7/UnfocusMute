@@ -209,17 +209,25 @@ impl LanguagePrompt {
 
     fn refresh_prompt_text(&mut self) {
         let language = self.selected_language();
-        let font = UiFont::new(ui_font_point_size(language));
+        if self.current == language {
+            return;
+        }
         let strings = language.strings();
+        if prompt_needs_font_refresh(self.current, language) {
+            let font = UiFont::new(ui_font_point_size(language));
+            unsafe {
+                self.apply_font(&font);
+            }
+            self.font = font;
+        }
         unsafe {
-            self.apply_font(&font);
             set_text(self.hwnd, strings.first_run_window_title);
             set_text(self.title_label, strings.first_run_language_title);
             set_text(self.subtitle_label, strings.first_run_language_subtitle);
             set_text(self.launch_on_startup_check, strings.launch_on_startup);
             set_text(self.start_button, strings.first_run_start);
         }
-        self.font = font;
+        self.current = language;
         self.layout_controls(strings);
     }
 
@@ -267,6 +275,10 @@ fn startup_checkbox_height(text_width: i32) -> i32 {
     } else {
         LANGUAGE_PROMPT_STARTUP_HEIGHT
     }
+}
+
+fn prompt_needs_font_refresh(current: Language, next: Language) -> bool {
+    ui_font_point_size(current) != ui_font_point_size(next)
 }
 
 fn language_name_storage_bytes_hint() -> usize {
@@ -430,5 +442,16 @@ mod tests {
             startup_checkbox_height(LANGUAGE_PROMPT_CONTENT_WIDTH),
             LANGUAGE_PROMPT_STARTUP_TALL_HEIGHT
         );
+    }
+
+    #[test]
+    fn prompt_reuses_font_for_same_point_size_languages() {
+        assert!(!prompt_needs_font_refresh(Language::Ko, Language::En));
+    }
+
+    #[test]
+    fn prompt_refreshes_font_for_larger_script_point_size() {
+        assert!(prompt_needs_font_refresh(Language::Ko, Language::Hi));
+        assert!(prompt_needs_font_refresh(Language::Ar, Language::En));
     }
 }

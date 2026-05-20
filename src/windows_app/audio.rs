@@ -135,7 +135,8 @@ impl AudioController {
                         if lookup.may_include_pid(pid) {
                             apply_result.keep_active_sessions_for_pid(pid, managed_muted_sessions);
                             apply_result.had_failures = true;
-                        } else if matcher.has_pid_target(pid) {
+                        } else if unresolved_unmanaged_pid_is_failure(needs_all_pids, matcher, pid)
+                        {
                             apply_result.had_failures = true;
                         }
                     }
@@ -490,6 +491,14 @@ fn insert_session_keys_for_pid(
     }
 }
 
+fn unresolved_unmanaged_pid_is_failure(
+    needs_all_pids: bool,
+    matcher: &TargetMatcher,
+    pid: u32,
+) -> bool {
+    !needs_all_pids || matcher.has_pid_target(pid)
+}
+
 struct EndpointNotification {
     enumerator: IMMDeviceEnumerator,
     client: IMMNotificationClient,
@@ -664,7 +673,15 @@ unsafe fn co_task_mem_string(value: PWSTR) -> Option<String> {
         return None;
     }
 
-    Some(String::from_utf16_lossy(&wide[..len]))
+    Some(string_from_wide_lossy(&wide[..len]))
+}
+
+fn string_from_wide_lossy(wide: &[u16]) -> String {
+    if wide.iter().all(|ch| *ch <= 0x7f) {
+        return wide.iter().map(|ch| *ch as u8 as char).collect();
+    }
+
+    String::from_utf16_lossy(wide)
 }
 
 struct CoTaskMemString(PWSTR);
@@ -729,5 +746,40 @@ mod tests {
         assert!(lookup.may_include_pid(3));
         assert!(lookup.may_include(3, "other.exe"));
         assert!(!lookup.may_include_pid(99));
+    }
+
+    #[test]
+    fn unresolved_pid_only_filter_failures_reuse_prefilter_decision() {
+        let matcher =
+            TargetMatcher::new(&[crate::config::TargetProcess::for_pid("game.exe", 7).unwrap()]);
+
+        assert!(unresolved_unmanaged_pid_is_failure(false, &matcher, 42));
+    }
+
+    #[test]
+    fn unresolved_all_pid_scan_failures_still_require_pid_target() {
+        let matcher = TargetMatcher::new(&[crate::config::TargetProcess::new("game.exe").unwrap()]);
+
+        assert!(!unresolved_unmanaged_pid_is_failure(true, &matcher, 42));
+    }
+
+    #[test]
+    fn wide_lossy_string_uses_ascii_fast_path() {
+        assert_eq!(
+            string_from_wide_lossy(&[
+                u16::from(b'a'),
+                u16::from(b'b'),
+                u16::from(b'c'),
+                u16::from(b'-'),
+                u16::from(b'1'),
+            ]),
+            "abc-1"
+        );
+    }
+
+    #[test]
+    fn wide_lossy_string_preserves_unicode_and_replacement_behavior() {
+        assert_eq!(string_from_wide_lossy(&[0xd55c, 0xae00]), "한글");
+        assert_eq!(string_from_wide_lossy(&[0xd800]), "\u{fffd}");
     }
 }

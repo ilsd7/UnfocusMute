@@ -219,6 +219,24 @@ impl AppConfig {
                 .iter()
                 .all(|target| is_supported_target_process_name(&target.name))
         );
+        match self.targets.len() {
+            0 => {
+                self.targets.push(target);
+                return true;
+            }
+            1 => match compare_targets(&self.targets[0], &target) {
+                Ordering::Equal => return false,
+                Ordering::Less => {
+                    self.targets.push(target);
+                    return true;
+                }
+                Ordering::Greater => {
+                    self.targets.insert(0, target);
+                    return true;
+                }
+            },
+            _ => {}
+        }
         match self
             .targets
             .binary_search_by(|existing| compare_targets(existing, &target))
@@ -241,9 +259,13 @@ impl AppConfig {
 
     pub(crate) fn contains_normalized_target(&self, name: &str, pid: Option<u32>) -> bool {
         debug_assert!(is_normalized_process_name(name));
-        self.targets
-            .binary_search_by(|target| compare_target_key(target, name, pid))
-            .is_ok()
+        match self.targets.as_slice() {
+            [] => false,
+            [target] => compare_target_key(target, name, pid).is_eq(),
+            targets => targets
+                .binary_search_by(|target| compare_target_key(target, name, pid))
+                .is_ok(),
+        }
     }
 
     pub fn deduplicate_targets(&mut self) {
@@ -584,15 +606,16 @@ pub(crate) fn is_supported_normalized_target_process_name(input: &str) -> bool {
 
 fn windows_reserved_device_name(name: &str) -> bool {
     let device_name = name.split('.').next().unwrap_or(name);
-    if matches!(
-        device_name,
-        "con" | "prn" | "aux" | "nul" | "conin$" | "conout$"
-    ) {
-        return true;
+    match device_name.len() {
+        3 => matches!(device_name, "con" | "prn" | "aux" | "nul"),
+        4 => {
+            let bytes = device_name.as_bytes();
+            matches!(&bytes[..3], b"com" | b"lpt") && matches!(bytes[3], b'1'..=b'9')
+        }
+        6 => device_name == "conin$",
+        7 => device_name == "conout$",
+        _ => false,
     }
-
-    let bytes = device_name.as_bytes();
-    bytes.len() == 4 && matches!(&bytes[..3], b"com" | b"lpt") && matches!(bytes[3], b'1'..=b'9')
 }
 
 fn is_supported_utf16_target_process_name(input: &[u16]) -> bool {
@@ -1100,6 +1123,19 @@ mod tests {
         assert_eq!(config.targets.len(), 1);
         assert!(config.remove_target_at(0));
         assert!(config.targets.is_empty());
+    }
+
+    #[test]
+    fn single_target_lookup_and_insert_keep_sorted_order() {
+        let mut config = AppConfig::default();
+
+        assert!(config.add_target("game.exe"));
+        assert!(config.contains_normalized_target("game.exe", None));
+        assert!(!config.contains_normalized_target("chat.exe", None));
+        assert!(config.add_target("chat.exe"));
+
+        assert_eq!(config.targets[0].name, "chat.exe");
+        assert_eq!(config.targets[1].name, "game.exe");
     }
 
     #[test]

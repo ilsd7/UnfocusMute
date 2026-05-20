@@ -87,6 +87,7 @@ const RESTORE_CHECK_HEIGHT: i32 = 26;
 const RESTORE_CHECK_TALL_HEIGHT: i32 = 44;
 const RESTORE_CHECK_Y: i32 = 490;
 const RESTORE_CHECK_TALL_Y: i32 = 482;
+const PID_DISPLAY_DECORATION_UTF16_UNITS: usize = " (PID )".len();
 
 pub fn run() -> Result<()> {
     let _com = unsafe { ComApartment::initialize()? };
@@ -161,21 +162,27 @@ unsafe fn run_window() -> Result<()> {
     }
     let first_run = config_load.first_run;
     let mut config = config_load.config;
+    let mut accepted_initial_preferences = false;
     if first_run
         && let Some(preferences) = unsafe {
             prompt_initial_language(instance, icon, config.language, config.launch_on_startup)?
         }
     {
+        accepted_initial_preferences = true;
         config.language = preferences.language;
         config.launch_on_startup = preferences.launch_on_startup;
     }
-    let startup_sync = if can_sync_startup {
+    let startup_sync = if can_sync_startup
+        && should_sync_startup_setting(first_run, accepted_initial_preferences)
+    {
         sync_startup_setting(&mut config)
     } else {
         StartupSyncResult::default()
     };
     initial_issues.merge(startup_sync.issues);
-    if (first_run || startup_sync.config_changed) && config.save().is_err() {
+    if should_save_startup_config(accepted_initial_preferences, startup_sync.config_changed)
+        && config.save().is_err()
+    {
         initial_issues.set(StatusIssue::ConfigSaveFailed);
     }
 
@@ -413,6 +420,17 @@ fn apply_startup_sync_result(config: &mut AppConfig, update_failed: bool) -> Sta
     }
 }
 
+fn should_save_startup_config(
+    accepted_initial_preferences: bool,
+    startup_config_changed: bool,
+) -> bool {
+    accepted_initial_preferences || startup_config_changed
+}
+
+fn should_sync_startup_setting(first_run: bool, accepted_initial_preferences: bool) -> bool {
+    !first_run || accepted_initial_preferences
+}
+
 #[cfg(test)]
 mod startup_sync_tests {
     use super::*;
@@ -457,6 +475,20 @@ mod startup_sync_tests {
         assert!(config.launch_on_startup);
         assert!(!result.config_changed);
         assert!(!result.issues.contains(StatusIssue::StartupUpdateFailed));
+    }
+
+    #[test]
+    fn initial_config_is_saved_only_after_accept_or_sync_change() {
+        assert!(!should_save_startup_config(false, false));
+        assert!(should_save_startup_config(true, false));
+        assert!(should_save_startup_config(false, true));
+    }
+
+    #[test]
+    fn startup_sync_waits_for_first_run_acceptance() {
+        assert!(!should_sync_startup_setting(true, false));
+        assert!(should_sync_startup_setting(true, true));
+        assert!(should_sync_startup_setting(false, false));
     }
 }
 
@@ -1578,7 +1610,7 @@ impl AppWindow {
             let process_text_bytes = self
                 .process_choice_indices
                 .iter()
-                .map(|index| storage_bytes_hint(self.all_process_choices[*index].display_name()))
+                .map(|index| self.all_process_choices[*index].display_storage_bytes())
                 .sum();
             SendMessageW(controls.running_combo, CB_RESETCONTENT, None, None);
             reserve_combo_items(
@@ -2164,7 +2196,10 @@ impl AppWindow {
             return;
         }
         unsafe {
-            window_text_into(self.controls.running_combo, &mut self.process_query);
+            window_text_into(self.controls.running_combo, &mut self.display_text_buffer);
+        }
+        if !replace_text_if_changed(&mut self.process_query, &mut self.display_text_buffer) {
+            return;
         }
         self.apply_process_filter();
         if !self.process_choice_indices.is_empty() {
@@ -2269,7 +2304,10 @@ impl AppWindow {
 
     fn update_manual_process_text(&mut self) {
         unsafe {
-            window_text_into(self.controls.manual_edit, &mut self.manual_process_text);
+            window_text_into(self.controls.manual_edit, &mut self.display_text_buffer);
+        }
+        if !replace_text_if_changed(&mut self.manual_process_text, &mut self.display_text_buffer) {
+            return;
         }
         self.update_action_buttons();
     }
@@ -2824,6 +2862,42 @@ fn foreground_process_cache_needs_refresh(cache: Option<&(u32, Option<String>)>,
     !matches!(cache, Some((cached_pid, Some(_))) if *cached_pid == pid)
 }
 
+fn replace_text_if_changed(current: &mut String, next: &mut String) -> bool {
+    if current == next {
+        next.clear();
+        false
+    } else {
+        std::mem::swap(current, next);
+        next.clear();
+        true
+    }
+}
+
+#[cfg(test)]
+mod text_update_tests {
+    use super::*;
+
+    #[test]
+    fn unchanged_text_is_cleared_from_scratch_buffer() {
+        let mut current = String::from("game.exe");
+        let mut next = String::from("game.exe");
+
+        assert!(!replace_text_if_changed(&mut current, &mut next));
+        assert_eq!(current, "game.exe");
+        assert!(next.is_empty());
+    }
+
+    #[test]
+    fn changed_text_replaces_current_and_clears_scratch_buffer() {
+        let mut current = String::from("game.exe");
+        let mut next = String::from("chat.exe");
+
+        assert!(replace_text_if_changed(&mut current, &mut next));
+        assert_eq!(current, "chat.exe");
+        assert!(next.is_empty());
+    }
+}
+
 #[cfg(test)]
 mod foreground_cache_tests {
     use super::*;
@@ -2875,8 +2949,7 @@ mod layout_tests {
 fn target_display_storage_bytes_hint(target: &TargetProcess) -> usize {
     let mut bytes = storage_bytes_hint(&target.name);
     if let Some(pid) = target.pid {
-        bytes += storage_bytes_hint(" (PID )") + decimal_digit_count(pid) * size_of::<u16>()
-            - size_of::<u16>();
+        bytes += (PID_DISPLAY_DECORATION_UTF16_UNITS + decimal_digit_count(pid)) * size_of::<u16>();
     }
     bytes
 }

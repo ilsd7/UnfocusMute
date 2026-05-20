@@ -458,7 +458,7 @@ pub(super) unsafe fn reserve_combo_items(hwnd: HWND, count: usize, text_bytes: u
     }
 }
 
-pub(super) fn storage_bytes_hint(text: &str) -> usize {
+pub(in crate::windows_app::ui) fn storage_bytes_hint(text: &str) -> usize {
     (utf16_code_unit_count(text) + 1) * std::mem::size_of::<u16>()
 }
 
@@ -500,6 +500,11 @@ fn encode_wide_with_nul<'a>(text: &str, buffer: &'a mut [u16]) -> Option<&'a [u1
 
 fn push_utf16_lossy(output: &mut String, wide: &[u16]) {
     output.reserve(wide.len());
+    if wide.iter().all(|ch| *ch <= 0x7f) {
+        output.extend(wide.iter().map(|ch| *ch as u8 as char));
+        return;
+    }
+
     output.extend(
         std::char::decode_utf16(wide.iter().copied())
             .map(|result| result.unwrap_or(std::char::REPLACEMENT_CHARACTER)),
@@ -726,6 +731,27 @@ mod tests {
                 u16::from(b'd')
             ]
         );
+    }
+
+    #[test]
+    fn push_utf16_lossy_appends_ascii_fast_path() {
+        let mut output = String::from(">");
+
+        push_utf16_lossy(
+            &mut output,
+            &[u16::from(b'a'), u16::from(b'b'), u16::from(b'c')],
+        );
+
+        assert_eq!(output, ">abc");
+    }
+
+    #[test]
+    fn push_utf16_lossy_preserves_unicode_and_replacement_behavior() {
+        let mut output = String::new();
+
+        push_utf16_lossy(&mut output, &[0xd55c, 0xae00, 0xd800]);
+
+        assert_eq!(output, "한글\u{fffd}");
     }
 
     #[test]
