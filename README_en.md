@@ -16,7 +16,7 @@
     <code>Windows 10/11</code>
     <code>Portable</code>
     <code>Rust Native</code>
-    <code>~516KB</code>
+    <code>&lt;1MB</code>
     <code>No telemetry</code>
   </p>
 
@@ -27,7 +27,7 @@
 
 UnfocusMute is a small, lightweight Windows tray app that automatically mutes selected games or apps only while they are in the background.
 
-Built as a native Rust app, it runs without a separate runtime. The current Windows executable is about 516 KB, under 1 MB.
+Built as a native Rust app, it runs without a separate runtime. The current Windows executable is under 1 MB.
 
 <p align="center">
   <img src="assets/screenshot.png" alt="UnfocusMute app window" width="760">

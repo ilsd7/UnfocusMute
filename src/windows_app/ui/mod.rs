@@ -311,6 +311,7 @@ struct AppWindow {
     all_process_choices: Vec<ProcessChoice>,
     process_choice_indices: Vec<usize>,
     process_query: String,
+    manual_process_text: String,
     foreground_process_name_cache: Option<(u32, Option<String>)>,
     last_process_refresh: Instant,
     updating_process_combo: bool,
@@ -435,6 +436,7 @@ impl AppWindow {
             all_process_choices: Vec::new(),
             process_choice_indices: Vec::new(),
             process_query: String::new(),
+            manual_process_text: String::new(),
             foreground_process_name_cache: None,
             last_process_refresh: Instant::now(),
             updating_process_combo: false,
@@ -474,13 +476,10 @@ impl AppWindow {
         }
         self.refresh_processes();
         self.refresh_targets();
-        self.refresh_language_button();
         self.refresh_checkboxes();
         self.refresh_text();
-        self.update_status();
         self.reset_timers();
         self.install_foreground_hook();
-        self.add_tray_icon();
         self.tick();
         Ok(())
     }
@@ -857,15 +856,6 @@ impl AppWindow {
         self.add_tray_icon();
     }
 
-    fn refresh_language_button(&self) {
-        unsafe {
-            set_text(
-                self.controls.language_button,
-                language_button_text(self.config.language),
-            );
-        }
-    }
-
     fn refresh_checkboxes(&self) {
         unsafe {
             set_checkbox(
@@ -1227,7 +1217,7 @@ impl AppWindow {
             &self.target_matcher,
             foreground_pid,
             foreground_process_name,
-            &self.muted_by_app,
+            &mut self.muted_by_app,
         ) {
             Ok(result) => {
                 self.clear_issue(StatusIssue::AudioUnavailable);
@@ -1239,21 +1229,10 @@ impl AppWindow {
                 return;
             }
         };
-        if let Some(active_managed_sessions) = apply_result.active_managed_sessions {
-            self.muted_by_app.clear();
-            self.muted_by_app.extend(active_managed_sessions);
-        }
 
         self.apply_audio_update_result(apply_result.had_failures);
         if apply_result.had_failures {
             self.audio = None;
-        }
-        for action in apply_result.changed_actions {
-            if action.mute {
-                self.muted_by_app.insert(action.key);
-            } else {
-                self.muted_by_app.remove(&action.key);
-            }
         }
 
         self.update_status();
@@ -1532,7 +1511,7 @@ impl AppWindow {
             ID_RUNNING if notification == CBN_CLOSEUP as u16 => {
                 self.release_running_process_focus()
             }
-            ID_MANUAL if notification == EN_CHANGE as u16 => self.update_action_buttons(),
+            ID_MANUAL if notification == EN_CHANGE as u16 => self.update_manual_process_text(),
             ID_OPEN_CONFIG => self.open_config_folder(),
             ID_PAUSE => self.toggle_pause(),
             ID_HIDE => unsafe {
@@ -1647,8 +1626,8 @@ impl AppWindow {
     }
 
     fn add_manual_target(&mut self) {
-        let text = unsafe { window_text(self.controls.manual_edit) };
-        let Some(name) = normalize_process_name(&text) else {
+        self.manual_process_text = unsafe { window_text(self.controls.manual_edit) };
+        let Some(name) = normalize_process_name(&self.manual_process_text) else {
             return;
         };
         if !name.ends_with(".exe") {
@@ -1660,10 +1639,16 @@ impl AppWindow {
         }
         if self.config.add_target(&name) {
             self.finish_target_change();
+            self.manual_process_text.clear();
             unsafe {
                 set_text(self.controls.manual_edit, "");
             }
         }
+    }
+
+    fn update_manual_process_text(&mut self) {
+        self.manual_process_text = unsafe { window_text(self.controls.manual_edit) };
+        self.update_action_buttons();
     }
 
     fn show_manual_process_exe_required(&self) {
@@ -1746,8 +1731,7 @@ impl AppWindow {
     }
 
     fn can_submit_manual_target(&self) -> bool {
-        let text = unsafe { window_text(self.controls.manual_edit) };
-        let Some(name) = normalize_process_name(&text) else {
+        let Some(name) = normalize_process_name(&self.manual_process_text) else {
             return false;
         };
         !name.ends_with(".exe")

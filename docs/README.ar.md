@@ -16,7 +16,7 @@
     <code>Windows 10/11</code>
     <code>Portable</code>
     <code>Rust Native</code>
-    <code>~516KB</code>
+    <code>&lt;1MB</code>
     <code>No telemetry</code>
   </p>
 
@@ -27,7 +27,7 @@
 
 UnfocusMute تطبيق صغير وخفيف لعلبة نظام Windows يكتم صوت اللعبة أو التطبيق الذي تختاره فقط عندما ينتقل إلى الخلفية.
 
-لأنه مبني كتطبيق Rust أصلي، يعمل مباشرة دون runtime منفصل. يبلغ حجم ملف Windows التنفيذي الحالي نحو 516KB، أي أقل من 1MB.
+لأنه مبني كتطبيق Rust أصلي، يعمل مباشرة دون runtime منفصل. حجم ملف Windows التنفيذي الحالي أقل من 1MB.
 
 <p align="center">
   <img src="../assets/screenshot.png" alt="نافذة تطبيق UnfocusMute" width="760">

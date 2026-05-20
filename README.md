@@ -16,7 +16,7 @@
     <code>Windows 10/11</code>
     <code>Portable</code>
     <code>Rust Native</code>
-    <code>~516KB</code>
+    <code>&lt;1MB</code>
     <code>No telemetry</code>
   </p>
 
@@ -27,7 +27,7 @@
 
 UnfocusMute는 선택한 게임이나 앱이 백그라운드로 전환될 때 그 앱의 소리만 자동으로 음소거하는 작고 가벼운 Windows용 트레이 앱입니다.
 
-Rust 네이티브 앱으로 빌드해 별도 런타임 없이 바로 실행됩니다. 현재 Windows용 실행 파일은 약 516KB로 1MB 미만입니다.
+Rust 네이티브 앱으로 빌드해 별도 런타임 없이 바로 실행됩니다. 현재 Windows용 실행 파일은 1MB 미만입니다.
 
 <p align="center">
   <img src="assets/screenshot.png" alt="UnfocusMute 앱 화면" width="760">

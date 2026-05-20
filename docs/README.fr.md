@@ -16,7 +16,7 @@
     <code>Windows 10/11</code>
     <code>Portable</code>
     <code>Rust Native</code>
-    <code>~516KB</code>
+    <code>&lt;1MB</code>
     <code>No telemetry</code>
   </p>
 
@@ -27,7 +27,7 @@
 
 UnfocusMute est une petite application légère pour la zone de notification Windows qui coupe uniquement le son des jeux ou applications sélectionnés lorsqu’ils passent en arrière-plan.
 
-Compilée comme application native Rust, elle s’exécute sans runtime séparé. L’exécutable Windows actuel pèse environ 516 Ko, soit moins de 1 Mo.
+Compilée comme application native Rust, elle s’exécute sans runtime séparé. L’exécutable Windows actuel fait moins de 1 Mo.
 
 <p align="center">
   <img src="../assets/screenshot.png" alt="Fenêtre de l’application UnfocusMute" width="760">

@@ -16,7 +16,7 @@
     <code>Windows 10/11</code>
     <code>Portable</code>
     <code>Rust Native</code>
-    <code>~516KB</code>
+    <code>&lt;1MB</code>
     <code>No telemetry</code>
   </p>
 
@@ -27,7 +27,7 @@
 
 UnfocusMuteは、選択したゲームやアプリがバックグラウンドに回ったとき、そのアプリの音だけを自動でミュートする小さく軽量なWindowsトレイアプリです。
 
-Rust製のネイティブアプリなので、別途ランタイムなしでそのまま実行できます。現在のWindows実行ファイルは約516KBで、1MB未満です。
+Rust製のネイティブアプリなので、別途ランタイムなしでそのまま実行できます。現在のWindows実行ファイルは1MB未満です。
 
 <p align="center">
   <img src="../assets/screenshot.png" alt="UnfocusMuteのアプリ画面" width="760">

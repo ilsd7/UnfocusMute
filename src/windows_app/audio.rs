@@ -1,4 +1,4 @@
-use crate::engine::{AudioSessionKey, MuteAction, MutePlanner, TargetMatcher};
+use crate::engine::{AudioSessionKey, MutePlanner, TargetMatcher};
 use crate::windows_app::process;
 use anyhow::{Context, Result, bail};
 use std::collections::HashSet;
@@ -25,8 +25,6 @@ pub struct MuteApplyResult {
 }
 
 pub struct PlannedMuteApplyResult {
-    pub active_managed_sessions: Option<Vec<AudioSessionKey>>,
-    pub changed_actions: Vec<MuteAction>,
     pub had_failures: bool,
 }
 
@@ -59,19 +57,20 @@ impl AudioController {
             });
         }
 
-        let mut failed_sessions = HashSet::new();
-        let mut had_failures = false;
+        let mut failed_sessions = None;
         self.visit_session_handles(|session| {
             if apply_unmute_to_handle(&session, session_keys).is_err() {
-                had_failures = true;
-                failed_sessions.insert(session.key.clone());
+                failed_sessions
+                    .get_or_insert_with(HashSet::new)
+                    .insert(session.key.clone());
             }
         })?;
 
-        if failed_sessions.is_empty() {
-            session_keys.clear();
-        } else {
+        let had_failures = failed_sessions.is_some();
+        if let Some(failed_sessions) = failed_sessions {
             session_keys.retain(|key| failed_sessions.contains(key));
+        } else {
+            session_keys.clear();
         }
         Ok(MuteApplyResult { had_failures })
     }
@@ -81,7 +80,7 @@ impl AudioController {
         matcher: &TargetMatcher,
         foreground_pid: Option<u32>,
         foreground_process_name: Option<String>,
-        managed_muted_sessions: &HashSet<AudioSessionKey>,
+        managed_muted_sessions: &mut HashSet<AudioSessionKey>,
     ) -> Result<PlannedMuteApplyResult> {
         let planner = MutePlanner::new_with_normalized_foreground(
             matcher,
@@ -97,10 +96,12 @@ impl AudioController {
                 &mut apply_result,
             );
         })?;
+        if let Some(active_managed_sessions) = apply_result.active_managed_sessions {
+            managed_muted_sessions.clear();
+            managed_muted_sessions.extend(active_managed_sessions);
+        }
 
         Ok(PlannedMuteApplyResult {
-            active_managed_sessions: apply_result.active_managed_sessions,
-            changed_actions: apply_result.changed_actions,
             had_failures: apply_result.had_failures,
         })
     }
@@ -150,7 +151,6 @@ struct AudioSessionHandle {
 
 struct PlanApplyResult {
     active_managed_sessions: Option<Vec<AudioSessionKey>>,
-    changed_actions: Vec<MuteAction>,
     had_failures: bool,
 }
 
@@ -159,7 +159,6 @@ impl PlanApplyResult {
         Self {
             active_managed_sessions: (managed_session_count > 0)
                 .then(|| Vec::with_capacity(managed_session_count)),
-            changed_actions: Vec::new(),
             had_failures: false,
         }
     }
@@ -168,24 +167,35 @@ impl PlanApplyResult {
 fn apply_plan_to_handle(
     session: &AudioSessionHandle,
     planner: &MutePlanner<'_>,
-    managed_muted_sessions: &HashSet<AudioSessionKey>,
+    managed_muted_sessions: &mut HashSet<AudioSessionKey>,
     result: &mut PlanApplyResult,
 ) {
-    let managed =
-        result.active_managed_sessions.is_some() && managed_muted_sessions.contains(&session.key);
-    if managed && let Some(active_managed_sessions) = &mut result.active_managed_sessions {
-        active_managed_sessions.push(session.key.clone());
-    }
-
+    let managed = managed_muted_sessions.contains(&session.key);
     let Some(action) = planner.plan_session_with_managed(managed, &session.key, session.muted)
     else {
+        if managed && let Some(active_managed_sessions) = &mut result.active_managed_sessions {
+            active_managed_sessions.push(session.key.clone());
+        }
         return;
     };
+
     if unsafe { session.volume.SetMute(action.mute, std::ptr::null()) }.is_err() {
         result.had_failures = true;
+        if managed && let Some(active_managed_sessions) = &mut result.active_managed_sessions {
+            active_managed_sessions.push(session.key.clone());
+        }
         return;
     }
-    result.changed_actions.push(action);
+
+    if let Some(active_managed_sessions) = &mut result.active_managed_sessions {
+        if action.mute {
+            active_managed_sessions.push(action.key);
+        }
+    } else if action.mute {
+        managed_muted_sessions.insert(action.key);
+    } else {
+        managed_muted_sessions.remove(&action.key);
+    }
 }
 
 fn apply_unmute_to_handle(

@@ -16,7 +16,7 @@
     <code>Windows 10/11</code>
     <code>Portable</code>
     <code>Rust Native</code>
-    <code>~516KB</code>
+    <code>&lt;1MB</code>
     <code>No telemetry</code>
   </p>
 
@@ -27,7 +27,7 @@
 
 UnfocusMute 是一款小巧轻量的 Windows 托盘应用，会在所选游戏或应用进入后台时，只自动静音该应用的声音。
 
-它是 Rust 原生应用，无需额外运行时即可直接运行。当前 Windows 可执行文件约 516KB，小于 1MB。
+它是 Rust 原生应用，无需额外运行时即可直接运行。当前 Windows 可执行文件小于 1MB。
 
 <p align="center">
   <img src="../assets/screenshot.png" alt="UnfocusMute 应用窗口" width="760">

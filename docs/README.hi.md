@@ -16,7 +16,7 @@
     <code>Windows 10/11</code>
     <code>Portable</code>
     <code>Rust Native</code>
-    <code>~516KB</code>
+    <code>&lt;1MB</code>
     <code>No telemetry</code>
   </p>
 
@@ -27,7 +27,7 @@
 
 UnfocusMute Windows ट्रे के लिए एक छोटा और हल्का ऐप है। जब चुना गया गेम या ऐप बैकग्राउंड में जाता है, तो यह सिर्फ उसी ऐप की आवाज अपने आप म्यूट करता है।
 
-Rust native app के रूप में build होने के कारण यह अलग runtime के बिना सीधे चलता है। मौजूदा Windows executable लगभग 516 KB है, यानी 1 MB से कम।
+Rust native app के रूप में build होने के कारण यह अलग runtime के बिना सीधे चलता है। मौजूदा Windows executable 1 MB से कम है।
 
 <p align="center">
   <img src="../assets/screenshot.png" alt="UnfocusMute ऐप विंडो" width="760">

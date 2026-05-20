@@ -1,7 +1,8 @@
 #![cfg_attr(not(windows), allow(dead_code))]
 
 use crate::config::{TargetProcess, is_normalized_process_name, normalize_process_name};
-use std::collections::{HashMap, HashSet};
+#[cfg(test)]
+use std::collections::HashSet;
 
 #[derive(Clone, Debug, Eq, Hash, PartialEq)]
 pub struct AudioSessionKey {
@@ -82,28 +83,29 @@ enum TargetMatchKind {
 
 #[derive(Clone, Debug, Default)]
 pub struct TargetMatcher {
-    names: HashSet<String>,
-    names_by_pid: HashMap<u32, Vec<String>>,
+    names: Vec<String>,
+    names_by_pid: Vec<(u32, String)>,
 }
 
 impl TargetMatcher {
     pub fn new(targets: &[TargetProcess]) -> Self {
-        let mut names = HashSet::with_capacity(targets.len());
-        let mut names_by_pid = HashMap::<u32, Vec<String>>::with_capacity(targets.len());
+        let mut names = Vec::with_capacity(targets.len());
+        let mut names_by_pid = Vec::with_capacity(targets.len());
 
         for target in targets.iter().filter(|target| target.enabled) {
             let Some(name) = normalize_process_name(&target.name) else {
                 continue;
             };
             if let Some(pid) = target.pid {
-                let names = names_by_pid.entry(pid).or_default();
-                if !names.iter().any(|existing| existing == &name) {
-                    names.push(name);
-                }
+                names_by_pid.push((pid, name));
             } else {
-                names.insert(name);
+                names.push(name);
             }
         }
+        names.sort_unstable();
+        names.dedup();
+        names_by_pid.sort_unstable();
+        names_by_pid.dedup();
 
         Self {
             names,
@@ -120,13 +122,21 @@ impl TargetMatcher {
     }
 
     fn match_kind(&self, name: &str, pid: u32) -> Option<TargetMatchKind> {
-        if self.names.contains(name) {
+        if self
+            .names
+            .binary_search_by(|target| target.as_str().cmp(name))
+            .is_ok()
+        {
             return Some(TargetMatchKind::ProcessName);
         }
 
         self.names_by_pid
-            .get(&pid)
-            .is_some_and(|names| names.iter().any(|target| target == name))
+            .binary_search_by(|(target_pid, target_name)| {
+                target_pid
+                    .cmp(&pid)
+                    .then_with(|| target_name.as_str().cmp(name))
+            })
+            .is_ok()
             .then_some(TargetMatchKind::Pid)
     }
 }
