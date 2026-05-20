@@ -121,7 +121,7 @@ UnfocusMute는 로컬 우선 방식으로 동작합니다. 등록한 프로세�
 
 ```powershell
 rustup target add x86_64-pc-windows-msvc
-cargo build --release --target x86_64-pc-windows-msvc
+cargo build --release --target x86_64-pc-windows-msvc --locked
 ```
 
 릴리스 빌드는 용량을 줄이도록 설정되어 있습니다. `Cargo.toml`의 release profile은 심볼 제거, LTO, 단일 codegen unit, `panic = "abort"`, 크기 우선 최적화를 사용합니다.

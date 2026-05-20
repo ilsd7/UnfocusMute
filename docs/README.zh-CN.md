@@ -121,7 +121,7 @@ UnfocusMute 以本地优先方式工作。它只在本地配置文件中保存�
 
 ```powershell
 rustup target add x86_64-pc-windows-msvc
-cargo build --release --target x86_64-pc-windows-msvc
+cargo build --release --target x86_64-pc-windows-msvc --locked
 ```
 
 发布构建已按更小输出体积配置。`Cargo.toml` 的 release profile 会移除符号、启用 LTO、使用单个 codegen unit、设置 `panic = "abort"`，并优先做体积优化。

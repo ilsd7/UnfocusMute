@@ -152,8 +152,7 @@ impl AppConfig {
             backup_invalid_existing_config(path)?;
         }
 
-        let temp_path = path.with_extension("json.tmp");
-        let mut temp_file = fs::File::create(&temp_path)?;
+        let (mut temp_file, temp_path) = create_temp_config_file(path)?;
         if let Err(error) = serde_json::to_writer_pretty(&mut temp_file, self) {
             let _ = fs::remove_file(&temp_path);
             return Err(io::Error::other(error));
@@ -344,6 +343,48 @@ fn replace_file(temp_path: &Path, destination: &Path) -> io::Result<()> {
         let _ = fs::remove_file(temp_path);
     }
     result
+}
+
+fn create_temp_config_file(destination: &Path) -> io::Result<(fs::File, PathBuf)> {
+    let temp_path = destination.with_extension("json.tmp");
+    match fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(&temp_path)
+    {
+        Ok(file) => return Ok((file, temp_path)),
+        Err(error) if error.kind() == io::ErrorKind::AlreadyExists => {}
+        Err(error) => return Err(error),
+    }
+
+    let parent = destination.parent().unwrap_or_else(|| Path::new("."));
+    let file_name = destination
+        .file_name()
+        .and_then(|name| name.to_str())
+        .unwrap_or("config.json");
+    let pid = std::process::id();
+    let timestamp = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|duration| duration.as_nanos())
+        .unwrap_or(0);
+
+    for index in 0..100 {
+        let temp_path = parent.join(format!("{file_name}.{pid}-{timestamp}-{index}.tmp"));
+        match fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&temp_path)
+        {
+            Ok(file) => return Ok((file, temp_path)),
+            Err(error) if error.kind() == io::ErrorKind::AlreadyExists => continue,
+            Err(error) => return Err(error),
+        }
+    }
+
+    Err(io::Error::new(
+        io::ErrorKind::AlreadyExists,
+        "could not create a unique config temp path",
+    ))
 }
 
 #[cfg(windows)]
@@ -1033,6 +1074,31 @@ mod tests {
             fs::read_to_string(backups[0].path()).unwrap(),
             "{not valid json"
         );
+    }
+
+    #[test]
+    fn save_does_not_overwrite_existing_temp_config() {
+        let dir = TestDir::new();
+        let config_path = dir.path().join("config.json");
+        let existing_temp = dir.path().join("config.json.tmp");
+        fs::write(&existing_temp, "keep").unwrap();
+
+        AppConfig::default()
+            .save_to_path(&config_path, false)
+            .unwrap();
+
+        assert!(
+            fs::read_to_string(&config_path)
+                .unwrap()
+                .contains("\"version\"")
+        );
+        assert_eq!(fs::read_to_string(existing_temp).unwrap(), "keep");
+        let temp_files = fs::read_dir(dir.path())
+            .unwrap()
+            .filter_map(Result::ok)
+            .filter(|entry| entry.file_name().to_string_lossy().ends_with(".tmp"))
+            .count();
+        assert_eq!(temp_files, 1);
     }
 
     #[test]

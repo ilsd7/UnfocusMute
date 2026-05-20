@@ -2482,11 +2482,20 @@ impl AppWindow {
                 return;
             };
             let mut text_buffer = Vec::new();
-            write_wide_buffer(self.strings.show, &mut text_buffer);
+            let window_visible = IsWindowVisible(self.hwnd).as_bool();
+            let visibility_command = if window_visible { ID_HIDE } else { ID_SHOW };
+            write_wide_buffer(
+                if window_visible {
+                    self.strings.hide
+                } else {
+                    self.strings.show
+                },
+                &mut text_buffer,
+            );
             let _ = AppendMenuW(
                 menu.handle(),
                 MF_STRING,
-                ID_SHOW as usize,
+                visibility_command as usize,
                 PCWSTR(text_buffer.as_ptr()),
             );
             write_wide_buffer(

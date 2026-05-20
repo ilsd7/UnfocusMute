@@ -121,7 +121,7 @@ UnfocusMute تطبيق صغير وخفيف لعلبة نظام Windows يكتم 
 
 ```powershell
 rustup target add x86_64-pc-windows-msvc
-cargo build --release --target x86_64-pc-windows-msvc
+cargo build --release --target x86_64-pc-windows-msvc --locked
 ```
 
 تم ضبط إصدارات release لتقليل حجم الناتج. يستخدم release profile في `Cargo.toml` إزالة الرموز، وLTO، ووحدة codegen واحدة، و`panic = "abort"`، وتحسينًا يفضّل الحجم.

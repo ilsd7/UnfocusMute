@@ -121,7 +121,7 @@ Prérequis :
 
 ```powershell
 rustup target add x86_64-pc-windows-msvc
-cargo build --release --target x86_64-pc-windows-msvc
+cargo build --release --target x86_64-pc-windows-msvc --locked
 ```
 
 Les builds de publication sont configurées pour réduire la taille de sortie. Le release profile de `Cargo.toml` supprime les symboles, active LTO, utilise une seule codegen unit, définit `panic = "abort"` et optimise pour la taille.

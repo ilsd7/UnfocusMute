@@ -46,9 +46,29 @@ function Convert-ReadmeForPackage {
     return $Content.TrimStart()
 }
 
+function Replace-PackageZip {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$Source,
+        [Parameter(Mandatory = $true)]
+        [string]$Destination
+    )
+
+    if (Test-Path $Destination -PathType Leaf) {
+        [System.IO.File]::Replace(
+            [System.IO.Path]::GetFullPath($Source),
+            [System.IO.Path]::GetFullPath($Destination),
+            $null
+        )
+    }
+    else {
+        Move-Item $Source $Destination
+    }
+}
+
 Push-Location $RepoRoot
 try {
-    cargo build --release --target $Target
+    cargo build --release --target $Target --locked
     if ($LASTEXITCODE -ne 0) {
         throw "cargo build failed with exit code $LASTEXITCODE"
     }
@@ -90,10 +110,7 @@ try {
     Compress-Archive -Path (Join-Path $Stage "*") -DestinationPath $TempZip -CompressionLevel Optimal
 
     try {
-        if (Test-Path $Zip) {
-            Remove-Item $Zip -Force
-        }
-        Move-Item $TempZip $Zip
+        Replace-PackageZip $TempZip $Zip
     }
     catch {
         throw "Could not replace $Zip. Close File Explorer preview, archive tools, or any process using the existing ZIP, then try again. Original error: $($_.Exception.Message)"

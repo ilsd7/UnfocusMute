@@ -121,7 +121,7 @@ UnfocusMuteはローカル優先で動作します。保存するのは、登録
 
 ```powershell
 rustup target add x86_64-pc-windows-msvc
-cargo build --release --target x86_64-pc-windows-msvc
+cargo build --release --target x86_64-pc-windows-msvc --locked
 ```
 
 リリースビルドは出力サイズを小さくする設定です。`Cargo.toml` の release profile はシンボル削除、LTO、単一 codegen unit、`panic = "abort"`、サイズ優先最適化を使います。

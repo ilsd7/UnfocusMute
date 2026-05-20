@@ -49,6 +49,7 @@ impl ProcessChoice {
 pub(super) enum SearchTerms<'a> {
     Empty,
     One(Cow<'a, str>),
+    Two(Cow<'a, str>, Cow<'a, str>),
     Many(Vec<Cow<'a, str>>),
 }
 
@@ -61,6 +62,7 @@ impl SearchTerms<'_> {
         match self {
             Self::Empty => true,
             Self::One(term) => predicate(term.as_ref()),
+            Self::Two(first, second) => predicate(first.as_ref()) && predicate(second.as_ref()),
             Self::Many(terms) => terms.iter().all(|term| predicate(term.as_ref())),
         }
     }
@@ -143,10 +145,14 @@ pub(super) fn search_terms(query: &str) -> SearchTerms<'_> {
     let Some(second) = terms.next() else {
         return SearchTerms::One(first);
     };
+    let Some(third) = terms.next() else {
+        return SearchTerms::Two(first, second);
+    };
 
-    let mut many = Vec::with_capacity(terms.size_hint().0 + 2);
+    let mut many = Vec::with_capacity(terms.size_hint().0 + 3);
     many.push(first);
     many.push(second);
+    many.push(third);
     many.extend(terms);
     SearchTerms::Many(many)
 }
@@ -197,6 +203,14 @@ mod tests {
         assert!(matches!(
             search_terms("player"),
             SearchTerms::One(Cow::Borrowed("player"))
+        ));
+    }
+
+    #[test]
+    fn two_search_terms_avoid_term_vec() {
+        assert!(matches!(
+            search_terms("player 4242"),
+            SearchTerms::Two(Cow::Borrowed("player"), Cow::Borrowed("4242"))
         ));
     }
 }
