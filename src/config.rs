@@ -172,6 +172,10 @@ impl AppConfig {
             let _ = fs::remove_file(&temp_path);
             return Err(io::Error::other(error));
         }
+        if let Err(error) = temp_file.sync_all() {
+            let _ = fs::remove_file(&temp_path);
+            return Err(error);
+        }
         drop(temp_file);
         replace_file(&temp_path, path)
     }

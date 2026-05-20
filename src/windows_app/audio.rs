@@ -480,16 +480,31 @@ unsafe fn active_render_session_managers(
 }
 
 unsafe fn co_task_mem_string(value: PWSTR) -> Option<String> {
-    if value.is_null() {
-        return None;
-    }
+    let value = CoTaskMemString::new(value)?;
 
     let wide = unsafe { value.as_wide() };
     let len = wide.iter().position(|ch| *ch == 0).unwrap_or(wide.len());
     let text = String::from_utf16_lossy(&wide[..len]);
-    unsafe {
-        CoTaskMemFree(Some(value.as_ptr().cast()));
-    }
 
     if text.is_empty() { None } else { Some(text) }
+}
+
+struct CoTaskMemString(PWSTR);
+
+impl CoTaskMemString {
+    fn new(value: PWSTR) -> Option<Self> {
+        (!value.is_null()).then_some(Self(value))
+    }
+
+    unsafe fn as_wide(&self) -> &[u16] {
+        unsafe { self.0.as_wide() }
+    }
+}
+
+impl Drop for CoTaskMemString {
+    fn drop(&mut self) {
+        unsafe {
+            CoTaskMemFree(Some(self.0.as_ptr().cast()));
+        }
+    }
 }

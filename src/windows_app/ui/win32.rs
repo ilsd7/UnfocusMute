@@ -1,6 +1,6 @@
 use super::ConfigFileStamp;
 use crate::config::config_file_path;
-use crate::windows_app::error::{Context, Result};
+use crate::windows_app::error::{Context, Result, message_error};
 use std::ffi::c_void;
 use std::fs;
 use std::os::windows::ffi::OsStrExt;
@@ -13,11 +13,11 @@ use windows::Win32::UI::Controls::{BST_CHECKED, BST_UNCHECKED};
 use windows::Win32::UI::HiDpi::{GetDpiForSystem, GetSystemMetricsForDpi};
 use windows::Win32::UI::WindowsAndMessaging::{
     BM_GETCHECK, BM_SETCHECK, BS_AUTOCHECKBOX, BS_DEFPUSHBUTTON, BS_PUSHBUTTON, CB_ADDSTRING,
-    CB_INITSTORAGE, CB_SETEDITSEL, CreateWindowExW, GetSystemMetrics, GetWindowTextLengthW,
-    GetWindowTextW, HICON, HMENU, IDI_APPLICATION, IMAGE_ICON, LB_ADDSTRING, LB_INITSTORAGE,
-    LR_DEFAULTCOLOR, LoadIconW, LoadImageW, SM_CXICON, SM_CXSMICON, SM_CYICON, SM_CYSMICON,
-    SendMessageW, SetWindowTextW, UnregisterClassW, WINDOW_EX_STYLE, WINDOW_STYLE, WS_CHILD,
-    WS_CLIPSIBLINGS, WS_TABSTOP, WS_VISIBLE,
+    CB_INITSTORAGE, CB_SETEDITSEL, CreateWindowExW, GetMessageW, GetSystemMetrics,
+    GetWindowTextLengthW, GetWindowTextW, HICON, HMENU, IDI_APPLICATION, IMAGE_ICON, LB_ADDSTRING,
+    LB_INITSTORAGE, LR_DEFAULTCOLOR, LoadIconW, LoadImageW, MSG, SM_CXICON, SM_CXSMICON, SM_CYICON,
+    SM_CYSMICON, SendMessageW, SetWindowTextW, UnregisterClassW, WINDOW_EX_STYLE, WINDOW_STYLE,
+    WS_CHILD, WS_CLIPSIBLINGS, WS_TABSTOP, WS_VISIBLE,
 };
 use windows::core::{PCWSTR, w};
 
@@ -45,6 +45,15 @@ impl Drop for WindowClassRegistration {
         unsafe {
             let _ = UnregisterClassW(self.class_name, Some(self.instance));
         }
+    }
+}
+
+pub(super) unsafe fn get_message(msg: &mut MSG) -> Result<bool> {
+    let result = unsafe { GetMessageW(msg, None, 0, 0).0 };
+    match result {
+        -1 => Err(message_error("get window message")),
+        0 => Ok(false),
+        _ => Ok(true),
     }
 }
 

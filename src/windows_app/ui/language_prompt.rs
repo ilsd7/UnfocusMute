@@ -6,7 +6,8 @@ use super::constants::{
 use super::theme::{OwnedBrush, UiFont, ui_font_point_size};
 use super::win32::{
     WindowClassRegistration, add_combo_item_with_buffer, create_checkbox, create_control,
-    create_primary_button, hiword, is_checked, loword, set_checkbox, set_text, to_wide,
+    create_primary_button, get_message, hiword, is_checked, loword, set_checkbox, set_text,
+    to_wide,
 };
 use crate::i18n::Language;
 use crate::windows_app::error::{Context, Result};
@@ -17,7 +18,7 @@ use windows::Win32::System::LibraryLoader::GetModuleHandleW;
 use windows::Win32::UI::Controls::CB_SETMINVISIBLE;
 use windows::Win32::UI::WindowsAndMessaging::{
     CB_GETCURSEL, CB_SETCURSEL, CBN_SELCHANGE, CBN_SELENDOK, CBS_DROPDOWNLIST, CREATESTRUCTW,
-    CreateWindowExW, DefWindowProcW, DestroyWindow, DispatchMessageW, GWLP_USERDATA, GetMessageW,
+    CreateWindowExW, DefWindowProcW, DestroyWindow, DispatchMessageW, GWLP_USERDATA,
     GetWindowLongPtrW, HICON, IDC_ARROW, LoadCursorW, MSG, RegisterClassW, SW_SHOW, SendMessageW,
     SetForegroundWindow, SetWindowLongPtrW, ShowWindow, TranslateMessage, WINDOW_EX_STYLE,
     WINDOW_STYLE, WM_CLOSE, WM_COMMAND, WM_CREATE, WM_CTLCOLORSTATIC, WM_NCCREATE, WM_NCDESTROY,
@@ -268,7 +269,7 @@ pub(super) unsafe fn prompt_initial_language(
     }
 
     let mut msg = MSG::default();
-    while !state.done && unsafe { GetMessageW(&mut msg, None, 0, 0).as_bool() } {
+    while !state.done && unsafe { get_message(&mut msg)? } {
         unsafe {
             let _ = TranslateMessage(&msg);
             DispatchMessageW(&msg);

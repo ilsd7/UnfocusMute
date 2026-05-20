@@ -39,18 +39,18 @@ use windows::Win32::UI::WindowsAndMessaging::{
     CBN_EDITCHANGE, CBN_SELCHANGE, CBN_SELENDOK, CBN_SETFOCUS, CBS_DROPDOWN, CREATESTRUCTW,
     CreatePopupMenu, CreateWindowExW, DefWindowProcW, DestroyMenu, DestroyWindow, DispatchMessageW,
     EN_CHANGE, ES_AUTOHSCROLL, EVENT_SYSTEM_FOREGROUND, FindWindowW, GWLP_USERDATA, GetCursorPos,
-    GetMessageW, GetSystemMetrics, GetWindowRect, HICON, HMENU, ICON_BIG, ICON_SMALL, IDC_ARROW,
-    LB_GETCURSEL, LB_RESETCONTENT, LB_SETCURSEL, LBN_SELCHANGE, LBS_NOTIFY, LoadCursorW,
-    MB_ICONINFORMATION, MB_ICONWARNING, MB_OK, MF_SEPARATOR, MF_STRING, MSG, MessageBoxW,
-    MoveWindow, PostMessageW, PostQuitMessage, RegisterClassW, SM_CXSCREEN, SM_CYSCREEN, SW_HIDE,
-    SW_RESTORE, SW_SHOW, SendMessageW, SetForegroundWindow, SetTimer, SetWindowLongPtrW,
-    ShowWindow, TPM_NONOTIFY, TPM_RETURNCMD, TPM_RIGHTBUTTON, TRACK_POPUP_MENU_FLAGS,
-    TrackPopupMenu, TranslateMessage, WINDOW_EX_STYLE, WINDOW_STYLE, WINEVENT_OUTOFCONTEXT,
-    WM_CLOSE, WM_COMMAND, WM_CREATE, WM_CTLCOLOREDIT, WM_CTLCOLORLISTBOX, WM_CTLCOLORSTATIC,
-    WM_DESTROY, WM_LBUTTONDBLCLK, WM_LBUTTONDOWN, WM_MOVE, WM_NCCREATE, WM_NCDESTROY, WM_PAINT,
-    WM_RBUTTONUP, WM_SETFONT, WM_SETICON, WM_SHOWWINDOW, WM_TIMER, WNDCLASSW, WS_BORDER,
-    WS_CAPTION, WS_CHILD, WS_CLIPCHILDREN, WS_EX_CLIENTEDGE, WS_MINIMIZEBOX, WS_OVERLAPPED,
-    WS_SYSMENU, WS_TABSTOP, WS_VISIBLE, WS_VSCROLL,
+    GetSystemMetrics, GetWindowRect, HICON, HMENU, ICON_BIG, ICON_SMALL, IDC_ARROW, LB_GETCURSEL,
+    LB_RESETCONTENT, LB_SETCURSEL, LBN_SELCHANGE, LBS_NOTIFY, LoadCursorW, MB_ICONINFORMATION,
+    MB_ICONWARNING, MB_OK, MF_SEPARATOR, MF_STRING, MSG, MessageBoxW, MoveWindow, PostMessageW,
+    PostQuitMessage, RegisterClassW, SM_CXSCREEN, SM_CYSCREEN, SW_HIDE, SW_RESTORE, SW_SHOW,
+    SendMessageW, SetForegroundWindow, SetTimer, SetWindowLongPtrW, ShowWindow, TPM_NONOTIFY,
+    TPM_RETURNCMD, TPM_RIGHTBUTTON, TRACK_POPUP_MENU_FLAGS, TrackPopupMenu, TranslateMessage,
+    WINDOW_EX_STYLE, WINDOW_STYLE, WINEVENT_OUTOFCONTEXT, WM_CLOSE, WM_COMMAND, WM_CREATE,
+    WM_CTLCOLOREDIT, WM_CTLCOLORLISTBOX, WM_CTLCOLORSTATIC, WM_DESTROY, WM_LBUTTONDBLCLK,
+    WM_LBUTTONDOWN, WM_MOVE, WM_NCCREATE, WM_NCDESTROY, WM_PAINT, WM_RBUTTONUP, WM_SETFONT,
+    WM_SETICON, WM_SHOWWINDOW, WM_TIMER, WNDCLASSW, WS_BORDER, WS_CAPTION, WS_CHILD,
+    WS_CLIPCHILDREN, WS_EX_CLIENTEDGE, WS_MINIMIZEBOX, WS_OVERLAPPED, WS_SYSMENU, WS_TABSTOP,
+    WS_VISIBLE, WS_VSCROLL,
 };
 use windows::core::{PCWSTR, w};
 
@@ -69,7 +69,7 @@ use theme::{AppTheme, OwnedBrush};
 use win32::{
     WindowClassRegistration, add_combo_item_with_buffer, add_list_item_with_buffer,
     copy_wide_fixed, create_button, create_checkbox, create_control, create_primary_button,
-    current_config_stamp, hiword, is_checked, load_app_icon, load_tray_icon, loword,
+    current_config_stamp, get_message, hiword, is_checked, load_app_icon, load_tray_icon, loword,
     measure_text_width, path_to_wide, reserve_combo_items, reserve_list_items, set_checkbox,
     set_combo_edit_caret, set_text, to_wide, window_text_into, write_wide_buffer,
 };
@@ -80,16 +80,27 @@ const MAIN_WINDOW_STYLE: WINDOW_STYLE = WINDOW_STYLE(
 );
 
 pub fn run() -> Result<()> {
-    unsafe {
-        CoInitializeEx(None, COINIT_APARTMENTTHREADED)
+    let _com = unsafe { ComApartment::initialize()? };
+    unsafe { run_window() }
+}
+
+struct ComApartment;
+
+impl ComApartment {
+    unsafe fn initialize() -> Result<Self> {
+        unsafe { CoInitializeEx(None, COINIT_APARTMENTTHREADED) }
             .ok()
             .context("initialize COM apartment")?;
+        Ok(Self)
     }
-    let result = unsafe { run_window() };
-    unsafe {
-        CoUninitialize();
+}
+
+impl Drop for ComApartment {
+    fn drop(&mut self) {
+        unsafe {
+            CoUninitialize();
+        }
     }
-    result
 }
 
 unsafe fn run_window() -> Result<()> {
@@ -165,7 +176,7 @@ unsafe fn run_window() -> Result<()> {
     }
 
     let mut msg = MSG::default();
-    while unsafe { GetMessageW(&mut msg, None, 0, 0).as_bool() } {
+    while unsafe { get_message(&mut msg)? } {
         unsafe {
             let _ = TranslateMessage(&msg);
             DispatchMessageW(&msg);
@@ -201,6 +212,32 @@ impl Drop for PopupMenu {
     fn drop(&mut self) {
         unsafe {
             let _ = DestroyMenu(self.0);
+        }
+    }
+}
+
+struct PaintSession {
+    hwnd: HWND,
+    paint: PAINTSTRUCT,
+    hdc: HDC,
+}
+
+impl PaintSession {
+    unsafe fn begin(hwnd: HWND) -> Self {
+        let mut paint = PAINTSTRUCT::default();
+        let hdc = unsafe { BeginPaint(hwnd, &mut paint) };
+        Self { hwnd, paint, hdc }
+    }
+
+    fn hdc(&self) -> HDC {
+        self.hdc
+    }
+}
+
+impl Drop for PaintSession {
+    fn drop(&mut self) {
+        unsafe {
+            let _ = EndPaint(self.hwnd, &self.paint);
         }
     }
 }
@@ -370,7 +407,7 @@ impl IssueState {
     fn set(&mut self, issue: StatusIssue) -> bool {
         let old_visible = self.visible;
         self.flags |= issue.bit();
-        self.visible = Some(issue);
+        self.refresh_visible();
         old_visible != self.visible
     }
 
@@ -381,12 +418,7 @@ impl IssueState {
 
         let old_visible = self.visible;
         self.flags &= !issue.bit();
-        if self.visible == Some(issue) {
-            self.visible = STATUS_ISSUE_FALLBACK_ORDER
-                .iter()
-                .copied()
-                .find(|issue| self.flags & issue.bit() != 0);
-        }
+        self.refresh_visible();
         old_visible != self.visible
     }
 
@@ -397,9 +429,16 @@ impl IssueState {
     fn visible(self) -> Option<StatusIssue> {
         self.visible
     }
+
+    fn refresh_visible(&mut self) {
+        self.visible = STATUS_ISSUE_PRIORITY_ORDER
+            .iter()
+            .copied()
+            .find(|issue| self.flags & issue.bit() != 0);
+    }
 }
 
-const STATUS_ISSUE_FALLBACK_ORDER: [StatusIssue; 6] = [
+const STATUS_ISSUE_PRIORITY_ORDER: [StatusIssue; 6] = [
     StatusIssue::ConfigSaveFailed,
     StatusIssue::ConfigLoadFailed,
     StatusIssue::StartupUpdateFailed,
@@ -439,6 +478,16 @@ mod issue_state_tests {
 
         issues.clear(StatusIssue::ConfigSaveFailed);
         assert_eq!(issues.visible(), Some(StatusIssue::AudioUnavailable));
+    }
+
+    #[test]
+    fn lower_priority_issue_does_not_hide_visible_critical_issue() {
+        let mut issues = IssueState::default();
+
+        issues.set(StatusIssue::ConfigSaveFailed);
+        issues.set(StatusIssue::AudioUnavailable);
+
+        assert_eq!(issues.visible(), Some(StatusIssue::ConfigSaveFailed));
     }
 
     #[test]
@@ -2146,8 +2195,7 @@ impl AppWindow {
     }
 
     fn paint(&self, hwnd: HWND) {
-        let mut paint = PAINTSTRUCT::default();
-        let hdc = unsafe { BeginPaint(hwnd, &mut paint) };
+        let paint = unsafe { PaintSession::begin(hwnd) };
         for rect in [
             RECT {
                 left: 16,
@@ -2175,12 +2223,9 @@ impl AppWindow {
             },
         ] {
             unsafe {
-                let _ = FillRect(hdc, &rect, self.theme.panel_brush);
-                let _ = FrameRect(hdc, &rect, self.theme.border_brush);
+                let _ = FillRect(paint.hdc(), &rect, self.theme.panel_brush);
+                let _ = FrameRect(paint.hdc(), &rect, self.theme.border_brush);
             }
-        }
-        unsafe {
-            let _ = EndPaint(hwnd, &paint);
         }
     }
 
