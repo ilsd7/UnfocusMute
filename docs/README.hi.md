@@ -144,7 +144,7 @@ Third-party license notices refresh करें:
 cargo about generate about.hbs -c about.toml --locked --offline -o THIRD_PARTY_NOTICES.md
 ```
 
-पैकेज `dist\UnfocusMute-<version>-windows-x64.zip` में बनता है और इसमें executable फ़ाइल, `LICENSE`, `THIRD_PARTY_NOTICES.md`, root में `README_ko.md` और `README_en.md`, `assets` में आइकन/स्क्रीनशॉट संसाधन, और `docs` में बाकी स्थानीयकृत दस्तावेज़ शामिल होते हैं।
+पैकेज `dist\UnfocusMute-<version>-windows-x64.zip` में बनता है, और SHA-256 सत्यापन फ़ाइल `dist\UnfocusMute-<version>-windows-x64.zip.sha256` में बनती है। ZIP में executable फ़ाइल, `LICENSE`, `THIRD_PARTY_NOTICES.md`, root में `README_ko.md` और `README_en.md`, `assets` में आइकन/स्क्रीनशॉट संसाधन, और `docs` में बाकी स्थानीयकृत दस्तावेज़ शामिल होते हैं।
 
 ---
 

@@ -144,7 +144,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts\package-windows.ps1
 cargo about generate about.hbs -c about.toml --locked --offline -o THIRD_PARTY_NOTICES.md
 ```
 
-生成的包位于 `dist\UnfocusMute-<version>-windows-x64.zip`，包含可执行文件、`LICENSE`、`THIRD_PARTY_NOTICES.md`、根目录的 `README_ko.md` 和 `README_en.md`、`assets` 下的图标/截图资源，以及 `docs` 下的其他本地化文档。
+生成的包位于 `dist\UnfocusMute-<version>-windows-x64.zip`，并会在 `dist\UnfocusMute-<version>-windows-x64.zip.sha256` 生成 SHA-256 校验文件。ZIP 包含可执行文件、`LICENSE`、`THIRD_PARTY_NOTICES.md`、根目录的 `README_ko.md` 和 `README_en.md`、`assets` 下的图标/截图资源，以及 `docs` 下的其他本地化文档。
 
 ---
 

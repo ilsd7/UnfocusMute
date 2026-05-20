@@ -144,7 +144,7 @@ Atualizar avisos de licença de terceiros:
 cargo about generate about.hbs -c about.toml --locked --offline -o THIRD_PARTY_NOTICES.md
 ```
 
-O pacote é criado em `dist\UnfocusMute-<version>-windows-x64.zip` e inclui o executável, `LICENSE`, `THIRD_PARTY_NOTICES.md`, `README_ko.md` e `README_en.md` na raiz, os recursos de ícone e captura em `assets`, além dos outros documentos localizados em `docs`.
+O pacote é criado em `dist\UnfocusMute-<version>-windows-x64.zip`, com um arquivo de verificação SHA-256 em `dist\UnfocusMute-<version>-windows-x64.zip.sha256`. O ZIP inclui o executável, `LICENSE`, `THIRD_PARTY_NOTICES.md`, `README_ko.md` e `README_en.md` na raiz, os recursos de ícone e captura em `assets`, além dos outros documentos localizados em `docs`.
 
 ---
 

@@ -30,8 +30,28 @@ jobs:
       - run: cargo test --locked --target x86_64-pc-windows-msvc
       - run: cargo clippy --locked --target x86_64-pc-windows-msvc --all-targets -- -D warnings
       - run: powershell -NoProfile -ExecutionPolicy Bypass -File scripts\package-windows.ps1
+      - name: Select package artifacts
+        id: package_artifacts
+        shell: pwsh
+        run: |
+          $versionLine = Select-String -Path Cargo.toml -Pattern '^version\s*=\s*"([^"]+)"' | Select-Object -First 1
+          if (-not $versionLine) {
+            throw "Could not read package version from Cargo.toml"
+          }
+          $version = $versionLine.Matches[0].Groups[1].Value
+          $zip = "dist/UnfocusMute-$version-windows-x64.zip"
+          $checksum = "$zip.sha256"
+          foreach ($asset in @($zip, $checksum)) {
+            if (-not (Test-Path $asset -PathType Leaf)) {
+              throw "Missing package artifact $asset"
+            }
+          }
+          Add-Content -Path $env:GITHUB_OUTPUT -Value "zip=$zip"
+          Add-Content -Path $env:GITHUB_OUTPUT -Value "checksum=$checksum"
       - uses: actions/upload-artifact@v6
         with:
           name: UnfocusMute-windows-x64
-          path: dist/*.zip
+          path: |
+            ${{ steps.package_artifacts.outputs.zip }}
+            ${{ steps.package_artifacts.outputs.checksum }}
           if-no-files-found: error

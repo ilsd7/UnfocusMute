@@ -15,7 +15,8 @@ jobs:
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v5
-      - run: rustup toolchain install stable --profile minimal --component clippy --target x86_64-pc-windows-msvc
+      - run: rustup toolchain install stable --profile minimal --component rustfmt --component clippy --target x86_64-pc-windows-msvc
+      - run: cargo fmt --check
       - run: cargo test --locked --target x86_64-pc-windows-msvc
       - run: cargo clippy --locked --target x86_64-pc-windows-msvc --all-targets -- -D warnings
       - run: powershell -NoProfile -ExecutionPolicy Bypass -File scripts\package-windows.ps1 -ReleaseTag $env:GITHUB_REF_NAME
@@ -25,9 +26,22 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           $tag = $env:GITHUB_REF_NAME
+          if (-not $tag.StartsWith("v", [System.StringComparison]::Ordinal) -or $tag.Length -le 1) {
+            throw "Release tag must use v<version> format"
+          }
+          $version = $tag.Substring(1)
+          $assets = @(
+            "dist\UnfocusMute-$version-windows-x64.zip",
+            "dist\UnfocusMute-$version-windows-x64.zip.sha256"
+          )
+          foreach ($asset in $assets) {
+            if (-not (Test-Path $asset -PathType Leaf)) {
+              throw "Missing release asset $asset"
+            }
+          }
           $notes = "Draft release for $tag.`n`nReview the attached ZIP, edit these notes, then publish the release from the GitHub UI."
 
-          gh release create "$tag" dist/*.zip --verify-tag --draft --title "$tag" --notes "$notes"
+          gh release create "$tag" @assets --verify-tag --draft --title "$tag" --notes "$notes"
           if ($LASTEXITCODE -ne 0) {
             exit $LASTEXITCODE
           }

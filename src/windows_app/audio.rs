@@ -81,7 +81,9 @@ impl AudioController {
                 |pid| lookup.may_include_pid(pid),
                 |session| {
                     if let Err(key) = apply_unmute_to_session(&session, session_keys, &lookup) {
-                        failed_sessions.get_or_insert_with(HashSet::new).insert(key);
+                        failed_sessions
+                            .get_or_insert_with(|| HashSet::with_capacity(session_keys.len()))
+                            .insert(key);
                     }
                 },
             )?;

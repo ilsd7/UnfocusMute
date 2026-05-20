@@ -144,7 +144,7 @@ Actualiser les avis de licence tiers :
 cargo about generate about.hbs -c about.toml --locked --offline -o THIRD_PARTY_NOTICES.md
 ```
 
-Le paquet est créé dans `dist\UnfocusMute-<version>-windows-x64.zip` et contient l’exécutable, `LICENSE`, `THIRD_PARTY_NOTICES.md`, `README_ko.md` et `README_en.md` à la racine, les ressources d’icône et de capture dans `assets`, ainsi que les autres documents localisés dans `docs`.
+Le paquet est créé dans `dist\UnfocusMute-<version>-windows-x64.zip`, avec un fichier de vérification SHA-256 dans `dist\UnfocusMute-<version>-windows-x64.zip.sha256`. Le ZIP contient l’exécutable, `LICENSE`, `THIRD_PARTY_NOTICES.md`, `README_ko.md` et `README_en.md` à la racine, les ressources d’icône et de capture dans `assets`, ainsi que les autres documents localisés dans `docs`.
 
 ---
 

@@ -144,7 +144,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts\package-windows.ps1
 cargo about generate about.hbs -c about.toml --locked --offline -o THIRD_PARTY_NOTICES.md
 ```
 
-يتم إنشاء الحزمة في `dist\UnfocusMute-<version>-windows-x64.zip` وتتضمن الملف التنفيذي و`LICENSE` و`THIRD_PARTY_NOTICES.md` و`README_ko.md` و`README_en.md` في الجذر، وأصول الأيقونة ولقطة الشاشة داخل `assets`، وبقية الوثائق المترجمة داخل `docs`.
+يتم إنشاء الحزمة في `dist\UnfocusMute-<version>-windows-x64.zip`، ويتم إنشاء ملف تحقق SHA-256 في `dist\UnfocusMute-<version>-windows-x64.zip.sha256`. يتضمن ملف ZIP الملف التنفيذي و`LICENSE` و`THIRD_PARTY_NOTICES.md` و`README_ko.md` و`README_en.md` في الجذر، وأصول الأيقونة ولقطة الشاشة داخل `assets`، وبقية الوثائق المترجمة داخل `docs`.
 
 ---
 
