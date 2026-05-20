@@ -1642,9 +1642,7 @@ impl AppWindow {
             return;
         };
 
-        if let Some((cached_pid, _)) = &self.foreground_process_name_cache
-            && *cached_pid == pid
-        {
+        if !foreground_process_cache_needs_refresh(&self.foreground_process_name_cache, pid) {
             return;
         }
 
@@ -2617,6 +2615,29 @@ fn cached_foreground_process_name(
     let pid = foreground_pid?;
     let (cached_pid, name) = cache.as_ref()?;
     (*cached_pid == pid).then_some(name.as_deref()).flatten()
+}
+
+fn foreground_process_cache_needs_refresh(cache: &Option<(u32, Option<String>)>, pid: u32) -> bool {
+    !matches!(cache, Some((cached_pid, Some(_))) if *cached_pid == pid)
+}
+
+#[cfg(test)]
+mod foreground_cache_tests {
+    use super::*;
+
+    #[test]
+    fn foreground_process_cache_reuses_successful_lookup() {
+        let cache = Some((42, Some("game.exe".to_owned())));
+
+        assert!(!foreground_process_cache_needs_refresh(&cache, 42));
+    }
+
+    #[test]
+    fn foreground_process_cache_retries_failed_lookup() {
+        let cache = Some((42, None));
+
+        assert!(foreground_process_cache_needs_refresh(&cache, 42));
+    }
 }
 
 fn storage_bytes_hint(text: &str) -> usize {

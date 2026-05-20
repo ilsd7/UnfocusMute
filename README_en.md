@@ -135,7 +135,7 @@ target\x86_64-pc-windows-msvc\release\unfocusmute.exe
 Create a distribution ZIP:
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File scripts\package-windows.ps1
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts\package-windows.ps1
 ```
 
 Refresh third-party license notices:

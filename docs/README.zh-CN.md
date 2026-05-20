@@ -135,7 +135,7 @@ target\x86_64-pc-windows-msvc\release\unfocusmute.exe
 创建发布 ZIP：
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File scripts\package-windows.ps1
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts\package-windows.ps1
 ```
 
 刷新第三方许可证通知：

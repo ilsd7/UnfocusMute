@@ -55,15 +55,15 @@ impl ProcessNameResolver {
         }
 
         if let Some(position) = self.names.position(pid) {
-            return self.names.name_at(position);
+            return Some(self.names.name_at(position));
         }
         let name = process_image_name(pid).or_else(|| {
             let names = self
                 .snapshot_names
                 .get_or_insert_with(process_names_from_snapshot);
             names.get(&pid).cloned()
-        });
-        self.names.insert(pid, name)
+        })?;
+        Some(self.names.insert(pid, name))
     }
 }
 
@@ -81,16 +81,16 @@ enum ProcessNameCache {
     Empty,
     One {
         pid: u32,
-        name: Option<String>,
+        name: String,
     },
     Two {
         first_pid: u32,
-        first_name: Option<String>,
+        first_name: String,
         second_pid: u32,
-        second_name: Option<String>,
+        second_name: String,
     },
     Many {
-        names: Vec<(u32, Option<String>)>,
+        names: Vec<(u32, String)>,
     },
 }
 
@@ -121,19 +121,13 @@ impl ProcessNameCache {
         }
     }
 
-    fn name_at(&self, position: ProcessNameCachePosition) -> Option<&str> {
+    fn name_at(&self, position: ProcessNameCachePosition) -> &str {
         match (self, position) {
-            (Self::One { name, .. }, ProcessNameCachePosition::One) => name.as_deref(),
-            (Self::Two { first_name, .. }, ProcessNameCachePosition::TwoFirst) => {
-                first_name.as_deref()
-            }
-            (Self::Two { second_name, .. }, ProcessNameCachePosition::TwoSecond) => {
-                second_name.as_deref()
-            }
-            (Self::Many { names }, ProcessNameCachePosition::Many(index)) => {
-                names[index].1.as_deref()
-            }
-            _ => None,
+            (Self::One { name, .. }, ProcessNameCachePosition::One) => name,
+            (Self::Two { first_name, .. }, ProcessNameCachePosition::TwoFirst) => first_name,
+            (Self::Two { second_name, .. }, ProcessNameCachePosition::TwoSecond) => second_name,
+            (Self::Many { names }, ProcessNameCachePosition::Many(index)) => &names[index].1,
+            _ => unreachable!("process name cache position must match cache variant"),
         }
     }
 
@@ -143,13 +137,13 @@ impl ProcessNameCache {
         load: impl FnOnce(u32) -> Option<String>,
     ) -> Option<&str> {
         if let Some(position) = self.position(pid) {
-            return self.name_at(position);
+            return Some(self.name_at(position));
         }
 
-        self.insert(pid, load(pid))
+        Some(self.insert(pid, load(pid)?))
     }
 
-    fn insert(&mut self, pid: u32, name: Option<String>) -> Option<&str> {
+    fn insert(&mut self, pid: u32, name: String) -> &str {
         *self = match std::mem::take(self) {
             Self::Empty => Self::One { pid, name },
             Self::One {
@@ -180,10 +174,10 @@ impl ProcessNameCache {
         };
 
         match self {
-            Self::One { name, .. } => name.as_deref(),
-            Self::Two { second_name, .. } => second_name.as_deref(),
-            Self::Many { names } => names.last().and_then(|(_, name)| name.as_deref()),
-            Self::Empty => None,
+            Self::One { name, .. } => name,
+            Self::Two { second_name, .. } => second_name,
+            Self::Many { names } => &names.last().expect("inserted process name").1,
+            Self::Empty => unreachable!("insert always stores a process name"),
         }
     }
 }
@@ -347,4 +341,42 @@ unsafe fn query_process_image_name_into(
 
 fn is_insufficient_buffer(error: &Error) -> bool {
     error.code() == HRESULT::from_win32(ERROR_INSUFFICIENT_BUFFER.0)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn process_name_cache_retries_failed_loads() {
+        let mut cache = ProcessNameCache::default();
+        let mut attempts = 0;
+
+        assert_eq!(
+            cache.get_or_insert_with(7, |_| {
+                attempts += 1;
+                None
+            }),
+            None
+        );
+        assert_eq!(attempts, 1);
+
+        assert_eq!(
+            cache.get_or_insert_with(7, |_| {
+                attempts += 1;
+                Some("game.exe".to_owned())
+            }),
+            Some("game.exe")
+        );
+        assert_eq!(attempts, 2);
+
+        assert_eq!(
+            cache.get_or_insert_with(7, |_| {
+                attempts += 1;
+                Some("other.exe".to_owned())
+            }),
+            Some("game.exe")
+        );
+        assert_eq!(attempts, 2);
+    }
 }

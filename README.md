@@ -135,7 +135,7 @@ target\x86_64-pc-windows-msvc\release\unfocusmute.exe
 배포 ZIP:
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File scripts\package-windows.ps1
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts\package-windows.ps1
 ```
 
 서드파티 라이선스 고지 갱신:

@@ -228,6 +228,10 @@ impl PlanApplyResult {
         session: &AudioSessionControl<'_>,
         key: Option<AudioSessionKey>,
     ) {
+        if self.active_managed_sessions.capacity() == 0 {
+            self.active_managed_sessions
+                .reserve(LINEAR_MANAGED_SESSION_LIMIT);
+        }
         self.active_managed_sessions
             .push(key.unwrap_or_else(|| session.key()));
     }

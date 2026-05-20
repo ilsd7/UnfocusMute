@@ -30,7 +30,7 @@ $LegacyStage = Join-Path $Dist $PackageName
 $StageRoot = Join-Path $Dist ".package-$([System.Guid]::NewGuid().ToString('N'))"
 $Stage = Join-Path $StageRoot $PackageName
 $Zip = Join-Path $Dist "$PackageName.zip"
-$TempZip = Join-Path $Dist "$PackageName.$PID.tmp.zip"
+$TempZip = Join-Path $Dist "$PackageName.$([System.Guid]::NewGuid().ToString('N')).tmp.zip"
 $Utf8NoBom = [System.Text.UTF8Encoding]::new($false)
 
 function Convert-ReadmeForPackage {
@@ -63,6 +63,55 @@ function Replace-PackageZip {
     }
     else {
         Move-Item $Source $Destination
+    }
+}
+
+function Assert-PackageZip {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$Path,
+        [Parameter(Mandatory = $true)]
+        [string[]]$RequiredEntries
+    )
+
+    Add-Type -AssemblyName System.IO.Compression.FileSystem
+    $ZipFile = [System.IO.Compression.ZipFile]::OpenRead($Path)
+    try {
+        $Entries = @{}
+        foreach ($Entry in $ZipFile.Entries) {
+            $Entries[$Entry.FullName.Replace('\', '/')] = $Entry
+        }
+        foreach ($RequiredEntry in $RequiredEntries) {
+            if (-not $Entries.ContainsKey($RequiredEntry)) {
+                throw "Package ZIP is missing $RequiredEntry"
+            }
+            if ($Entries[$RequiredEntry].Length -eq 0) {
+                throw "Package ZIP entry $RequiredEntry is empty"
+            }
+        }
+
+        foreach ($Entry in $ZipFile.Entries) {
+            if (-not $Entry.FullName.EndsWith(".md", [System.StringComparison]::OrdinalIgnoreCase)) {
+                continue
+            }
+            $Reader = [System.IO.StreamReader]::new($Entry.Open(), [System.Text.Encoding]::UTF8, $true)
+            try {
+                $Content = $Reader.ReadToEnd()
+            }
+            finally {
+                $Reader.Dispose()
+            }
+
+            if ($Content.Contains('src="assets/app-icon.png"') -or $Content.Contains('src="../assets/app-icon.png"')) {
+                throw "Package README $($Entry.FullName) still references app-icon.png"
+            }
+            if ($Content.Contains('href="README.md"') -or $Content.Contains('href="../README.md"')) {
+                throw "Package README $($Entry.FullName) still references README.md instead of README_ko.md"
+            }
+        }
+    }
+    finally {
+        $ZipFile.Dispose()
     }
 }
 
@@ -103,11 +152,24 @@ try {
                 [System.IO.File]::WriteAllText((Join-Path $DocsStage $_.Name), $Readme, $Utf8NoBom)
             }
     }
-
-    if (Test-Path $TempZip) {
-        Remove-Item $TempZip -Force
+    $RequiredEntries = @(
+        "UnfocusMute.exe",
+        "LICENSE",
+        "THIRD_PARTY_NOTICES.md",
+        "README_ko.md",
+        "README_en.md",
+        "assets/app-icon.ico",
+        "assets/screenshot.png"
+    )
+    if (Test-Path "docs" -PathType Container) {
+        $RequiredEntries += Get-ChildItem "docs" -File |
+            Where-Object { $_.Name -ne "README.en.md" } |
+            Sort-Object Name |
+            ForEach-Object { "docs/$($_.Name)" }
     }
+
     Compress-Archive -Path (Join-Path $Stage "*") -DestinationPath $TempZip -CompressionLevel Optimal
+    Assert-PackageZip $TempZip $RequiredEntries
 
     try {
         Replace-PackageZip $TempZip $Zip

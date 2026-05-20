@@ -240,7 +240,7 @@ Used by:
 ### Apache License 2.0 (`Apache-2.0`)
 
 Used by:
-- unfocusmute 1.0.116
+- unfocusmute 1.0.122
 
 <pre>
                                  Apache License
@@ -646,4 +646,3 @@ dealings in these Data Files or Software without prior written
 authorization of the copyright holder.
 
 </pre>
-

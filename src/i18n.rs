@@ -539,26 +539,11 @@ mod tests {
     use super::*;
 
     #[test]
-    fn every_language_has_a_title() {
+    fn every_language_has_complete_ui_text() {
         for language in Language::ALL {
-            assert!(!language.strings().app_title.is_empty());
-            assert!(!language.strings().first_run_window_title.is_empty());
-            assert!(!language.strings().first_run_language_title.is_empty());
-            assert!(!language.strings().first_run_language_subtitle.is_empty());
-            assert!(!language.strings().first_run_start.is_empty());
-            assert!(!language.strings().pid_details_hint.is_empty());
-            assert!(!language.strings().pid_details_help_title.is_empty());
-            assert!(!language.strings().pid_details_help.is_empty());
-            assert!(!language.strings().manual_process_exe_required.is_empty());
-            assert!(!language.strings().status_issue.is_empty());
-            assert!(!language.strings().audio_unavailable.is_empty());
-            assert!(!language.strings().audio_update_failed.is_empty());
-            assert!(!language.strings().config_save_failed.is_empty());
-            assert!(!language.strings().config_load_failed.is_empty());
-            assert!(!language.strings().startup_update_failed.is_empty());
-            assert!(!language.strings().timer_setup_failed.is_empty());
-            assert!(!language.strings().tray_icon_unavailable.is_empty());
-            assert!(!language.strings().open_config_failed.is_empty());
+            for text in language.strings().all_text() {
+                assert!(!text.is_empty());
+            }
             assert!(!language.native_name().is_empty());
         }
     }
@@ -566,5 +551,58 @@ mod tests {
     #[test]
     fn default_language_is_korean() {
         assert_eq!(Language::default(), Language::Ko);
+    }
+
+    impl Strings {
+        fn all_text(self) -> [&'static str; 46] {
+            [
+                self.app_title,
+                self.status_running,
+                self.status_paused,
+                self.app_subtitle,
+                self.registered_processes,
+                self.running_processes,
+                self.add_process_section,
+                self.pid_details_hint,
+                self.pid_details_help_title,
+                self.pid_details_help,
+                self.process_search_placeholder,
+                self.show_pid_details,
+                self.hide_pid_details,
+                self.manual_process,
+                self.add_selected,
+                self.add_manual,
+                self.remove_selected,
+                self.pause,
+                self.resume,
+                self.start_minimized,
+                self.launch_on_startup,
+                self.restore_on_exit,
+                self.language,
+                self.refresh,
+                self.quit,
+                self.show,
+                self.hide,
+                self.manual_placeholder,
+                self.manual_process_exe_required,
+                self.settings_title,
+                self.target_count,
+                self.muted_count,
+                self.open_config,
+                self.first_run_window_title,
+                self.first_run_language_title,
+                self.first_run_language_subtitle,
+                self.first_run_start,
+                self.status_issue,
+                self.audio_unavailable,
+                self.audio_update_failed,
+                self.config_save_failed,
+                self.config_load_failed,
+                self.startup_update_failed,
+                self.timer_setup_failed,
+                self.tray_icon_unavailable,
+                self.open_config_failed,
+            ]
+        }
     }
 }
