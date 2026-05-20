@@ -94,12 +94,12 @@ impl Default for AppConfig {
 impl AppConfig {
     pub fn load_or_default() -> io::Result<Self> {
         let path = config_file_path()?;
-        if !path.exists() {
-            return Ok(Self::default());
-        }
-
-        let raw = fs::read_to_string(&path)?;
-        match parse_config(&raw) {
+        let file = match fs::File::open(&path) {
+            Ok(file) => file,
+            Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(Self::default()),
+            Err(error) => return Err(error),
+        };
+        match parse_config_file(file) {
             Ok(mut config) => {
                 config.sanitize();
                 Ok(config)
@@ -113,8 +113,7 @@ impl AppConfig {
 
     pub fn load_existing() -> io::Result<Self> {
         let path = config_file_path()?;
-        let raw = fs::read_to_string(&path)?;
-        let mut config = parse_config(&raw)?;
+        let mut config = parse_config_file(fs::File::open(&path)?)?;
         config.sanitize();
         Ok(config)
     }
@@ -132,8 +131,12 @@ impl AppConfig {
         backup_invalid_existing_config(path)?;
 
         let temp_path = path.with_extension("json.tmp");
-        let json = serde_json::to_string_pretty(self).map_err(io::Error::other)?;
-        fs::write(&temp_path, json)?;
+        let mut temp_file = fs::File::create(&temp_path)?;
+        if let Err(error) = serde_json::to_writer_pretty(&mut temp_file, self) {
+            let _ = fs::remove_file(&temp_path);
+            return Err(io::Error::other(error));
+        }
+        drop(temp_file);
         replace_file(&temp_path, path)
     }
 
@@ -208,21 +211,18 @@ impl AppConfig {
     }
 }
 
-fn parse_config(raw: &str) -> io::Result<AppConfig> {
-    serde_json::from_str::<AppConfig>(raw).map_err(io::Error::other)
+fn parse_config_file(file: fs::File) -> io::Result<AppConfig> {
+    serde_json::from_reader::<_, AppConfig>(file).map_err(io::Error::other)
 }
 
 fn backup_invalid_existing_config(path: &Path) -> io::Result<()> {
-    match fs::read_to_string(path) {
-        Ok(raw) => {
-            if parse_config(&raw).is_err() {
+    match fs::File::open(path) {
+        Ok(file) => {
+            if parse_config_file(file).is_err() {
                 backup_invalid_config(path)?;
             }
         }
         Err(error) if error.kind() == io::ErrorKind::NotFound => {}
-        Err(error) if error.kind() == io::ErrorKind::InvalidData => {
-            backup_invalid_config(path)?;
-        }
         Err(error) => return Err(error),
     }
 
@@ -231,16 +231,15 @@ fn backup_invalid_existing_config(path: &Path) -> io::Result<()> {
 
 fn replace_file(temp_path: &Path, destination: &Path) -> io::Result<()> {
     #[cfg(windows)]
-    {
-        replace_file_windows(temp_path, destination)
-    }
+    let result = replace_file_windows(temp_path, destination);
 
     #[cfg(not(windows))]
-    {
-        fs::rename(temp_path, destination).inspect_err(|_| {
-            let _ = fs::remove_file(temp_path);
-        })
+    let result = fs::rename(temp_path, destination);
+
+    if result.is_err() {
+        let _ = fs::remove_file(temp_path);
     }
+    result
 }
 
 #[cfg(windows)]

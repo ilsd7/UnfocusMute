@@ -179,7 +179,7 @@ fn apply_plan_to_session(
     managed_muted_sessions: &mut HashSet<AudioSessionKey>,
     result: &mut PlanApplyResult,
 ) {
-    let matched = planner.matches_identity(session.process_name, session.pid);
+    let match_kind = planner.match_kind(session.process_name, session.pid);
     let mut key = None;
     let managed =
         if managed_session_may_include(managed_muted_sessions, session.pid, session.process_name) {
@@ -191,7 +191,7 @@ fn apply_plan_to_session(
             false
         };
 
-    if !matched && !managed {
+    if match_kind.is_none() && !managed {
         return;
     }
 
@@ -202,9 +202,13 @@ fn apply_plan_to_session(
         return;
     };
     let muted = session.muted(&volume);
-    let Some(mute) =
-        planner.plan_identity_with_managed(session.process_name, session.pid, managed, muted)
-    else {
+    let Some(mute) = planner.plan_identity_with_match(
+        match_kind,
+        session.process_name,
+        session.pid,
+        managed,
+        muted,
+    ) else {
         if managed && let Some(active_managed_sessions) = &mut result.active_managed_sessions {
             active_managed_sessions.push(key.unwrap_or_else(|| session.key()));
         }

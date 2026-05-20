@@ -3,8 +3,8 @@
 UnfocusMute is licensed under the Apache License, Version 2.0. See `LICENSE`
 for the project license.
 
-This file lists third-party Rust crate license texts for the Windows release
-build. It is generated from `Cargo.lock` with `cargo-about`.
+This file lists UnfocusMute and Rust dependency license texts for the Windows
+release build. It is generated from `Cargo.lock` with `cargo-about`.
 
 The application icon is an original UnfocusMute asset and is not a third-party
 dependency.
@@ -240,7 +240,7 @@ Used by:
 ### Apache License 2.0 (`Apache-2.0`)
 
 Used by:
-- unfocusmute 1.0.21
+- unfocusmute 1.0.23
 
 <pre>
                                  Apache License

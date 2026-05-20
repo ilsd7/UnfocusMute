@@ -78,7 +78,7 @@ pub fn plan_mute_actions_with_matcher(
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-enum TargetMatchKind {
+pub(crate) enum TargetMatchKind {
     ProcessName,
     Pid,
 }
@@ -217,18 +217,35 @@ impl<'a> MutePlanner<'a> {
             })
     }
 
-    pub(crate) fn matches_identity(&self, process_name: &str, pid: u32) -> bool {
-        self.matcher.match_kind(process_name, pid).is_some()
+    pub(crate) fn match_kind(&self, process_name: &str, pid: u32) -> Option<TargetMatchKind> {
+        self.matcher.match_kind(process_name, pid)
     }
 
-    pub(crate) fn plan_identity_with_managed(
+    #[cfg(test)]
+    pub fn plan_identity_with_managed(
         &self,
         process_name: &str,
         pid: u32,
         managed: bool,
         muted: bool,
     ) -> Option<bool> {
-        let match_kind = self.matcher.match_kind(process_name, pid);
+        self.plan_identity_with_match(
+            self.match_kind(process_name, pid),
+            process_name,
+            pid,
+            managed,
+            muted,
+        )
+    }
+
+    pub(crate) fn plan_identity_with_match(
+        &self,
+        match_kind: Option<TargetMatchKind>,
+        process_name: &str,
+        pid: u32,
+        managed: bool,
+        muted: bool,
+    ) -> Option<bool> {
         if match_kind.is_none() && !managed {
             return None;
         }
@@ -309,7 +326,7 @@ mod tests {
         let matcher = TargetMatcher::new(&[TargetProcess::new("game.exe").unwrap()]);
         let planner = MutePlanner::new(&matcher, Some(20), Some("other.exe"));
 
-        assert!(!planner.matches_identity("browser.exe", 10));
+        assert_eq!(planner.match_kind("browser.exe", 10), None);
         assert_eq!(
             planner.plan_identity_with_managed("browser.exe", 10, false, false),
             None

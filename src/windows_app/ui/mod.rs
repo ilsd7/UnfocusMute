@@ -784,7 +784,6 @@ impl AppWindow {
                 None,
             );
         }
-        self.apply_default_font();
         Ok(())
     }
 
@@ -1542,18 +1541,22 @@ impl AppWindow {
     }
 
     fn add_selected_process(&mut self) {
-        let choice = self.selected_process_choice().cloned();
-        let Some(choice) = choice else { return };
+        let Some((name, pid)) = self
+            .selected_process_choice()
+            .map(|choice| (choice.name.clone(), choice.pid))
+        else {
+            return;
+        };
         if !self.reload_config_if_changed() {
             return;
         }
-        if !self.can_add_process_choice(&choice) {
+        if !self.can_add_process(&name, pid) {
             return;
         }
-        let added = if let Some(pid) = choice.pid {
-            self.config.add_pid_target(&choice.name, pid)
+        let added = if let Some(pid) = pid {
+            self.config.add_pid_target(&name, pid)
         } else {
-            self.config.add_target(&choice.name)
+            self.config.add_target(&name)
         };
         if added {
             self.finish_target_change();
@@ -1736,9 +1739,14 @@ impl AppWindow {
     }
 
     fn can_add_process_choice(&self, choice: &ProcessChoice) -> bool {
-        self.config.targets.iter().all(|target| {
-            !target.name.eq_ignore_ascii_case(&choice.name) || target.pid != choice.pid
-        })
+        self.can_add_process(&choice.name, choice.pid)
+    }
+
+    fn can_add_process(&self, name: &str, pid: Option<u32>) -> bool {
+        self.config
+            .targets
+            .iter()
+            .all(|target| !target.name.eq_ignore_ascii_case(name) || target.pid != pid)
     }
 
     fn can_submit_manual_target(&self) -> bool {
@@ -1817,8 +1825,16 @@ impl AppWindow {
         }
 
         match id {
-            ID_START_MINIMIZED => self.config.start_minimized = checked,
+            ID_START_MINIMIZED => {
+                if self.config.start_minimized == checked {
+                    return;
+                }
+                self.config.start_minimized = checked;
+            }
             ID_LAUNCH_STARTUP => {
+                if self.config.launch_on_startup == checked {
+                    return;
+                }
                 if startup::set_launch_on_startup(checked).is_ok() {
                     self.config.launch_on_startup = checked;
                     self.clear_issue(StatusIssue::StartupUpdateFailed);
@@ -1832,7 +1848,12 @@ impl AppWindow {
                     self.set_issue(StatusIssue::StartupUpdateFailed);
                 }
             }
-            ID_RESTORE_EXIT => self.config.restore_muted_on_exit = checked,
+            ID_RESTORE_EXIT => {
+                if self.config.restore_muted_on_exit == checked {
+                    return;
+                }
+                self.config.restore_muted_on_exit = checked;
+            }
             _ => {}
         }
         self.save_config();
@@ -1885,27 +1906,36 @@ impl AppWindow {
         if !self.reload_config_if_changed() {
             return;
         }
+        if self.config.language == language {
+            return;
+        }
         self.config.language = language;
         self.save_config();
         self.refresh_text();
     }
 
-    fn remember_window_position(&mut self) {
+    fn remember_window_position(&mut self) -> bool {
         let mut rect = RECT::default();
         if unsafe { GetWindowRect(self.hwnd, &mut rect) }.is_ok() {
-            self.config.window_position = Some(WindowPosition {
+            let position = WindowPosition {
                 x: rect.left,
                 y: rect.top,
-            });
+            };
+            if self.config.window_position != Some(position) {
+                self.config.window_position = Some(position);
+                return true;
+            }
         }
+        false
     }
 
     fn save_window_position(&mut self) {
         if !self.reload_config_if_changed() {
             return;
         }
-        self.remember_window_position();
-        self.save_config();
+        if self.remember_window_position() {
+            self.save_config();
+        }
     }
 
     fn cleanup(&mut self) {

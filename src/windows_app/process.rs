@@ -41,12 +41,26 @@ impl ProcessNameResolver {
     }
 
     pub fn name(&mut self, pid: u32) -> Option<&str> {
+        if self.prefer_snapshot {
+            let has_snapshot_name = self
+                .snapshot_names
+                .get_or_insert_with(process_names_from_snapshot)
+                .contains_key(&pid);
+            if has_snapshot_name {
+                return self
+                    .snapshot_names
+                    .as_ref()
+                    .and_then(|names| names.get(&pid).map(String::as_str));
+            }
+
+            self.names
+                .entry(pid)
+                .or_insert_with(|| process_image_name(pid));
+            return self.names.get(&pid).and_then(Option::as_deref);
+        }
+
         if !self.names.contains_key(&pid) {
-            let name = if self.prefer_snapshot {
-                self.snapshot_name(pid).or_else(|| process_image_name(pid))
-            } else {
-                process_image_name(pid).or_else(|| self.snapshot_name(pid))
-            };
+            let name = process_image_name(pid).or_else(|| self.snapshot_name(pid));
             self.names.insert(pid, name);
         }
 
