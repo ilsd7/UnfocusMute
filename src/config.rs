@@ -37,6 +37,9 @@ impl TargetProcess {
     #[cfg(test)]
     pub fn new(name: impl AsRef<str>) -> Option<Self> {
         let name = normalize_process_name(name.as_ref())?;
+        if !is_supported_normalized_target_process_name(&name) {
+            return None;
+        }
         Some(Self {
             name,
             pid: None,
@@ -50,6 +53,9 @@ impl TargetProcess {
             return None;
         }
         let name = normalize_process_name(name.as_ref())?;
+        if !is_supported_normalized_target_process_name(&name) {
+            return None;
+        }
         Some(Self {
             name,
             pid: Some(pid),
@@ -184,6 +190,9 @@ impl AppConfig {
 
     pub(crate) fn add_normalized_target(&mut self, name: String) -> bool {
         debug_assert!(is_normalized_process_name(&name));
+        if !is_supported_normalized_target_process_name(&name) {
+            return false;
+        }
         self.add_target_process(TargetProcess {
             name,
             pid: None,
@@ -193,7 +202,7 @@ impl AppConfig {
 
     pub(crate) fn add_normalized_pid_target(&mut self, name: String, pid: u32) -> bool {
         debug_assert!(is_normalized_process_name(&name));
-        if pid == 0 {
+        if pid == 0 || !is_supported_normalized_target_process_name(&name) {
             return false;
         }
         self.add_target_process(TargetProcess {
@@ -204,11 +213,11 @@ impl AppConfig {
     }
 
     fn add_target_process(&mut self, target: TargetProcess) -> bool {
-        debug_assert!(is_normalized_process_name(&target.name));
+        debug_assert!(is_supported_target_process_name(&target.name));
         debug_assert!(
             self.targets
                 .iter()
-                .all(|target| is_normalized_process_name(&target.name))
+                .all(|target| is_supported_target_process_name(&target.name))
         );
         match self
             .targets
@@ -245,6 +254,9 @@ impl AppConfig {
             let Some(name) = normalize_process_name_owned(std::mem::take(&mut target.name)) else {
                 return false;
             };
+            if !is_supported_normalized_target_process_name(&name) {
+                return false;
+            }
             target.name = name;
             true
         });
@@ -526,20 +538,30 @@ pub fn normalize_process_name_owned(mut input: String) -> Option<String> {
     }
 }
 
+#[cfg(test)]
 pub(crate) fn normalize_process_name_utf16(input: &[u16]) -> Option<String> {
     let candidate = utf16_process_name_candidate(input)?;
+    Some(normalized_utf16_process_name(candidate))
+}
+
+pub(crate) fn normalize_supported_process_name_utf16(input: &[u16]) -> Option<String> {
+    let candidate = utf16_process_name_candidate(input)?;
+    if !is_supported_utf16_target_process_name(candidate.name) {
+        return None;
+    }
+    Some(normalized_utf16_process_name(candidate))
+}
+
+fn normalized_utf16_process_name(candidate: Utf16ProcessNameCandidate<'_>) -> String {
     if candidate.is_ascii {
-        return Some(ascii_utf16_process_name(
-            candidate.name,
-            candidate.has_uppercase,
-        ));
+        return ascii_utf16_process_name(candidate.name, candidate.has_uppercase);
     }
 
     let mut name = String::from_utf16_lossy(candidate.name);
     if candidate.has_uppercase {
         name.make_ascii_lowercase();
     }
-    Some(name)
+    name
 }
 
 pub fn is_normalized_process_name(input: &str) -> bool {
@@ -548,6 +570,80 @@ pub fn is_normalized_process_name(input: &str) -> bool {
             && candidate.name.len() == input.len()
             && candidate.name.as_ptr() == input.as_ptr()
     })
+}
+
+pub(crate) fn is_supported_target_process_name(input: &str) -> bool {
+    is_normalized_process_name(input) && is_supported_normalized_target_process_name(input)
+}
+
+pub(crate) fn is_supported_normalized_target_process_name(input: &str) -> bool {
+    input
+        .strip_suffix(".exe")
+        .is_some_and(|name| !windows_reserved_device_name(name))
+}
+
+fn windows_reserved_device_name(name: &str) -> bool {
+    let device_name = name.split('.').next().unwrap_or(name);
+    if matches!(
+        device_name,
+        "con" | "prn" | "aux" | "nul" | "conin$" | "conout$"
+    ) {
+        return true;
+    }
+
+    let bytes = device_name.as_bytes();
+    bytes.len() == 4 && matches!(&bytes[..3], b"com" | b"lpt") && matches!(bytes[3], b'1'..=b'9')
+}
+
+fn is_supported_utf16_target_process_name(input: &[u16]) -> bool {
+    strip_ascii_exe_suffix_utf16(input)
+        .is_some_and(|name| !windows_reserved_device_name_utf16(name))
+}
+
+fn strip_ascii_exe_suffix_utf16(input: &[u16]) -> Option<&[u16]> {
+    let stem_len = input.len().checked_sub(4)?;
+    let (stem, suffix) = input.split_at(stem_len);
+    (suffix[0] == u16::from(b'.')
+        && ascii_u16_eq_ignore_case(suffix[1], b'e')
+        && ascii_u16_eq_ignore_case(suffix[2], b'x')
+        && ascii_u16_eq_ignore_case(suffix[3], b'e'))
+    .then_some(stem)
+}
+
+fn windows_reserved_device_name_utf16(name: &[u16]) -> bool {
+    let device_name = name
+        .split(|ch| *ch == u16::from(b'.'))
+        .next()
+        .unwrap_or(name);
+
+    match device_name.len() {
+        3 => {
+            ascii_utf16_eq_ignore_case(device_name, b"con")
+                || ascii_utf16_eq_ignore_case(device_name, b"prn")
+                || ascii_utf16_eq_ignore_case(device_name, b"aux")
+                || ascii_utf16_eq_ignore_case(device_name, b"nul")
+        }
+        4 => {
+            (ascii_utf16_eq_ignore_case(&device_name[..3], b"com")
+                || ascii_utf16_eq_ignore_case(&device_name[..3], b"lpt"))
+                && matches!(device_name[3], 0x31..=0x39)
+        }
+        6 => ascii_utf16_eq_ignore_case(device_name, b"conin$"),
+        7 => ascii_utf16_eq_ignore_case(device_name, b"conout$"),
+        _ => false,
+    }
+}
+
+fn ascii_utf16_eq_ignore_case(input: &[u16], ascii: &[u8]) -> bool {
+    input.len() == ascii.len()
+        && input
+            .iter()
+            .zip(ascii)
+            .all(|(ch, byte)| ascii_u16_eq_ignore_case(*ch, *byte))
+}
+
+fn ascii_u16_eq_ignore_case(ch: u16, ascii: u8) -> bool {
+    ch <= 0x7f && (ch as u8).eq_ignore_ascii_case(&ascii)
 }
 
 struct Utf16ProcessNameCandidate<'a> {
@@ -880,6 +976,30 @@ mod tests {
     }
 
     #[test]
+    fn supported_utf16_names_are_filtered_before_allocating_name() {
+        assert_eq!(
+            normalize_supported_process_name_utf16(&wide_null_terminated(r"C:\Games\Example.EXE")),
+            Some("example.exe".to_owned())
+        );
+        assert_eq!(
+            normalize_supported_process_name_utf16(&wide_null_terminated("System")),
+            None
+        );
+        assert_eq!(
+            normalize_supported_process_name_utf16(&wide_null_terminated("NUL.EXE")),
+            None
+        );
+        assert_eq!(
+            normalize_supported_process_name_utf16(&wide_null_terminated("CON.any.EXE")),
+            None
+        );
+        assert_eq!(
+            normalize_supported_process_name_utf16(&wide_null_terminated("CONOUT$.EXE")),
+            None
+        );
+    }
+
+    #[test]
     fn utf16_normalization_preserves_non_ascii_names() {
         let name = [
             0xac8c,
@@ -941,6 +1061,27 @@ mod tests {
     }
 
     #[test]
+    fn supported_target_names_must_be_normalized_exe_files() {
+        assert!(is_supported_target_process_name("game.exe"));
+        assert!(!is_supported_target_process_name("Game.EXE"));
+        assert!(!is_supported_target_process_name("system"));
+        assert!(!is_supported_target_process_name("game.exe."));
+    }
+
+    #[test]
+    fn supported_target_names_reject_windows_reserved_devices() {
+        assert!(!is_supported_target_process_name("con.exe"));
+        assert!(!is_supported_target_process_name("nul.exe"));
+        assert!(!is_supported_target_process_name("com1.exe"));
+        assert!(!is_supported_target_process_name("lpt9.exe"));
+        assert!(!is_supported_target_process_name("con.any.exe"));
+        assert!(!is_supported_target_process_name("conin$.exe"));
+        assert!(!is_supported_target_process_name("conout$.any.exe"));
+        assert!(is_supported_target_process_name("com0.exe"));
+        assert!(is_supported_target_process_name("console.exe"));
+    }
+
+    #[test]
     fn rejects_nul_anywhere_in_process_name_input() {
         assert_eq!(normalize_process_name("bad\0/path/game.exe"), None);
         assert_eq!(normalize_process_name("bad\0\\game.exe"), None);
@@ -966,6 +1107,15 @@ mod tests {
         let mut config = AppConfig::default();
 
         assert!(!config.add_pid_target("game.exe", 0));
+        assert!(config.targets.is_empty());
+    }
+
+    #[test]
+    fn non_exe_targets_are_rejected() {
+        let mut config = AppConfig::default();
+
+        assert!(!config.add_target("system"));
+        assert!(!config.add_pid_target("service", 42));
         assert!(config.targets.is_empty());
     }
 
@@ -1019,6 +1169,38 @@ mod tests {
             targets: vec![TargetProcess {
                 name: "game.exe".to_owned(),
                 pid: Some(0),
+                enabled: true,
+            }],
+            ..AppConfig::default()
+        };
+
+        config.deduplicate_targets();
+
+        assert!(config.targets.is_empty());
+    }
+
+    #[test]
+    fn loaded_non_exe_targets_are_removed() {
+        let mut config = AppConfig {
+            targets: vec![TargetProcess {
+                name: "system".to_owned(),
+                pid: None,
+                enabled: true,
+            }],
+            ..AppConfig::default()
+        };
+
+        config.deduplicate_targets();
+
+        assert!(config.targets.is_empty());
+    }
+
+    #[test]
+    fn loaded_reserved_device_targets_are_removed() {
+        let mut config = AppConfig {
+            targets: vec![TargetProcess {
+                name: "nul.exe".to_owned(),
+                pid: None,
                 enabled: true,
             }],
             ..AppConfig::default()

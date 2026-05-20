@@ -13,6 +13,9 @@ use windows::Win32::System::Registry::{
 use windows::core::{PCWSTR, w};
 
 const STARTUP_VALUE_STACK_BUFFER_LEN: usize = 512;
+const MINIMIZED_STARTUP_SUFFIX_WIDE: [u16; 12] = [
+    0x20, 0x2d, 0x2d, 0x6d, 0x69, 0x6e, 0x69, 0x6d, 0x69, 0x7a, 0x65, 0x64,
+];
 
 pub fn set_launch_on_startup(enabled: bool) -> Result<()> {
     if enabled {
@@ -169,13 +172,12 @@ impl Drop for RunKey {
 
 fn startup_command(exe: &Path) -> Vec<u16> {
     let exe_len = exe.as_os_str().encode_wide().count();
-    let suffix = " --minimized";
-    let suffix_len = suffix.len();
+    let suffix_len = MINIMIZED_STARTUP_SUFFIX_WIDE.len();
     let mut command = Vec::with_capacity(1 + exe_len + 1 + suffix_len + 1);
     command.push(u16::from(b'"'));
     command.extend(exe.as_os_str().encode_wide());
     command.push(u16::from(b'"'));
-    command.extend(suffix.encode_utf16());
+    command.extend_from_slice(&MINIMIZED_STARTUP_SUFFIX_WIDE);
     command.push(0);
     command
 }

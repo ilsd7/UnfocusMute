@@ -1,6 +1,7 @@
 use super::ConfigFileStamp;
 use crate::config::cached_config_file_path;
 use crate::windows_app::error::{Context, Result, message_error};
+use std::borrow::Cow;
 use std::ffi::c_void;
 use std::fs;
 use std::os::windows::ffi::OsStrExt;
@@ -328,21 +329,38 @@ pub(super) unsafe fn set_text(hwnd: HWND, text: &str) {
 pub(super) unsafe fn measure_text_width(hwnd: HWND, font: HGDIOBJ, text: &str) -> i32 {
     let fallback_width = text.chars().count() as i32 * 8;
     let mut stack = [0u16; MEASURE_TEXT_STACK_BUFFER_LEN];
+    let wide = encode_wide_for_measurement(text, &mut stack);
+
+    unsafe { measure_wide_text_width(hwnd, font, wide.as_ref(), fallback_width) }
+}
+
+fn encode_wide_for_measurement<'a>(text: &str, stack: &'a mut [u16]) -> Cow<'a, [u16]> {
+    if text.is_ascii() {
+        let len = text.len();
+        if len <= stack.len() {
+            for (slot, byte) in stack.iter_mut().zip(text.bytes()) {
+                *slot = u16::from(byte);
+            }
+            return Cow::Borrowed(&stack[..len]);
+        }
+        return Cow::Owned(text.bytes().map(u16::from).collect());
+    }
+
     let mut len = 0;
     let mut encoded = text.encode_utf16();
     while let Some(ch) = encoded.next() {
         if len == stack.len() {
-            let mut wide = Vec::with_capacity(text.len());
-            wide.extend_from_slice(&stack);
+            let mut wide = Vec::with_capacity(utf16_code_unit_count(text));
+            wide.extend_from_slice(stack);
             wide.push(ch);
             wide.extend(encoded);
-            return unsafe { measure_wide_text_width(hwnd, font, &wide, fallback_width) };
+            return Cow::Owned(wide);
         }
         stack[len] = ch;
         len += 1;
     }
 
-    unsafe { measure_wide_text_width(hwnd, font, &stack[..len], fallback_width) }
+    Cow::Borrowed(&stack[..len])
 }
 
 unsafe fn measure_wide_text_width(
@@ -441,20 +459,33 @@ pub(super) unsafe fn reserve_combo_items(hwnd: HWND, count: usize, text_bytes: u
 }
 
 pub(super) fn storage_bytes_hint(text: &str) -> usize {
-    if text.is_ascii() {
-        (text.len() + 1) * std::mem::size_of::<u16>()
-    } else {
-        (text.encode_utf16().count() + 1) * std::mem::size_of::<u16>()
-    }
+    (utf16_code_unit_count(text) + 1) * std::mem::size_of::<u16>()
 }
 
 pub(super) fn write_wide_buffer(text: &str, wide: &mut Vec<u16>) {
     wide.clear();
-    wide.extend(text.encode_utf16());
+    if text.is_ascii() {
+        wide.reserve(text.len() + 1);
+        wide.extend(text.bytes().map(u16::from));
+    } else {
+        wide.extend(text.encode_utf16());
+    }
     wide.push(0);
 }
 
 fn encode_wide_with_nul<'a>(text: &str, buffer: &'a mut [u16]) -> Option<&'a [u16]> {
+    if text.is_ascii() {
+        let len = text.len();
+        if len >= buffer.len() {
+            return None;
+        }
+        for (slot, byte) in buffer.iter_mut().zip(text.bytes()) {
+            *slot = u16::from(byte);
+        }
+        buffer[len] = 0;
+        return Some(&buffer[..=len]);
+    }
+
     let mut len = 0;
     for ch in text.encode_utf16() {
         if len + 1 >= buffer.len() {
@@ -491,7 +522,7 @@ pub(super) unsafe fn set_checkbox(hwnd: HWND, checked: bool) {
 }
 
 pub(super) unsafe fn set_combo_edit_caret(hwnd: HWND, text: &str) {
-    let position = text.encode_utf16().count().min(u16::MAX as usize) as u16;
+    let position = utf16_code_unit_count(text).min(u16::MAX as usize) as u16;
     unsafe {
         set_combo_edit_selection(hwnd, position, position);
     }
@@ -555,6 +586,15 @@ pub(super) fn copy_wide_fixed(text: &str, destination: &mut [u16]) {
         return;
     };
 
+    if text.is_ascii() {
+        let count = text.len().min(max_text_len);
+        for (slot, byte) in destination.iter_mut().take(count).zip(text.bytes()) {
+            *slot = u16::from(byte);
+        }
+        destination[count] = 0;
+        return;
+    }
+
     let mut count = 0;
     for ch in text.encode_utf16() {
         if count == max_text_len || (count + 1 == max_text_len && is_high_surrogate(ch)) {
@@ -579,7 +619,9 @@ pub(super) fn current_config_stamp() -> Option<ConfigFileStamp> {
 }
 
 pub(super) fn to_wide(text: &str) -> Vec<u16> {
-    text.encode_utf16().chain(std::iter::once(0)).collect()
+    let mut wide = Vec::with_capacity(utf16_code_unit_count(text) + 1);
+    write_wide_buffer(text, &mut wide);
+    wide
 }
 
 pub(super) fn path_to_wide(path: &Path) -> Vec<u16> {
@@ -597,6 +639,14 @@ pub(super) fn hiword(value: u32) -> u16 {
     ((value >> 16) & 0xffff) as u16
 }
 
+pub(super) fn utf16_code_unit_count(text: &str) -> usize {
+    if text.is_ascii() {
+        text.len()
+    } else {
+        text.encode_utf16().count()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -606,6 +656,76 @@ mod tests {
         assert_eq!(storage_bytes_hint("abc"), 4 * std::mem::size_of::<u16>());
         assert_eq!(storage_bytes_hint("한글"), 3 * std::mem::size_of::<u16>());
         assert_eq!(storage_bytes_hint("🎧"), 3 * std::mem::size_of::<u16>());
+    }
+
+    #[test]
+    fn to_wide_uses_nul_terminated_utf16() {
+        assert_eq!(
+            to_wide("abc"),
+            [u16::from(b'a'), u16::from(b'b'), u16::from(b'c'), 0]
+        );
+
+        let mut expected: Vec<u16> = "한글".encode_utf16().collect();
+        expected.push(0);
+        assert_eq!(to_wide("한글"), expected);
+    }
+
+    #[test]
+    fn encode_wide_with_nul_handles_ascii_and_unicode() {
+        let mut buffer = [0xffff; 8];
+        let expected_ascii = [u16::from(b'a'), u16::from(b'b'), u16::from(b'c'), 0];
+
+        assert_eq!(
+            encode_wide_with_nul("abc", &mut buffer),
+            Some(expected_ascii.as_slice())
+        );
+
+        let encoded = encode_wide_with_nul("한글", &mut buffer).unwrap();
+        let mut expected: Vec<u16> = "한글".encode_utf16().collect();
+        expected.push(0);
+        assert_eq!(encoded, expected);
+    }
+
+    #[test]
+    fn encode_wide_with_nul_reports_small_buffers() {
+        let mut buffer = [0u16; 3];
+
+        assert_eq!(encode_wide_with_nul("abc", &mut buffer), None);
+    }
+
+    #[test]
+    fn encode_wide_for_measurement_uses_stack_for_ascii_and_unicode() {
+        let mut buffer = [0xffff; 8];
+
+        let encoded = encode_wide_for_measurement("abc", &mut buffer);
+        assert!(matches!(encoded, Cow::Borrowed(_)));
+        assert_eq!(
+            encoded.as_ref(),
+            [u16::from(b'a'), u16::from(b'b'), u16::from(b'c')]
+        );
+
+        let encoded = encode_wide_for_measurement("한글", &mut buffer);
+        assert!(matches!(encoded, Cow::Borrowed(_)));
+        let expected: Vec<u16> = "한글".encode_utf16().collect();
+        assert_eq!(encoded.as_ref(), expected);
+    }
+
+    #[test]
+    fn encode_wide_for_measurement_uses_heap_when_stack_is_small() {
+        let mut buffer = [0xffff; 3];
+
+        let encoded = encode_wide_for_measurement("abcd", &mut buffer);
+
+        assert!(matches!(encoded, Cow::Owned(_)));
+        assert_eq!(
+            encoded.as_ref(),
+            [
+                u16::from(b'a'),
+                u16::from(b'b'),
+                u16::from(b'c'),
+                u16::from(b'd')
+            ]
+        );
     }
 
     #[test]
@@ -628,5 +748,30 @@ mod tests {
         copy_wide_fixed("a🎧", &mut destination);
 
         assert_eq!(destination, expected);
+    }
+
+    #[test]
+    fn copy_wide_fixed_truncates_ascii_and_nul_terminates() {
+        let mut destination = [0xffff; 4];
+
+        copy_wide_fixed("abcdef", &mut destination);
+
+        assert_eq!(
+            destination,
+            [u16::from(b'a'), u16::from(b'b'), u16::from(b'c'), 0]
+        );
+    }
+
+    #[test]
+    fn write_wide_buffer_uses_nul_terminated_utf16() {
+        let mut wide = Vec::new();
+
+        write_wide_buffer("abc", &mut wide);
+        assert_eq!(wide, [u16::from(b'a'), u16::from(b'b'), u16::from(b'c'), 0]);
+
+        write_wide_buffer("한글", &mut wide);
+        let mut expected: Vec<u16> = "한글".encode_utf16().collect();
+        expected.push(0);
+        assert_eq!(wide, expected);
     }
 }

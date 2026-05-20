@@ -8,6 +8,7 @@ use super::win32::{
     WindowClassRegistration, add_combo_item_with_buffer, create_control, create_multiline_checkbox,
     create_primary_button, get_message, hiword, is_checked, loword, measure_text_width,
     reserve_combo_items, set_checkbox, set_text, storage_bytes_hint, to_wide,
+    utf16_code_unit_count,
 };
 use crate::i18n::Language;
 use crate::windows_app::error::{Context, Result};
@@ -278,7 +279,7 @@ fn language_name_storage_bytes_hint() -> usize {
 fn language_name_buffer_capacity() -> usize {
     Language::ALL
         .iter()
-        .map(|language| language.native_name().encode_utf16().count() + 1)
+        .map(|language| utf16_code_unit_count(language.native_name()) + 1)
         .max()
         .unwrap_or(0)
 }

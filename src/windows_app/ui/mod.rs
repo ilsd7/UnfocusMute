@@ -1,6 +1,7 @@
 use crate::config::{
     AppConfig, AppConfigLoad, TargetProcess, WindowPosition, cached_config_file_path,
-    is_normalized_process_name, normalize_process_name, normalize_process_name_cow,
+    is_normalized_process_name, is_supported_normalized_target_process_name,
+    normalize_process_name, normalize_process_name_cow,
 };
 use crate::engine::{AudioSessionKey, TargetMatcher};
 use crate::i18n::{Language, Strings};
@@ -485,6 +486,10 @@ fn centered_position(width: i32, height: i32) -> WindowPosition {
 fn window_position_is_visible(position: WindowPosition, width: i32, height: i32) -> bool {
     const MIN_VISIBLE_EDGE: i32 = 80;
 
+    if width <= 0 || height <= 0 {
+        return false;
+    }
+
     let screen = virtual_screen_rect();
     let right = position.x.saturating_add(width);
     let bottom = position.y.saturating_add(height);
@@ -538,6 +543,19 @@ fn virtual_screen_rect() -> RECT {
         top: 0,
         right: unsafe { GetSystemMetrics(SM_CXSCREEN) },
         bottom: unsafe { GetSystemMetrics(SM_CYSCREEN) },
+    }
+}
+
+#[cfg(test)]
+mod window_position_tests {
+    use super::*;
+
+    #[test]
+    fn zero_sized_windows_are_not_visible_positions() {
+        let position = WindowPosition { x: 10, y: 10 };
+
+        assert!(!window_position_is_visible(position, 0, WINDOW_HEIGHT));
+        assert!(!window_position_is_visible(position, WINDOW_WIDTH, 0));
     }
 }
 
@@ -2235,7 +2253,7 @@ impl AppWindow {
         let Some(name) = normalize_process_name(&self.manual_process_text) else {
             return;
         };
-        if !name.ends_with(".exe") {
+        if !is_supported_normalized_target_process_name(&name) {
             self.show_manual_process_exe_required();
             return;
         }
@@ -2348,7 +2366,7 @@ impl AppWindow {
 
     fn can_add_process(&self, name: &str, pid: Option<u32>) -> bool {
         debug_assert!(is_normalized_process_name(name));
-        if pid == Some(0) {
+        if pid == Some(0) || !is_supported_normalized_target_process_name(name) {
             return false;
         }
         !self.config.contains_normalized_target(name, pid)
@@ -2358,7 +2376,8 @@ impl AppWindow {
         let Some(name) = normalize_process_name_cow(&self.manual_process_text) else {
             return false;
         };
-        name.ends_with(".exe") && !self.config.contains_normalized_target(name.as_ref(), None)
+        is_supported_normalized_target_process_name(name.as_ref())
+            && !self.config.contains_normalized_target(name.as_ref(), None)
     }
 
     fn finish_target_change(&mut self) {
@@ -2541,8 +2560,12 @@ impl AppWindow {
                 x: rect.left,
                 y: rect.top,
             };
-            let width = rect.right.saturating_sub(rect.left);
-            let height = rect.bottom.saturating_sub(rect.top);
+            let Some(width) = rect.right.checked_sub(rect.left) else {
+                return false;
+            };
+            let Some(height) = rect.bottom.checked_sub(rect.top) else {
+                return false;
+            };
             if !window_position_is_visible(position, width, height) {
                 return false;
             }

@@ -1,4 +1,4 @@
-use crate::config::normalize_process_name_utf16;
+use crate::config::normalize_supported_process_name_utf16;
 use std::collections::HashMap;
 use std::mem::size_of;
 use windows::Win32::Foundation::{CloseHandle, ERROR_INSUFFICIENT_BUFFER, HANDLE, HWND};
@@ -231,7 +231,7 @@ fn visit_process_snapshot(mut visit: impl FnMut(u32, String) -> bool) {
         if entry.th32ProcessID == 0 {
             return true;
         }
-        let Some(name) = normalize_process_name_utf16(&entry.szExeFile) else {
+        let Some(name) = normalize_supported_process_name_utf16(&entry.szExeFile) else {
             return true;
         };
         visit(entry.th32ProcessID, name)
@@ -283,7 +283,7 @@ fn process_name_from_snapshot(target_pid: u32) -> Option<String> {
     let mut result = None;
     visit_process_snapshot_entries(|entry| {
         if entry.th32ProcessID == target_pid {
-            result = normalize_process_name_utf16(&entry.szExeFile);
+            result = normalize_supported_process_name_utf16(&entry.szExeFile);
             false
         } else {
             true
@@ -315,12 +315,12 @@ unsafe fn query_process_image_name(handle: HANDLE) -> Option<String> {
         Err(error) if is_insufficient_buffer(&error) => {
             let mut buffer = vec![0u16; MAX_PROCESS_IMAGE_BUFFER_LEN];
             let len = unsafe { query_process_image_name_into(handle, &mut buffer) }.ok()?;
-            return normalize_process_name_utf16(&buffer[..len]);
+            return normalize_supported_process_name_utf16(&buffer[..len]);
         }
         Err(_) => return None,
     };
 
-    normalize_process_name_utf16(&buffer[..len])
+    normalize_supported_process_name_utf16(&buffer[..len])
 }
 
 unsafe fn query_process_image_name_into(
@@ -346,6 +346,22 @@ fn is_insufficient_buffer(error: &Error) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn supported_process_names_require_exe_suffix() {
+        assert_eq!(
+            normalize_supported_process_name_utf16(&wide_null_terminated("Game.EXE")),
+            Some("game.exe".to_owned())
+        );
+        assert_eq!(
+            normalize_supported_process_name_utf16(&wide_null_terminated("System")),
+            None
+        );
+        assert_eq!(
+            normalize_supported_process_name_utf16(&wide_null_terminated("NUL.EXE")),
+            None
+        );
+    }
 
     #[test]
     fn process_name_cache_retries_failed_loads() {
@@ -378,5 +394,9 @@ mod tests {
             Some("game.exe")
         );
         assert_eq!(attempts, 2);
+    }
+
+    fn wide_null_terminated(text: &str) -> Vec<u16> {
+        text.encode_utf16().chain(std::iter::once(0)).collect()
     }
 }
