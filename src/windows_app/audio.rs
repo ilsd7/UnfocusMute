@@ -70,11 +70,14 @@ impl AudioController {
         let failed_sessions = {
             let lookup = ManagedSessionLookup::new(session_keys);
             let mut failed_sessions = None;
-            self.visit_sessions(|session| {
-                if let Err(key) = apply_unmute_to_session(&session, session_keys, &lookup) {
-                    failed_sessions.get_or_insert_with(HashSet::new).insert(key);
-                }
-            })?;
+            self.visit_sessions_matching(
+                |pid| lookup.may_include_pid(pid),
+                |session| {
+                    if let Err(key) = apply_unmute_to_session(&session, session_keys, &lookup) {
+                        failed_sessions.get_or_insert_with(HashSet::new).insert(key);
+                    }
+                },
+            )?;
             failed_sessions
         };
 
@@ -102,15 +105,19 @@ impl AudioController {
         let mut apply_result = PlanApplyResult::new(managed_muted_sessions.len());
         {
             let lookup = ManagedSessionLookup::new(managed_muted_sessions);
-            self.visit_sessions(|session| {
-                apply_plan_to_session(
-                    &session,
-                    &planner,
-                    managed_muted_sessions,
-                    &lookup,
-                    &mut apply_result,
-                );
-            })?;
+            let needs_all_pids = matcher.needs_foreground_process_name();
+            self.visit_sessions_matching(
+                |pid| needs_all_pids || matcher.has_pid_target(pid) || lookup.may_include_pid(pid),
+                |session| {
+                    apply_plan_to_session(
+                        &session,
+                        &planner,
+                        managed_muted_sessions,
+                        &lookup,
+                        &mut apply_result,
+                    );
+                },
+            )?;
         }
         managed_muted_sessions.clear();
         managed_muted_sessions.extend(apply_result.active_managed_sessions);
@@ -120,7 +127,11 @@ impl AudioController {
         })
     }
 
-    fn visit_sessions(&self, mut visit: impl FnMut(AudioSessionControl)) -> Result<()> {
+    fn visit_sessions_matching(
+        &self,
+        mut include_pid: impl FnMut(u32) -> bool,
+        mut visit: impl FnMut(AudioSessionControl),
+    ) -> Result<()> {
         unsafe {
             let mut process_names = process::ProcessNameResolver::snapshot_first();
 
@@ -137,11 +148,21 @@ impl AudioController {
                     let Ok(control2) = control.cast::<IAudioSessionControl2>() else {
                         continue;
                     };
-                    let Some(session) = session_control(control2, &mut process_names) else {
+                    let Some(pid) = session_process_id(&control2) else {
+                        continue;
+                    };
+                    if !include_pid(pid) {
+                        continue;
+                    }
+                    let Some(process_name) = process_names.name(pid) else {
                         continue;
                     };
 
-                    visit(session);
+                    visit(AudioSessionControl {
+                        control: control2,
+                        pid,
+                        process_name,
+                    });
                 }
             }
 
@@ -168,9 +189,11 @@ impl AudioSessionControl<'_> {
     }
 
     fn muted(&self, volume: &ISimpleAudioVolume) -> bool {
-        unsafe { volume.GetMute() }
-            .map(|value| value.as_bool())
-            .unwrap_or(false)
+        self.try_muted(volume).unwrap_or(false)
+    }
+
+    fn try_muted(&self, volume: &ISimpleAudioVolume) -> windows::core::Result<bool> {
+        unsafe { volume.GetMute() }.map(|value| value.as_bool())
     }
 }
 
@@ -210,7 +233,10 @@ enum ManagedSessionLookup<'a> {
         second_process_name: &'a str,
     },
     // Prefilter only; exact AudioSessionKey lookup still decides ownership.
-    Many(HashSet<(u32, &'a str)>),
+    Many {
+        identities: HashSet<(u32, &'a str)>,
+        pids: HashSet<u32>,
+    },
 }
 
 impl<'a> ManagedSessionLookup<'a> {
@@ -235,13 +261,33 @@ impl<'a> ManagedSessionLookup<'a> {
         };
 
         let mut identities = HashSet::with_capacity(session_keys.len());
+        let mut pids = HashSet::with_capacity(session_keys.len());
         identities.insert((first.pid, first.process_name.as_str()));
         identities.insert((second.pid, second.process_name.as_str()));
         identities.insert((third.pid, third.process_name.as_str()));
+        pids.insert(first.pid);
+        pids.insert(second.pid);
+        pids.insert(third.pid);
         for key in keys {
             identities.insert((key.pid, key.process_name.as_str()));
+            pids.insert(key.pid);
         }
-        Self::Many(identities)
+        Self::Many { identities, pids }
+    }
+
+    fn may_include_pid(&self, pid: u32) -> bool {
+        match self {
+            Self::Empty => false,
+            Self::One {
+                pid: managed_pid, ..
+            } => *managed_pid == pid,
+            Self::Two {
+                first_pid,
+                second_pid,
+                ..
+            } => *first_pid == pid || *second_pid == pid,
+            Self::Many { pids, .. } => pids.contains(&pid),
+        }
     }
 
     fn may_include(&self, pid: u32, process_name: &str) -> bool {
@@ -260,7 +306,7 @@ impl<'a> ManagedSessionLookup<'a> {
                 (*first_pid == pid && *first_process_name == process_name)
                     || (*second_pid == pid && *second_process_name == process_name)
             }
-            Self::Many(identities) => identities.contains(&(pid, process_name)),
+            Self::Many { identities, .. } => identities.contains(&(pid, process_name)),
         }
     }
 }
@@ -334,9 +380,13 @@ fn apply_unmute_to_session(
         return Ok(());
     }
     let Some(volume) = session.volume() else {
-        return Ok(());
+        return Err(key);
     };
-    if !session.muted(&volume) {
+    let muted = match session.try_muted(&volume) {
+        Ok(muted) => muted,
+        Err(_) => return Err(key),
+    };
+    if !muted {
         return Ok(());
     }
     if unsafe { volume.SetMute(false, std::ptr::null()) }.is_err() {
@@ -431,22 +481,13 @@ impl IMMNotificationClient_Impl for EndpointNotificationClient_Impl {
     }
 }
 
-unsafe fn session_control(
-    control: IAudioSessionControl2,
-    process_names: &mut process::ProcessNameResolver,
-) -> Option<AudioSessionControl<'_>> {
+unsafe fn session_process_id(control: &IAudioSessionControl2) -> Option<u32> {
     let pid = unsafe { control.GetProcessId().ok()? };
     if pid == 0 {
         return None;
     }
 
-    let process_name = process_names.name(pid)?;
-
-    Some(AudioSessionControl {
-        control,
-        pid,
-        process_name,
-    })
+    Some(pid)
 }
 
 unsafe fn session_instance_id(control: &IAudioSessionControl2) -> Option<String> {

@@ -6,8 +6,8 @@ use super::constants::{
 use super::theme::{OwnedBrush, UiFont, ui_font_point_size};
 use super::win32::{
     WindowClassRegistration, add_combo_item_with_buffer, create_checkbox, create_control,
-    create_primary_button, get_message, hiword, is_checked, loword, set_checkbox, set_text,
-    to_wide,
+    create_primary_button, get_message, hiword, is_checked, loword, measure_text_width,
+    set_checkbox, set_text, to_wide,
 };
 use crate::i18n::Language;
 use crate::windows_app::error::{Context, Result};
@@ -19,11 +19,11 @@ use windows::Win32::UI::Controls::CB_SETMINVISIBLE;
 use windows::Win32::UI::WindowsAndMessaging::{
     CB_GETCURSEL, CB_SETCURSEL, CBN_SELCHANGE, CBN_SELENDOK, CBS_DROPDOWNLIST, CREATESTRUCTW,
     CreateWindowExW, DefWindowProcW, DestroyWindow, DispatchMessageW, GWLP_USERDATA,
-    GetWindowLongPtrW, HICON, IDC_ARROW, LoadCursorW, MSG, RegisterClassW, SW_SHOW, SendMessageW,
-    SetForegroundWindow, SetWindowLongPtrW, ShowWindow, TranslateMessage, WINDOW_EX_STYLE,
-    WINDOW_STYLE, WM_CLOSE, WM_COMMAND, WM_CREATE, WM_CTLCOLORSTATIC, WM_NCCREATE, WM_NCDESTROY,
-    WM_SETFONT, WNDCLASSW, WS_CAPTION, WS_CHILD, WS_EX_CLIENTEDGE, WS_OVERLAPPED, WS_SYSMENU,
-    WS_TABSTOP, WS_VISIBLE,
+    GetWindowLongPtrW, HICON, IDC_ARROW, LoadCursorW, MSG, MoveWindow, RegisterClassW, SW_SHOW,
+    SendMessageW, SetForegroundWindow, SetWindowLongPtrW, ShowWindow, TranslateMessage,
+    WINDOW_EX_STYLE, WINDOW_STYLE, WM_CLOSE, WM_COMMAND, WM_CREATE, WM_CTLCOLORSTATIC, WM_NCCREATE,
+    WM_NCDESTROY, WM_SETFONT, WNDCLASSW, WS_CAPTION, WS_CHILD, WS_EX_CLIENTEDGE, WS_OVERLAPPED,
+    WS_SYSMENU, WS_TABSTOP, WS_VISIBLE,
 };
 use windows::core::{PCWSTR, w};
 
@@ -44,6 +44,10 @@ struct LanguagePrompt {
 
 const LANGUAGE_PROMPT_WINDOW_STYLE: WINDOW_STYLE =
     WINDOW_STYLE(WS_OVERLAPPED.0 | WS_CAPTION.0 | WS_SYSMENU.0);
+const LANGUAGE_PROMPT_WIDTH: i32 = 620;
+const LANGUAGE_PROMPT_HEIGHT: i32 = 270;
+const LANGUAGE_PROMPT_MARGIN: i32 = 32;
+const LANGUAGE_PROMPT_CONTENT_WIDTH: i32 = LANGUAGE_PROMPT_WIDTH - LANGUAGE_PROMPT_MARGIN * 2;
 
 #[derive(Clone, Copy)]
 pub(super) struct InitialPreferences {
@@ -83,9 +87,9 @@ impl LanguagePrompt {
                 strings.first_run_language_title,
                 child,
                 WINDOW_EX_STYLE(0),
-                32,
+                LANGUAGE_PROMPT_MARGIN,
                 28,
-                456,
+                LANGUAGE_PROMPT_CONTENT_WIDTH,
                 24,
                 0,
             )?
@@ -98,9 +102,9 @@ impl LanguagePrompt {
                 strings.first_run_language_subtitle,
                 child,
                 WINDOW_EX_STYLE(0),
-                32,
+                LANGUAGE_PROMPT_MARGIN,
                 56,
-                456,
+                LANGUAGE_PROMPT_CONTENT_WIDTH,
                 22,
                 0,
             )?
@@ -113,9 +117,9 @@ impl LanguagePrompt {
                 "",
                 child | WS_TABSTOP | WINDOW_STYLE(CBS_DROPDOWNLIST as u32),
                 WS_EX_CLIENTEDGE,
-                32,
+                LANGUAGE_PROMPT_MARGIN,
                 92,
-                240,
+                280,
                 210,
                 ID_LANGUAGE_PROMPT_COMBO,
             )?
@@ -125,9 +129,9 @@ impl LanguagePrompt {
                 hwnd,
                 instance,
                 strings.launch_on_startup,
-                32,
+                LANGUAGE_PROMPT_MARGIN,
                 136,
-                456,
+                LANGUAGE_PROMPT_CONTENT_WIDTH,
                 26,
                 ID_LANGUAGE_PROMPT_STARTUP,
             )?
@@ -137,7 +141,7 @@ impl LanguagePrompt {
                 hwnd,
                 instance,
                 strings.first_run_start,
-                390,
+                490,
                 174,
                 96,
                 34,
@@ -163,6 +167,7 @@ impl LanguagePrompt {
                 .unwrap_or(0);
             SendMessageW(self.combo, CB_SETCURSEL, Some(WPARAM(index)), None);
             set_checkbox(self.launch_on_startup_check, self.launch_on_startup);
+            self.layout_controls(strings);
         }
 
         Ok(())
@@ -206,7 +211,20 @@ impl LanguagePrompt {
             set_text(self.subtitle_label, strings.first_run_language_subtitle);
             set_text(self.launch_on_startup_check, strings.launch_on_startup);
             set_text(self.start_button, strings.first_run_start);
+            self.layout_controls(strings);
         }
+    }
+
+    fn layout_controls(&self, strings: &crate::i18n::Strings) {
+        let start_width = (self.text_width(strings.first_run_start) + 44).clamp(96, 180);
+        let start_x = LANGUAGE_PROMPT_WIDTH - LANGUAGE_PROMPT_MARGIN - start_width;
+        unsafe {
+            let _ = MoveWindow(self.start_button, start_x, 174, start_width, 34, true);
+        }
+    }
+
+    fn text_width(&self, text: &str) -> i32 {
+        unsafe { measure_text_width(self.hwnd, self.font.handle(), text) }
     }
 
     fn accept(&mut self) {
@@ -244,7 +262,7 @@ pub(super) unsafe fn prompt_initial_language(
     let mut state = Box::new(LanguagePrompt::new(current, launch_on_startup));
     let state_ptr = state.as_mut() as *mut LanguagePrompt;
     let title = to_wide(current.strings().first_run_window_title);
-    let position = centered_position(520, 270);
+    let position = centered_position(LANGUAGE_PROMPT_WIDTH, LANGUAGE_PROMPT_HEIGHT);
     let hwnd = unsafe {
         CreateWindowExW(
             WINDOW_EX_STYLE(0),
@@ -253,8 +271,8 @@ pub(super) unsafe fn prompt_initial_language(
             LANGUAGE_PROMPT_WINDOW_STYLE,
             position.x,
             position.y,
-            520,
-            270,
+            LANGUAGE_PROMPT_WIDTH,
+            LANGUAGE_PROMPT_HEIGHT,
             None,
             None,
             Some(instance),

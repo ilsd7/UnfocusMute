@@ -125,6 +125,12 @@ impl TargetMatcher {
         !self.names.is_empty()
     }
 
+    pub(crate) fn has_pid_target(&self, pid: u32) -> bool {
+        self.names_by_pid
+            .binary_search_by(|(target_pid, _)| target_pid.cmp(&pid))
+            .is_ok()
+    }
+
     fn match_kind(&self, name: &str, pid: u32) -> Option<TargetMatchKind> {
         if self
             .names
@@ -334,6 +340,18 @@ mod tests {
 
         assert!(!pid_matcher.needs_foreground_process_name());
         assert!(exe_matcher.needs_foreground_process_name());
+    }
+
+    #[test]
+    fn pid_targets_can_prefilter_by_process_id() {
+        let matcher = TargetMatcher::new(&[
+            TargetProcess::for_pid("game.exe", 10).unwrap(),
+            TargetProcess::for_pid("chat.exe", 20).unwrap(),
+        ]);
+
+        assert!(matcher.has_pid_target(10));
+        assert!(matcher.has_pid_target(20));
+        assert!(!matcher.has_pid_target(30));
     }
 
     #[test]

@@ -1479,6 +1479,10 @@ impl AppWindow {
         if self.paused {
             self.foreground_hook = None;
             self.restore_managed_mutes();
+            if self.muted_by_app.is_empty() {
+                self.audio = None;
+                self.clear_audio_issues();
+            }
             self.sync_audio_fallback_timer();
             self.update_status();
             return;
@@ -1486,8 +1490,8 @@ impl AppWindow {
 
         if self.target_matcher.is_empty() && self.muted_by_app.is_empty() {
             self.foreground_hook = None;
-            self.clear_issue(StatusIssue::AudioUnavailable);
-            self.clear_issue(StatusIssue::AudioUpdateFailed);
+            self.audio = None;
+            self.clear_audio_issues();
             self.update_status();
             return;
         }
@@ -1658,6 +1662,15 @@ impl AppWindow {
             self.set_issue(StatusIssue::AudioUpdateFailed);
         } else {
             self.clear_issue(StatusIssue::AudioUpdateFailed);
+        }
+    }
+
+    fn clear_audio_issues(&mut self) {
+        let audio_unavailable_changed = self.issues.clear(StatusIssue::AudioUnavailable);
+        let audio_update_changed = self.issues.clear(StatusIssue::AudioUpdateFailed);
+        if audio_unavailable_changed || audio_update_changed {
+            self.last_status = None;
+            self.update_status();
         }
     }
 

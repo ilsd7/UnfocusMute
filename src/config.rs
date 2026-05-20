@@ -44,6 +44,9 @@ impl TargetProcess {
 
     #[cfg(test)]
     pub fn for_pid(name: impl AsRef<str>, pid: u32) -> Option<Self> {
+        if pid == 0 {
+            return None;
+        }
         let name = normalize_process_name(name.as_ref())?;
         Some(Self {
             name,
@@ -187,6 +190,9 @@ impl AppConfig {
 
     pub(crate) fn add_normalized_pid_target(&mut self, name: String, pid: u32) -> bool {
         debug_assert!(is_normalized_process_name(&name));
+        if pid == 0 {
+            return false;
+        }
         self.add_target_process(TargetProcess {
             name,
             pid: Some(pid),
@@ -223,6 +229,9 @@ impl AppConfig {
 
     pub fn deduplicate_targets(&mut self) {
         self.targets.retain_mut(|target| {
+            if target.pid == Some(0) {
+                return false;
+            }
             let Some(name) = normalize_process_name_owned(std::mem::take(&mut target.name)) else {
                 return false;
             };
@@ -678,6 +687,14 @@ mod tests {
     }
 
     #[test]
+    fn pid_zero_targets_are_rejected() {
+        let mut config = AppConfig::default();
+
+        assert!(!config.add_pid_target("game.exe", 0));
+        assert!(config.targets.is_empty());
+    }
+
+    #[test]
     fn exe_and_pid_targets_can_coexist() {
         let mut config = AppConfig::default();
 
@@ -716,6 +733,22 @@ mod tests {
 
         assert_eq!(config.targets.len(), 1);
         assert_eq!(config.targets[0].name, "game.exe");
+    }
+
+    #[test]
+    fn loaded_pid_zero_targets_are_removed() {
+        let mut config = AppConfig {
+            targets: vec![TargetProcess {
+                name: "game.exe".to_owned(),
+                pid: Some(0),
+                enabled: true,
+            }],
+            ..AppConfig::default()
+        };
+
+        config.deduplicate_targets();
+
+        assert!(config.targets.is_empty());
     }
 
     #[test]
