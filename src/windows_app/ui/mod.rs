@@ -506,6 +506,7 @@ struct AppWindow {
     audio_fallback_timer_ready: bool,
     issues: IssueState,
     last_status: Option<StatusSnapshot>,
+    last_action_buttons: Option<ActionButtonState>,
     config_stamp: Option<ConfigFileStamp>,
     next_config_check: Instant,
     theme: AppTheme,
@@ -681,6 +682,13 @@ struct StatusSnapshot {
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+struct ActionButtonState {
+    remove: bool,
+    add_selected: bool,
+    add_manual: bool,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 struct ConfigReloadResult {
     targets_changed: bool,
 }
@@ -731,6 +739,7 @@ impl AppWindow {
             audio_fallback_timer_ready: false,
             issues: initial_issues,
             last_status: None,
+            last_action_buttons: None,
             config_stamp: current_config_stamp(),
             next_config_check: Instant::now() + CONFIG_RELOAD_CHECK_INTERVAL,
             theme: AppTheme::new(language),
@@ -1483,7 +1492,6 @@ impl AppWindow {
 
     fn tick(&mut self) {
         self.reload_config_if_due();
-        self.sync_audio_fallback_timer();
 
         if self.paused {
             self.foreground_hook = None;
@@ -1501,10 +1509,12 @@ impl AppWindow {
             self.foreground_hook = None;
             self.audio = None;
             self.clear_audio_issues();
+            self.sync_audio_fallback_timer();
             self.update_status();
             return;
         }
 
+        self.sync_audio_fallback_timer();
         self.ensure_foreground_hook();
 
         if self
@@ -2117,18 +2127,28 @@ impl AppWindow {
         self.update_action_buttons();
     }
 
-    fn update_action_buttons(&self) {
+    fn update_action_buttons(&mut self) {
         let has_selected_target =
             unsafe { SendMessageW(self.controls.target_list, LB_GETCURSEL, None, None).0 >= 0 };
         let can_add_selected = self
             .selected_process_choice()
             .is_some_and(|choice| self.can_add_process_choice(choice));
         let can_add_manual = self.can_submit_manual_target();
-        unsafe {
-            let _ = EnableWindow(self.controls.remove_button, has_selected_target);
-            let _ = EnableWindow(self.controls.add_selected_button, can_add_selected);
-            let _ = EnableWindow(self.controls.add_manual_button, can_add_manual);
+        let state = ActionButtonState {
+            remove: has_selected_target,
+            add_selected: can_add_selected,
+            add_manual: can_add_manual,
+        };
+        if self.last_action_buttons == Some(state) {
+            return;
         }
+
+        unsafe {
+            let _ = EnableWindow(self.controls.remove_button, state.remove);
+            let _ = EnableWindow(self.controls.add_selected_button, state.add_selected);
+            let _ = EnableWindow(self.controls.add_manual_button, state.add_manual);
+        }
+        self.last_action_buttons = Some(state);
     }
 
     fn selected_process_choice(&self) -> Option<&ProcessChoice> {

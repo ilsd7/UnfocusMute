@@ -75,6 +75,7 @@ impl AudioController {
             let lookup = ManagedSessionLookup::new(session_keys);
             let mut failed_sessions = None;
             self.visit_sessions_matching(
+                false,
                 |pid| lookup.may_include_pid(pid),
                 |session| {
                     if let Err(key) = apply_unmute_to_session(&session, session_keys, &lookup) {
@@ -111,6 +112,7 @@ impl AudioController {
             let lookup = ManagedSessionLookup::new(managed_muted_sessions);
             let needs_all_pids = matcher.needs_foreground_process_name();
             self.visit_sessions_matching(
+                needs_all_pids,
                 |pid| needs_all_pids || matcher.has_pid_target(pid) || lookup.may_include_pid(pid),
                 |session| {
                     apply_plan_to_session(
@@ -133,11 +135,16 @@ impl AudioController {
 
     fn visit_sessions_matching(
         &self,
+        prefer_process_snapshot: bool,
         mut include_pid: impl FnMut(u32) -> bool,
         mut visit: impl FnMut(AudioSessionControl),
     ) -> Result<()> {
         unsafe {
-            let mut process_names = process::ProcessNameResolver::snapshot_first();
+            let mut process_names = if prefer_process_snapshot {
+                process::ProcessNameResolver::snapshot_first()
+            } else {
+                process::ProcessNameResolver::new()
+            };
 
             for manager in &self.managers {
                 let enumerator = manager
@@ -553,7 +560,9 @@ unsafe fn active_render_endpoint_ids(enumerator: &IMMDeviceEnumerator) -> Result
         }
     }
 
-    ids.sort_unstable();
+    if ids.len() > 1 {
+        ids.sort_unstable();
+    }
     Ok(ids)
 }
 
@@ -567,9 +576,11 @@ unsafe fn co_task_mem_string(value: PWSTR) -> Option<String> {
 
     let wide = unsafe { value.as_wide() };
     let len = wide.iter().position(|ch| *ch == 0).unwrap_or(wide.len());
-    let text = String::from_utf16_lossy(&wide[..len]);
+    if len == 0 {
+        return None;
+    }
 
-    if text.is_empty() { None } else { Some(text) }
+    Some(String::from_utf16_lossy(&wide[..len]))
 }
 
 struct CoTaskMemString(PWSTR);

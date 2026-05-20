@@ -90,9 +90,12 @@ pub fn foreground_pid() -> Option<u32> {
 pub fn refresh_running_processes(processes: &mut Vec<ProcessInfo>) {
     processes.clear();
     if processes.capacity() < EXPECTED_PROCESS_COUNT {
-        processes.reserve(EXPECTED_PROCESS_COUNT - processes.capacity());
+        processes.reserve(EXPECTED_PROCESS_COUNT);
     }
-    visit_process_snapshot(|pid, name| processes.push(ProcessInfo { pid, name }));
+    visit_process_snapshot(|pid, name| {
+        processes.push(ProcessInfo { pid, name });
+        true
+    });
     processes.sort_unstable_by(|left, right| {
         left.name
             .cmp(&right.name)
@@ -104,11 +107,12 @@ fn process_names_from_snapshot() -> HashMap<u32, String> {
     let mut processes = HashMap::with_capacity(EXPECTED_PROCESS_COUNT);
     visit_process_snapshot(|pid, name| {
         processes.insert(pid, name);
+        true
     });
     processes
 }
 
-fn visit_process_snapshot(mut visit: impl FnMut(u32, String)) {
+fn visit_process_snapshot(mut visit: impl FnMut(u32, String) -> bool) {
     unsafe {
         let Ok(snapshot) = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0) else {
             return;
@@ -124,8 +128,9 @@ fn visit_process_snapshot(mut visit: impl FnMut(u32, String)) {
             loop {
                 if entry.th32ProcessID != 0
                     && let Some(name) = normalize_process_name_utf16(&entry.szExeFile)
+                    && !visit(entry.th32ProcessID, name)
                 {
-                    visit(entry.th32ProcessID, name);
+                    break;
                 }
 
                 if Process32NextW(snapshot.raw(), &mut entry).is_err() {
@@ -137,7 +142,7 @@ fn visit_process_snapshot(mut visit: impl FnMut(u32, String)) {
 }
 
 pub fn process_name(pid: u32) -> Option<String> {
-    ProcessNameResolver::new().name(pid).map(str::to_owned)
+    process_image_name(pid).or_else(|| process_name_from_snapshot(pid))
 }
 
 fn process_image_name(pid: u32) -> Option<String> {
@@ -145,6 +150,19 @@ fn process_image_name(pid: u32) -> Option<String> {
         let handle = OwnedHandle(OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, false, pid).ok()?);
         query_process_image_name(handle.raw())
     }
+}
+
+fn process_name_from_snapshot(target_pid: u32) -> Option<String> {
+    let mut result = None;
+    visit_process_snapshot(|pid, name| {
+        if pid == target_pid && result.is_none() {
+            result = Some(name);
+            false
+        } else {
+            true
+        }
+    });
+    result
 }
 
 struct OwnedHandle(HANDLE);

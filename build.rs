@@ -9,6 +9,9 @@ fn main() {
     if env::var_os("CARGO_CFG_WINDOWS").is_none() {
         return;
     }
+    if !is_release_profile() && is_cross_compiling() {
+        return;
+    }
 
     let mut resource = winresource::WindowsResource::new();
     let resource_version = windows_resource_version();
@@ -50,6 +53,10 @@ fn main() {
 
 fn is_release_profile() -> bool {
     env::var("PROFILE").as_deref() == Ok("release")
+}
+
+fn is_cross_compiling() -> bool {
+    env::var_os("HOST") != env::var_os("TARGET")
 }
 
 fn windows_resource_version() -> String {
