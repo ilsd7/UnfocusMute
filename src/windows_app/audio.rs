@@ -1,8 +1,7 @@
 use crate::engine::{AudioSessionKey, MutePlanner, TargetMatcher};
 use crate::windows_app::process;
 use anyhow::{Context, Result, bail};
-use std::collections::{HashSet, hash_map::DefaultHasher};
-use std::hash::{Hash, Hasher};
+use std::collections::HashSet;
 use std::sync::{
     Arc,
     atomic::{AtomicBool, Ordering},
@@ -179,43 +178,52 @@ impl PlanApplyResult {
     }
 }
 
-struct ManagedSessionLookup {
+enum ManagedSessionLookup<'a> {
+    Empty,
+    One { pid: u32, process_name: &'a str },
     // Prefilter only; exact AudioSessionKey lookup still decides ownership.
-    fingerprints: HashSet<u64>,
+    Many(HashSet<(u32, &'a str)>),
 }
 
-impl ManagedSessionLookup {
-    fn new(session_keys: &HashSet<AudioSessionKey>) -> Self {
-        Self {
-            fingerprints: session_keys
-                .iter()
-                .map(|key| managed_session_fingerprint(key.pid, &key.process_name))
-                .collect(),
+impl<'a> ManagedSessionLookup<'a> {
+    fn new(session_keys: &'a HashSet<AudioSessionKey>) -> Self {
+        let mut keys = session_keys.iter();
+        let Some(first) = keys.next() else {
+            return Self::Empty;
+        };
+        let Some(second) = keys.next() else {
+            return Self::One {
+                pid: first.pid,
+                process_name: &first.process_name,
+            };
+        };
+
+        let mut identities = HashSet::with_capacity(session_keys.len());
+        identities.insert((first.pid, first.process_name.as_str()));
+        identities.insert((second.pid, second.process_name.as_str()));
+        for key in keys {
+            identities.insert((key.pid, key.process_name.as_str()));
         }
+        Self::Many(identities)
     }
 
     fn may_include(&self, pid: u32, process_name: &str) -> bool {
-        if self.fingerprints.is_empty() {
-            return false;
+        match self {
+            Self::Empty => false,
+            Self::One {
+                pid: managed_pid,
+                process_name: managed_process_name,
+            } => *managed_pid == pid && *managed_process_name == process_name,
+            Self::Many(identities) => identities.contains(&(pid, process_name)),
         }
-
-        self.fingerprints
-            .contains(&managed_session_fingerprint(pid, process_name))
     }
-}
-
-fn managed_session_fingerprint(pid: u32, process_name: &str) -> u64 {
-    let mut hasher = DefaultHasher::new();
-    pid.hash(&mut hasher);
-    process_name.hash(&mut hasher);
-    hasher.finish()
 }
 
 fn apply_plan_to_session(
     session: &AudioSessionControl<'_>,
     planner: &MutePlanner<'_>,
     managed_muted_sessions: &HashSet<AudioSessionKey>,
-    lookup: &ManagedSessionLookup,
+    lookup: &ManagedSessionLookup<'_>,
     result: &mut PlanApplyResult,
 ) {
     let match_kind = planner.match_kind(session.process_name, session.pid);
@@ -277,7 +285,7 @@ fn apply_plan_to_session(
 fn apply_unmute_to_session(
     session: &AudioSessionControl<'_>,
     session_keys: &HashSet<AudioSessionKey>,
-    lookup: &ManagedSessionLookup,
+    lookup: &ManagedSessionLookup<'_>,
 ) -> std::result::Result<(), AudioSessionKey> {
     if !lookup.may_include(session.pid, session.process_name) {
         return Ok(());

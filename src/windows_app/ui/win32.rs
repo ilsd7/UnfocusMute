@@ -21,6 +21,8 @@ use windows::Win32::UI::WindowsAndMessaging::{
 };
 use windows::core::{PCWSTR, w};
 
+const MEASURE_TEXT_STACK_BUFFER_LEN: usize = 256;
+
 pub(super) struct WindowClassRegistration {
     class_name: PCWSTR,
     instance: HINSTANCE,
@@ -172,11 +174,33 @@ pub(super) unsafe fn set_text(hwnd: HWND, text: &str) {
 
 pub(super) unsafe fn measure_text_width(hwnd: HWND, font: HGDIOBJ, text: &str) -> i32 {
     let fallback_width = text.chars().count() as i32 * 8;
-    let wide: Vec<u16> = text.encode_utf16().collect();
+    let mut stack = [0u16; MEASURE_TEXT_STACK_BUFFER_LEN];
+    let mut len = 0;
+    let mut encoded = text.encode_utf16();
+    while let Some(ch) = encoded.next() {
+        if len == stack.len() {
+            let mut wide = Vec::with_capacity(text.len());
+            wide.extend_from_slice(&stack);
+            wide.push(ch);
+            wide.extend(encoded);
+            return unsafe { measure_wide_text_width(hwnd, font, &wide, fallback_width) };
+        }
+        stack[len] = ch;
+        len += 1;
+    }
+
+    unsafe { measure_wide_text_width(hwnd, font, &stack[..len], fallback_width) }
+}
+
+unsafe fn measure_wide_text_width(
+    hwnd: HWND,
+    font: HGDIOBJ,
+    wide: &[u16],
+    fallback_width: i32,
+) -> i32 {
     if wide.is_empty() {
         return 0;
     }
-
     let hdc = unsafe { GetDC(Some(hwnd)) };
     if hdc.0.is_null() {
         return fallback_width;
@@ -184,7 +208,7 @@ pub(super) unsafe fn measure_text_width(hwnd: HWND, font: HGDIOBJ, text: &str) -
 
     let previous = unsafe { SelectObject(hdc, font) };
     let mut size = SIZE::default();
-    let width = if unsafe { GetTextExtentPoint32W(hdc, &wide, &mut size).as_bool() } {
+    let width = if unsafe { GetTextExtentPoint32W(hdc, wide, &mut size).as_bool() } {
         size.cx
     } else {
         fallback_width

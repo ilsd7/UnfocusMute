@@ -94,7 +94,7 @@ dependencies = [
 
 [[package]]
 name = "unfocusmute"
-version = "1.0.26"
+version = "1.0.29"
 dependencies = [
  "anyhow",
  "serde",

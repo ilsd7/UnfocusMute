@@ -1,9 +1,11 @@
 #![cfg_attr(not(windows), allow(dead_code))]
 
+#[cfg(any(windows, test))]
 use serde::{Deserialize, Serialize};
 
-#[derive(Clone, Copy, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
-#[serde(rename_all = "kebab-case")]
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+#[cfg_attr(any(windows, test), derive(Deserialize, Serialize))]
+#[cfg_attr(any(windows, test), serde(rename_all = "kebab-case"))]
 pub enum Language {
     #[default]
     Ko,

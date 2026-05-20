@@ -292,6 +292,7 @@ fn path_to_wide(path: &Path) -> Vec<u16> {
 
 fn backup_invalid_config(path: &Path) -> io::Result<PathBuf> {
     let parent = path.parent().unwrap_or_else(|| Path::new("."));
+    let mut source = fs::File::open(path)?;
     let timestamp = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map(|duration| duration.as_secs())
@@ -304,10 +305,20 @@ fn backup_invalid_config(path: &Path) -> io::Result<PathBuf> {
             format!("config.invalid-{timestamp}-{index}.json")
         };
         let backup_path = parent.join(file_name);
-        if backup_path.exists() {
-            continue;
+        let mut backup = match fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&backup_path)
+        {
+            Ok(backup) => backup,
+            Err(error) if error.kind() == io::ErrorKind::AlreadyExists => continue,
+            Err(error) => return Err(error),
+        };
+
+        if let Err(error) = io::copy(&mut source, &mut backup) {
+            let _ = fs::remove_file(&backup_path);
+            return Err(error);
         }
-        fs::copy(path, &backup_path)?;
         return Ok(backup_path);
     }
 

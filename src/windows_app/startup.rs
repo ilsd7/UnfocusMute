@@ -9,13 +9,9 @@ use windows::Win32::System::Registry::{
     HKEY, HKEY_CURRENT_USER, KEY_SET_VALUE, REG_OPEN_CREATE_OPTIONS, REG_SZ, RegCloseKey,
     RegCreateKeyExW, RegDeleteValueW, RegOpenKeyExW, RegSetValueExW,
 };
-use windows::core::PCWSTR;
-
-const RUN_KEY: &str = r"Software\Microsoft\Windows\CurrentVersion\Run";
-const VALUE_NAME: &str = "UnfocusMute";
+use windows::core::{PCWSTR, w};
 
 pub fn set_launch_on_startup(enabled: bool) -> Result<()> {
-    let value_name = to_wide(VALUE_NAME);
     if enabled {
         let key = create_run_key()?;
         let exe = env::current_exe().context("resolve current executable")?;
@@ -23,8 +19,7 @@ pub fn set_launch_on_startup(enabled: bool) -> Result<()> {
         let bytes = unsafe {
             slice::from_raw_parts(wide.as_ptr().cast::<u8>(), wide.len() * size_of::<u16>())
         };
-        let result =
-            unsafe { RegSetValueExW(key, PCWSTR(value_name.as_ptr()), None, REG_SZ, Some(bytes)) };
+        let result = unsafe { RegSetValueExW(key, w!("UnfocusMute"), None, REG_SZ, Some(bytes)) };
         unsafe {
             let _ = RegCloseKey(key);
         }
@@ -37,7 +32,7 @@ pub fn set_launch_on_startup(enabled: bool) -> Result<()> {
     let Some(key) = open_existing_run_key()? else {
         return Ok(());
     };
-    let result = unsafe { RegDeleteValueW(key, PCWSTR(value_name.as_ptr())) };
+    let result = unsafe { RegDeleteValueW(key, w!("UnfocusMute")) };
 
     unsafe {
         let _ = RegCloseKey(key);
@@ -52,11 +47,10 @@ pub fn set_launch_on_startup(enabled: bool) -> Result<()> {
 
 fn create_run_key() -> Result<HKEY> {
     let mut key = HKEY::default();
-    let subkey = to_wide(RUN_KEY);
     let result = unsafe {
         RegCreateKeyExW(
             HKEY_CURRENT_USER,
-            PCWSTR(subkey.as_ptr()),
+            w!("Software\\Microsoft\\Windows\\CurrentVersion\\Run"),
             None,
             PCWSTR::null(),
             REG_OPEN_CREATE_OPTIONS(0),
@@ -79,11 +73,10 @@ fn create_run_key() -> Result<HKEY> {
 
 fn open_existing_run_key() -> Result<Option<HKEY>> {
     let mut key = HKEY::default();
-    let subkey = to_wide(RUN_KEY);
     let result = unsafe {
         RegOpenKeyExW(
             HKEY_CURRENT_USER,
-            PCWSTR(subkey.as_ptr()),
+            w!("Software\\Microsoft\\Windows\\CurrentVersion\\Run"),
             None,
             KEY_SET_VALUE,
             &mut key,
@@ -102,14 +95,10 @@ fn open_existing_run_key() -> Result<Option<HKEY>> {
     }
 }
 
-fn to_wide(text: &str) -> Vec<u16> {
-    text.encode_utf16().chain(std::iter::once(0)).collect()
-}
-
 fn startup_command(exe: &Path) -> Vec<u16> {
     let exe_len = exe.as_os_str().encode_wide().count();
     let suffix = " --minimized";
-    let suffix_len = suffix.encode_utf16().count();
+    let suffix_len = suffix.len();
     let mut command = Vec::with_capacity(1 + exe_len + 1 + suffix_len + 1);
     command.push(b'"' as u16);
     command.extend(exe.as_os_str().encode_wide());

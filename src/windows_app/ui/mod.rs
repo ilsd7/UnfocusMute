@@ -1056,7 +1056,7 @@ impl AppWindow {
             .config
             .targets
             .iter()
-            .map(target_display_utf16_bytes)
+            .map(target_display_storage_bytes_hint)
             .sum();
         unsafe {
             SendMessageW(self.controls.target_list, LB_RESETCONTENT, None, None);
@@ -1117,7 +1117,7 @@ impl AppWindow {
             let process_text_bytes = self
                 .process_choice_indices
                 .iter()
-                .map(|index| utf16_bytes(self.all_process_choices[*index].display_name()))
+                .map(|index| storage_bytes_hint(self.all_process_choices[*index].display_name()))
                 .sum();
             SendMessageW(self.controls.running_combo, CB_RESETCONTENT, None, None);
             reserve_combo_items(
@@ -2108,16 +2108,16 @@ fn cached_foreground_process_name(
     (*cached_pid == pid).then_some(name.as_deref()).flatten()
 }
 
-fn utf16_bytes(text: &str) -> usize {
-    text.encode_utf16().count() * size_of::<u16>()
+fn storage_bytes_hint(text: &str) -> usize {
+    text.len() * size_of::<u16>()
 }
 
-fn target_display_utf16_bytes(target: &TargetProcess) -> usize {
-    let mut code_units = target.name.encode_utf16().count();
+fn target_display_storage_bytes_hint(target: &TargetProcess) -> usize {
+    let mut bytes = storage_bytes_hint(&target.name);
     if let Some(pid) = target.pid {
-        code_units += " (PID ".len() + decimal_digit_count(pid) + 1;
+        bytes += storage_bytes_hint(" (PID )") + decimal_digit_count(pid) * size_of::<u16>();
     }
-    code_units * size_of::<u16>()
+    bytes
 }
 
 fn decimal_digit_count(value: u32) -> usize {
