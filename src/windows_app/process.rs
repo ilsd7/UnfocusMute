@@ -122,7 +122,9 @@ fn visit_process_snapshot(mut visit: impl FnMut(u32, String)) {
 
         if Process32FirstW(snapshot.raw(), &mut entry).is_ok() {
             loop {
-                if let Some(name) = normalize_process_name_utf16(&entry.szExeFile) {
+                if entry.th32ProcessID != 0
+                    && let Some(name) = normalize_process_name_utf16(&entry.szExeFile)
+                {
                     visit(entry.th32ProcessID, name);
                 }
 

@@ -8,6 +8,7 @@ use std::fmt::Write as _;
 use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
+use std::sync::OnceLock;
 use std::time::{SystemTime, UNIX_EPOCH};
 #[cfg(windows)]
 use windows::Win32::Storage::FileSystem::{
@@ -116,13 +117,13 @@ impl Default for AppConfigLoad {
 
 impl AppConfig {
     pub fn load_or_default_with_status() -> io::Result<AppConfigLoad> {
-        let path = config_file_path()?;
-        load_or_default_from_path(&path)
+        let path = cached_config_file_path()?;
+        load_or_default_from_path(path)
     }
 
     pub fn load_existing() -> io::Result<Self> {
-        let path = config_file_path()?;
-        let mut config = parse_config_file(fs::File::open(&path)?)?;
+        let path = cached_config_file_path()?;
+        let mut config = parse_config_file(fs::File::open(path)?)?;
         config.sanitize();
         Ok(config)
     }
@@ -136,8 +137,8 @@ impl AppConfig {
     }
 
     fn save_with_existing_validation(&self, validate_existing: bool) -> io::Result<()> {
-        let path = config_file_path()?;
-        self.save_to_path(&path, validate_existing)
+        let path = cached_config_file_path()?;
+        self.save_to_path(path, validate_existing)
     }
 
     fn save_to_path(&self, path: &Path, validate_existing: bool) -> io::Result<()> {
@@ -553,8 +554,19 @@ pub fn config_dir() -> io::Result<PathBuf> {
     Ok(PathBuf::from(home).join(".config").join("unfocusmute"))
 }
 
-pub fn config_file_path() -> io::Result<PathBuf> {
-    Ok(config_dir()?.join("config.json"))
+pub(crate) fn cached_config_file_path() -> io::Result<&'static Path> {
+    static CONFIG_FILE_PATH: OnceLock<PathBuf> = OnceLock::new();
+
+    if let Some(path) = CONFIG_FILE_PATH.get() {
+        return Ok(path);
+    }
+
+    let path = config_dir()?.join("config.json");
+    let _ = CONFIG_FILE_PATH.set(path);
+    CONFIG_FILE_PATH
+        .get()
+        .map(PathBuf::as_path)
+        .ok_or_else(|| io::Error::other("config path cache unavailable"))
 }
 
 #[cfg(test)]

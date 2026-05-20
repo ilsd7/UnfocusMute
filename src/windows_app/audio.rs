@@ -35,8 +35,12 @@ impl AudioController {
         unsafe {
             let enumerator = device_enumerator()?;
             let managers = active_render_session_managers(&enumerator)?;
-            let endpoint_ids = active_render_endpoint_ids(&enumerator).unwrap_or_default();
             let endpoint_notification = EndpointNotification::new(&enumerator).ok();
+            let endpoint_ids = if endpoint_notification.is_some() {
+                Vec::new()
+            } else {
+                active_render_endpoint_ids(&enumerator).unwrap_or_default()
+            };
             Ok(Self {
                 enumerator,
                 managers,

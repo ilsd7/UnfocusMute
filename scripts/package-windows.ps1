@@ -120,7 +120,7 @@ try {
     if (Test-Path $TempZip) {
         Remove-Item $TempZip -Force
     }
-    Compress-Archive -Path (Join-Path $Stage "*") -DestinationPath $TempZip
+    Compress-Archive -Path (Join-Path $Stage "*") -DestinationPath $TempZip -CompressionLevel Optimal
 
     try {
         if (Test-Path $Zip) {

@@ -1,5 +1,5 @@
 use super::ConfigFileStamp;
-use crate::config::config_file_path;
+use crate::config::cached_config_file_path;
 use crate::windows_app::error::{Context, Result, message_error};
 use std::ffi::c_void;
 use std::fs;
@@ -494,7 +494,7 @@ pub(super) fn copy_wide_fixed(text: &str, destination: &mut [u16]) {
 }
 
 pub(super) fn current_config_stamp() -> Option<ConfigFileStamp> {
-    let metadata = fs::metadata(config_file_path().ok()?).ok()?;
+    let metadata = fs::metadata(cached_config_file_path().ok()?).ok()?;
     Some(ConfigFileStamp {
         modified: metadata.modified().ok()?,
         len: metadata.len(),

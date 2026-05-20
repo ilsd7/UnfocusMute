@@ -1,5 +1,5 @@
 use crate::config::{
-    AppConfig, AppConfigLoad, TargetProcess, WindowPosition, config_dir,
+    AppConfig, AppConfigLoad, TargetProcess, WindowPosition, cached_config_file_path,
     is_normalized_process_name, normalize_process_name, normalize_process_name_cow,
 };
 use crate::engine::{AudioSessionKey, TargetMatcher};
@@ -14,7 +14,7 @@ use std::fmt::Write as _;
 use std::fs;
 use std::io::ErrorKind;
 use std::mem::size_of;
-use std::sync::atomic::{AtomicIsize, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicIsize, Ordering};
 use std::time::{Instant, SystemTime};
 use windows::Win32::Foundation::{
     CloseHandle, ERROR_ALREADY_EXISTS, GetLastError, HANDLE, HINSTANCE, HWND, LPARAM, LRESULT,
@@ -77,6 +77,7 @@ use win32::{
 };
 
 static FOREGROUND_EVENT_HWND: AtomicIsize = AtomicIsize::new(0);
+static FOREGROUND_EVENT_PENDING: AtomicBool = AtomicBool::new(false);
 const MAIN_WINDOW_STYLE: WINDOW_STYLE = WINDOW_STYLE(
     WS_OVERLAPPED.0 | WS_CAPTION.0 | WS_SYSMENU.0 | WS_MINIMIZEBOX.0 | WS_CLIPCHILDREN.0,
 );
@@ -297,6 +298,7 @@ struct ForegroundEventHook {
 impl ForegroundEventHook {
     unsafe fn new(hwnd: HWND) -> Result<Self> {
         FOREGROUND_EVENT_HWND.store(hwnd.0 as isize, Ordering::Release);
+        FOREGROUND_EVENT_PENDING.store(false, Ordering::Release);
         let hook = unsafe {
             SetWinEventHook(
                 EVENT_SYSTEM_FOREGROUND,
@@ -310,6 +312,7 @@ impl ForegroundEventHook {
         };
         if hook.0.is_null() {
             FOREGROUND_EVENT_HWND.store(0, Ordering::Release);
+            FOREGROUND_EVENT_PENDING.store(false, Ordering::Release);
             return Err(message_error("register foreground window event hook"));
         }
         Ok(Self { hook })
@@ -319,6 +322,7 @@ impl ForegroundEventHook {
 impl Drop for ForegroundEventHook {
     fn drop(&mut self) {
         FOREGROUND_EVENT_HWND.store(0, Ordering::Release);
+        FOREGROUND_EVENT_PENDING.store(false, Ordering::Release);
         unsafe {
             let _ = UnhookWinEvent(self.hook);
         }
@@ -342,14 +346,20 @@ unsafe extern "system" fn foreground_event_proc(
     if target == 0 {
         return;
     }
+    if FOREGROUND_EVENT_PENDING.swap(true, Ordering::AcqRel) {
+        return;
+    }
 
-    unsafe {
-        let _ = PostMessageW(
+    let result = unsafe {
+        PostMessageW(
             Some(HWND(target as *mut c_void)),
             WM_FOREGROUND_CHANGED,
             WPARAM(0),
             LPARAM(0),
-        );
+        )
+    };
+    if result.is_err() {
+        FOREGROUND_EVENT_PENDING.store(false, Ordering::Release);
     }
 }
 
@@ -1171,7 +1181,6 @@ impl AppWindow {
                 self.controls.toggle_process_details_button,
                 detail_button_text,
             );
-            set_text(self.controls.pid_details_help_button, "?");
             let _ = ShowWindow(self.controls.running_hint, visibility);
             let _ = ShowWindow(self.controls.pid_details_help_button, visibility);
         }
@@ -1796,38 +1805,40 @@ impl AppWindow {
     }
 
     fn reset_polling_timer(&mut self) {
-        if self.audio_fallback_timer_needed() {
+        let audio_fallback_timer_needed = self.audio_fallback_timer_needed();
+        if audio_fallback_timer_needed {
             self.audio_fallback_timer_ready = self.restart_audio_fallback_timer();
         } else {
             self.clear_audio_fallback_timer();
         }
-        self.update_timer_setup_issue();
+        self.update_timer_setup_issue(audio_fallback_timer_needed);
     }
 
     fn retry_missing_timers(&mut self) {
         let mut retried = false;
+        let audio_fallback_timer_needed = self.audio_fallback_timer_needed();
         if !self.config_reload_timer_ready {
             self.config_reload_timer_ready =
                 self.set_timer(CONFIG_RELOAD_TIMER_ID, CONFIG_RELOAD_TIMER_INTERVAL_MS);
             retried = true;
         }
-        if self.audio_fallback_timer_needed() && !self.audio_fallback_timer_ready {
+        if audio_fallback_timer_needed && !self.audio_fallback_timer_ready {
             self.audio_fallback_timer_ready = self.restart_audio_fallback_timer();
             retried = true;
         }
         if retried {
-            self.update_timer_setup_issue();
+            self.update_timer_setup_issue(audio_fallback_timer_needed);
         }
     }
 
     fn sync_audio_fallback_timer(&mut self) {
-        let needed = self.audio_fallback_timer_needed();
-        if needed && !self.audio_fallback_timer_ready {
+        let audio_fallback_timer_needed = self.audio_fallback_timer_needed();
+        if audio_fallback_timer_needed && !self.audio_fallback_timer_ready {
             self.audio_fallback_timer_ready = self.restart_audio_fallback_timer();
-        } else if !needed && self.audio_fallback_timer_ready {
+        } else if !audio_fallback_timer_needed && self.audio_fallback_timer_ready {
             self.clear_audio_fallback_timer();
         }
-        self.update_timer_setup_issue();
+        self.update_timer_setup_issue(audio_fallback_timer_needed);
     }
 
     fn audio_fallback_timer_needed(&self) -> bool {
@@ -1859,9 +1870,9 @@ impl AppWindow {
         }
     }
 
-    fn update_timer_setup_issue(&mut self) {
+    fn update_timer_setup_issue(&mut self, audio_fallback_timer_needed: bool) {
         let audio_fallback_timer_ready =
-            !self.audio_fallback_timer_needed() || self.audio_fallback_timer_ready;
+            !audio_fallback_timer_needed || self.audio_fallback_timer_ready;
         if self.config_reload_timer_ready && audio_fallback_timer_ready {
             self.clear_issue(StatusIssue::TimerSetupFailed);
         } else {
@@ -2148,6 +2159,9 @@ impl AppWindow {
 
     fn can_add_process(&self, name: &str, pid: Option<u32>) -> bool {
         debug_assert!(is_normalized_process_name(name));
+        if pid == Some(0) {
+            return false;
+        }
         self.config
             .targets
             .iter()
@@ -2173,15 +2187,19 @@ impl AppWindow {
     }
 
     fn open_config_folder(&mut self) {
-        let Ok(path) = config_dir() else {
+        let Ok(config_path) = cached_config_file_path() else {
             self.set_issue(StatusIssue::OpenConfigFailed);
             return;
         };
-        if fs::create_dir_all(&path).is_err() {
+        let Some(path) = config_path.parent() else {
+            self.set_issue(StatusIssue::OpenConfigFailed);
+            return;
+        };
+        if fs::create_dir_all(path).is_err() {
             self.set_issue(StatusIssue::OpenConfigFailed);
             return;
         }
-        let path = path_to_wide(&path);
+        let path = path_to_wide(path);
         unsafe {
             let result = ShellExecuteW(
                 Some(self.hwnd),
@@ -2195,7 +2213,6 @@ impl AppWindow {
                 self.set_issue(StatusIssue::OpenConfigFailed);
             } else {
                 self.clear_issue(StatusIssue::OpenConfigFailed);
-                self.update_status();
             }
         }
     }
@@ -2257,6 +2274,7 @@ impl AppWindow {
                         );
                     }
                     self.set_issue(StatusIssue::StartupUpdateFailed);
+                    return;
                 }
             }
             ID_RESTORE_EXIT => {
@@ -2621,6 +2639,7 @@ unsafe extern "system" fn window_proc(
                 return LRESULT(0);
             }
             WM_FOREGROUND_CHANGED => {
+                FOREGROUND_EVENT_PENDING.store(false, Ordering::Release);
                 app.clear_foreground_process_cache();
                 app.tick();
                 return LRESULT(0);
