@@ -141,7 +141,7 @@ powershell -ExecutionPolicy Bypass -File scripts\package-windows.ps1
 刷新第三方许可证通知：
 
 ```powershell
-cargo about generate --frozen --fail -o THIRD_PARTY_NOTICES.md about.hbs
+cargo about generate about.hbs -c about.toml --locked --offline -o THIRD_PARTY_NOTICES.md
 ```
 
 生成的包位于 `dist\UnfocusMute-<version>-windows-x64.zip`，包含可执行文件、`LICENSE`、`THIRD_PARTY_NOTICES.md`、根目录的 `README_ko.md` 和 `README_en.md`，以及 `docs` 下的其他本地化文档。

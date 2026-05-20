@@ -141,7 +141,7 @@ powershell -ExecutionPolicy Bypass -File scripts\package-windows.ps1
 Atualizar avisos de licença de terceiros:
 
 ```powershell
-cargo about generate --frozen --fail -o THIRD_PARTY_NOTICES.md about.hbs
+cargo about generate about.hbs -c about.toml --locked --offline -o THIRD_PARTY_NOTICES.md
 ```
 
 O pacote é criado em `dist\UnfocusMute-<version>-windows-x64.zip` e inclui o executável, `LICENSE`, `THIRD_PARTY_NOTICES.md`, `README_ko.md` e `README_en.md` na raiz, além dos outros documentos localizados em `docs`.

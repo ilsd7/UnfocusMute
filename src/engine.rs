@@ -1,6 +1,8 @@
 #![cfg_attr(not(windows), allow(dead_code))]
 
-use crate::config::{TargetProcess, is_normalized_process_name, normalize_process_name};
+#[cfg(test)]
+use crate::config::normalize_process_name;
+use crate::config::{TargetProcess, is_normalized_process_name};
 use std::borrow::Cow;
 #[cfg(test)]
 use std::collections::HashSet;
@@ -95,9 +97,8 @@ impl TargetMatcher {
         let mut names_by_pid = Vec::with_capacity(targets.len());
 
         for target in targets.iter().filter(|target| target.enabled) {
-            let Some(name) = normalize_process_name(&target.name) else {
-                continue;
-            };
+            debug_assert!(is_normalized_process_name(&target.name));
+            let name = target.name.clone();
             if let Some(pid) = target.pid {
                 names_by_pid.push((pid, name));
             } else {

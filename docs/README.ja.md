@@ -141,7 +141,7 @@ powershell -ExecutionPolicy Bypass -File scripts\package-windows.ps1
 サードパーティライセンス通知を更新:
 
 ```powershell
-cargo about generate --frozen --fail -o THIRD_PARTY_NOTICES.md about.hbs
+cargo about generate about.hbs -c about.toml --locked --offline -o THIRD_PARTY_NOTICES.md
 ```
 
 パッケージは `dist\UnfocusMute-<version>-windows-x64.zip` に作成され、実行ファイル、`LICENSE`、`THIRD_PARTY_NOTICES.md`、ルートの `README_ko.md` と `README_en.md`、`docs` 配下のその他の言語ドキュメントが含まれます。

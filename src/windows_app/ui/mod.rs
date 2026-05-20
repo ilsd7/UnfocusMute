@@ -1,4 +1,7 @@
-use crate::config::{AppConfig, TargetProcess, WindowPosition, config_dir, normalize_process_name};
+use crate::config::{
+    AppConfig, TargetProcess, WindowPosition, config_dir, is_normalized_process_name,
+    normalize_process_name, normalize_process_name_cow,
+};
 use crate::engine::{AudioSessionKey, TargetMatcher};
 use crate::i18n::{Language, Strings};
 use crate::windows_app::audio::AudioController;
@@ -66,7 +69,7 @@ use win32::{
     copy_wide_fixed, create_button, create_checkbox, create_control, create_primary_button,
     current_config_stamp, hiword, is_checked, load_app_icon, load_tray_icon, loword,
     measure_text_width, path_to_wide, reserve_combo_items, reserve_list_items, set_checkbox,
-    set_combo_edit_caret, set_text, to_wide, window_text,
+    set_combo_edit_caret, set_text, to_wide, window_text_into,
 };
 
 static FOREGROUND_EVENT_HWND: AtomicIsize = AtomicIsize::new(0);
@@ -302,7 +305,7 @@ struct AppWindow {
     controls: Controls,
     config: AppConfig,
     target_matcher: TargetMatcher,
-    strings: Strings,
+    strings: &'static Strings,
     audio: Option<AudioController>,
     foreground_hook: Option<ForegroundEventHook>,
     running_processes: Vec<ProcessInfo>,
@@ -1065,11 +1068,18 @@ impl AppWindow {
                 self.config.targets.len(),
                 target_text_bytes,
             );
+            let mut display_buffer = String::new();
             let mut text_buffer = Vec::new();
             for target in &self.config.targets {
+                let display_name = if target.pid.is_some() {
+                    target.display_name_into(&mut display_buffer);
+                    display_buffer.as_str()
+                } else {
+                    &target.name
+                };
                 add_list_item_with_buffer(
                     self.controls.target_list,
-                    target.display_name().as_ref(),
+                    display_name,
                     &mut text_buffer,
                 );
             }
@@ -1551,22 +1561,27 @@ impl AppWindow {
     }
 
     fn add_selected_process(&mut self) {
-        let Some((name, pid)) = self
-            .selected_process_choice()
-            .map(|choice| (choice.name.clone(), choice.pid))
-        else {
+        let Some(choice_index) = self.selected_process_choice_index() else {
             return;
         };
         if !self.reload_config_if_changed() {
             return;
         }
-        if !self.can_add_process(&name, pid) {
-            return;
-        }
+
+        let (name, pid) = {
+            let Some(choice) = self.all_process_choices.get(choice_index) else {
+                return;
+            };
+            debug_assert!(is_normalized_process_name(&choice.name));
+            if !self.can_add_process_choice(choice) {
+                return;
+            }
+            (choice.name.clone(), choice.pid)
+        };
         let added = if let Some(pid) = pid {
-            self.config.add_pid_target(&name, pid)
+            self.config.add_normalized_pid_target(name, pid)
         } else {
-            self.config.add_target(&name)
+            self.config.add_normalized_target(name)
         };
         if added {
             self.finish_target_change();
@@ -1578,7 +1593,9 @@ impl AppWindow {
         if self.updating_process_combo {
             return;
         }
-        self.process_query = unsafe { window_text(self.controls.running_combo) };
+        unsafe {
+            window_text_into(self.controls.running_combo, &mut self.process_query);
+        }
         self.apply_process_filter();
         if !self.process_choice_indices.is_empty() {
             unsafe {
@@ -1650,7 +1667,9 @@ impl AppWindow {
     }
 
     fn add_manual_target(&mut self) {
-        self.manual_process_text = unsafe { window_text(self.controls.manual_edit) };
+        unsafe {
+            window_text_into(self.controls.manual_edit, &mut self.manual_process_text);
+        }
         let Some(name) = normalize_process_name(&self.manual_process_text) else {
             return;
         };
@@ -1661,7 +1680,7 @@ impl AppWindow {
         if !self.reload_config_if_changed() {
             return;
         }
-        if self.config.add_target(&name) {
+        if self.config.add_normalized_target(name) {
             self.finish_target_change();
             self.manual_process_text.clear();
             unsafe {
@@ -1671,7 +1690,9 @@ impl AppWindow {
     }
 
     fn update_manual_process_text(&mut self) {
-        self.manual_process_text = unsafe { window_text(self.controls.manual_edit) };
+        unsafe {
+            window_text_into(self.controls.manual_edit, &mut self.manual_process_text);
+        }
         self.update_action_buttons();
     }
 
@@ -1733,18 +1754,19 @@ impl AppWindow {
     }
 
     fn selected_process_choice(&self) -> Option<&ProcessChoice> {
+        self.selected_process_choice_index()
+            .and_then(|index| self.all_process_choices.get(index))
+    }
+
+    fn selected_process_choice_index(&self) -> Option<usize> {
         let index =
             unsafe { SendMessageW(self.controls.running_combo, CB_GETCURSEL, None, None).0 };
         if index >= 0 {
-            self.process_choice_indices
-                .get(index as usize)
-                .and_then(|index| self.all_process_choices.get(*index))
+            self.process_choice_indices.get(index as usize).copied()
         } else if self.process_query.trim().is_empty() {
             None
         } else {
-            self.process_choice_indices
-                .first()
-                .and_then(|index| self.all_process_choices.get(*index))
+            self.process_choice_indices.first().copied()
         }
     }
 
@@ -1753,14 +1775,15 @@ impl AppWindow {
     }
 
     fn can_add_process(&self, name: &str, pid: Option<u32>) -> bool {
+        debug_assert!(is_normalized_process_name(name));
         self.config
             .targets
             .iter()
-            .all(|target| !target.name.eq_ignore_ascii_case(name) || target.pid != pid)
+            .all(|target| target.name != name || target.pid != pid)
     }
 
     fn can_submit_manual_target(&self) -> bool {
-        let Some(name) = normalize_process_name(&self.manual_process_text) else {
+        let Some(name) = normalize_process_name_cow(&self.manual_process_text) else {
             return false;
         };
         !name.ends_with(".exe")
@@ -1768,7 +1791,7 @@ impl AppWindow {
                 .config
                 .targets
                 .iter()
-                .all(|target| target.pid.is_some() || !target.name.eq_ignore_ascii_case(&name))
+                .all(|target| target.pid.is_some() || target.name != name.as_ref())
     }
 
     fn finish_target_change(&mut self) {

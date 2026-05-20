@@ -141,7 +141,7 @@ powershell -ExecutionPolicy Bypass -File scripts\package-windows.ps1
 서드파티 라이선스 고지 갱신:
 
 ```powershell
-cargo about generate --frozen --fail -o THIRD_PARTY_NOTICES.md about.hbs
+cargo about generate about.hbs -c about.toml --locked --offline -o THIRD_PARTY_NOTICES.md
 ```
 
 결과물은 `dist\UnfocusMute-<version>-windows-x64.zip`에 생성되며, 실행 파일, `LICENSE`, `THIRD_PARTY_NOTICES.md`, 루트의 `README_ko.md`와 `README_en.md`, `docs` 폴더의 기타 언어 문서가 포함됩니다.

@@ -35,9 +35,30 @@ impl ProcessChoice {
         self.display_name.as_deref().unwrap_or(&self.name)
     }
 
-    pub(super) fn matches_search(&self, terms: &[Cow<'_, str>]) -> bool {
+    pub(super) fn matches_search(&self, terms: &SearchTerms<'_>) -> bool {
         let search_text = self.search_text.as_deref().unwrap_or(&self.name);
-        terms.iter().all(|term| search_text.contains(term.as_ref()))
+        terms.all(|term| search_text.contains(term))
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(super) enum SearchTerms<'a> {
+    Empty,
+    One(Cow<'a, str>),
+    Many(Vec<Cow<'a, str>>),
+}
+
+impl SearchTerms<'_> {
+    pub(super) fn is_empty(&self) -> bool {
+        matches!(self, Self::Empty)
+    }
+
+    fn all(&self, mut predicate: impl FnMut(&str) -> bool) -> bool {
+        match self {
+            Self::Empty => true,
+            Self::One(term) => predicate(term.as_ref()),
+            Self::Many(terms) => terms.iter().all(|term| predicate(term.as_ref())),
+        }
     }
 }
 
@@ -56,8 +77,20 @@ fn into_owned_if_allocated(text: Cow<'_, str>) -> Option<String> {
     }
 }
 
-pub(super) fn search_terms(query: &str) -> Vec<Cow<'_, str>> {
-    query.split_whitespace().map(lowercase_if_needed).collect()
+pub(super) fn search_terms(query: &str) -> SearchTerms<'_> {
+    let mut terms = query.split_whitespace().map(lowercase_if_needed);
+    let Some(first) = terms.next() else {
+        return SearchTerms::Empty;
+    };
+    let Some(second) = terms.next() else {
+        return SearchTerms::One(first);
+    };
+
+    let mut many = Vec::with_capacity(terms.size_hint().0 + 2);
+    many.push(first);
+    many.push(second);
+    many.extend(terms);
+    SearchTerms::Many(many)
 }
 
 #[cfg(test)]
@@ -92,5 +125,13 @@ mod tests {
 
         assert_eq!(choice.search_text.as_deref(), Some("player.exe"));
         assert!(choice.matches_search(&search_terms("player")));
+    }
+
+    #[test]
+    fn single_search_term_avoids_term_vec() {
+        assert!(matches!(
+            search_terms("player"),
+            SearchTerms::One(Cow::Borrowed("player"))
+        ));
     }
 }

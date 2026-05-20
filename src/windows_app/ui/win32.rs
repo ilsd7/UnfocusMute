@@ -22,6 +22,8 @@ use windows::Win32::UI::WindowsAndMessaging::{
 use windows::core::{PCWSTR, w};
 
 const MEASURE_TEXT_STACK_BUFFER_LEN: usize = 256;
+const SET_TEXT_STACK_BUFFER_LEN: usize = 256;
+const WINDOW_TEXT_STACK_BUFFER_LEN: usize = 256;
 
 pub(super) struct WindowClassRegistration {
     class_name: PCWSTR,
@@ -168,6 +170,12 @@ pub(super) unsafe fn create_control(
 }
 
 pub(super) unsafe fn set_text(hwnd: HWND, text: &str) {
+    let mut stack = [0u16; SET_TEXT_STACK_BUFFER_LEN];
+    if let Some(wide) = encode_wide_with_nul(text, &mut stack) {
+        let _ = unsafe { SetWindowTextW(hwnd, PCWSTR(wide.as_ptr())) };
+        return;
+    }
+
     let wide = to_wide(text);
     let _ = unsafe { SetWindowTextW(hwnd, PCWSTR(wide.as_ptr())) };
 }
@@ -224,15 +232,23 @@ unsafe fn measure_wide_text_width(
     width
 }
 
-pub(super) unsafe fn window_text(hwnd: HWND) -> String {
+pub(super) unsafe fn window_text_into(hwnd: HWND, output: &mut String) {
     let len = unsafe { GetWindowTextLengthW(hwnd) }.max(0) as usize;
+    output.clear();
     if len == 0 {
-        return String::new();
+        return;
+    }
+
+    if len < WINDOW_TEXT_STACK_BUFFER_LEN {
+        let mut buffer = [0u16; WINDOW_TEXT_STACK_BUFFER_LEN];
+        let len = unsafe { GetWindowTextW(hwnd, &mut buffer) }.max(0) as usize;
+        push_utf16_lossy(output, &buffer[..len]);
+        return;
     }
 
     let mut buffer = vec![0u16; len + 1];
     let len = unsafe { GetWindowTextW(hwnd, &mut buffer) };
-    String::from_utf16_lossy(&buffer[..len.max(0) as usize])
+    push_utf16_lossy(output, &buffer[..len.max(0) as usize]);
 }
 
 pub(super) unsafe fn add_list_item_with_buffer(hwnd: HWND, text: &str, wide: &mut Vec<u16>) {
@@ -292,6 +308,27 @@ fn write_wide_buffer(text: &str, wide: &mut Vec<u16>) {
     wide.clear();
     wide.extend(text.encode_utf16());
     wide.push(0);
+}
+
+fn encode_wide_with_nul<'a>(text: &str, buffer: &'a mut [u16]) -> Option<&'a [u16]> {
+    let mut len = 0;
+    for ch in text.encode_utf16() {
+        if len + 1 >= buffer.len() {
+            return None;
+        }
+        buffer[len] = ch;
+        len += 1;
+    }
+    buffer[len] = 0;
+    Some(&buffer[..=len])
+}
+
+fn push_utf16_lossy(output: &mut String, wide: &[u16]) {
+    output.reserve(wide.len());
+    output.extend(
+        std::char::decode_utf16(wide.iter().copied())
+            .map(|result| result.unwrap_or(std::char::REPLACEMENT_CHARACTER)),
+    );
 }
 
 pub(super) unsafe fn set_checkbox(hwnd: HWND, checked: bool) {

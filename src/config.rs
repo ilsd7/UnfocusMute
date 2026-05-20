@@ -4,6 +4,7 @@ use crate::i18n::Language;
 use serde::{Deserialize, Serialize};
 use std::borrow::Cow;
 use std::env;
+use std::fmt::Write as _;
 use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
@@ -31,6 +32,7 @@ pub struct TargetProcess {
 }
 
 impl TargetProcess {
+    #[cfg(test)]
     pub fn new(name: impl AsRef<str>) -> Option<Self> {
         let name = normalize_process_name(name.as_ref())?;
         Some(Self {
@@ -40,6 +42,7 @@ impl TargetProcess {
         })
     }
 
+    #[cfg(test)]
     pub fn for_pid(name: impl AsRef<str>, pid: u32) -> Option<Self> {
         let name = normalize_process_name(name.as_ref())?;
         Some(Self {
@@ -49,10 +52,11 @@ impl TargetProcess {
         })
     }
 
-    pub fn display_name(&self) -> Cow<'_, str> {
-        match self.pid {
-            Some(pid) => Cow::Owned(format!("{} (PID {pid})", self.name)),
-            None => Cow::Borrowed(&self.name),
+    pub fn display_name_into(&self, output: &mut String) {
+        output.clear();
+        output.push_str(&self.name);
+        if let Some(pid) = self.pid {
+            let _ = write!(output, " (PID {pid})");
         }
     }
 }
@@ -162,6 +166,7 @@ impl AppConfig {
         replace_file(&temp_path, path)
     }
 
+    #[cfg(test)]
     pub fn add_target(&mut self, name: impl AsRef<str>) -> bool {
         let Some(target) = TargetProcess::new(name) else {
             return false;
@@ -169,6 +174,7 @@ impl AppConfig {
         self.add_target_process(target)
     }
 
+    #[cfg(test)]
     pub fn add_pid_target(&mut self, name: impl AsRef<str>, pid: u32) -> bool {
         let Some(target) = TargetProcess::for_pid(name, pid) else {
             return false;
@@ -176,10 +182,36 @@ impl AppConfig {
         self.add_target_process(target)
     }
 
+    pub(crate) fn add_normalized_target(&mut self, name: String) -> bool {
+        debug_assert!(is_normalized_process_name(&name));
+        self.add_target_process(TargetProcess {
+            name,
+            pid: None,
+            enabled: true,
+        })
+    }
+
+    pub(crate) fn add_normalized_pid_target(&mut self, name: String, pid: u32) -> bool {
+        debug_assert!(is_normalized_process_name(&name));
+        self.add_target_process(TargetProcess {
+            name,
+            pid: Some(pid),
+            enabled: true,
+        })
+    }
+
     fn add_target_process(&mut self, target: TargetProcess) -> bool {
-        if self.targets.iter().any(|existing| {
-            existing.name.eq_ignore_ascii_case(&target.name) && existing.pid == target.pid
-        }) {
+        debug_assert!(is_normalized_process_name(&target.name));
+        debug_assert!(
+            self.targets
+                .iter()
+                .all(|target| is_normalized_process_name(&target.name))
+        );
+        if self
+            .targets
+            .iter()
+            .any(|existing| existing.name == target.name && existing.pid == target.pid)
+        {
             return false;
         }
         self.targets.push(target);
@@ -291,13 +323,16 @@ fn path_to_wide(path: &Path) -> Vec<u16> {
 }
 
 fn backup_invalid_config(path: &Path) -> io::Result<PathBuf> {
-    let parent = path.parent().unwrap_or_else(|| Path::new("."));
-    let mut source = fs::File::open(path)?;
     let timestamp = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map(|duration| duration.as_secs())
         .unwrap_or(0);
+    backup_invalid_config_with_timestamp(path, timestamp)
+}
 
+fn backup_invalid_config_with_timestamp(path: &Path, timestamp: u64) -> io::Result<PathBuf> {
+    let parent = path.parent().unwrap_or_else(|| Path::new("."));
+    let mut source = fs::File::open(path)?;
     for index in 0..100 {
         let file_name = if index == 0 {
             format!("config.invalid-{timestamp}.json")
@@ -361,12 +396,16 @@ fn process_name_candidate(input: &str) -> Option<ProcessNameCandidate<'_>> {
 }
 
 pub fn normalize_process_name(input: &str) -> Option<String> {
+    Some(normalize_process_name_cow(input)?.into_owned())
+}
+
+pub fn normalize_process_name_cow(input: &str) -> Option<Cow<'_, str>> {
     let candidate = process_name_candidate(input)?;
 
     if candidate.has_uppercase {
-        Some(candidate.name.to_ascii_lowercase())
+        Some(Cow::Owned(candidate.name.to_ascii_lowercase()))
     } else {
-        Some(candidate.name.to_owned())
+        Some(Cow::Borrowed(candidate.name))
     }
 }
 
@@ -482,6 +521,14 @@ mod tests {
     }
 
     #[test]
+    fn borrowed_normalization_reuses_already_normalized_name() {
+        let name = "game.exe";
+        let normalized = normalize_process_name_cow(name).unwrap();
+
+        assert!(matches!(normalized, Cow::Borrowed("game.exe")));
+    }
+
+    #[test]
     fn owned_normalization_matches_borrowed_normalization() {
         let inputs = [
             r#"C:\Games\Example.EXE"#,
@@ -525,7 +572,11 @@ mod tests {
         assert!(config.add_pid_target("browser.exe", 42));
         assert!(!config.add_pid_target("browser.exe", 42));
         assert_eq!(config.targets.len(), 2);
-        assert_eq!(config.targets[1].display_name(), "browser.exe (PID 42)");
+        let mut display_name = String::new();
+        config.targets[0].display_name_into(&mut display_name);
+        assert_eq!(display_name, "browser.exe");
+        config.targets[1].display_name_into(&mut display_name);
+        assert_eq!(display_name, "browser.exe (PID 42)");
         assert!(config.remove_target_at(1));
         assert_eq!(config.targets.len(), 1);
     }
@@ -680,6 +731,21 @@ mod tests {
         assert_ne!(backup_path, config_path);
         assert_eq!(fs::read_to_string(backup_path).unwrap(), "{not valid json");
         assert_eq!(fs::read_to_string(config_path).unwrap(), "{not valid json");
+    }
+
+    #[test]
+    fn invalid_config_backup_does_not_overwrite_existing_backup() {
+        let dir = TestDir::new();
+        let config_path = dir.path().join("config.json");
+        let existing_backup = dir.path().join("config.invalid-7.json");
+        fs::write(&config_path, "{not valid json").unwrap();
+        fs::write(&existing_backup, "keep").unwrap();
+
+        let backup_path = backup_invalid_config_with_timestamp(&config_path, 7).unwrap();
+
+        assert_eq!(backup_path, dir.path().join("config.invalid-7-1.json"));
+        assert_eq!(fs::read_to_string(existing_backup).unwrap(), "keep");
+        assert_eq!(fs::read_to_string(backup_path).unwrap(), "{not valid json");
     }
 
     #[test]

@@ -46,9 +46,9 @@ impl Language {
         }
     }
 
-    pub fn strings(self) -> Strings {
+    pub fn strings(self) -> &'static Strings {
         match self {
-            Language::Ko => Strings {
+            Language::Ko => &Strings {
                 app_title: "UnfocusMute",
                 status_running: "감시 중",
                 status_paused: "일시 중지됨",
@@ -95,7 +95,7 @@ impl Language {
                 open_config_failed: "설정 폴더 열기 실패",
                 unsupported_os: "UnfocusMute는 Windows용 앱입니다. 이 환경에서는 코어 테스트와 문서 작업만 실행할 수 있습니다.",
             },
-            Language::En => Strings {
+            Language::En => &Strings {
                 app_title: "UnfocusMute",
                 status_running: "Watching",
                 status_paused: "Paused",
@@ -142,7 +142,7 @@ impl Language {
                 open_config_failed: "Could not open config folder",
                 unsupported_os: "UnfocusMute is a Windows app. This environment can run only core tests and documentation tasks.",
             },
-            Language::Ja => Strings {
+            Language::Ja => &Strings {
                 app_title: "UnfocusMute",
                 status_running: "監視中",
                 status_paused: "一時停止",
@@ -189,7 +189,7 @@ impl Language {
                 open_config_failed: "設定フォルダーを開けませんでした",
                 unsupported_os: "UnfocusMuteはWindows向けアプリです。この環境ではコアテストとドキュメント作業のみ実行できます。",
             },
-            Language::ZhHans => Strings {
+            Language::ZhHans => &Strings {
                 app_title: "UnfocusMute",
                 status_running: "监视中",
                 status_paused: "已暂停",
@@ -236,7 +236,7 @@ impl Language {
                 open_config_failed: "无法打开配置文件夹",
                 unsupported_os: "UnfocusMute 是 Windows 应用。此环境只能运行核心测试和文档任务。",
             },
-            Language::Es => Strings {
+            Language::Es => &Strings {
                 app_title: "UnfocusMute",
                 status_running: "Vigilando",
                 status_paused: "En pausa",
@@ -283,7 +283,7 @@ impl Language {
                 open_config_failed: "No se pudo abrir la carpeta de configuración",
                 unsupported_os: "UnfocusMute es una app para Windows. En este entorno solo se pueden ejecutar pruebas del núcleo y tareas de documentación.",
             },
-            Language::Fr => Strings {
+            Language::Fr => &Strings {
                 app_title: "UnfocusMute",
                 status_running: "Surveillance",
                 status_paused: "En pause",
@@ -330,7 +330,7 @@ impl Language {
                 open_config_failed: "Impossible d’ouvrir le dossier de configuration",
                 unsupported_os: "UnfocusMute est une application pour Windows. Cet environnement ne peut exécuter que les tests du cœur et les tâches de documentation.",
             },
-            Language::Pt => Strings {
+            Language::Pt => &Strings {
                 app_title: "UnfocusMute",
                 status_running: "Monitorando",
                 status_paused: "Pausado",
@@ -377,7 +377,7 @@ impl Language {
                 open_config_failed: "Não foi possível abrir a pasta de configuração",
                 unsupported_os: "UnfocusMute é um app para Windows. Neste ambiente, só é possível executar testes principais e tarefas de documentação.",
             },
-            Language::Hi => Strings {
+            Language::Hi => &Strings {
                 app_title: "UnfocusMute",
                 status_running: "निगरानी चालू",
                 status_paused: "रुका हुआ",
@@ -424,7 +424,7 @@ impl Language {
                 open_config_failed: "कॉन्फिग फ़ोल्डर नहीं खुल सका",
                 unsupported_os: "UnfocusMute Windows ऐप है। इस वातावरण में केवल कोर टेस्ट और दस्तावेज़ कार्य चल सकते हैं।",
             },
-            Language::Ar => Strings {
+            Language::Ar => &Strings {
                 app_title: "UnfocusMute",
                 status_running: "قيد المراقبة",
                 status_paused: "متوقف مؤقتًا",

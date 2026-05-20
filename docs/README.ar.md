@@ -141,7 +141,7 @@ powershell -ExecutionPolicy Bypass -File scripts\package-windows.ps1
 تحديث إشعارات تراخيص الأطراف الثالثة:
 
 ```powershell
-cargo about generate --frozen --fail -o THIRD_PARTY_NOTICES.md about.hbs
+cargo about generate about.hbs -c about.toml --locked --offline -o THIRD_PARTY_NOTICES.md
 ```
 
 يتم إنشاء الحزمة في `dist\UnfocusMute-<version>-windows-x64.zip` وتتضمن الملف التنفيذي و`LICENSE` و`THIRD_PARTY_NOTICES.md` و`README_ko.md` و`README_en.md` في الجذر، وبقية الوثائق المترجمة داخل `docs`.
