@@ -5,7 +5,7 @@ use super::constants::{
 };
 use super::theme::{OwnedBrush, UiFont, ui_font_point_size};
 use super::win32::{
-    WindowClassRegistration, add_combo_item, create_checkbox, create_control,
+    WindowClassRegistration, add_combo_item_with_buffer, create_checkbox, create_control,
     create_primary_button, hiword, is_checked, loword, set_checkbox, set_text, to_wide,
 };
 use crate::i18n::Language;
@@ -142,8 +142,9 @@ impl LanguagePrompt {
 
         unsafe {
             self.apply_font();
+            let mut text_buffer = Vec::new();
             for language in Language::ALL {
-                add_combo_item(self.combo, language.native_name());
+                add_combo_item_with_buffer(self.combo, language.native_name(), &mut text_buffer);
             }
             SendMessageW(
                 self.combo,

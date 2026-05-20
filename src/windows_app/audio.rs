@@ -180,7 +180,16 @@ impl PlanApplyResult {
 
 enum ManagedSessionLookup<'a> {
     Empty,
-    One { pid: u32, process_name: &'a str },
+    One {
+        pid: u32,
+        process_name: &'a str,
+    },
+    Two {
+        first_pid: u32,
+        first_process_name: &'a str,
+        second_pid: u32,
+        second_process_name: &'a str,
+    },
     // Prefilter only; exact AudioSessionKey lookup still decides ownership.
     Many(HashSet<(u32, &'a str)>),
 }
@@ -197,10 +206,19 @@ impl<'a> ManagedSessionLookup<'a> {
                 process_name: &first.process_name,
             };
         };
+        let Some(third) = keys.next() else {
+            return Self::Two {
+                first_pid: first.pid,
+                first_process_name: &first.process_name,
+                second_pid: second.pid,
+                second_process_name: &second.process_name,
+            };
+        };
 
         let mut identities = HashSet::with_capacity(session_keys.len());
         identities.insert((first.pid, first.process_name.as_str()));
         identities.insert((second.pid, second.process_name.as_str()));
+        identities.insert((third.pid, third.process_name.as_str()));
         for key in keys {
             identities.insert((key.pid, key.process_name.as_str()));
         }
@@ -214,6 +232,15 @@ impl<'a> ManagedSessionLookup<'a> {
                 pid: managed_pid,
                 process_name: managed_process_name,
             } => *managed_pid == pid && *managed_process_name == process_name,
+            Self::Two {
+                first_pid,
+                first_process_name,
+                second_pid,
+                second_process_name,
+            } => {
+                (*first_pid == pid && *first_process_name == process_name)
+                    || (*second_pid == pid && *second_process_name == process_name)
+            }
             Self::Many(identities) => identities.contains(&(pid, process_name)),
         }
     }

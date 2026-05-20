@@ -10,6 +10,7 @@ use crate::windows_app::startup;
 use anyhow::{Context, Result, bail};
 use std::collections::HashSet;
 use std::ffi::c_void;
+use std::fmt::Write as _;
 use std::fs;
 use std::io::ErrorKind;
 use std::mem::size_of;
@@ -69,7 +70,7 @@ use win32::{
     copy_wide_fixed, create_button, create_checkbox, create_control, create_primary_button,
     current_config_stamp, hiword, is_checked, load_app_icon, load_tray_icon, loword,
     measure_text_width, path_to_wide, reserve_combo_items, reserve_list_items, set_checkbox,
-    set_combo_edit_caret, set_text, to_wide, window_text_into,
+    set_combo_edit_caret, set_text, to_wide, window_text_into, write_wide_buffer,
 };
 
 static FOREGROUND_EVENT_HWND: AtomicIsize = AtomicIsize::new(0);
@@ -313,6 +314,7 @@ struct AppWindow {
     process_choice_indices: Vec<usize>,
     process_query: String,
     manual_process_text: String,
+    status_detail_text: String,
     foreground_process_name_cache: Option<(u32, Option<String>)>,
     processes_loaded: bool,
     last_process_refresh: Instant,
@@ -440,6 +442,7 @@ impl AppWindow {
             process_choice_indices: Vec::new(),
             process_query: String::new(),
             manual_process_text: String::new(),
+            status_detail_text: String::new(),
             foreground_process_name_cache: None,
             processes_loaded: false,
             last_process_refresh: Instant::now(),
@@ -842,19 +845,23 @@ impl AppWindow {
             set_text(self.controls.quit_button, self.strings.quit);
             set_text(self.controls.open_config_button, self.strings.open_config);
 
-            let placeholder = to_wide(self.strings.manual_placeholder);
+            let mut cue_banner_buffer = Vec::new();
+            write_wide_buffer(self.strings.manual_placeholder, &mut cue_banner_buffer);
             SendMessageW(
                 self.controls.manual_edit,
                 EM_SETCUEBANNER,
                 Some(WPARAM(0)),
-                Some(LPARAM(placeholder.as_ptr() as isize)),
+                Some(LPARAM(cue_banner_buffer.as_ptr() as isize)),
             );
-            let process_placeholder = to_wide(self.strings.process_search_placeholder);
+            write_wide_buffer(
+                self.strings.process_search_placeholder,
+                &mut cue_banner_buffer,
+            );
             SendMessageW(
                 self.controls.running_combo,
                 CB_SETCUEBANNER,
                 Some(WPARAM(0)),
-                Some(LPARAM(process_placeholder.as_ptr() as isize)),
+                Some(LPARAM(cue_banner_buffer.as_ptr() as isize)),
             );
         }
         self.refresh_process_details_ui();
@@ -1286,20 +1293,27 @@ impl AppWindow {
         } else {
             self.strings.status_running
         };
-        let detail = if let Some(issue) = self.issues.visible() {
-            format!("{} · {}", self.strings.status_issue, self.issue_text(issue))
+        let issue_text = snapshot.issue.map(|issue| self.issue_text(issue));
+        self.status_detail_text.clear();
+        if let Some(issue_text) = issue_text {
+            let _ = write!(
+                self.status_detail_text,
+                "{} · {}",
+                self.strings.status_issue, issue_text
+            );
         } else {
-            format!(
+            let _ = write!(
+                self.status_detail_text,
                 "{} {} · {} {}",
                 self.strings.target_count,
-                self.config.targets.len(),
+                snapshot.target_count,
                 self.strings.muted_count,
-                self.muted_by_app.len()
-            )
-        };
+                snapshot.muted_count
+            );
+        }
         unsafe {
             set_text(self.controls.status, status);
-            set_text(self.controls.status_detail, &detail);
+            set_text(self.controls.status_detail, &self.status_detail_text);
         }
         self.last_status = Some(snapshot);
     }
@@ -1903,14 +1917,15 @@ impl AppWindow {
         let Ok(menu) = (unsafe { CreatePopupMenu() }) else {
             return None;
         };
+        let mut text_buffer = Vec::new();
         for (index, language) in Language::ALL.iter().enumerate() {
-            let text = to_wide(language.native_name());
+            write_wide_buffer(language.native_name(), &mut text_buffer);
             unsafe {
                 let _ = AppendMenuW(
                     menu,
                     MF_STRING,
                     (ID_LANGUAGE_MENU_BASE + index as i32) as usize,
-                    PCWSTR(text.as_ptr()),
+                    PCWSTR(text_buffer.as_ptr()),
                 );
             }
         }
@@ -2016,17 +2031,36 @@ impl AppWindow {
             let Ok(menu) = CreatePopupMenu() else {
                 return;
             };
-            let show = to_wide(self.strings.show);
-            let pause = to_wide(if self.paused {
-                self.strings.resume
-            } else {
-                self.strings.pause
-            });
-            let quit = to_wide(self.strings.quit);
-            let _ = AppendMenuW(menu, MF_STRING, ID_SHOW as usize, PCWSTR(show.as_ptr()));
-            let _ = AppendMenuW(menu, MF_STRING, ID_PAUSE as usize, PCWSTR(pause.as_ptr()));
+            let mut text_buffer = Vec::new();
+            write_wide_buffer(self.strings.show, &mut text_buffer);
+            let _ = AppendMenuW(
+                menu,
+                MF_STRING,
+                ID_SHOW as usize,
+                PCWSTR(text_buffer.as_ptr()),
+            );
+            write_wide_buffer(
+                if self.paused {
+                    self.strings.resume
+                } else {
+                    self.strings.pause
+                },
+                &mut text_buffer,
+            );
+            let _ = AppendMenuW(
+                menu,
+                MF_STRING,
+                ID_PAUSE as usize,
+                PCWSTR(text_buffer.as_ptr()),
+            );
             let _ = AppendMenuW(menu, MF_SEPARATOR, 0, PCWSTR::null());
-            let _ = AppendMenuW(menu, MF_STRING, ID_QUIT as usize, PCWSTR(quit.as_ptr()));
+            write_wide_buffer(self.strings.quit, &mut text_buffer);
+            let _ = AppendMenuW(
+                menu,
+                MF_STRING,
+                ID_QUIT as usize,
+                PCWSTR(text_buffer.as_ptr()),
+            );
 
             let mut point = POINT::default();
             if GetCursorPos(&mut point).is_ok() {

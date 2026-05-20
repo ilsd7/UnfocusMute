@@ -22,6 +22,7 @@ use windows::Win32::UI::WindowsAndMessaging::{
 use windows::core::{PCWSTR, w};
 
 const MEASURE_TEXT_STACK_BUFFER_LEN: usize = 256;
+const CREATE_TEXT_STACK_BUFFER_LEN: usize = 256;
 const SET_TEXT_STACK_BUFFER_LEN: usize = 256;
 const WINDOW_TEXT_STACK_BUFFER_LEN: usize = 256;
 
@@ -149,7 +150,37 @@ pub(super) unsafe fn create_control(
     height: i32,
     id: i32,
 ) -> Result<HWND> {
-    let text = to_wide(text);
+    let mut stack = [0u16; CREATE_TEXT_STACK_BUFFER_LEN];
+    if let Some(wide) = encode_wide_with_nul(text, &mut stack) {
+        return unsafe {
+            create_control_with_wide_text(
+                parent, instance, class, wide, style, ex_style, x, y, width, height, id,
+            )
+        };
+    }
+
+    let wide = to_wide(text);
+    unsafe {
+        create_control_with_wide_text(
+            parent, instance, class, &wide, style, ex_style, x, y, width, height, id,
+        )
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
+unsafe fn create_control_with_wide_text(
+    parent: HWND,
+    instance: HINSTANCE,
+    class: PCWSTR,
+    text: &[u16],
+    style: WINDOW_STYLE,
+    ex_style: WINDOW_EX_STYLE,
+    x: i32,
+    y: i32,
+    width: i32,
+    height: i32,
+    id: i32,
+) -> Result<HWND> {
     unsafe {
         CreateWindowExW(
             ex_style,
@@ -274,13 +305,6 @@ pub(super) unsafe fn reserve_list_items(hwnd: HWND, count: usize, text_bytes: us
     }
 }
 
-pub(super) unsafe fn add_combo_item(hwnd: HWND, text: &str) {
-    let mut wide = Vec::new();
-    unsafe {
-        add_combo_item_with_buffer(hwnd, text, &mut wide);
-    }
-}
-
 pub(super) unsafe fn add_combo_item_with_buffer(hwnd: HWND, text: &str, wide: &mut Vec<u16>) {
     write_wide_buffer(text, wide);
     unsafe {
@@ -304,7 +328,7 @@ pub(super) unsafe fn reserve_combo_items(hwnd: HWND, count: usize, text_bytes: u
     }
 }
 
-fn write_wide_buffer(text: &str, wide: &mut Vec<u16>) {
+pub(super) fn write_wide_buffer(text: &str, wide: &mut Vec<u16>) {
     wide.clear();
     wide.extend(text.encode_utf16());
     wide.push(0);

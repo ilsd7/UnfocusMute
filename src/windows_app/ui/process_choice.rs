@@ -1,4 +1,5 @@
 use std::borrow::Cow;
+use std::fmt::Write as _;
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(super) struct ProcessChoice {
@@ -13,12 +14,16 @@ impl ProcessChoice {
         let search_name = lowercase_if_needed(&name);
         let (display_name, search_text) = match pid {
             Some(pid) => (
-                Some(format!("{name} (PID {pid})")),
-                Some(format!("{search_name} pid {pid}")),
+                Some(display_text_with_number(&name, pid as usize, "PID")),
+                Some(search_text_with_number(
+                    search_name.as_ref(),
+                    pid as usize,
+                    "pid",
+                )),
             ),
             None if count > 1 => (
-                Some(format!("{name} ({count} PID)")),
-                Some(format!("{search_name} {count} pid")),
+                Some(display_text_with_number(&name, count, "PID")),
+                Some(search_text_with_number(search_name.as_ref(), count, "pid")),
             ),
             None => (None, into_owned_if_allocated(search_name)),
         };
@@ -74,6 +79,37 @@ fn into_owned_if_allocated(text: Cow<'_, str>) -> Option<String> {
     match text {
         Cow::Borrowed(_) => None,
         Cow::Owned(text) => Some(text),
+    }
+}
+
+fn display_text_with_number(text: &str, number: usize, label: &str) -> String {
+    let mut output =
+        String::with_capacity(text.len() + 4 + label.len() + decimal_digit_count(number));
+    output.push_str(text);
+    output.push_str(" (");
+    let _ = write!(output, "{number}");
+    output.push(' ');
+    output.push_str(label);
+    output.push(')');
+    output
+}
+
+fn search_text_with_number(text: &str, number: usize, label: &str) -> String {
+    let mut output =
+        String::with_capacity(text.len() + 2 + label.len() + decimal_digit_count(number));
+    output.push_str(text);
+    output.push(' ');
+    let _ = write!(output, "{number}");
+    output.push(' ');
+    output.push_str(label);
+    output
+}
+
+fn decimal_digit_count(number: usize) -> usize {
+    if number == 0 {
+        1
+    } else {
+        number.ilog10() as usize + 1
     }
 }
 

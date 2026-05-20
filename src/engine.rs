@@ -93,8 +93,9 @@ pub struct TargetMatcher {
 
 impl TargetMatcher {
     pub fn new(targets: &[TargetProcess]) -> Self {
-        let mut names = Vec::with_capacity(targets.len());
-        let mut names_by_pid = Vec::with_capacity(targets.len());
+        let (name_count, pid_count) = target_kind_counts(targets);
+        let mut names = Vec::with_capacity(name_count);
+        let mut names_by_pid = Vec::with_capacity(pid_count);
 
         for target in targets.iter().filter(|target| target.enabled) {
             debug_assert!(is_normalized_process_name(&target.name));
@@ -142,6 +143,19 @@ impl TargetMatcher {
             .is_ok()
             .then_some(TargetMatchKind::Pid)
     }
+}
+
+fn target_kind_counts(targets: &[TargetProcess]) -> (usize, usize) {
+    let mut name_count = 0;
+    let mut pid_count = 0;
+    for target in targets.iter().filter(|target| target.enabled) {
+        if target.pid.is_some() {
+            pid_count += 1;
+        } else {
+            name_count += 1;
+        }
+    }
+    (name_count, pid_count)
 }
 
 pub struct MutePlanner<'a> {
