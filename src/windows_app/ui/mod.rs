@@ -1,7 +1,4 @@
-use crate::config::{
-    AppConfig, TargetProcess, WindowPosition, config_dir, config_file_exists,
-    normalize_process_name,
-};
+use crate::config::{AppConfig, TargetProcess, WindowPosition, config_dir, normalize_process_name};
 use crate::engine::{AudioSessionKey, TargetMatcher};
 use crate::i18n::{Language, Strings};
 use crate::windows_app::audio::AudioController;
@@ -65,11 +62,11 @@ use language_prompt::prompt_initial_language;
 use process_choice::{ProcessChoice, search_terms};
 use theme::{AppTheme, OwnedBrush};
 use win32::{
-    WindowClassRegistration, add_combo_item, add_list_item, copy_wide_fixed, create_button,
-    create_checkbox, create_control, create_primary_button, current_config_stamp, hiword,
-    is_checked, load_app_icon, load_tray_icon, loword, measure_text_width, path_to_wide,
-    reserve_combo_items, reserve_list_items, set_checkbox, set_combo_edit_caret, set_text, to_wide,
-    window_text,
+    WindowClassRegistration, add_combo_item_with_buffer, add_list_item_with_buffer,
+    copy_wide_fixed, create_button, create_checkbox, create_control, create_primary_button,
+    current_config_stamp, hiword, is_checked, load_app_icon, load_tray_icon, loword,
+    measure_text_width, path_to_wide, reserve_combo_items, reserve_list_items, set_checkbox,
+    set_combo_edit_caret, set_text, to_wide, window_text,
 };
 
 static FOREGROUND_EVENT_HWND: AtomicIsize = AtomicIsize::new(0);
@@ -114,8 +111,9 @@ unsafe fn run_window() -> Result<()> {
     let _class_registration = (unsafe { RegisterClassW(&class) } != 0)
         .then(|| WindowClassRegistration::new(CLASS_NAME, instance));
 
-    let first_run = !config_file_exists();
-    let mut config = AppConfig::load_or_default().unwrap_or_default();
+    let config_load = AppConfig::load_or_default_with_status().unwrap_or_default();
+    let first_run = config_load.first_run;
+    let mut config = config_load.config;
     if first_run {
         if let Some(preferences) = unsafe {
             prompt_initial_language(instance, icon, config.language, config.launch_on_startup)?
@@ -131,9 +129,9 @@ unsafe fn run_window() -> Result<()> {
     let start_hidden = should_start_hidden(first_run, forced_minimized, config.start_minimized);
     let WindowPosition { x, y } = initial_window_position(&config);
 
+    let title = to_wide(config.language.strings().app_title);
     let app = Box::new(AppWindow::new(config, icon, tray_icon)?);
     let app_ptr = Box::into_raw(app);
-    let title = to_wide(Language::default().strings().app_title);
     let hwnd = unsafe {
         CreateWindowExW(
             WINDOW_EX_STYLE(0),
@@ -321,10 +319,11 @@ struct AppWindow {
     show_process_details: bool,
     tray_added: bool,
     issues: IssueState,
-    last_status: Option<(StatusSnapshot, &'static str, String)>,
+    last_status: Option<StatusSnapshot>,
     config_stamp: Option<ConfigFileStamp>,
     next_config_check: Instant,
     theme: AppTheme,
+    font_applied: bool,
     icon: HICON,
     tray_icon: HICON,
 }
@@ -451,6 +450,7 @@ impl AppWindow {
             config_stamp: current_config_stamp(),
             next_config_check: Instant::now() + CONFIG_RELOAD_CHECK_INTERVAL,
             theme: AppTheme::new(language),
+            font_applied: false,
             icon,
             tray_icon,
         })
@@ -789,8 +789,11 @@ impl AppWindow {
 
     fn refresh_text(&mut self) {
         self.strings = self.config.language.strings();
-        self.theme.set_font_language(self.config.language);
-        self.apply_default_font();
+        let font_changed = self.theme.set_font_language(self.config.language);
+        if font_changed || !self.font_applied {
+            self.apply_default_font();
+            self.font_applied = true;
+        }
         unsafe {
             set_text(self.hwnd, self.strings.app_title);
             set_text(self.controls.title_label, self.strings.app_title);
@@ -1062,8 +1065,13 @@ impl AppWindow {
                 self.config.targets.len(),
                 target_text_bytes,
             );
+            let mut text_buffer = Vec::new();
             for target in &self.config.targets {
-                add_list_item(self.controls.target_list, target.display_name().as_ref());
+                add_list_item_with_buffer(
+                    self.controls.target_list,
+                    target.display_name().as_ref(),
+                    &mut text_buffer,
+                );
             }
         }
         self.update_status();
@@ -1117,10 +1125,12 @@ impl AppWindow {
                 self.process_choice_indices.len(),
                 process_text_bytes,
             );
+            let mut text_buffer = Vec::new();
             for index in &self.process_choice_indices {
-                add_combo_item(
+                add_combo_item_with_buffer(
                     self.controls.running_combo,
                     self.all_process_choices[*index].display_name(),
+                    &mut text_buffer,
                 );
             }
             SendMessageW(
@@ -1256,7 +1266,7 @@ impl AppWindow {
         if self
             .last_status
             .as_ref()
-            .is_some_and(|(last_snapshot, _, _)| *last_snapshot == snapshot)
+            .is_some_and(|last_snapshot| *last_snapshot == snapshot)
         {
             return;
         }
@@ -1281,7 +1291,7 @@ impl AppWindow {
             set_text(self.controls.status, status);
             set_text(self.controls.status_detail, &detail);
         }
-        self.last_status = Some((snapshot, status, detail));
+        self.last_status = Some(snapshot);
     }
 
     fn reset_audio_after_endpoint_change(&mut self) {

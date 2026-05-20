@@ -37,19 +37,29 @@ pub(super) struct AppTheme {
     pub(super) panel_brush: HBRUSH,
     pub(super) border_brush: HBRUSH,
     pub(super) font: UiFont,
+    font_point_size: i32,
 }
 
 impl AppTheme {
     pub(super) fn new(language: Language) -> Self {
+        let font_point_size = ui_font_point_size(language);
         Self {
             panel_brush: unsafe { CreateSolidBrush(PANEL_COLOR) },
             border_brush: unsafe { CreateSolidBrush(PANEL_BORDER_COLOR) },
-            font: UiFont::new(ui_font_point_size(language)),
+            font: UiFont::new(font_point_size),
+            font_point_size,
         }
     }
 
-    pub(super) fn set_font_language(&mut self, language: Language) {
-        self.font = UiFont::new(ui_font_point_size(language));
+    pub(super) fn set_font_language(&mut self, language: Language) -> bool {
+        let font_point_size = ui_font_point_size(language);
+        if self.font_point_size != font_point_size {
+            self.font = UiFont::new(font_point_size);
+            self.font_point_size = font_point_size;
+            true
+        } else {
+            false
+        }
     }
 }
 

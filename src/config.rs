@@ -76,6 +76,11 @@ pub struct AppConfig {
     pub targets: Vec<TargetProcess>,
 }
 
+pub struct AppConfigLoad {
+    pub config: AppConfig,
+    pub first_run: bool,
+}
+
 impl Default for AppConfig {
     fn default() -> Self {
         Self {
@@ -91,22 +96,39 @@ impl Default for AppConfig {
     }
 }
 
+impl Default for AppConfigLoad {
+    fn default() -> Self {
+        Self {
+            config: AppConfig::default(),
+            first_run: true,
+        }
+    }
+}
+
 impl AppConfig {
-    pub fn load_or_default() -> io::Result<Self> {
+    pub fn load_or_default_with_status() -> io::Result<AppConfigLoad> {
         let path = config_file_path()?;
         let file = match fs::File::open(&path) {
             Ok(file) => file,
-            Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(Self::default()),
+            Err(error) if error.kind() == io::ErrorKind::NotFound => {
+                return Ok(AppConfigLoad::default());
+            }
             Err(error) => return Err(error),
         };
         match parse_config_file(file) {
             Ok(mut config) => {
                 config.sanitize();
-                Ok(config)
+                Ok(AppConfigLoad {
+                    config,
+                    first_run: false,
+                })
             }
             Err(_) => {
                 let _ = backup_invalid_config(&path);
-                Ok(Self::default())
+                Ok(AppConfigLoad {
+                    config: Self::default(),
+                    first_run: false,
+                })
             }
         }
     }
@@ -381,10 +403,6 @@ pub fn config_dir() -> io::Result<PathBuf> {
 
 pub fn config_file_path() -> io::Result<PathBuf> {
     Ok(config_dir()?.join("config.json"))
-}
-
-pub fn config_file_exists() -> bool {
-    config_file_path().is_ok_and(|path| path.exists())
 }
 
 #[cfg(test)]

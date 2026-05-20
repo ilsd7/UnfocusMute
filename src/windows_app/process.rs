@@ -1,5 +1,5 @@
 use crate::config::normalize_process_name_owned;
-use std::collections::HashMap;
+use std::collections::{HashMap, hash_map::Entry};
 use std::mem::size_of;
 use windows::Win32::Foundation::{CloseHandle, ERROR_INSUFFICIENT_BUFFER, HANDLE, HWND};
 use windows::Win32::System::Diagnostics::ToolHelp::{
@@ -42,36 +42,31 @@ impl ProcessNameResolver {
 
     pub fn name(&mut self, pid: u32) -> Option<&str> {
         if self.prefer_snapshot {
-            let has_snapshot_name = self
+            let snapshot_names = self
                 .snapshot_names
-                .get_or_insert_with(process_names_from_snapshot)
-                .contains_key(&pid);
-            if has_snapshot_name {
-                return self
-                    .snapshot_names
-                    .as_ref()
-                    .and_then(|names| names.get(&pid).map(String::as_str));
+                .get_or_insert_with(process_names_from_snapshot);
+            if let Some(name) = snapshot_names.get(&pid) {
+                return Some(name);
             }
 
-            self.names
-                .entry(pid)
-                .or_insert_with(|| process_image_name(pid));
-            return self.names.get(&pid).and_then(Option::as_deref);
+            return match self.names.entry(pid) {
+                Entry::Occupied(entry) => entry.into_mut().as_deref(),
+                Entry::Vacant(entry) => entry.insert(process_image_name(pid)).as_deref(),
+            };
         }
 
-        if !self.names.contains_key(&pid) {
-            let name = process_image_name(pid).or_else(|| self.snapshot_name(pid));
-            self.names.insert(pid, name);
+        match self.names.entry(pid) {
+            Entry::Occupied(entry) => entry.into_mut().as_deref(),
+            Entry::Vacant(entry) => {
+                let name = process_image_name(pid).or_else(|| {
+                    let names = self
+                        .snapshot_names
+                        .get_or_insert_with(process_names_from_snapshot);
+                    names.get(&pid).cloned()
+                });
+                entry.insert(name).as_deref()
+            }
         }
-
-        self.names.get(&pid).and_then(Option::as_deref)
-    }
-
-    fn snapshot_name(&mut self, pid: u32) -> Option<String> {
-        let names = self
-            .snapshot_names
-            .get_or_insert_with(process_names_from_snapshot);
-        names.get(&pid).cloned()
     }
 }
 

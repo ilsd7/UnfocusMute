@@ -1,7 +1,8 @@
 use crate::engine::{AudioSessionKey, MutePlanner, TargetMatcher};
 use crate::windows_app::process;
 use anyhow::{Context, Result, bail};
-use std::collections::HashSet;
+use std::collections::{HashSet, hash_map::DefaultHasher};
+use std::hash::{Hash, Hasher};
 use std::sync::{
     Arc,
     atomic::{AtomicBool, Ordering},
@@ -57,12 +58,16 @@ impl AudioController {
             });
         }
 
-        let mut failed_sessions = None;
-        self.visit_sessions(|session| {
-            if let Err(key) = apply_unmute_to_session(&session, session_keys) {
-                failed_sessions.get_or_insert_with(HashSet::new).insert(key);
-            }
-        })?;
+        let failed_sessions = {
+            let lookup = ManagedSessionLookup::new(session_keys);
+            let mut failed_sessions = None;
+            self.visit_sessions(|session| {
+                if let Err(key) = apply_unmute_to_session(&session, session_keys, &lookup) {
+                    failed_sessions.get_or_insert_with(HashSet::new).insert(key);
+                }
+            })?;
+            failed_sessions
+        };
 
         let had_failures = failed_sessions.is_some();
         if let Some(failed_sessions) = failed_sessions {
@@ -86,18 +91,20 @@ impl AudioController {
             foreground_process_name,
         );
         let mut apply_result = PlanApplyResult::new(managed_muted_sessions.len());
-        self.visit_sessions(|session| {
-            apply_plan_to_session(
-                &session,
-                &planner,
-                managed_muted_sessions,
-                &mut apply_result,
-            );
-        })?;
-        if let Some(active_managed_sessions) = apply_result.active_managed_sessions {
-            managed_muted_sessions.clear();
-            managed_muted_sessions.extend(active_managed_sessions);
+        {
+            let lookup = ManagedSessionLookup::new(managed_muted_sessions);
+            self.visit_sessions(|session| {
+                apply_plan_to_session(
+                    &session,
+                    &planner,
+                    managed_muted_sessions,
+                    &lookup,
+                    &mut apply_result,
+                );
+            })?;
         }
+        managed_muted_sessions.clear();
+        managed_muted_sessions.extend(apply_result.active_managed_sessions);
 
         Ok(PlannedMuteApplyResult {
             had_failures: apply_result.had_failures,
@@ -159,45 +166,78 @@ impl AudioSessionControl<'_> {
 }
 
 struct PlanApplyResult {
-    active_managed_sessions: Option<Vec<AudioSessionKey>>,
+    active_managed_sessions: Vec<AudioSessionKey>,
     had_failures: bool,
 }
 
 impl PlanApplyResult {
     fn new(managed_session_count: usize) -> Self {
         Self {
-            active_managed_sessions: (managed_session_count > 0)
-                .then(|| Vec::with_capacity(managed_session_count)),
+            active_managed_sessions: Vec::with_capacity(managed_session_count),
             had_failures: false,
         }
     }
 }
 
+struct ManagedSessionLookup {
+    // Prefilter only; exact AudioSessionKey lookup still decides ownership.
+    fingerprints: HashSet<u64>,
+}
+
+impl ManagedSessionLookup {
+    fn new(session_keys: &HashSet<AudioSessionKey>) -> Self {
+        Self {
+            fingerprints: session_keys
+                .iter()
+                .map(|key| managed_session_fingerprint(key.pid, &key.process_name))
+                .collect(),
+        }
+    }
+
+    fn may_include(&self, pid: u32, process_name: &str) -> bool {
+        if self.fingerprints.is_empty() {
+            return false;
+        }
+
+        self.fingerprints
+            .contains(&managed_session_fingerprint(pid, process_name))
+    }
+}
+
+fn managed_session_fingerprint(pid: u32, process_name: &str) -> u64 {
+    let mut hasher = DefaultHasher::new();
+    pid.hash(&mut hasher);
+    process_name.hash(&mut hasher);
+    hasher.finish()
+}
+
 fn apply_plan_to_session(
     session: &AudioSessionControl<'_>,
     planner: &MutePlanner<'_>,
-    managed_muted_sessions: &mut HashSet<AudioSessionKey>,
+    managed_muted_sessions: &HashSet<AudioSessionKey>,
+    lookup: &ManagedSessionLookup,
     result: &mut PlanApplyResult,
 ) {
     let match_kind = planner.match_kind(session.process_name, session.pid);
     let mut key = None;
-    let managed =
-        if managed_session_may_include(managed_muted_sessions, session.pid, session.process_name) {
-            let session_key = session.key();
-            let managed = managed_muted_sessions.contains(&session_key);
-            key = Some(session_key);
-            managed
-        } else {
-            false
-        };
+    let managed = if lookup.may_include(session.pid, session.process_name) {
+        let session_key = session.key();
+        let managed = managed_muted_sessions.contains(&session_key);
+        key = Some(session_key);
+        managed
+    } else {
+        false
+    };
 
     if match_kind.is_none() && !managed {
         return;
     }
 
     let Some(volume) = session.volume() else {
-        if managed && let Some(active_managed_sessions) = &mut result.active_managed_sessions {
-            active_managed_sessions.push(key.unwrap_or_else(|| session.key()));
+        if managed {
+            result
+                .active_managed_sessions
+                .push(key.unwrap_or_else(|| session.key()));
         }
         return;
     };
@@ -209,37 +249,37 @@ fn apply_plan_to_session(
         managed,
         muted,
     ) else {
-        if managed && let Some(active_managed_sessions) = &mut result.active_managed_sessions {
-            active_managed_sessions.push(key.unwrap_or_else(|| session.key()));
+        if managed {
+            result
+                .active_managed_sessions
+                .push(key.unwrap_or_else(|| session.key()));
         }
         return;
     };
 
     if unsafe { volume.SetMute(mute, std::ptr::null()) }.is_err() {
         result.had_failures = true;
-        if managed && let Some(active_managed_sessions) = &mut result.active_managed_sessions {
-            active_managed_sessions.push(key.unwrap_or_else(|| session.key()));
+        if managed {
+            result
+                .active_managed_sessions
+                .push(key.unwrap_or_else(|| session.key()));
         }
         return;
     }
 
-    if let Some(active_managed_sessions) = &mut result.active_managed_sessions {
-        if mute {
-            active_managed_sessions.push(key.unwrap_or_else(|| session.key()));
-        }
-    } else if mute {
-        managed_muted_sessions.insert(key.unwrap_or_else(|| session.key()));
-    } else {
-        let session_key = key.unwrap_or_else(|| session.key());
-        managed_muted_sessions.remove(&session_key);
+    if mute {
+        result
+            .active_managed_sessions
+            .push(key.unwrap_or_else(|| session.key()));
     }
 }
 
 fn apply_unmute_to_session(
     session: &AudioSessionControl<'_>,
     session_keys: &HashSet<AudioSessionKey>,
+    lookup: &ManagedSessionLookup,
 ) -> std::result::Result<(), AudioSessionKey> {
-    if !managed_session_may_include(session_keys, session.pid, session.process_name) {
+    if !lookup.may_include(session.pid, session.process_name) {
         return Ok(());
     }
 
@@ -257,16 +297,6 @@ fn apply_unmute_to_session(
         return Err(key);
     }
     Ok(())
-}
-
-fn managed_session_may_include(
-    session_keys: &HashSet<AudioSessionKey>,
-    pid: u32,
-    process_name: &str,
-) -> bool {
-    session_keys
-        .iter()
-        .any(|key| key.pid == pid && key.process_name == process_name)
 }
 
 struct EndpointNotification {

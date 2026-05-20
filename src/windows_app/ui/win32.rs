@@ -211,8 +211,8 @@ pub(super) unsafe fn window_text(hwnd: HWND) -> String {
     String::from_utf16_lossy(&buffer[..len.max(0) as usize])
 }
 
-pub(super) unsafe fn add_list_item(hwnd: HWND, text: &str) {
-    let wide = to_wide(text);
+pub(super) unsafe fn add_list_item_with_buffer(hwnd: HWND, text: &str, wide: &mut Vec<u16>) {
+    write_wide_buffer(text, wide);
     unsafe {
         SendMessageW(
             hwnd,
@@ -235,7 +235,14 @@ pub(super) unsafe fn reserve_list_items(hwnd: HWND, count: usize, text_bytes: us
 }
 
 pub(super) unsafe fn add_combo_item(hwnd: HWND, text: &str) {
-    let wide = to_wide(text);
+    let mut wide = Vec::new();
+    unsafe {
+        add_combo_item_with_buffer(hwnd, text, &mut wide);
+    }
+}
+
+pub(super) unsafe fn add_combo_item_with_buffer(hwnd: HWND, text: &str, wide: &mut Vec<u16>) {
+    write_wide_buffer(text, wide);
     unsafe {
         SendMessageW(
             hwnd,
@@ -255,6 +262,12 @@ pub(super) unsafe fn reserve_combo_items(hwnd: HWND, count: usize, text_bytes: u
             Some(LPARAM(text_bytes.min(isize::MAX as usize) as isize)),
         );
     }
+}
+
+fn write_wide_buffer(text: &str, wide: &mut Vec<u16>) {
+    wide.clear();
+    wide.extend(text.encode_utf16());
+    wide.push(0);
 }
 
 pub(super) unsafe fn set_checkbox(hwnd: HWND, checked: bool) {
