@@ -46,6 +46,7 @@ pub(super) const PANEL_BORDER_COLOR: COLORREF = rgb(228, 232, 238);
 pub(super) const TEXT_COLOR: COLORREF = rgb(25, 33, 45);
 pub(super) const SUBTLE_TEXT_COLOR: COLORREF = rgb(85, 96, 112);
 pub(super) const SS_RIGHT_STYLE: WINDOW_STYLE = WINDOW_STYLE(2);
+pub(super) const SS_ENDELLIPSIS_STYLE: WINDOW_STYLE = WINDOW_STYLE(0x0000_4000);
 
 const fn rgb(red: u8, green: u8, blue: u8) -> COLORREF {
     COLORREF((red as u32) | ((green as u32) << 8) | ((blue as u32) << 16))

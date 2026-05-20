@@ -77,11 +77,16 @@ impl AudioController {
             self.visit_sessions_matching(
                 false,
                 |pid| lookup.may_include_pid(pid),
-                |session| {
-                    if let Err(key) = apply_unmute_to_session(&session, session_keys, &lookup) {
-                        failed_sessions
-                            .get_or_insert_with(|| HashSet::with_capacity(session_keys.len()))
-                            .insert(key);
+                |visit| match visit {
+                    SessionVisit::Resolved(session) => {
+                        if let Err(key) = apply_unmute_to_session(&session, session_keys, &lookup) {
+                            failed_sessions
+                                .get_or_insert_with(|| HashSet::with_capacity(session_keys.len()))
+                                .insert(key);
+                        }
+                    }
+                    SessionVisit::UnresolvedPid(pid) => {
+                        insert_session_keys_for_pid(&mut failed_sessions, session_keys, pid);
                     }
                 },
             )?;
@@ -116,14 +121,24 @@ impl AudioController {
             self.visit_sessions_matching(
                 needs_all_pids,
                 |pid| needs_all_pids || matcher.has_pid_target(pid) || lookup.may_include_pid(pid),
-                |session| {
-                    apply_plan_to_session(
-                        &session,
-                        &planner,
-                        managed_muted_sessions,
-                        &lookup,
-                        &mut apply_result,
-                    );
+                |visit| match visit {
+                    SessionVisit::Resolved(session) => {
+                        apply_plan_to_session(
+                            &session,
+                            &planner,
+                            managed_muted_sessions,
+                            &lookup,
+                            &mut apply_result,
+                        );
+                    }
+                    SessionVisit::UnresolvedPid(pid) => {
+                        if lookup.may_include_pid(pid) {
+                            apply_result.keep_active_sessions_for_pid(pid, managed_muted_sessions);
+                            apply_result.had_failures = true;
+                        } else if matcher.has_pid_target(pid) {
+                            apply_result.had_failures = true;
+                        }
+                    }
                 },
             )?;
         }
@@ -139,7 +154,7 @@ impl AudioController {
         &self,
         prefer_process_snapshot: bool,
         mut include_pid: impl FnMut(u32) -> bool,
-        mut visit: impl FnMut(AudioSessionControl),
+        mut visit: impl FnMut(SessionVisit<'_>),
     ) -> Result<()> {
         unsafe {
             let mut process_names = if prefer_process_snapshot {
@@ -168,14 +183,15 @@ impl AudioController {
                         continue;
                     }
                     let Some(process_name) = process_names.name(pid) else {
+                        visit(SessionVisit::UnresolvedPid(pid));
                         continue;
                     };
 
-                    visit(AudioSessionControl {
+                    visit(SessionVisit::Resolved(AudioSessionControl {
                         control: control2,
                         pid,
                         process_name,
-                    });
+                    }));
                 }
             }
 
@@ -188,6 +204,11 @@ struct AudioSessionControl<'a> {
     control: IAudioSessionControl2,
     pid: u32,
     process_name: &'a str,
+}
+
+enum SessionVisit<'a> {
+    Resolved(AudioSessionControl<'a>),
+    UnresolvedPid(u32),
 }
 
 impl AudioSessionControl<'_> {
@@ -231,6 +252,16 @@ impl PlanApplyResult {
         self.active_managed_sessions
             .push(key.unwrap_or_else(|| session.key()));
     }
+
+    fn keep_active_sessions_for_pid(&mut self, pid: u32, session_keys: &HashSet<AudioSessionKey>) {
+        for key in session_keys.iter().filter(|key| key.pid == pid) {
+            if self.active_managed_sessions.capacity() == 0 {
+                self.active_managed_sessions
+                    .reserve(LINEAR_MANAGED_SESSION_LIMIT);
+            }
+            self.active_managed_sessions.push(key.clone());
+        }
+    }
 }
 
 enum ManagedSessionLookup<'a> {
@@ -251,7 +282,6 @@ enum ManagedSessionLookup<'a> {
     },
     // Prefilter only; exact AudioSessionKey lookup still decides ownership.
     Many {
-        identities: HashSet<(u32, &'a str)>,
         pids: HashSet<u32>,
     },
 }
@@ -289,17 +319,13 @@ impl<'a> ManagedSessionLookup<'a> {
             return Self::Few { identities, len };
         }
 
-        let mut identities = HashSet::with_capacity(session_keys.len());
         let mut pids = HashSet::with_capacity(session_keys.len());
-        identities.insert((first.pid, first.process_name.as_str()));
-        identities.insert((second.pid, second.process_name.as_str()));
         pids.insert(first.pid);
         pids.insert(second.pid);
         for key in keys {
-            identities.insert((key.pid, key.process_name.as_str()));
             pids.insert(key.pid);
         }
-        Self::Many { identities, pids }
+        Self::Many { pids }
     }
 
     fn may_include_pid(&self, pid: u32) -> bool {
@@ -343,7 +369,7 @@ impl<'a> ManagedSessionLookup<'a> {
                         *managed_pid == pid && *managed_process_name == process_name
                     })
             }
-            Self::Many { identities, .. } => identities.contains(&(pid, process_name)),
+            Self::Many { pids } => pids.contains(&pid),
         }
     }
 }
@@ -371,6 +397,12 @@ fn apply_plan_to_session(
     }
 
     let Some(volume) = session.volume() else {
+        if planner
+            .desired_mute_with_match(match_kind, session.process_name, session.pid, managed)
+            .is_some()
+        {
+            result.had_failures = true;
+        }
         if managed {
             result.keep_active_session(session, key);
         }
@@ -445,6 +477,18 @@ fn apply_unmute_to_session(
         return Err(key);
     }
     Ok(())
+}
+
+fn insert_session_keys_for_pid(
+    output: &mut Option<HashSet<AudioSessionKey>>,
+    session_keys: &HashSet<AudioSessionKey>,
+    pid: u32,
+) {
+    for key in session_keys.iter().filter(|key| key.pid == pid) {
+        output
+            .get_or_insert_with(|| HashSet::with_capacity(session_keys.len()))
+            .insert(key.clone());
+    }
 }
 
 struct EndpointNotification {
@@ -641,5 +685,50 @@ impl Drop for CoTaskMemString {
         unsafe {
             CoTaskMemFree(Some(self.0.as_ptr().cast()));
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn unresolved_pid_retains_matching_session_keys() {
+        let retained = AudioSessionKey::from_normalized(7, "game.exe".to_owned(), None);
+        let ignored = AudioSessionKey::from_normalized(8, "chat.exe".to_owned(), None);
+        let session_keys = HashSet::from([retained.clone(), ignored.clone()]);
+        let mut output = None;
+
+        insert_session_keys_for_pid(&mut output, &session_keys, 7);
+
+        let output = output.expect("matching pid should create failure set");
+        assert!(output.contains(&retained));
+        assert!(!output.contains(&ignored));
+    }
+
+    #[test]
+    fn unresolved_pid_without_matching_session_keys_stays_empty() {
+        let session_keys = HashSet::from([AudioSessionKey::from_normalized(
+            8,
+            "chat.exe".to_owned(),
+            None,
+        )]);
+        let mut output = None;
+
+        insert_session_keys_for_pid(&mut output, &session_keys, 7);
+
+        assert!(output.is_none());
+    }
+
+    #[test]
+    fn many_managed_session_lookup_prefilters_by_pid_only() {
+        let session_keys = (1..=LINEAR_MANAGED_SESSION_LIMIT + 1)
+            .map(|pid| AudioSessionKey::from_normalized(pid as u32, format!("app{pid}.exe"), None))
+            .collect::<HashSet<_>>();
+        let lookup = ManagedSessionLookup::new(&session_keys);
+
+        assert!(lookup.may_include_pid(3));
+        assert!(lookup.may_include(3, "other.exe"));
+        assert!(!lookup.may_include_pid(99));
     }
 }

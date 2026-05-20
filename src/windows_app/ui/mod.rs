@@ -69,10 +69,11 @@ use process_choice::{ProcessChoice, search_terms};
 use theme::{AppTheme, OwnedBrush, UiFont};
 use win32::{
     WindowClassRegistration, add_combo_item_with_buffer, add_list_item_with_buffer,
-    copy_wide_fixed, create_button, create_checkbox, create_control, create_primary_button,
-    current_config_stamp, get_message, hiword, is_checked, load_app_icon, load_tray_icon, loword,
-    measure_text_width, path_to_wide, reserve_combo_items, reserve_list_items, set_checkbox,
-    set_combo_edit_caret, set_text, to_wide, window_text_into, write_wide_buffer,
+    copy_wide_fixed, create_button, create_checkbox, create_control, create_multiline_checkbox,
+    create_primary_button, current_config_stamp, get_message, hiword, is_checked, load_app_icon,
+    load_tray_icon, loword, measure_text_width, path_to_wide, reserve_combo_items,
+    reserve_list_items, set_checkbox, set_combo_edit_caret, set_text, storage_bytes_hint, to_wide,
+    window_text_into, write_wide_buffer,
 };
 
 static FOREGROUND_EVENT_HWND: AtomicIsize = AtomicIsize::new(0);
@@ -80,6 +81,11 @@ static FOREGROUND_EVENT_PENDING: AtomicBool = AtomicBool::new(false);
 const MAIN_WINDOW_STYLE: WINDOW_STYLE = WINDOW_STYLE(
     WS_OVERLAPPED.0 | WS_CAPTION.0 | WS_SYSMENU.0 | WS_MINIMIZEBOX.0 | WS_CLIPCHILDREN.0,
 );
+const RESTORE_CHECK_TEXT_PADDING: i32 = 28;
+const RESTORE_CHECK_HEIGHT: i32 = 26;
+const RESTORE_CHECK_TALL_HEIGHT: i32 = 44;
+const RESTORE_CHECK_Y: i32 = 490;
+const RESTORE_CHECK_TALL_Y: i32 = 482;
 
 pub fn run() -> Result<()> {
     let _com = unsafe { ComApartment::initialize()? };
@@ -821,7 +827,7 @@ impl AppWindow {
                 instance,
                 w!("STATIC"),
                 "",
-                child,
+                child | SS_ENDELLIPSIS_STYLE,
                 WINDOW_EX_STYLE(0),
                 36,
                 64,
@@ -836,7 +842,7 @@ impl AppWindow {
                 instance,
                 w!("STATIC"),
                 "",
-                child | SS_RIGHT_STYLE,
+                child | SS_RIGHT_STYLE | SS_ENDELLIPSIS_STYLE,
                 WINDOW_EX_STYLE(0),
                 600,
                 34,
@@ -851,7 +857,7 @@ impl AppWindow {
                 instance,
                 w!("STATIC"),
                 "",
-                child | SS_RIGHT_STYLE,
+                child | SS_RIGHT_STYLE | SS_ENDELLIPSIS_STYLE,
                 WINDOW_EX_STYLE(0),
                 600,
                 64,
@@ -867,7 +873,7 @@ impl AppWindow {
                 instance,
                 w!("STATIC"),
                 "",
-                child,
+                child | SS_ENDELLIPSIS_STYLE,
                 WINDOW_EX_STYLE(0),
                 36,
                 150,
@@ -900,7 +906,7 @@ impl AppWindow {
                 instance,
                 w!("STATIC"),
                 "",
-                child,
+                child | SS_ENDELLIPSIS_STYLE,
                 WINDOW_EX_STYLE(0),
                 484,
                 150,
@@ -915,7 +921,7 @@ impl AppWindow {
                 instance,
                 w!("STATIC"),
                 "",
-                child,
+                child | SS_ENDELLIPSIS_STYLE,
                 WINDOW_EX_STYLE(0),
                 484,
                 184,
@@ -930,7 +936,7 @@ impl AppWindow {
                 instance,
                 w!("STATIC"),
                 "",
-                child,
+                child | SS_ENDELLIPSIS_STYLE,
                 WINDOW_EX_STYLE(0),
                 484,
                 208,
@@ -989,7 +995,7 @@ impl AppWindow {
                 instance,
                 w!("STATIC"),
                 "",
-                child,
+                child | SS_ENDELLIPSIS_STYLE,
                 WINDOW_EX_STYLE(0),
                 484,
                 330,
@@ -1022,7 +1028,7 @@ impl AppWindow {
                 instance,
                 w!("STATIC"),
                 "",
-                child,
+                child | SS_ENDELLIPSIS_STYLE,
                 WINDOW_EX_STYLE(0),
                 484,
                 402,
@@ -1056,7 +1062,7 @@ impl AppWindow {
             )?
         };
         self.controls.restore_exit_check = unsafe {
-            create_checkbox(self.hwnd, instance, "", 484, 490, 230, 26, ID_RESTORE_EXIT)?
+            create_multiline_checkbox(self.hwnd, instance, "", 484, 490, 230, 26, ID_RESTORE_EXIT)?
         };
         self.controls.language_label = unsafe {
             create_control(
@@ -1064,7 +1070,7 @@ impl AppWindow {
                 instance,
                 w!("STATIC"),
                 "",
-                child | SS_RIGHT_STYLE,
+                child | SS_RIGHT_STYLE | SS_ENDELLIPSIS_STYLE,
                 WINDOW_EX_STYLE(0),
                 726,
                 407,
@@ -1215,6 +1221,7 @@ impl AppWindow {
     }
 
     fn layout_localized_controls(&self) {
+        let left_panel_left = 36;
         let content_right = WINDOW_WIDTH - 52;
         let right_panel_left = 484;
         let gap = 12;
@@ -1224,6 +1231,18 @@ impl AppWindow {
         let manual_edit_y = manual_button_y + 4;
         let manual_label_y = manual_button_y + 8;
         let settings_checkbox_width = content_right - right_panel_left;
+
+        let remove_width = self.button_width(self.strings.remove_selected, 130, 220);
+        let _ = unsafe {
+            MoveWindow(
+                self.controls.remove_button,
+                left_panel_left,
+                480,
+                remove_width,
+                34,
+                true,
+            )
+        };
 
         let refresh_width = self.button_width(self.strings.refresh, 108, 150);
         let refresh_x = content_right - refresh_width;
@@ -1324,6 +1343,9 @@ impl AppWindow {
 
         let open_config_width = self.button_width(self.strings.open_config, 150, 250);
         let open_config_x = content_right - open_config_width;
+        let restore_width = open_config_x - right_panel_left - gap;
+        let (restore_y, restore_height) =
+            restore_checkbox_layout(self.text_width(self.strings.restore_on_exit), restore_width);
         let _ = unsafe {
             MoveWindow(
                 self.controls.start_minimized_check,
@@ -1348,9 +1370,9 @@ impl AppWindow {
             MoveWindow(
                 self.controls.restore_exit_check,
                 right_panel_left,
-                490,
-                open_config_x - right_panel_left - gap,
-                26,
+                restore_y,
+                restore_width,
+                restore_height,
                 true,
             )
         };
@@ -2699,8 +2721,33 @@ mod foreground_cache_tests {
     }
 }
 
-fn storage_bytes_hint(text: &str) -> usize {
-    text.len() * size_of::<u16>()
+fn restore_checkbox_layout(text_width: i32, control_width: i32) -> (i32, i32) {
+    if text_width + RESTORE_CHECK_TEXT_PADDING > control_width {
+        (RESTORE_CHECK_TALL_Y, RESTORE_CHECK_TALL_HEIGHT)
+    } else {
+        (RESTORE_CHECK_Y, RESTORE_CHECK_HEIGHT)
+    }
+}
+
+#[cfg(test)]
+mod layout_tests {
+    use super::*;
+
+    #[test]
+    fn restore_checkbox_uses_single_line_layout_when_text_fits() {
+        assert_eq!(
+            restore_checkbox_layout(100, 100 + RESTORE_CHECK_TEXT_PADDING),
+            (RESTORE_CHECK_Y, RESTORE_CHECK_HEIGHT)
+        );
+    }
+
+    #[test]
+    fn restore_checkbox_uses_tall_layout_when_text_wraps() {
+        assert_eq!(
+            restore_checkbox_layout(100, 100 + RESTORE_CHECK_TEXT_PADDING - 1),
+            (RESTORE_CHECK_TALL_Y, RESTORE_CHECK_TALL_HEIGHT)
+        );
+    }
 }
 
 fn target_display_storage_bytes_hint(target: &TargetProcess) -> usize {

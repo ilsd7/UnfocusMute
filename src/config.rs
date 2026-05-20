@@ -5,6 +5,7 @@ use serde::{Deserialize, Serialize};
 use std::borrow::Cow;
 use std::cmp::Ordering;
 use std::env;
+use std::ffi::OsString;
 use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
@@ -365,8 +366,7 @@ fn create_temp_config_file(destination: &Path) -> io::Result<(fs::File, PathBuf)
     let pid = std::process::id();
     let timestamp = SystemTime::now()
         .duration_since(UNIX_EPOCH)
-        .map(|duration| duration.as_nanos())
-        .unwrap_or(0);
+        .map_or(0, |duration| duration.as_nanos());
 
     for index in 0..100 {
         let temp_path = parent.join(format!("{file_name}.{pid}-{timestamp}-{index}.tmp"));
@@ -416,8 +416,7 @@ fn path_to_wide(path: &Path) -> Vec<u16> {
 fn backup_invalid_config(path: &Path) -> io::Result<PathBuf> {
     let timestamp = SystemTime::now()
         .duration_since(UNIX_EPOCH)
-        .map(|duration| duration.as_secs())
-        .unwrap_or(0);
+        .map_or(0, |duration| duration.as_secs());
     backup_invalid_config_with_timestamp(path, timestamp)
 }
 
@@ -557,7 +556,7 @@ fn utf16_process_name_candidate(input: &[u16]) -> Option<Utf16ProcessNameCandida
     name = trim_ascii_quote_utf16(name);
     if let Some(index) = name
         .iter()
-        .rposition(|ch| *ch == b'\\' as u16 || *ch == b'/' as u16)
+        .rposition(|ch| *ch == u16::from(b'\\') || *ch == u16::from(b'/'))
     {
         name = &name[index + 1..];
     }
@@ -613,12 +612,12 @@ fn trim_ascii_utf16(mut input: &[u16]) -> &[u16] {
 
 fn trim_ascii_quote_utf16(mut input: &[u16]) -> &[u16] {
     while let Some((first, rest)) = input.split_first()
-        && *first == b'"' as u16
+        && *first == u16::from(b'"')
     {
         input = rest;
     }
     while let Some((last, rest)) = input.split_last()
-        && *last == b'"' as u16
+        && *last == u16::from(b'"')
     {
         input = rest;
     }
@@ -646,20 +645,38 @@ fn push_decimal_u32(output: &mut String, mut number: u32) {
 }
 
 pub fn config_dir() -> io::Result<PathBuf> {
-    if cfg!(windows)
-        && let Some(appdata) = env::var_os("APPDATA")
-    {
+    config_dir_from_env(
+        cfg!(windows),
+        env::var_os("APPDATA"),
+        env::var_os("XDG_CONFIG_HOME"),
+        env::var_os("HOME"),
+        env::var_os("USERPROFILE"),
+    )
+}
+
+fn config_dir_from_env(
+    is_windows: bool,
+    appdata: Option<OsString>,
+    xdg_config_home: Option<OsString>,
+    home: Option<OsString>,
+    userprofile: Option<OsString>,
+) -> io::Result<PathBuf> {
+    if is_windows && let Some(appdata) = non_empty_os_string(appdata) {
         return Ok(PathBuf::from(appdata).join("UnfocusMute"));
     }
 
-    if let Some(xdg) = env::var_os("XDG_CONFIG_HOME") {
+    if let Some(xdg) = non_empty_os_string(xdg_config_home) {
         return Ok(PathBuf::from(xdg).join("unfocusmute"));
     }
 
-    let home = env::var_os("HOME")
-        .or_else(|| env::var_os("USERPROFILE"))
+    let home = non_empty_os_string(home)
+        .or_else(|| non_empty_os_string(userprofile))
         .ok_or_else(|| io::Error::new(io::ErrorKind::NotFound, "home directory not found"))?;
     Ok(PathBuf::from(home).join(".config").join("unfocusmute"))
+}
+
+fn non_empty_os_string(value: Option<OsString>) -> Option<OsString> {
+    value.filter(|value| !value.as_os_str().is_empty())
 }
 
 pub(crate) fn cached_config_file_path() -> io::Result<&'static Path> {
@@ -690,8 +707,7 @@ mod tests {
             let base = env::temp_dir();
             let timestamp = SystemTime::now()
                 .duration_since(UNIX_EPOCH)
-                .map(|duration| duration.as_nanos())
-                .unwrap_or(0);
+                .map_or(0, |duration| duration.as_nanos());
 
             for index in 0..100 {
                 let path = base.join(format!(
@@ -719,10 +735,73 @@ mod tests {
         }
     }
 
+    fn os_string(value: &str) -> OsString {
+        OsString::from(value)
+    }
+
+    #[test]
+    fn config_dir_ignores_empty_xdg_config_home() {
+        assert_eq!(
+            config_dir_from_env(
+                false,
+                None,
+                Some(os_string("")),
+                Some(os_string("/home/user")),
+                None
+            )
+            .unwrap(),
+            PathBuf::from("/home/user")
+                .join(".config")
+                .join("unfocusmute")
+        );
+    }
+
+    #[test]
+    fn config_dir_ignores_empty_windows_appdata() {
+        assert_eq!(
+            config_dir_from_env(
+                true,
+                Some(os_string("")),
+                Some(os_string("/xdg/config")),
+                Some(os_string("/home/user")),
+                None,
+            )
+            .unwrap(),
+            PathBuf::from("/xdg/config").join("unfocusmute")
+        );
+    }
+
+    #[test]
+    fn config_dir_falls_back_from_empty_home_to_userprofile() {
+        assert_eq!(
+            config_dir_from_env(
+                false,
+                None,
+                None,
+                Some(os_string("")),
+                Some(os_string("/users/example")),
+            )
+            .unwrap(),
+            PathBuf::from("/users/example")
+                .join(".config")
+                .join("unfocusmute")
+        );
+    }
+
+    #[test]
+    fn config_dir_rejects_empty_home_values() {
+        assert_eq!(
+            config_dir_from_env(false, None, None, Some(os_string("")), Some(os_string("")))
+                .unwrap_err()
+                .kind(),
+            io::ErrorKind::NotFound
+        );
+    }
+
     #[test]
     fn normalizes_paths_and_case() {
         assert_eq!(
-            normalize_process_name(r#"C:\Games\Example.EXE"#),
+            normalize_process_name(r"C:\Games\Example.EXE"),
             Some("example.exe".to_owned())
         );
         assert_eq!(
@@ -735,7 +814,7 @@ mod tests {
     #[test]
     fn normalizes_utf16_paths_before_allocating_name() {
         assert_eq!(
-            normalize_process_name_utf16(&wide_null_terminated(r#"C:\Games\Example.EXE"#)),
+            normalize_process_name_utf16(&wide_null_terminated(r"C:\Games\Example.EXE")),
             Some("example.exe".to_owned())
         );
         assert_eq!(
@@ -753,10 +832,10 @@ mod tests {
         let name = [
             0xac8c,
             0xc784,
-            b'.' as u16,
-            b'E' as u16,
-            b'X' as u16,
-            b'E' as u16,
+            u16::from(b'.'),
+            u16::from(b'E'),
+            u16::from(b'X'),
+            u16::from(b'E'),
             0,
         ];
 
@@ -787,7 +866,7 @@ mod tests {
     #[test]
     fn owned_normalization_matches_borrowed_normalization() {
         let inputs = [
-            r#"C:\Games\Example.EXE"#,
+            r"C:\Games\Example.EXE",
             "  game.exe  ",
             "\"MIXER.EXE\"",
             "C:/Tools/player.exe",
@@ -805,7 +884,7 @@ mod tests {
     fn detects_already_normalized_process_names() {
         assert!(is_normalized_process_name("game.exe"));
         assert!(!is_normalized_process_name("Game.EXE"));
-        assert!(!is_normalized_process_name(r#"C:\Games\game.exe"#));
+        assert!(!is_normalized_process_name(r"C:\Games\game.exe"));
         assert!(!is_normalized_process_name("game.exe\0"));
     }
 
@@ -857,7 +936,7 @@ mod tests {
         let mut config = AppConfig {
             targets: vec![
                 TargetProcess {
-                    name: r#"C:\Games\Game.EXE"#.to_owned(),
+                    name: r"C:\Games\Game.EXE".to_owned(),
                     pid: None,
                     enabled: true,
                 },

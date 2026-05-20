@@ -24,8 +24,18 @@ if ($ResolvedReleaseTag) {
     }
 }
 
+$PackageSuffixByTarget = [System.Collections.Generic.Dictionary[string, string]]::new([System.StringComparer]::Ordinal)
+$PackageSuffixByTarget.Add("x86_64-pc-windows-msvc", "windows-x64")
+$PackageSuffixByTarget.Add("aarch64-pc-windows-msvc", "windows-arm64")
+$PackageSuffixByTarget.Add("i686-pc-windows-msvc", "windows-x86")
+if (-not $PackageSuffixByTarget.ContainsKey($Target)) {
+    $SupportedTargets = ($PackageSuffixByTarget.Keys | Sort-Object) -join ", "
+    throw "Unsupported package target $Target. Supported targets: $SupportedTargets."
+}
+$PackageSuffix = $PackageSuffixByTarget[$Target]
+
 $Dist = Join-Path $RepoRoot "dist"
-$PackageName = "UnfocusMute-$Version-windows-x64"
+$PackageName = "UnfocusMute-$Version-$PackageSuffix"
 $LegacyStage = Join-Path $Dist $PackageName
 $StageRoot = Join-Path $Dist ".package-$([System.Guid]::NewGuid().ToString('N'))"
 $Stage = Join-Path $StageRoot $PackageName

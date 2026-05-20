@@ -393,6 +393,17 @@ mod tests {
     }
 
     #[test]
+    fn desired_mute_enforces_removed_managed_sessions_without_current_state() {
+        let matcher = TargetMatcher::new(&[]);
+        let planner = MutePlanner::new(&matcher, Some(20), Some("other.exe"));
+
+        assert_eq!(
+            planner.desired_mute_with_match(None, "game.exe", 10, true),
+            Some(false)
+        );
+    }
+
+    #[test]
     fn mutes_target_sessions_that_are_not_foreground() {
         let targets = vec![TargetProcess::new("game.exe").unwrap()];
         let sessions = vec![session(10, "game.exe", false)];

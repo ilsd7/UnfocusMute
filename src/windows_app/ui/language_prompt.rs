@@ -1,18 +1,17 @@
 use super::centered_position;
 use super::constants::{
     ID_LANGUAGE_PROMPT_COMBO, ID_LANGUAGE_PROMPT_OK, ID_LANGUAGE_PROMPT_STARTUP,
-    LANGUAGE_PROMPT_CLASS_NAME, PAGE_COLOR, TEXT_COLOR,
+    LANGUAGE_PROMPT_CLASS_NAME, PAGE_COLOR, SS_ENDELLIPSIS_STYLE, TEXT_COLOR,
 };
 use super::theme::{OwnedBrush, UiFont, ui_font_point_size};
 use super::win32::{
     WindowClassRegistration, add_combo_item_with_buffer, create_control, create_multiline_checkbox,
     create_primary_button, get_message, hiword, is_checked, loword, measure_text_width,
-    reserve_combo_items, set_checkbox, set_text, to_wide,
+    reserve_combo_items, set_checkbox, set_text, storage_bytes_hint, to_wide,
 };
 use crate::i18n::Language;
 use crate::windows_app::error::{Context, Result};
 use std::ffi::c_void;
-use std::mem::size_of;
 use windows::Win32::Foundation::{HINSTANCE, HWND, LPARAM, LRESULT, WPARAM};
 use windows::Win32::Graphics::Gdi::{HDC, SetBkMode, SetTextColor, TRANSPARENT};
 use windows::Win32::System::LibraryLoader::GetModuleHandleW;
@@ -92,7 +91,7 @@ impl LanguagePrompt {
                 instance,
                 w!("STATIC"),
                 strings.first_run_language_title,
-                child,
+                child | SS_ENDELLIPSIS_STYLE,
                 WINDOW_EX_STYLE(0),
                 LANGUAGE_PROMPT_MARGIN,
                 28,
@@ -107,7 +106,7 @@ impl LanguagePrompt {
                 instance,
                 w!("STATIC"),
                 strings.first_run_language_subtitle,
-                child,
+                child | SS_ENDELLIPSIS_STYLE,
                 WINDOW_EX_STYLE(0),
                 LANGUAGE_PROMPT_MARGIN,
                 56,
@@ -163,7 +162,7 @@ impl LanguagePrompt {
                 Language::ALL.len(),
                 language_name_storage_bytes_hint(),
             );
-            let mut text_buffer = Vec::new();
+            let mut text_buffer = Vec::with_capacity(language_name_buffer_capacity());
             for language in Language::ALL {
                 add_combo_item_with_buffer(self.combo, language.native_name(), &mut text_buffer);
             }
@@ -272,8 +271,16 @@ fn startup_checkbox_height(text_width: i32) -> i32 {
 fn language_name_storage_bytes_hint() -> usize {
     Language::ALL
         .iter()
-        .map(|language| language.native_name().len() * size_of::<u16>())
+        .map(|language| storage_bytes_hint(language.native_name()))
         .sum()
+}
+
+fn language_name_buffer_capacity() -> usize {
+    Language::ALL
+        .iter()
+        .map(|language| language.native_name().encode_utf16().count() + 1)
+        .max()
+        .unwrap_or(0)
 }
 
 pub(super) unsafe fn prompt_initial_language(
