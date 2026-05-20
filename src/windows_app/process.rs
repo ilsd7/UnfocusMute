@@ -1,4 +1,4 @@
-use crate::config::normalize_process_name_owned;
+use crate::config::normalize_process_name_utf16;
 use std::collections::{HashMap, hash_map::Entry};
 use std::mem::size_of;
 use windows::Win32::Foundation::{CloseHandle, ERROR_INSUFFICIENT_BUFFER, HANDLE, HWND};
@@ -113,27 +113,24 @@ fn visit_process_snapshot(mut visit: impl FnMut(u32, String)) {
         let Ok(snapshot) = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0) else {
             return;
         };
+        let snapshot = OwnedHandle(snapshot);
 
         let mut entry = PROCESSENTRY32W {
             dwSize: size_of::<PROCESSENTRY32W>() as u32,
             ..Default::default()
         };
 
-        if Process32FirstW(snapshot, &mut entry).is_ok() {
+        if Process32FirstW(snapshot.raw(), &mut entry).is_ok() {
             loop {
-                if let Some(name) =
-                    normalize_process_name_owned(utf16_array_to_string(&entry.szExeFile))
-                {
+                if let Some(name) = normalize_process_name_utf16(&entry.szExeFile) {
                     visit(entry.th32ProcessID, name);
                 }
 
-                if Process32NextW(snapshot, &mut entry).is_err() {
+                if Process32NextW(snapshot.raw(), &mut entry).is_err() {
                     break;
                 }
             }
         }
-
-        let _ = CloseHandle(snapshot);
     }
 }
 
@@ -143,10 +140,24 @@ pub fn process_name(pid: u32) -> Option<String> {
 
 fn process_image_name(pid: u32) -> Option<String> {
     unsafe {
-        let handle = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, false, pid).ok()?;
-        let result = query_process_image_name(handle);
-        let _ = CloseHandle(handle);
-        result
+        let handle = OwnedHandle(OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, false, pid).ok()?);
+        query_process_image_name(handle.raw())
+    }
+}
+
+struct OwnedHandle(HANDLE);
+
+impl OwnedHandle {
+    fn raw(&self) -> HANDLE {
+        self.0
+    }
+}
+
+impl Drop for OwnedHandle {
+    fn drop(&mut self) {
+        unsafe {
+            let _ = CloseHandle(self.0);
+        }
     }
 }
 
@@ -157,12 +168,12 @@ unsafe fn query_process_image_name(handle: HANDLE) -> Option<String> {
         Err(error) if is_insufficient_buffer(&error) => {
             let mut buffer = vec![0u16; MAX_PROCESS_IMAGE_BUFFER_LEN];
             let len = unsafe { query_process_image_name_into(handle, &mut buffer) }.ok()?;
-            return normalize_process_name_owned(String::from_utf16_lossy(&buffer[..len]));
+            return normalize_process_name_utf16(&buffer[..len]);
         }
         Err(_) => return None,
     };
 
-    normalize_process_name_owned(String::from_utf16_lossy(&buffer[..len]))
+    normalize_process_name_utf16(&buffer[..len])
 }
 
 unsafe fn query_process_image_name_into(
@@ -183,12 +194,4 @@ unsafe fn query_process_image_name_into(
 
 fn is_insufficient_buffer(error: &Error) -> bool {
     error.code() == HRESULT::from_win32(ERROR_INSUFFICIENT_BUFFER.0)
-}
-
-fn utf16_array_to_string(buffer: &[u16]) -> String {
-    let len = buffer
-        .iter()
-        .position(|ch| *ch == 0)
-        .unwrap_or(buffer.len());
-    String::from_utf16_lossy(&buffer[..len])
 }

@@ -436,12 +436,83 @@ pub fn normalize_process_name_owned(mut input: String) -> Option<String> {
     }
 }
 
+pub(crate) fn normalize_process_name_utf16(input: &[u16]) -> Option<String> {
+    let candidate = utf16_process_name_candidate(input)?;
+    let mut name = String::from_utf16_lossy(candidate.name);
+    if candidate.has_uppercase {
+        name.make_ascii_lowercase();
+    }
+    Some(name)
+}
+
 pub fn is_normalized_process_name(input: &str) -> bool {
     process_name_candidate(input).is_some_and(|candidate| {
         !candidate.has_uppercase
             && candidate.name.len() == input.len()
             && candidate.name.as_ptr() == input.as_ptr()
     })
+}
+
+struct Utf16ProcessNameCandidate<'a> {
+    name: &'a [u16],
+    has_uppercase: bool,
+}
+
+fn utf16_process_name_candidate(input: &[u16]) -> Option<Utf16ProcessNameCandidate<'_>> {
+    let nul = input.iter().position(|ch| *ch == 0).unwrap_or(input.len());
+    let mut name = trim_ascii_utf16(&input[..nul]);
+    name = trim_ascii_quote_utf16(name);
+    if let Some(index) = name
+        .iter()
+        .rposition(|ch| *ch == b'\\' as u16 || *ch == b'/' as u16)
+    {
+        name = &name[index + 1..];
+    }
+    name = trim_ascii_utf16(name);
+
+    if name.is_empty() {
+        return None;
+    }
+
+    let has_uppercase = name
+        .iter()
+        .any(|ch| *ch <= 0x7f && (*ch as u8).is_ascii_uppercase());
+    Some(Utf16ProcessNameCandidate {
+        name,
+        has_uppercase,
+    })
+}
+
+fn trim_ascii_utf16(mut input: &[u16]) -> &[u16] {
+    while let Some((first, rest)) = input.split_first()
+        && is_ascii_whitespace_u16(*first)
+    {
+        input = rest;
+    }
+    while let Some((last, rest)) = input.split_last()
+        && is_ascii_whitespace_u16(*last)
+    {
+        input = rest;
+    }
+    input
+}
+
+fn trim_ascii_quote_utf16(mut input: &[u16]) -> &[u16] {
+    while let Some((first, rest)) = input.split_first()
+        && *first == b'"' as u16
+    {
+        input = rest;
+    }
+    while let Some((last, rest)) = input.split_last()
+        && *last == b'"' as u16
+    {
+        input = rest;
+    }
+    input
+}
+
+fn is_ascii_whitespace_u16(ch: u16) -> bool {
+    matches!(ch, 0x09..=0x0d | 0x20)
 }
 
 pub fn config_dir() -> io::Result<PathBuf> {
@@ -521,6 +592,22 @@ mod tests {
     }
 
     #[test]
+    fn normalizes_utf16_paths_before_allocating_name() {
+        assert_eq!(
+            normalize_process_name_utf16(&wide_null_terminated(r#"C:\Games\Example.EXE"#)),
+            Some("example.exe".to_owned())
+        );
+        assert_eq!(
+            normalize_process_name_utf16(&wide_null_terminated("  \"Mixer.EXE\"  ")),
+            Some("mixer.exe".to_owned())
+        );
+        assert_eq!(
+            normalize_process_name_utf16(&wide_null_terminated("")),
+            None
+        );
+    }
+
+    #[test]
     fn owned_normalization_reuses_already_normalized_name() {
         let name = "game.exe".to_owned();
         let ptr = name.as_ptr();
@@ -561,6 +648,10 @@ mod tests {
         assert!(!is_normalized_process_name("Game.EXE"));
         assert!(!is_normalized_process_name(r#"C:\Games\game.exe"#));
         assert!(!is_normalized_process_name("game.exe\0"));
+    }
+
+    fn wide_null_terminated(text: &str) -> Vec<u16> {
+        text.encode_utf16().chain(std::iter::once(0)).collect()
     }
 
     #[test]

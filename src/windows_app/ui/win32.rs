@@ -7,7 +7,7 @@ use std::os::windows::ffi::OsStrExt;
 use std::path::Path;
 use windows::Win32::Foundation::{HINSTANCE, HWND, LPARAM, SIZE, WPARAM};
 use windows::Win32::Graphics::Gdi::{
-    GetDC, GetTextExtentPoint32W, HGDIOBJ, ReleaseDC, SelectObject,
+    GetDC, GetTextExtentPoint32W, HDC, HGDIOBJ, ReleaseDC, SelectObject,
 };
 use windows::Win32::UI::Controls::{BST_CHECKED, BST_UNCHECKED};
 use windows::Win32::UI::HiDpi::{GetDpiForSystem, GetSystemMetricsForDpi};
@@ -44,6 +44,57 @@ impl Drop for WindowClassRegistration {
     fn drop(&mut self) {
         unsafe {
             let _ = UnregisterClassW(self.class_name, Some(self.instance));
+        }
+    }
+}
+
+struct WindowDc {
+    hwnd: HWND,
+    hdc: HDC,
+}
+
+impl WindowDc {
+    unsafe fn get(hwnd: HWND) -> Option<Self> {
+        let hdc = unsafe { GetDC(Some(hwnd)) };
+        if hdc.0.is_null() {
+            return None;
+        }
+        Some(Self { hwnd, hdc })
+    }
+
+    fn handle(&self) -> HDC {
+        self.hdc
+    }
+}
+
+impl Drop for WindowDc {
+    fn drop(&mut self) {
+        unsafe {
+            let _ = ReleaseDC(Some(self.hwnd), self.hdc);
+        }
+    }
+}
+
+struct SelectedGdiObject {
+    hdc: HDC,
+    previous: HGDIOBJ,
+}
+
+impl SelectedGdiObject {
+    unsafe fn select(hdc: HDC, object: HGDIOBJ) -> Self {
+        Self {
+            hdc,
+            previous: unsafe { SelectObject(hdc, object) },
+        }
+    }
+}
+
+impl Drop for SelectedGdiObject {
+    fn drop(&mut self) {
+        if !self.previous.0.is_null() {
+            unsafe {
+                let _ = SelectObject(self.hdc, self.previous);
+            }
         }
     }
 }
@@ -240,27 +291,17 @@ unsafe fn measure_wide_text_width(
     if wide.is_empty() {
         return 0;
     }
-    let hdc = unsafe { GetDC(Some(hwnd)) };
-    if hdc.0.is_null() {
+    let Some(dc) = (unsafe { WindowDc::get(hwnd) }) else {
         return fallback_width;
-    }
+    };
 
-    let previous = unsafe { SelectObject(hdc, font) };
+    let _selected = unsafe { SelectedGdiObject::select(dc.handle(), font) };
     let mut size = SIZE::default();
-    let width = if unsafe { GetTextExtentPoint32W(hdc, wide, &mut size).as_bool() } {
+    if unsafe { GetTextExtentPoint32W(dc.handle(), wide, &mut size).as_bool() } {
         size.cx
     } else {
         fallback_width
-    };
-    if !previous.0.is_null() {
-        unsafe {
-            let _ = SelectObject(hdc, previous);
-        }
     }
-    unsafe {
-        let _ = ReleaseDC(Some(hwnd), hdc);
-    }
-    width
 }
 
 pub(super) unsafe fn window_text_into(hwnd: HWND, output: &mut String) {

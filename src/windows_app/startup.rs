@@ -19,10 +19,8 @@ pub fn set_launch_on_startup(enabled: bool) -> Result<()> {
         let bytes = unsafe {
             slice::from_raw_parts(wide.as_ptr().cast::<u8>(), wide.len() * size_of::<u16>())
         };
-        let result = unsafe { RegSetValueExW(key, w!("UnfocusMute"), None, REG_SZ, Some(bytes)) };
-        unsafe {
-            let _ = RegCloseKey(key);
-        }
+        let result =
+            unsafe { RegSetValueExW(key.raw(), w!("UnfocusMute"), None, REG_SZ, Some(bytes)) };
         if result == ERROR_SUCCESS {
             return Ok(());
         }
@@ -35,11 +33,7 @@ pub fn set_launch_on_startup(enabled: bool) -> Result<()> {
     let Some(key) = open_existing_run_key()? else {
         return Ok(());
     };
-    let result = unsafe { RegDeleteValueW(key, w!("UnfocusMute")) };
-
-    unsafe {
-        let _ = RegCloseKey(key);
-    }
+    let result = unsafe { RegDeleteValueW(key.raw(), w!("UnfocusMute")) };
 
     if result == ERROR_SUCCESS || result == ERROR_FILE_NOT_FOUND {
         Ok(())
@@ -51,7 +45,7 @@ pub fn set_launch_on_startup(enabled: bool) -> Result<()> {
     }
 }
 
-fn create_run_key() -> Result<HKEY> {
+fn create_run_key() -> Result<RunKey> {
     let mut key = HKEY::default();
     let result = unsafe {
         RegCreateKeyExW(
@@ -68,7 +62,7 @@ fn create_run_key() -> Result<HKEY> {
     };
 
     if result == ERROR_SUCCESS {
-        Ok(key)
+        Ok(RunKey(key))
     } else {
         Err(message_error(format!(
             "open startup registry key failed with WIN32 error {}",
@@ -77,7 +71,7 @@ fn create_run_key() -> Result<HKEY> {
     }
 }
 
-fn open_existing_run_key() -> Result<Option<HKEY>> {
+fn open_existing_run_key() -> Result<Option<RunKey>> {
     let mut key = HKEY::default();
     let result = unsafe {
         RegOpenKeyExW(
@@ -90,7 +84,7 @@ fn open_existing_run_key() -> Result<Option<HKEY>> {
     };
 
     if result == ERROR_SUCCESS {
-        Ok(Some(key))
+        Ok(Some(RunKey(key)))
     } else if result == ERROR_FILE_NOT_FOUND {
         Ok(None)
     } else {
@@ -98,6 +92,22 @@ fn open_existing_run_key() -> Result<Option<HKEY>> {
             "open startup registry key failed with WIN32 error {}",
             result.0
         )))
+    }
+}
+
+struct RunKey(HKEY);
+
+impl RunKey {
+    fn raw(&self) -> HKEY {
+        self.0
+    }
+}
+
+impl Drop for RunKey {
+    fn drop(&mut self) {
+        unsafe {
+            let _ = RegCloseKey(self.0);
+        }
     }
 }
 

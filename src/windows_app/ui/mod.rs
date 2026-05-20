@@ -39,7 +39,7 @@ use windows::Win32::UI::WindowsAndMessaging::{
     CBN_EDITCHANGE, CBN_SELCHANGE, CBN_SELENDOK, CBN_SETFOCUS, CBS_DROPDOWN, CREATESTRUCTW,
     CreatePopupMenu, CreateWindowExW, DefWindowProcW, DestroyMenu, DestroyWindow, DispatchMessageW,
     EN_CHANGE, ES_AUTOHSCROLL, EVENT_SYSTEM_FOREGROUND, FindWindowW, GWLP_USERDATA, GetCursorPos,
-    GetMessageW, GetSystemMetrics, GetWindowRect, HICON, ICON_BIG, ICON_SMALL, IDC_ARROW,
+    GetMessageW, GetSystemMetrics, GetWindowRect, HICON, HMENU, ICON_BIG, ICON_SMALL, IDC_ARROW,
     LB_GETCURSEL, LB_RESETCONTENT, LB_SETCURSEL, LBN_SELCHANGE, LBS_NOTIFY, LoadCursorW,
     MB_ICONINFORMATION, MB_ICONWARNING, MB_OK, MF_SEPARATOR, MF_STRING, MSG, MessageBoxW,
     MoveWindow, PostMessageW, PostQuitMessage, RegisterClassW, SM_CXSCREEN, SM_CYSCREEN, SW_HIDE,
@@ -138,8 +138,8 @@ unsafe fn run_window() -> Result<()> {
     let WindowPosition { x, y } = initial_window_position(&config);
 
     let title = to_wide(config.language.strings().app_title);
-    let app = Box::new(AppWindow::new(config, icon, tray_icon)?);
-    let app_ptr = Box::into_raw(app);
+    let mut app = Box::new(AppWindow::new(config, icon, tray_icon)?);
+    let app_ptr = app.as_mut() as *mut AppWindow;
     let hwnd = unsafe {
         CreateWindowExW(
             WINDOW_EX_STYLE(0),
@@ -172,9 +172,6 @@ unsafe fn run_window() -> Result<()> {
         }
     }
 
-    unsafe {
-        drop(Box::from_raw(app_ptr));
-    }
     Ok(())
 }
 
@@ -188,17 +185,37 @@ impl Drop for SingleInstance {
     }
 }
 
+struct PopupMenu(HMENU);
+
+impl PopupMenu {
+    unsafe fn create() -> Option<Self> {
+        unsafe { CreatePopupMenu() }.ok().map(Self)
+    }
+
+    fn handle(&self) -> HMENU {
+        self.0
+    }
+}
+
+impl Drop for PopupMenu {
+    fn drop(&mut self) {
+        unsafe {
+            let _ = DestroyMenu(self.0);
+        }
+    }
+}
+
 unsafe fn acquire_single_instance() -> Result<Option<SingleInstance>> {
     let handle = unsafe { CreateMutexW(None, false, MUTEX_NAME).context("create app mutex")? };
+    let instance = SingleInstance(handle);
     if unsafe { GetLastError() } == ERROR_ALREADY_EXISTS {
         unsafe {
             bring_existing_window_to_front();
-            let _ = CloseHandle(handle);
         }
         return Ok(None);
     }
 
-    Ok(Some(SingleInstance(handle)))
+    Ok(Some(instance))
 }
 
 struct ForegroundEventHook {
@@ -1942,15 +1959,13 @@ impl AppWindow {
     }
 
     unsafe fn pick_language_from_menu(&self) -> Option<Language> {
-        let Ok(menu) = (unsafe { CreatePopupMenu() }) else {
-            return None;
-        };
+        let menu = (unsafe { PopupMenu::create() })?;
         let mut text_buffer = Vec::new();
         for (index, language) in Language::ALL.iter().enumerate() {
             write_wide_buffer(language.native_name(), &mut text_buffer);
             unsafe {
                 let _ = AppendMenuW(
-                    menu,
+                    menu.handle(),
                     MF_STRING,
                     (ID_LANGUAGE_MENU_BASE + index as i32) as usize,
                     PCWSTR(text_buffer.as_ptr()),
@@ -1965,14 +1980,20 @@ impl AppWindow {
                 TRACK_POPUP_MENU_FLAGS(TPM_RIGHTBUTTON.0 | TPM_RETURNCMD.0 | TPM_NONOTIFY.0);
             unsafe {
                 let _ = SetForegroundWindow(self.hwnd);
-                TrackPopupMenu(menu, flags, rect.left, rect.bottom, None, self.hwnd, None).0
+                TrackPopupMenu(
+                    menu.handle(),
+                    flags,
+                    rect.left,
+                    rect.bottom,
+                    None,
+                    self.hwnd,
+                    None,
+                )
+                .0
             }
         } else {
             0
         };
-        unsafe {
-            let _ = DestroyMenu(menu);
-        }
 
         let index = selected - ID_LANGUAGE_MENU_BASE;
         Language::ALL.get(index as usize).copied()
@@ -2056,13 +2077,13 @@ impl AppWindow {
 
     fn tray_menu(&mut self) {
         unsafe {
-            let Ok(menu) = CreatePopupMenu() else {
+            let Some(menu) = PopupMenu::create() else {
                 return;
             };
             let mut text_buffer = Vec::new();
             write_wide_buffer(self.strings.show, &mut text_buffer);
             let _ = AppendMenuW(
-                menu,
+                menu.handle(),
                 MF_STRING,
                 ID_SHOW as usize,
                 PCWSTR(text_buffer.as_ptr()),
@@ -2076,15 +2097,15 @@ impl AppWindow {
                 &mut text_buffer,
             );
             let _ = AppendMenuW(
-                menu,
+                menu.handle(),
                 MF_STRING,
                 ID_PAUSE as usize,
                 PCWSTR(text_buffer.as_ptr()),
             );
-            let _ = AppendMenuW(menu, MF_SEPARATOR, 0, PCWSTR::null());
+            let _ = AppendMenuW(menu.handle(), MF_SEPARATOR, 0, PCWSTR::null());
             write_wide_buffer(self.strings.quit, &mut text_buffer);
             let _ = AppendMenuW(
-                menu,
+                menu.handle(),
                 MF_STRING,
                 ID_QUIT as usize,
                 PCWSTR(text_buffer.as_ptr()),
@@ -2094,7 +2115,7 @@ impl AppWindow {
             if GetCursorPos(&mut point).is_ok() {
                 let _ = SetForegroundWindow(self.hwnd);
                 let _ = TrackPopupMenu(
-                    menu,
+                    menu.handle(),
                     TPM_RIGHTBUTTON,
                     point.x,
                     point.y,
@@ -2103,7 +2124,6 @@ impl AppWindow {
                     None,
                 );
             }
-            let _ = DestroyMenu(menu);
         }
     }
 
