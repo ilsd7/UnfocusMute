@@ -12,7 +12,7 @@ mod non_windows;
 mod windows_app;
 
 #[cfg(windows)]
-fn main() -> anyhow::Result<()> {
+fn main() -> windows_app::error::Result<()> {
     windows_app::run()
 }
 

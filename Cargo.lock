@@ -3,12 +3,6 @@
 version = 4
 
 [[package]]
-name = "anyhow"
-version = "1.0.102"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7f202df86484c868dbad7eaa557ef785d5c66295e41b460ef922eca0723b842c"
-
-[[package]]
 name = "itoa"
 version = "1.0.18"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -94,9 +88,8 @@ dependencies = [
 
 [[package]]
 name = "unfocusmute"
-version = "1.0.36"
+version = "1.0.43"
 dependencies = [
- "anyhow",
  "serde",
  "serde_json",
  "windows",

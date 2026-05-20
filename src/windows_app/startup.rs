@@ -1,4 +1,4 @@
-use anyhow::{Context, Result, bail};
+use crate::windows_app::error::{Context, Result, message_error};
 use std::env;
 use std::mem::size_of;
 use std::os::windows::ffi::OsStrExt;
@@ -26,7 +26,10 @@ pub fn set_launch_on_startup(enabled: bool) -> Result<()> {
         if result == ERROR_SUCCESS {
             return Ok(());
         }
-        bail!("registry update failed with WIN32 error {}", result.0);
+        return Err(message_error(format!(
+            "registry update failed with WIN32 error {}",
+            result.0
+        )));
     }
 
     let Some(key) = open_existing_run_key()? else {
@@ -41,7 +44,10 @@ pub fn set_launch_on_startup(enabled: bool) -> Result<()> {
     if result == ERROR_SUCCESS || result == ERROR_FILE_NOT_FOUND {
         Ok(())
     } else {
-        bail!("registry update failed with WIN32 error {}", result.0)
+        Err(message_error(format!(
+            "registry update failed with WIN32 error {}",
+            result.0
+        )))
     }
 }
 
@@ -64,10 +70,10 @@ fn create_run_key() -> Result<HKEY> {
     if result == ERROR_SUCCESS {
         Ok(key)
     } else {
-        bail!(
+        Err(message_error(format!(
             "open startup registry key failed with WIN32 error {}",
             result.0
-        )
+        )))
     }
 }
 
@@ -88,10 +94,10 @@ fn open_existing_run_key() -> Result<Option<HKEY>> {
     } else if result == ERROR_FILE_NOT_FOUND {
         Ok(None)
     } else {
-        bail!(
+        Err(message_error(format!(
             "open startup registry key failed with WIN32 error {}",
             result.0
-        )
+        )))
     }
 }
 

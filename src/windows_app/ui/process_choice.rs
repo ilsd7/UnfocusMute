@@ -14,7 +14,7 @@ impl ProcessChoice {
         let search_name = lowercase_if_needed(&name);
         let (display_name, search_text) = match pid {
             Some(pid) => (
-                Some(display_text_with_number(&name, pid as usize, "PID")),
+                Some(display_pid_text(&name, pid)),
                 Some(search_text_with_number(
                     search_name.as_ref(),
                     pid as usize,
@@ -22,7 +22,7 @@ impl ProcessChoice {
                 )),
             ),
             None if count > 1 => (
-                Some(display_text_with_number(&name, count, "PID")),
+                Some(display_pid_count_text(&name, count)),
                 Some(search_text_with_number(search_name.as_ref(), count, "pid")),
             ),
             None => (None, into_owned_if_allocated(search_name)),
@@ -82,14 +82,21 @@ fn into_owned_if_allocated(text: Cow<'_, str>) -> Option<String> {
     }
 }
 
-fn display_text_with_number(text: &str, number: usize, label: &str) -> String {
-    let mut output =
-        String::with_capacity(text.len() + 4 + label.len() + decimal_digit_count(number));
+fn display_pid_text(text: &str, pid: u32) -> String {
+    let mut output = String::with_capacity(text.len() + 7 + decimal_digit_count(pid as usize));
+    output.push_str(text);
+    output.push_str(" (PID ");
+    let _ = write!(output, "{pid}");
+    output.push(')');
+    output
+}
+
+fn display_pid_count_text(text: &str, count: usize) -> String {
+    let mut output = String::with_capacity(text.len() + 7 + decimal_digit_count(count));
     output.push_str(text);
     output.push_str(" (");
-    let _ = write!(output, "{number}");
-    output.push(' ');
-    output.push_str(label);
+    let _ = write!(output, "{count}");
+    output.push_str(" PID");
     output.push(')');
     output
 }
@@ -138,6 +145,13 @@ mod tests {
         let choice = ProcessChoice::new("MusicApp.exe".to_owned(), Some(4242), 1);
 
         assert!(choice.matches_search(&search_terms("musicapp pid 4242")));
+    }
+
+    #[test]
+    fn pid_choices_display_pid_before_number() {
+        let choice = ProcessChoice::new("musicapp.exe".to_owned(), Some(4242), 1);
+
+        assert_eq!(choice.display_name(), "musicapp.exe (PID 4242)");
     }
 
     #[test]

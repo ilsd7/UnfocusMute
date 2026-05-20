@@ -5,9 +5,9 @@ use crate::config::{
 use crate::engine::{AudioSessionKey, TargetMatcher};
 use crate::i18n::{Language, Strings};
 use crate::windows_app::audio::AudioController;
+use crate::windows_app::error::{Context, Result, message_error};
 use crate::windows_app::process::{self, ProcessInfo};
 use crate::windows_app::startup;
-use anyhow::{Context, Result, bail};
 use std::collections::HashSet;
 use std::ffi::c_void;
 use std::fmt::Write as _;
@@ -48,8 +48,9 @@ use windows::Win32::UI::WindowsAndMessaging::{
     TrackPopupMenu, TranslateMessage, WINDOW_EX_STYLE, WINDOW_STYLE, WINEVENT_OUTOFCONTEXT,
     WM_CLOSE, WM_COMMAND, WM_CREATE, WM_CTLCOLOREDIT, WM_CTLCOLORLISTBOX, WM_CTLCOLORSTATIC,
     WM_DESTROY, WM_LBUTTONDBLCLK, WM_LBUTTONDOWN, WM_MOVE, WM_NCCREATE, WM_NCDESTROY, WM_PAINT,
-    WM_RBUTTONUP, WM_SETFONT, WM_SETICON, WM_SHOWWINDOW, WM_TIMER, WNDCLASSW, WS_BORDER, WS_CHILD,
-    WS_CLIPCHILDREN, WS_EX_CLIENTEDGE, WS_OVERLAPPEDWINDOW, WS_TABSTOP, WS_VISIBLE, WS_VSCROLL,
+    WM_RBUTTONUP, WM_SETFONT, WM_SETICON, WM_SHOWWINDOW, WM_TIMER, WNDCLASSW, WS_BORDER,
+    WS_CAPTION, WS_CHILD, WS_CLIPCHILDREN, WS_EX_CLIENTEDGE, WS_MINIMIZEBOX, WS_OVERLAPPED,
+    WS_SYSMENU, WS_TABSTOP, WS_VISIBLE, WS_VSCROLL,
 };
 use windows::core::{PCWSTR, w};
 
@@ -74,6 +75,9 @@ use win32::{
 };
 
 static FOREGROUND_EVENT_HWND: AtomicIsize = AtomicIsize::new(0);
+const MAIN_WINDOW_STYLE: WINDOW_STYLE = WINDOW_STYLE(
+    WS_OVERLAPPED.0 | WS_CAPTION.0 | WS_SYSMENU.0 | WS_MINIMIZEBOX.0 | WS_CLIPCHILDREN.0,
+);
 
 pub fn run() -> Result<()> {
     unsafe {
@@ -141,7 +145,7 @@ unsafe fn run_window() -> Result<()> {
             WINDOW_EX_STYLE(0),
             CLASS_NAME,
             PCWSTR(title.as_ptr()),
-            WS_OVERLAPPEDWINDOW | WS_CLIPCHILDREN,
+            MAIN_WINDOW_STYLE,
             x,
             y,
             WINDOW_WIDTH,
@@ -217,7 +221,7 @@ impl ForegroundEventHook {
         };
         if hook.0.is_null() {
             FOREGROUND_EVENT_HWND.store(0, Ordering::Release);
-            bail!("register foreground window event hook");
+            return Err(message_error("register foreground window event hook"));
         }
         Ok(Self { hook })
     }
@@ -369,6 +373,10 @@ impl IssueState {
         old_visible != self.visible
     }
 
+    fn contains(self, issue: StatusIssue) -> bool {
+        self.flags & issue.bit() != 0
+    }
+
     fn visible(self) -> Option<StatusIssue> {
         self.visible
     }
@@ -414,6 +422,18 @@ mod issue_state_tests {
 
         issues.clear(StatusIssue::ConfigSaveFailed);
         assert_eq!(issues.visible(), Some(StatusIssue::AudioUnavailable));
+    }
+
+    #[test]
+    fn contains_reports_hidden_issues() {
+        let mut issues = IssueState::default();
+
+        issues.set(StatusIssue::AudioUnavailable);
+        issues.set(StatusIssue::ConfigLoadFailed);
+
+        assert!(issues.contains(StatusIssue::AudioUnavailable));
+        assert!(issues.contains(StatusIssue::ConfigLoadFailed));
+        assert!(!issues.contains(StatusIssue::ConfigSaveFailed));
     }
 }
 
@@ -1158,7 +1178,7 @@ impl AppWindow {
             );
             set_text(self.controls.running_combo, &self.process_query);
             if !self.process_query.is_empty() {
-                set_combo_edit_caret(self.controls.running_combo, self.process_query.len());
+                set_combo_edit_caret(self.controls.running_combo, &self.process_query);
             }
             self.updating_process_combo = false;
         }
@@ -1518,7 +1538,15 @@ impl AppWindow {
     }
 
     fn save_config(&mut self) -> bool {
-        match self.config.save() {
+        let current_stamp = current_config_stamp();
+        let can_trust_existing_file = current_stamp == self.config_stamp
+            && !self.issues.contains(StatusIssue::ConfigLoadFailed);
+        let result = if can_trust_existing_file {
+            self.config.save_trusting_existing_file()
+        } else {
+            self.config.save()
+        };
+        match result {
             Ok(()) => {
                 self.config_stamp = current_config_stamp();
                 self.next_config_check = Instant::now() + CONFIG_RELOAD_CHECK_INTERVAL;

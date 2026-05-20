@@ -1,6 +1,6 @@
 use super::ConfigFileStamp;
 use crate::config::config_file_path;
-use anyhow::{Context, Result};
+use crate::windows_app::error::{Context, Result};
 use std::ffi::c_void;
 use std::fs;
 use std::os::windows::ffi::OsStrExt;
@@ -370,8 +370,8 @@ pub(super) unsafe fn set_checkbox(hwnd: HWND, checked: bool) {
     }
 }
 
-pub(super) unsafe fn set_combo_edit_caret(hwnd: HWND, text_len: usize) {
-    let position = text_len.min(u16::MAX as usize) as u16;
+pub(super) unsafe fn set_combo_edit_caret(hwnd: HWND, text: &str) {
+    let position = text.encode_utf16().count().min(u16::MAX as usize) as u16;
     unsafe {
         set_combo_edit_selection(hwnd, position, position);
     }

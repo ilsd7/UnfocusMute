@@ -9,7 +9,7 @@ use super::win32::{
     create_primary_button, hiword, is_checked, loword, set_checkbox, set_text, to_wide,
 };
 use crate::i18n::Language;
-use anyhow::{Context, Result};
+use crate::windows_app::error::{Context, Result};
 use std::ffi::c_void;
 use windows::Win32::Foundation::{HINSTANCE, HWND, LPARAM, LRESULT, WPARAM};
 use windows::Win32::Graphics::Gdi::{HDC, SetBkMode, SetTextColor, TRANSPARENT};
@@ -21,7 +21,8 @@ use windows::Win32::UI::WindowsAndMessaging::{
     GetWindowLongPtrW, HICON, IDC_ARROW, LoadCursorW, MSG, RegisterClassW, SW_SHOW, SendMessageW,
     SetForegroundWindow, SetWindowLongPtrW, ShowWindow, TranslateMessage, WINDOW_EX_STYLE,
     WINDOW_STYLE, WM_CLOSE, WM_COMMAND, WM_CREATE, WM_CTLCOLORSTATIC, WM_NCCREATE, WM_NCDESTROY,
-    WM_SETFONT, WNDCLASSW, WS_CHILD, WS_EX_CLIENTEDGE, WS_OVERLAPPEDWINDOW, WS_TABSTOP, WS_VISIBLE,
+    WM_SETFONT, WNDCLASSW, WS_CAPTION, WS_CHILD, WS_EX_CLIENTEDGE, WS_OVERLAPPED, WS_SYSMENU,
+    WS_TABSTOP, WS_VISIBLE,
 };
 use windows::core::{PCWSTR, w};
 
@@ -39,6 +40,9 @@ struct LanguagePrompt {
     brush: OwnedBrush,
     font: UiFont,
 }
+
+const LANGUAGE_PROMPT_WINDOW_STYLE: WINDOW_STYLE =
+    WINDOW_STYLE(WS_OVERLAPPED.0 | WS_CAPTION.0 | WS_SYSMENU.0);
 
 #[derive(Clone, Copy)]
 pub(super) struct InitialPreferences {
@@ -245,7 +249,7 @@ pub(super) unsafe fn prompt_initial_language(
             WINDOW_EX_STYLE(0),
             LANGUAGE_PROMPT_CLASS_NAME,
             PCWSTR(title.as_ptr()),
-            WS_OVERLAPPEDWINDOW,
+            LANGUAGE_PROMPT_WINDOW_STYLE,
             position.x,
             position.y,
             520,

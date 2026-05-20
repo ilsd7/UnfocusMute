@@ -145,16 +145,26 @@ impl AppConfig {
     }
 
     pub fn save(&self) -> io::Result<()> {
-        let path = config_file_path()?;
-        self.save_to_path(&path)
+        self.save_with_existing_validation(true)
     }
 
-    fn save_to_path(&self, path: &Path) -> io::Result<()> {
+    pub(crate) fn save_trusting_existing_file(&self) -> io::Result<()> {
+        self.save_with_existing_validation(false)
+    }
+
+    fn save_with_existing_validation(&self, validate_existing: bool) -> io::Result<()> {
+        let path = config_file_path()?;
+        self.save_to_path(&path, validate_existing)
+    }
+
+    fn save_to_path(&self, path: &Path, validate_existing: bool) -> io::Result<()> {
         if let Some(parent) = path.parent() {
             fs::create_dir_all(parent)?;
         }
 
-        backup_invalid_existing_config(path)?;
+        if validate_existing {
+            backup_invalid_existing_config(path)?;
+        }
 
         let temp_path = path.with_extension("json.tmp");
         let mut temp_file = fs::File::create(&temp_path)?;
@@ -754,7 +764,9 @@ mod tests {
         let config_path = dir.path().join("config.json");
         fs::write(&config_path, "{not valid json").unwrap();
 
-        AppConfig::default().save_to_path(&config_path).unwrap();
+        AppConfig::default()
+            .save_to_path(&config_path, true)
+            .unwrap();
 
         assert!(
             fs::read_to_string(&config_path)
@@ -776,5 +788,33 @@ mod tests {
             fs::read_to_string(backups[0].path()).unwrap(),
             "{not valid json"
         );
+    }
+
+    #[test]
+    fn trusted_save_skips_invalid_existing_backup() {
+        let dir = TestDir::new();
+        let config_path = dir.path().join("config.json");
+        fs::write(&config_path, "{not valid json").unwrap();
+
+        AppConfig::default()
+            .save_to_path(&config_path, false)
+            .unwrap();
+
+        assert!(
+            fs::read_to_string(&config_path)
+                .unwrap()
+                .contains("\"version\"")
+        );
+        let backups = fs::read_dir(dir.path())
+            .unwrap()
+            .filter_map(Result::ok)
+            .filter(|entry| {
+                entry
+                    .file_name()
+                    .to_string_lossy()
+                    .starts_with("config.invalid-")
+            })
+            .count();
+        assert_eq!(backups, 0);
     }
 }

@@ -1,6 +1,6 @@
 use crate::engine::{AudioSessionKey, MutePlanner, TargetMatcher};
+use crate::windows_app::error::{Context, Result, message_error};
 use crate::windows_app::process;
-use anyhow::{Context, Result, bail};
 use std::collections::HashSet;
 use std::sync::{
     Arc,
@@ -471,7 +471,9 @@ unsafe fn active_render_session_managers(
     }
 
     if managers.is_empty() {
-        bail!("no active render endpoints with audio session managers");
+        return Err(message_error(
+            "no active render endpoints with audio session managers",
+        ));
     }
 
     Ok(managers)

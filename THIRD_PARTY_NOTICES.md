@@ -11,7 +11,7 @@ dependency.
 
 ## License Overview
 
-- Apache License 2.0 (22)
+- Apache License 2.0 (21)
 - MIT License (2)
 - Unicode License v3 (1)
 
@@ -240,7 +240,7 @@ Used by:
 ### Apache License 2.0 (`Apache-2.0`)
 
 Used by:
-- unfocusmute 1.0.36
+- unfocusmute 1.0.43
 
 <pre>
                                  Apache License
@@ -450,7 +450,6 @@ Used by:
 ### Apache License 2.0 (`Apache-2.0`)
 
 Used by:
-- anyhow 1.0.102
 - itoa 1.0.18
 - proc-macro2 1.0.106
 - quote 1.0.45
