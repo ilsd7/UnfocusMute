@@ -40,18 +40,19 @@ use windows::Win32::UI::WindowsAndMessaging::{
     CreatePopupMenu, CreateWindowExW, DefWindowProcW, DestroyMenu, DestroyWindow, DispatchMessageW,
     EN_CHANGE, ES_AUTOHSCROLL, EVENT_SYSTEM_FOREGROUND, FindWindowW, GWLP_USERDATA, GetCursorPos,
     GetSystemMetrics, GetWindowRect, HICON, HMENU, ICON_BIG, ICON_SMALL, IDC_ARROW,
-    IsWindowVisible, LB_GETCURSEL, LB_RESETCONTENT, LB_SETCURSEL, LBN_SELCHANGE, LBS_NOTIFY,
-    LoadCursorW, MB_ICONINFORMATION, MB_ICONWARNING, MB_OK, MF_SEPARATOR, MF_STRING, MSG,
-    MessageBoxW, MoveWindow, PostMessageW, PostQuitMessage, RegisterClassW, RegisterWindowMessageW,
-    SM_CXSCREEN, SM_CXVIRTUALSCREEN, SM_CYSCREEN, SM_CYVIRTUALSCREEN, SM_XVIRTUALSCREEN,
-    SM_YVIRTUALSCREEN, SW_HIDE, SW_RESTORE, SW_SHOW, SendMessageW, SetForegroundWindow, SetTimer,
-    SetWindowLongPtrW, ShowWindow, TPM_NONOTIFY, TPM_RETURNCMD, TPM_RIGHTBUTTON,
-    TRACK_POPUP_MENU_FLAGS, TrackPopupMenu, TranslateMessage, WINDOW_EX_STYLE, WINDOW_STYLE,
-    WINEVENT_OUTOFCONTEXT, WM_CLOSE, WM_COMMAND, WM_CREATE, WM_CTLCOLOREDIT, WM_CTLCOLORLISTBOX,
-    WM_CTLCOLORSTATIC, WM_DESTROY, WM_LBUTTONDBLCLK, WM_LBUTTONDOWN, WM_MOVE, WM_NCCREATE,
-    WM_NCDESTROY, WM_PAINT, WM_RBUTTONUP, WM_SETFONT, WM_SETICON, WM_SHOWWINDOW, WM_TIMER,
-    WNDCLASSW, WS_BORDER, WS_CAPTION, WS_CHILD, WS_CLIPCHILDREN, WS_EX_CLIENTEDGE, WS_MINIMIZEBOX,
-    WS_OVERLAPPED, WS_SYSMENU, WS_TABSTOP, WS_VISIBLE, WS_VSCROLL,
+    IsWindowVisible, KillTimer, LB_GETCURSEL, LB_RESETCONTENT, LB_SETCURSEL, LBN_SELCHANGE,
+    LBS_NOTIFY, LoadCursorW, MB_ICONINFORMATION, MB_ICONWARNING, MB_OK, MF_SEPARATOR, MF_STRING,
+    MSG, MessageBoxW, MoveWindow, PostMessageW, PostQuitMessage, RegisterClassW,
+    RegisterWindowMessageW, SM_CXSCREEN, SM_CXVIRTUALSCREEN, SM_CYSCREEN, SM_CYVIRTUALSCREEN,
+    SM_XVIRTUALSCREEN, SM_YVIRTUALSCREEN, SPI_GETWORKAREA, SW_HIDE, SW_RESTORE, SW_SHOW,
+    SYSTEM_PARAMETERS_INFO_UPDATE_FLAGS, SendMessageW, SetForegroundWindow, SetTimer,
+    SetWindowLongPtrW, ShowWindow, SystemParametersInfoW, TPM_NONOTIFY, TPM_RETURNCMD,
+    TPM_RIGHTBUTTON, TRACK_POPUP_MENU_FLAGS, TrackPopupMenu, TranslateMessage, WINDOW_EX_STYLE,
+    WINDOW_STYLE, WINEVENT_OUTOFCONTEXT, WM_CLOSE, WM_COMMAND, WM_CREATE, WM_CTLCOLOREDIT,
+    WM_CTLCOLORLISTBOX, WM_CTLCOLORSTATIC, WM_DESTROY, WM_LBUTTONDBLCLK, WM_LBUTTONDOWN, WM_MOVE,
+    WM_NCCREATE, WM_NCDESTROY, WM_PAINT, WM_RBUTTONUP, WM_SETFONT, WM_SETICON, WM_SHOWWINDOW,
+    WM_TIMER, WNDCLASSW, WS_BORDER, WS_CAPTION, WS_CHILD, WS_CLIPCHILDREN, WS_EX_CLIENTEDGE,
+    WS_MINIMIZEBOX, WS_OVERLAPPED, WS_SYSMENU, WS_TABSTOP, WS_VISIBLE, WS_VSCROLL,
 };
 use windows::core::{PCWSTR, w};
 
@@ -403,7 +404,7 @@ fn centered_window_position() -> WindowPosition {
 }
 
 fn centered_position(width: i32, height: i32) -> WindowPosition {
-    let screen = virtual_screen_rect();
+    let screen = primary_work_area_rect();
     WindowPosition {
         x: screen.left + ((screen.right - screen.left - width) / 2).max(0),
         y: screen.top + ((screen.bottom - screen.top - height) / 2).max(0),
@@ -420,6 +421,31 @@ fn window_position_is_visible(position: WindowPosition, width: i32, height: i32)
         && position.x < screen.right.saturating_sub(MIN_VISIBLE_EDGE)
         && bottom > screen.top.saturating_add(MIN_VISIBLE_EDGE)
         && position.y < screen.bottom.saturating_sub(MIN_VISIBLE_EDGE)
+}
+
+fn primary_work_area_rect() -> RECT {
+    let mut rect = RECT::default();
+    if unsafe {
+        SystemParametersInfoW(
+            SPI_GETWORKAREA,
+            0,
+            Some((&mut rect as *mut RECT).cast()),
+            SYSTEM_PARAMETERS_INFO_UPDATE_FLAGS(0),
+        )
+    }
+    .is_ok()
+        && rect.right > rect.left
+        && rect.bottom > rect.top
+    {
+        return rect;
+    }
+
+    RECT {
+        left: 0,
+        top: 0,
+        right: unsafe { GetSystemMetrics(SM_CXSCREEN) },
+        bottom: unsafe { GetSystemMetrics(SM_CYSCREEN) },
+    }
 }
 
 fn virtual_screen_rect() -> RECT {
@@ -730,7 +756,6 @@ impl AppWindow {
         self.refresh_checkboxes();
         self.refresh_text();
         self.reset_timers();
-        self.install_foreground_hook();
         self.tick();
         Ok(())
     }
@@ -1076,14 +1101,7 @@ impl AppWindow {
                 self.controls.language_button,
                 language_button_text(self.config.language),
             );
-            set_text(
-                self.controls.pause_button,
-                if self.paused {
-                    self.strings.resume
-                } else {
-                    self.strings.pause
-                },
-            );
+            self.update_pause_button_text();
             set_text(self.controls.hide_button, self.strings.hide);
             set_text(self.controls.quit_button, self.strings.quit);
             set_text(self.controls.open_config_button, self.strings.open_config);
@@ -1456,13 +1474,18 @@ impl AppWindow {
 
     fn tick(&mut self) {
         self.reload_config_if_due();
+        self.sync_audio_fallback_timer();
 
         if self.paused {
+            self.foreground_hook = None;
+            self.restore_managed_mutes();
+            self.sync_audio_fallback_timer();
             self.update_status();
             return;
         }
 
         if self.target_matcher.is_empty() && self.muted_by_app.is_empty() {
+            self.foreground_hook = None;
             self.clear_issue(StatusIssue::AudioUnavailable);
             self.clear_issue(StatusIssue::AudioUpdateFailed);
             self.update_status();
@@ -1517,6 +1540,7 @@ impl AppWindow {
             self.audio = None;
         }
 
+        self.sync_audio_fallback_timer();
         self.update_status();
     }
 
@@ -1719,12 +1743,14 @@ impl AppWindow {
         }
 
         self.config = config;
+        if targets_changed {
+            self.refresh_targets();
+        }
         if interval_changed {
             self.reset_polling_timer();
             self.last_status = None;
-        }
-        if targets_changed {
-            self.refresh_targets();
+        } else if targets_changed {
+            self.sync_audio_fallback_timer();
         }
         if checkboxes_changed {
             self.refresh_checkboxes();
@@ -1753,18 +1779,15 @@ impl AppWindow {
     fn reset_timers(&mut self) {
         self.config_reload_timer_ready =
             self.set_timer(CONFIG_RELOAD_TIMER_ID, CONFIG_RELOAD_TIMER_INTERVAL_MS);
-        self.audio_fallback_timer_ready = self.set_timer(
-            AUDIO_FALLBACK_TIMER_ID,
-            self.config.polling_interval_ms as u32,
-        );
-        self.update_timer_setup_issue();
+        self.reset_polling_timer();
     }
 
     fn reset_polling_timer(&mut self) {
-        self.audio_fallback_timer_ready = self.set_timer(
-            AUDIO_FALLBACK_TIMER_ID,
-            self.config.polling_interval_ms as u32,
-        );
+        if self.audio_fallback_timer_needed() {
+            self.audio_fallback_timer_ready = self.restart_audio_fallback_timer();
+        } else {
+            self.clear_audio_fallback_timer();
+        }
         self.update_timer_setup_issue();
     }
 
@@ -1775,11 +1798,8 @@ impl AppWindow {
                 self.set_timer(CONFIG_RELOAD_TIMER_ID, CONFIG_RELOAD_TIMER_INTERVAL_MS);
             retried = true;
         }
-        if !self.audio_fallback_timer_ready {
-            self.audio_fallback_timer_ready = self.set_timer(
-                AUDIO_FALLBACK_TIMER_ID,
-                self.config.polling_interval_ms as u32,
-            );
+        if self.audio_fallback_timer_needed() && !self.audio_fallback_timer_ready {
+            self.audio_fallback_timer_ready = self.restart_audio_fallback_timer();
             retried = true;
         }
         if retried {
@@ -1787,12 +1807,49 @@ impl AppWindow {
         }
     }
 
+    fn sync_audio_fallback_timer(&mut self) {
+        let needed = self.audio_fallback_timer_needed();
+        if needed && !self.audio_fallback_timer_ready {
+            self.audio_fallback_timer_ready = self.restart_audio_fallback_timer();
+        } else if !needed && self.audio_fallback_timer_ready {
+            self.clear_audio_fallback_timer();
+        }
+        self.update_timer_setup_issue();
+    }
+
+    fn audio_fallback_timer_needed(&self) -> bool {
+        !self.muted_by_app.is_empty() || (!self.paused && !self.target_matcher.is_empty())
+    }
+
+    fn restart_audio_fallback_timer(&self) -> bool {
+        self.clear_timer(AUDIO_FALLBACK_TIMER_ID);
+        self.set_timer(
+            AUDIO_FALLBACK_TIMER_ID,
+            self.config.polling_interval_ms as u32,
+        )
+    }
+
+    fn clear_audio_fallback_timer(&mut self) {
+        if self.audio_fallback_timer_ready {
+            self.clear_timer(AUDIO_FALLBACK_TIMER_ID);
+        }
+        self.audio_fallback_timer_ready = false;
+    }
+
     fn set_timer(&self, timer_id: usize, interval_ms: u32) -> bool {
         (unsafe { SetTimer(Some(self.hwnd), timer_id, interval_ms, None) }) != 0
     }
 
+    fn clear_timer(&self, timer_id: usize) {
+        unsafe {
+            let _ = KillTimer(Some(self.hwnd), timer_id);
+        }
+    }
+
     fn update_timer_setup_issue(&mut self) {
-        if self.config_reload_timer_ready && self.audio_fallback_timer_ready {
+        let audio_fallback_timer_ready =
+            !self.audio_fallback_timer_needed() || self.audio_fallback_timer_ready;
+        if self.config_reload_timer_ready && audio_fallback_timer_ready {
             self.clear_issue(StatusIssue::TimerSetupFailed);
         } else {
             self.set_issue(StatusIssue::TimerSetupFailed);
@@ -2132,9 +2189,18 @@ impl AppWindow {
 
     fn toggle_pause(&mut self) {
         self.paused = !self.paused;
+        self.update_pause_button_text();
         if self.paused {
             self.restore_managed_mutes();
+            self.foreground_hook = None;
+        } else {
+            self.tick();
         }
+        self.sync_audio_fallback_timer();
+        self.update_status();
+    }
+
+    fn update_pause_button_text(&self) {
         unsafe {
             set_text(
                 self.controls.pause_button,
@@ -2145,7 +2211,6 @@ impl AppWindow {
                 },
             );
         }
-        self.update_status();
     }
 
     fn update_bool_setting(&mut self, id: i32) {
