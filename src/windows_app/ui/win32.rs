@@ -442,9 +442,9 @@ pub(super) unsafe fn reserve_combo_items(hwnd: HWND, count: usize, text_bytes: u
 
 pub(super) fn storage_bytes_hint(text: &str) -> usize {
     if text.is_ascii() {
-        text.len() * std::mem::size_of::<u16>()
+        (text.len() + 1) * std::mem::size_of::<u16>()
     } else {
-        text.encode_utf16().count() * std::mem::size_of::<u16>()
+        (text.encode_utf16().count() + 1) * std::mem::size_of::<u16>()
     }
 }
 
@@ -602,10 +602,10 @@ mod tests {
     use super::*;
 
     #[test]
-    fn storage_bytes_hint_uses_utf16_units() {
-        assert_eq!(storage_bytes_hint("abc"), 3 * std::mem::size_of::<u16>());
-        assert_eq!(storage_bytes_hint("한글"), 2 * std::mem::size_of::<u16>());
-        assert_eq!(storage_bytes_hint("🎧"), 2 * std::mem::size_of::<u16>());
+    fn storage_bytes_hint_includes_utf16_nul() {
+        assert_eq!(storage_bytes_hint("abc"), 4 * std::mem::size_of::<u16>());
+        assert_eq!(storage_bytes_hint("한글"), 3 * std::mem::size_of::<u16>());
+        assert_eq!(storage_bytes_hint("🎧"), 3 * std::mem::size_of::<u16>());
     }
 
     #[test]

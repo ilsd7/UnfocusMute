@@ -221,10 +221,10 @@ impl AudioSessionControl<'_> {
     fn volume(&self) -> Option<ISimpleAudioVolume> {
         self.control.cast().ok()
     }
+}
 
-    fn try_muted(&self, volume: &ISimpleAudioVolume) -> windows::core::Result<bool> {
-        unsafe { volume.GetMute() }.map(|value| value.as_bool())
-    }
+fn session_muted(volume: &ISimpleAudioVolume) -> windows::core::Result<bool> {
+    unsafe { volume.GetMute() }.map(|value| value.as_bool())
 }
 
 struct PlanApplyResult {
@@ -408,7 +408,7 @@ fn apply_plan_to_session(
         }
         return;
     };
-    let mute = match session.try_muted(&volume) {
+    let mute = match session_muted(&volume) {
         Ok(muted) => {
             let Some(mute) = planner.plan_identity_with_match(
                 match_kind,
@@ -466,9 +466,8 @@ fn apply_unmute_to_session(
     let Some(volume) = session.volume() else {
         return Err(key);
     };
-    let muted = match session.try_muted(&volume) {
-        Ok(muted) => muted,
-        Err(_) => return Err(key),
+    let Ok(muted) = session_muted(&volume) else {
+        return Err(key);
     };
     if !muted {
         return Ok(());

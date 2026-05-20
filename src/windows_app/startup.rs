@@ -172,9 +172,9 @@ fn startup_command(exe: &Path) -> Vec<u16> {
     let suffix = " --minimized";
     let suffix_len = suffix.len();
     let mut command = Vec::with_capacity(1 + exe_len + 1 + suffix_len + 1);
-    command.push(b'"' as u16);
+    command.push(u16::from(b'"'));
     command.extend(exe.as_os_str().encode_wide());
-    command.push(b'"' as u16);
+    command.push(u16::from(b'"'));
     command.extend(suffix.encode_utf16());
     command.push(0);
     command

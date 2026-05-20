@@ -388,17 +388,74 @@ struct StartupSyncResult {
 }
 
 fn sync_startup_setting(config: &mut AppConfig) -> StartupSyncResult {
+    apply_startup_sync_result(
+        config,
+        startup::set_launch_on_startup(config.launch_on_startup).is_err(),
+    )
+}
+
+fn apply_startup_sync_result(config: &mut AppConfig, update_failed: bool) -> StartupSyncResult {
     let mut issues = IssueState::default();
     let mut config_changed = false;
-    let result = startup::set_launch_on_startup(config.launch_on_startup);
-    if result.is_err() && config.launch_on_startup {
-        config.launch_on_startup = false;
-        config_changed = true;
+
+    if update_failed {
         issues.set(StatusIssue::StartupUpdateFailed);
+        if config.launch_on_startup {
+            config.launch_on_startup = false;
+            config_changed = true;
+        }
     }
+
     StartupSyncResult {
         issues,
         config_changed,
+    }
+}
+
+#[cfg(test)]
+mod startup_sync_tests {
+    use super::*;
+
+    #[test]
+    fn enabling_failure_disables_config_and_reports_issue() {
+        let mut config = AppConfig {
+            launch_on_startup: true,
+            ..AppConfig::default()
+        };
+
+        let result = apply_startup_sync_result(&mut config, true);
+
+        assert!(!config.launch_on_startup);
+        assert!(result.config_changed);
+        assert!(result.issues.contains(StatusIssue::StartupUpdateFailed));
+    }
+
+    #[test]
+    fn disabling_failure_reports_issue_without_reenabling_config() {
+        let mut config = AppConfig {
+            launch_on_startup: false,
+            ..AppConfig::default()
+        };
+
+        let result = apply_startup_sync_result(&mut config, true);
+
+        assert!(!config.launch_on_startup);
+        assert!(!result.config_changed);
+        assert!(result.issues.contains(StatusIssue::StartupUpdateFailed));
+    }
+
+    #[test]
+    fn successful_sync_preserves_startup_config() {
+        let mut config = AppConfig {
+            launch_on_startup: true,
+            ..AppConfig::default()
+        };
+
+        let result = apply_startup_sync_result(&mut config, false);
+
+        assert!(config.launch_on_startup);
+        assert!(!result.config_changed);
+        assert!(!result.issues.contains(StatusIssue::StartupUpdateFailed));
     }
 }
 
@@ -1632,7 +1689,10 @@ impl AppWindow {
 
         let Some(audio) = &self.audio else { return };
         let foreground_process_name = if needs_foreground_process_name {
-            cached_foreground_process_name(&self.foreground_process_name_cache, foreground_pid)
+            cached_foreground_process_name(
+                self.foreground_process_name_cache.as_ref(),
+                foreground_pid,
+            )
         } else {
             None
         };
@@ -1718,7 +1778,8 @@ impl AppWindow {
             return;
         };
 
-        if !foreground_process_cache_needs_refresh(&self.foreground_process_name_cache, pid) {
+        if !foreground_process_cache_needs_refresh(self.foreground_process_name_cache.as_ref(), pid)
+        {
             return;
         }
 
@@ -2460,8 +2521,7 @@ impl AppWindow {
             0
         };
 
-        let index = selected - ID_LANGUAGE_MENU_BASE;
-        Language::ALL.get(index as usize).copied()
+        language_from_menu_id(selected)
     }
 
     fn set_language(&mut self, language: Language) {
@@ -2689,16 +2749,55 @@ fn language_button_text(language: Language) -> &'static str {
     language.native_name()
 }
 
+fn language_from_menu_id(id: i32) -> Option<Language> {
+    let index = id.checked_sub(ID_LANGUAGE_MENU_BASE)?;
+    let index = usize::try_from(index).ok()?;
+    Language::ALL.get(index).copied()
+}
+
+#[cfg(test)]
+mod language_menu_tests {
+    use super::*;
+
+    #[test]
+    fn language_menu_id_maps_first_language() {
+        assert_eq!(
+            language_from_menu_id(ID_LANGUAGE_MENU_BASE),
+            Some(Language::ALL[0])
+        );
+    }
+
+    #[test]
+    fn language_menu_id_maps_last_language() {
+        let last_index = Language::ALL.len() as i32 - 1;
+
+        assert_eq!(
+            language_from_menu_id(ID_LANGUAGE_MENU_BASE + last_index),
+            Language::ALL.last().copied()
+        );
+    }
+
+    #[test]
+    fn language_menu_id_rejects_cancel_and_out_of_range_ids() {
+        assert_eq!(language_from_menu_id(0), None);
+        assert_eq!(language_from_menu_id(ID_LANGUAGE_MENU_BASE - 1), None);
+        assert_eq!(
+            language_from_menu_id(ID_LANGUAGE_MENU_BASE + Language::ALL.len() as i32),
+            None
+        );
+    }
+}
+
 fn cached_foreground_process_name(
-    cache: &Option<(u32, Option<String>)>,
+    cache: Option<&(u32, Option<String>)>,
     foreground_pid: Option<u32>,
 ) -> Option<&str> {
     let pid = foreground_pid?;
-    let (cached_pid, name) = cache.as_ref()?;
+    let (cached_pid, name) = cache?;
     (*cached_pid == pid).then_some(name.as_deref()).flatten()
 }
 
-fn foreground_process_cache_needs_refresh(cache: &Option<(u32, Option<String>)>, pid: u32) -> bool {
+fn foreground_process_cache_needs_refresh(cache: Option<&(u32, Option<String>)>, pid: u32) -> bool {
     !matches!(cache, Some((cached_pid, Some(_))) if *cached_pid == pid)
 }
 
@@ -2710,14 +2809,14 @@ mod foreground_cache_tests {
     fn foreground_process_cache_reuses_successful_lookup() {
         let cache = Some((42, Some("game.exe".to_owned())));
 
-        assert!(!foreground_process_cache_needs_refresh(&cache, 42));
+        assert!(!foreground_process_cache_needs_refresh(cache.as_ref(), 42));
     }
 
     #[test]
     fn foreground_process_cache_retries_failed_lookup() {
         let cache = Some((42, None));
 
-        assert!(foreground_process_cache_needs_refresh(&cache, 42));
+        assert!(foreground_process_cache_needs_refresh(cache.as_ref(), 42));
     }
 }
 
@@ -2753,9 +2852,37 @@ mod layout_tests {
 fn target_display_storage_bytes_hint(target: &TargetProcess) -> usize {
     let mut bytes = storage_bytes_hint(&target.name);
     if let Some(pid) = target.pid {
-        bytes += storage_bytes_hint(" (PID )") + decimal_digit_count(pid) * size_of::<u16>();
+        bytes += storage_bytes_hint(" (PID )") + decimal_digit_count(pid) * size_of::<u16>()
+            - size_of::<u16>();
     }
     bytes
+}
+
+#[cfg(test)]
+mod storage_hint_tests {
+    use super::*;
+
+    #[test]
+    fn target_display_storage_hint_counts_one_nul_for_plain_target() {
+        let target = TargetProcess::new("abc.exe").unwrap();
+
+        assert_eq!(
+            target_display_storage_bytes_hint(&target),
+            ("abc.exe".encode_utf16().count() + 1) * size_of::<u16>()
+        );
+    }
+
+    #[test]
+    fn target_display_storage_hint_counts_one_nul_for_pid_target() {
+        let target = TargetProcess::for_pid("abc.exe", 42).unwrap();
+        let mut display_name = String::new();
+        target.display_name_into(&mut display_name);
+
+        assert_eq!(
+            target_display_storage_bytes_hint(&target),
+            (display_name.encode_utf16().count() + 1) * size_of::<u16>()
+        );
+    }
 }
 
 fn decimal_digit_count(value: u32) -> usize {

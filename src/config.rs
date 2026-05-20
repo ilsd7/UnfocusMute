@@ -284,7 +284,7 @@ fn compare_target_key(left: &TargetProcess, name: &str, pid: Option<u32>) -> Ord
     left.name
         .as_str()
         .cmp(name)
-        .then_with(|| left.pid.unwrap_or(0).cmp(&pid.unwrap_or(0)))
+        .then_with(|| left.pid.cmp(&pid))
 }
 
 fn load_or_default_from_path(path: &Path) -> io::Result<AppConfigLoad> {
@@ -463,12 +463,18 @@ struct ProcessNameCandidate<'a> {
 }
 
 fn process_name_candidate(input: &str) -> Option<ProcessNameCandidate<'_>> {
+    if input.as_bytes().contains(&0) {
+        return None;
+    }
+
     let name = input
         .trim()
         .trim_matches('"')
         .rsplit(['\\', '/'])
         .next()
         .unwrap_or_default()
+        .trim()
+        .trim_matches('"')
         .trim();
 
     if name.is_empty() {
@@ -477,7 +483,7 @@ fn process_name_candidate(input: &str) -> Option<ProcessNameCandidate<'_>> {
 
     let mut has_uppercase = false;
     for byte in name.bytes() {
-        if byte == b'\0' {
+        if is_invalid_process_file_name_byte(byte) {
             return None;
         }
         has_uppercase |= byte.is_ascii_uppercase();
@@ -561,6 +567,8 @@ fn utf16_process_name_candidate(input: &[u16]) -> Option<Utf16ProcessNameCandida
         name = &name[index + 1..];
     }
     name = trim_ascii_utf16(name);
+    name = trim_ascii_quote_utf16(name);
+    name = trim_ascii_utf16(name);
 
     if name.is_empty() {
         return None;
@@ -569,7 +577,9 @@ fn utf16_process_name_candidate(input: &[u16]) -> Option<Utf16ProcessNameCandida
     let mut has_uppercase = false;
     let mut is_ascii = true;
     for ch in name {
-        if *ch > 0x7f {
+        if is_invalid_process_file_name_u16(*ch) {
+            return None;
+        } else if *ch > 0x7f {
             is_ascii = false;
         } else {
             has_uppercase |= (*ch as u8).is_ascii_uppercase();
@@ -594,6 +604,14 @@ fn ascii_utf16_process_name(input: &[u16], has_uppercase: bool) -> String {
         }
     }
     output
+}
+
+fn is_invalid_process_file_name_byte(byte: u8) -> bool {
+    byte < 0x20 || matches!(byte, b'<' | b'>' | b':' | b'"' | b'|' | b'?' | b'*')
+}
+
+fn is_invalid_process_file_name_u16(ch: u16) -> bool {
+    ch < 0x20 || matches!(ch, 0x3c | 0x3e | 0x3a | 0x22 | 0x7c | 0x3f | 0x2a)
 }
 
 fn trim_ascii_utf16(mut input: &[u16]) -> &[u16] {
@@ -812,6 +830,36 @@ mod tests {
     }
 
     #[test]
+    fn normalizes_quoted_names_after_path_split() {
+        assert_eq!(
+            normalize_process_name(r#"C:\Games\"Example.EXE""#),
+            Some("example.exe".to_owned())
+        );
+        assert_eq!(
+            normalize_process_name(r#"C:\Games\ "Example.EXE" "#),
+            Some("example.exe".to_owned())
+        );
+    }
+
+    #[test]
+    fn rejects_invalid_windows_file_name_chars_inside_process_file_name() {
+        assert_eq!(normalize_process_name(r#"bad"game.exe"#), None);
+        assert_eq!(normalize_process_name(r#"C:\Games\bad"game.exe"#), None);
+        assert_eq!(normalize_process_name("bad:game.exe"), None);
+        assert_eq!(normalize_process_name("bad*game.exe"), None);
+        assert_eq!(normalize_process_name("bad|game.exe"), None);
+        assert_eq!(normalize_process_name("bad\tgame.exe"), None);
+        assert_eq!(
+            normalize_process_name_utf16(&wide_null_terminated(r#"bad"game.exe"#)),
+            None
+        );
+        assert_eq!(
+            normalize_process_name_utf16(&wide_null_terminated("bad:game.exe")),
+            None
+        );
+    }
+
+    #[test]
     fn normalizes_utf16_paths_before_allocating_name() {
         assert_eq!(
             normalize_process_name_utf16(&wide_null_terminated(r"C:\Games\Example.EXE")),
@@ -820,6 +868,10 @@ mod tests {
         assert_eq!(
             normalize_process_name_utf16(&wide_null_terminated("  \"Mixer.EXE\"  ")),
             Some("mixer.exe".to_owned())
+        );
+        assert_eq!(
+            normalize_process_name_utf16(&wide_null_terminated(r#"C:\Games\"Example.EXE""#)),
+            Some("example.exe".to_owned())
         );
         assert_eq!(
             normalize_process_name_utf16(&wide_null_terminated("")),
@@ -886,6 +938,12 @@ mod tests {
         assert!(!is_normalized_process_name("Game.EXE"));
         assert!(!is_normalized_process_name(r"C:\Games\game.exe"));
         assert!(!is_normalized_process_name("game.exe\0"));
+    }
+
+    #[test]
+    fn rejects_nul_anywhere_in_process_name_input() {
+        assert_eq!(normalize_process_name("bad\0/path/game.exe"), None);
+        assert_eq!(normalize_process_name("bad\0\\game.exe"), None);
     }
 
     fn wide_null_terminated(text: &str) -> Vec<u16> {

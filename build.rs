@@ -44,9 +44,7 @@ fn main() {
 
     if let Err(error) = resource.compile() {
         let message = format!("failed to compile Windows resources: {error}");
-        if is_release_profile() {
-            panic!("{message}");
-        }
+        assert!(!is_release_profile(), "{message}");
         println!("cargo:warning={message}");
     }
 }
