@@ -47,7 +47,7 @@ use windows::Win32::UI::WindowsAndMessaging::{
     TrackPopupMenu, TranslateMessage, WINDOW_EX_STYLE, WINDOW_STYLE, WINEVENT_OUTOFCONTEXT,
     WM_CLOSE, WM_COMMAND, WM_CREATE, WM_CTLCOLOREDIT, WM_CTLCOLORLISTBOX, WM_CTLCOLORSTATIC,
     WM_DESTROY, WM_LBUTTONDBLCLK, WM_LBUTTONDOWN, WM_MOVE, WM_NCCREATE, WM_NCDESTROY, WM_PAINT,
-    WM_RBUTTONUP, WM_SETFONT, WM_SETICON, WM_TIMER, WNDCLASSW, WS_BORDER, WS_CHILD,
+    WM_RBUTTONUP, WM_SETFONT, WM_SETICON, WM_SHOWWINDOW, WM_TIMER, WNDCLASSW, WS_BORDER, WS_CHILD,
     WS_CLIPCHILDREN, WS_EX_CLIENTEDGE, WS_OVERLAPPEDWINDOW, WS_TABSTOP, WS_VISIBLE, WS_VSCROLL,
 };
 use windows::core::{PCWSTR, w};
@@ -313,6 +313,7 @@ struct AppWindow {
     process_query: String,
     manual_process_text: String,
     foreground_process_name_cache: Option<(u32, Option<String>)>,
+    processes_loaded: bool,
     last_process_refresh: Instant,
     updating_process_combo: bool,
     muted_by_app: HashSet<AudioSessionKey>,
@@ -430,7 +431,7 @@ impl AppWindow {
             target_matcher: TargetMatcher::new(&config.targets),
             config,
             strings,
-            audio: AudioController::new().ok(),
+            audio: None,
             foreground_hook: None,
             running_processes: Vec::new(),
             all_process_choices: Vec::new(),
@@ -438,6 +439,7 @@ impl AppWindow {
             process_query: String::new(),
             manual_process_text: String::new(),
             foreground_process_name_cache: None,
+            processes_loaded: false,
             last_process_refresh: Instant::now(),
             updating_process_combo: false,
             muted_by_app: HashSet::new(),
@@ -474,7 +476,7 @@ impl AppWindow {
         unsafe {
             self.create_controls()?;
         }
-        self.refresh_processes();
+        self.apply_process_filter();
         self.refresh_targets();
         self.refresh_checkboxes();
         self.refresh_text();
@@ -1071,13 +1073,16 @@ impl AppWindow {
 
     fn refresh_processes(&mut self) {
         process::refresh_running_processes(&mut self.running_processes);
+        self.processes_loaded = true;
         self.last_process_refresh = Instant::now();
         self.rebuild_process_choices();
         self.apply_process_filter();
     }
 
     fn refresh_processes_if_stale(&mut self) -> bool {
-        if self.last_process_refresh.elapsed() >= PROCESS_REFRESH_STALE_INTERVAL {
+        if !self.processes_loaded
+            || self.last_process_refresh.elapsed() >= PROCESS_REFRESH_STALE_INTERVAL
+        {
             self.refresh_processes();
             true
         } else {
@@ -1206,13 +1211,17 @@ impl AppWindow {
         }
 
         let foreground_pid = process::foreground_pid();
-        let foreground_process_name = if self.target_matcher.needs_foreground_process_name() {
-            self.foreground_process_name(foreground_pid)
+        let needs_foreground_process_name = self.target_matcher.needs_foreground_process_name();
+        if needs_foreground_process_name {
+            self.update_foreground_process_name_cache(foreground_pid);
+        }
+
+        let Some(audio) = &self.audio else { return };
+        let foreground_process_name = if needs_foreground_process_name {
+            cached_foreground_process_name(&self.foreground_process_name_cache, foreground_pid)
         } else {
             None
         };
-
-        let Some(audio) = &self.audio else { return };
         let apply_result = match audio.apply_mute_plan(
             &self.target_matcher,
             foreground_pid,
@@ -1284,17 +1293,19 @@ impl AppWindow {
         self.audio = None;
     }
 
-    fn foreground_process_name(&mut self, foreground_pid: Option<u32>) -> Option<String> {
-        let pid = foreground_pid?;
-        if let Some((cached_pid, name)) = &self.foreground_process_name_cache
+    fn update_foreground_process_name_cache(&mut self, foreground_pid: Option<u32>) {
+        let Some(pid) = foreground_pid else {
+            self.foreground_process_name_cache = None;
+            return;
+        };
+
+        if let Some((cached_pid, _)) = &self.foreground_process_name_cache
             && *cached_pid == pid
         {
-            return name.clone();
+            return;
         }
 
-        let name = process::process_name(pid);
-        self.foreground_process_name_cache = Some((pid, name.clone()));
-        name
+        self.foreground_process_name_cache = Some((pid, process::process_name(pid)));
     }
 
     fn clear_foreground_process_cache(&mut self) {
@@ -2048,6 +2059,15 @@ fn language_button_text(language: Language) -> &'static str {
     language.native_name()
 }
 
+fn cached_foreground_process_name(
+    cache: &Option<(u32, Option<String>)>,
+    foreground_pid: Option<u32>,
+) -> Option<&str> {
+    let pid = foreground_pid?;
+    let (cached_pid, name) = cache.as_ref()?;
+    (*cached_pid == pid).then_some(name.as_deref()).flatten()
+}
+
 fn utf16_bytes(text: &str) -> usize {
     text.encode_utf16().count() * size_of::<u16>()
 }
@@ -2131,6 +2151,12 @@ unsafe extern "system" fn window_proc(
             }
             WM_PAINT => {
                 app.paint(hwnd);
+                return LRESULT(0);
+            }
+            WM_SHOWWINDOW => {
+                if wparam.0 != 0 {
+                    app.refresh_processes_if_stale();
+                }
                 return LRESULT(0);
             }
             WM_LBUTTONDOWN => {

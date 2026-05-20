@@ -5,7 +5,7 @@ pub(super) struct ProcessChoice {
     pub(super) name: String,
     pub(super) pid: Option<u32>,
     display_name: Option<String>,
-    search_text: String,
+    search_text: Option<String>,
 }
 
 impl ProcessChoice {
@@ -14,13 +14,13 @@ impl ProcessChoice {
         let (display_name, search_text) = match pid {
             Some(pid) => (
                 Some(format!("{name} (PID {pid})")),
-                format!("{search_name} pid {pid}"),
+                Some(format!("{search_name} pid {pid}")),
             ),
             None if count > 1 => (
                 Some(format!("{name} ({count} PID)")),
-                format!("{search_name} {count} pid"),
+                Some(format!("{search_name} {count} pid")),
             ),
-            None => (None, search_name.into_owned()),
+            None => (None, into_owned_if_allocated(search_name)),
         };
 
         Self {
@@ -36,9 +36,8 @@ impl ProcessChoice {
     }
 
     pub(super) fn matches_search(&self, terms: &[Cow<'_, str>]) -> bool {
-        terms
-            .iter()
-            .all(|term| self.search_text.contains(term.as_ref()))
+        let search_text = self.search_text.as_deref().unwrap_or(&self.name);
+        terms.iter().all(|term| search_text.contains(term.as_ref()))
     }
 }
 
@@ -47,6 +46,13 @@ fn lowercase_if_needed(text: &str) -> Cow<'_, str> {
         Cow::Owned(text.to_lowercase())
     } else {
         Cow::Borrowed(text)
+    }
+}
+
+fn into_owned_if_allocated(text: Cow<'_, str>) -> Option<String> {
+    match text {
+        Cow::Borrowed(_) => None,
+        Cow::Owned(text) => Some(text),
     }
 }
 
@@ -70,5 +76,21 @@ mod tests {
         let choice = ProcessChoice::new("Chat.exe".to_owned(), None, 3);
 
         assert!(choice.matches_search(&search_terms("chat 3")));
+    }
+
+    #[test]
+    fn singleton_choices_reuse_name_for_search() {
+        let choice = ProcessChoice::new("player.exe".to_owned(), None, 1);
+
+        assert_eq!(choice.search_text, None);
+        assert!(choice.matches_search(&search_terms("player")));
+    }
+
+    #[test]
+    fn uppercase_singleton_choices_keep_lowercase_search_text() {
+        let choice = ProcessChoice::new("Player.EXE".to_owned(), None, 1);
+
+        assert_eq!(choice.search_text.as_deref(), Some("player.exe"));
+        assert!(choice.matches_search(&search_terms("player")));
     }
 }

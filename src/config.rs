@@ -392,6 +392,44 @@ pub fn config_file_exists() -> bool {
 mod tests {
     use super::*;
 
+    struct TestDir {
+        path: PathBuf,
+    }
+
+    impl TestDir {
+        fn new() -> Self {
+            let base = env::temp_dir();
+            let timestamp = SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .map(|duration| duration.as_nanos())
+                .unwrap_or(0);
+
+            for index in 0..100 {
+                let path = base.join(format!(
+                    "unfocusmute-test-{}-{timestamp}-{index}",
+                    std::process::id()
+                ));
+                match fs::create_dir(&path) {
+                    Ok(()) => return Self { path },
+                    Err(error) if error.kind() == io::ErrorKind::AlreadyExists => continue,
+                    Err(error) => panic!("create test directory: {error}"),
+                }
+            }
+
+            panic!("could not create a unique test directory");
+        }
+
+        fn path(&self) -> &Path {
+            &self.path
+        }
+    }
+
+    impl Drop for TestDir {
+        fn drop(&mut self) {
+            let _ = fs::remove_dir_all(&self.path);
+        }
+    }
+
     #[test]
     fn normalizes_paths_and_case() {
         assert_eq!(
@@ -590,7 +628,7 @@ mod tests {
 
     #[test]
     fn replace_file_replaces_existing_destination() {
-        let dir = tempfile::tempdir().unwrap();
+        let dir = TestDir::new();
         let destination = dir.path().join("config.json");
         let temp_path = dir.path().join("config.json.tmp");
 
@@ -605,7 +643,7 @@ mod tests {
 
     #[test]
     fn invalid_config_backup_preserves_original_contents() {
-        let dir = tempfile::tempdir().unwrap();
+        let dir = TestDir::new();
         let config_path = dir.path().join("config.json");
         fs::write(&config_path, "{not valid json").unwrap();
 
@@ -618,7 +656,7 @@ mod tests {
 
     #[test]
     fn save_backs_up_invalid_existing_config_before_replacing() {
-        let dir = tempfile::tempdir().unwrap();
+        let dir = TestDir::new();
         let config_path = dir.path().join("config.json");
         fs::write(&config_path, "{not valid json").unwrap();
 

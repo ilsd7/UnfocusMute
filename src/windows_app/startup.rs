@@ -7,7 +7,7 @@ use std::slice;
 use windows::Win32::Foundation::{ERROR_FILE_NOT_FOUND, ERROR_SUCCESS};
 use windows::Win32::System::Registry::{
     HKEY, HKEY_CURRENT_USER, KEY_SET_VALUE, REG_OPEN_CREATE_OPTIONS, REG_SZ, RegCloseKey,
-    RegCreateKeyExW, RegDeleteValueW, RegSetValueExW,
+    RegCreateKeyExW, RegDeleteValueW, RegOpenKeyExW, RegSetValueExW,
 };
 use windows::core::PCWSTR;
 
@@ -15,31 +15,42 @@ const RUN_KEY: &str = r"Software\Microsoft\Windows\CurrentVersion\Run";
 const VALUE_NAME: &str = "UnfocusMute";
 
 pub fn set_launch_on_startup(enabled: bool) -> Result<()> {
-    let key = open_run_key()?;
     let value_name = to_wide(VALUE_NAME);
-    let result = if enabled {
+    if enabled {
+        let key = create_run_key()?;
         let exe = env::current_exe().context("resolve current executable")?;
         let wide = startup_command(&exe);
         let bytes = unsafe {
             slice::from_raw_parts(wide.as_ptr().cast::<u8>(), wide.len() * size_of::<u16>())
         };
-        unsafe { RegSetValueExW(key, PCWSTR(value_name.as_ptr()), None, REG_SZ, Some(bytes)) }
-    } else {
-        unsafe { RegDeleteValueW(key, PCWSTR(value_name.as_ptr())) }
+        let result =
+            unsafe { RegSetValueExW(key, PCWSTR(value_name.as_ptr()), None, REG_SZ, Some(bytes)) };
+        unsafe {
+            let _ = RegCloseKey(key);
+        }
+        if result == ERROR_SUCCESS {
+            return Ok(());
+        }
+        bail!("registry update failed with WIN32 error {}", result.0);
+    }
+
+    let Some(key) = open_existing_run_key()? else {
+        return Ok(());
     };
+    let result = unsafe { RegDeleteValueW(key, PCWSTR(value_name.as_ptr())) };
 
     unsafe {
         let _ = RegCloseKey(key);
     }
 
-    if result == ERROR_SUCCESS || (!enabled && result == ERROR_FILE_NOT_FOUND) {
+    if result == ERROR_SUCCESS || result == ERROR_FILE_NOT_FOUND {
         Ok(())
     } else {
         bail!("registry update failed with WIN32 error {}", result.0)
     }
 }
 
-fn open_run_key() -> Result<HKEY> {
+fn create_run_key() -> Result<HKEY> {
     let mut key = HKEY::default();
     let subkey = to_wide(RUN_KEY);
     let result = unsafe {
@@ -58,6 +69,31 @@ fn open_run_key() -> Result<HKEY> {
 
     if result == ERROR_SUCCESS {
         Ok(key)
+    } else {
+        bail!(
+            "open startup registry key failed with WIN32 error {}",
+            result.0
+        )
+    }
+}
+
+fn open_existing_run_key() -> Result<Option<HKEY>> {
+    let mut key = HKEY::default();
+    let subkey = to_wide(RUN_KEY);
+    let result = unsafe {
+        RegOpenKeyExW(
+            HKEY_CURRENT_USER,
+            PCWSTR(subkey.as_ptr()),
+            None,
+            KEY_SET_VALUE,
+            &mut key,
+        )
+    };
+
+    if result == ERROR_SUCCESS {
+        Ok(Some(key))
+    } else if result == ERROR_FILE_NOT_FOUND {
+        Ok(None)
     } else {
         bail!(
             "open startup registry key failed with WIN32 error {}",

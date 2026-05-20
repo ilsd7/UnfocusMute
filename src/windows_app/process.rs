@@ -40,26 +40,17 @@ impl ProcessNameResolver {
         }
     }
 
-    pub fn name(&mut self, pid: u32) -> Option<String> {
-        if let Some(name) = self.names.get(&pid) {
-            return name.clone();
-        }
-
-        if self.prefer_snapshot
-            && let Some(name) = self.snapshot_name(pid)
-        {
-            return Some(name);
-        }
-
-        let name = process_image_name(pid).or_else(|| {
-            if self.prefer_snapshot {
-                None
+    pub fn name(&mut self, pid: u32) -> Option<&str> {
+        if !self.names.contains_key(&pid) {
+            let name = if self.prefer_snapshot {
+                self.snapshot_name(pid).or_else(|| process_image_name(pid))
             } else {
-                self.snapshot_name(pid)
-            }
-        });
-        self.names.insert(pid, name.clone());
-        name
+                process_image_name(pid).or_else(|| self.snapshot_name(pid))
+            };
+            self.names.insert(pid, name);
+        }
+
+        self.names.get(&pid).and_then(Option::as_deref)
     }
 
     fn snapshot_name(&mut self, pid: u32) -> Option<String> {
@@ -138,7 +129,7 @@ fn visit_process_snapshot(mut visit: impl FnMut(u32, String)) {
 }
 
 pub fn process_name(pid: u32) -> Option<String> {
-    ProcessNameResolver::new().name(pid)
+    ProcessNameResolver::new().name(pid).map(str::to_owned)
 }
 
 fn process_image_name(pid: u32) -> Option<String> {

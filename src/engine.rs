@@ -1,6 +1,7 @@
 #![cfg_attr(not(windows), allow(dead_code))]
 
 use crate::config::{TargetProcess, is_normalized_process_name, normalize_process_name};
+use std::borrow::Cow;
 #[cfg(test)]
 use std::collections::HashSet;
 
@@ -47,6 +48,7 @@ pub struct AudioSessionSnapshot {
     pub muted: bool,
 }
 
+#[cfg(test)]
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct MuteAction {
     pub key: AudioSessionKey,
@@ -144,7 +146,7 @@ impl TargetMatcher {
 pub struct MutePlanner<'a> {
     matcher: &'a TargetMatcher,
     foreground_pid: Option<u32>,
-    foreground_process_name: Option<String>,
+    foreground_process_name: Option<Cow<'a, str>>,
 }
 
 impl<'a> MutePlanner<'a> {
@@ -154,21 +156,35 @@ impl<'a> MutePlanner<'a> {
         foreground_pid: Option<u32>,
         foreground_process_name: Option<&str>,
     ) -> Self {
-        Self::new_with_normalized_foreground(
+        Self::from_foreground(
             matcher,
             foreground_pid,
-            foreground_process_name.and_then(normalize_process_name),
+            foreground_process_name
+                .and_then(normalize_process_name)
+                .map(Cow::Owned),
         )
     }
 
     pub(crate) fn new_with_normalized_foreground(
         matcher: &'a TargetMatcher,
         foreground_pid: Option<u32>,
-        foreground_process_name: Option<String>,
+        foreground_process_name: Option<&'a str>,
     ) -> Self {
         if let Some(name) = &foreground_process_name {
             debug_assert!(is_normalized_process_name(name));
         }
+        Self::from_foreground(
+            matcher,
+            foreground_pid,
+            foreground_process_name.map(Cow::Borrowed),
+        )
+    }
+
+    fn from_foreground(
+        matcher: &'a TargetMatcher,
+        foreground_pid: Option<u32>,
+        foreground_process_name: Option<Cow<'a, str>>,
+    ) -> Self {
         Self {
             matcher,
             foreground_pid,
@@ -187,23 +203,42 @@ impl<'a> MutePlanner<'a> {
         self.plan_session_with_managed(managed, key, muted)
     }
 
-    pub(crate) fn plan_session_with_managed(
+    #[cfg(test)]
+    pub fn plan_session_with_managed(
         &self,
         managed: bool,
         key: &AudioSessionKey,
         muted: bool,
     ) -> Option<MuteAction> {
-        let match_kind = self.matcher.match_kind(&key.process_name, key.pid);
+        self.plan_identity_with_managed(&key.process_name, key.pid, managed, muted)
+            .map(|mute| MuteAction {
+                key: key.clone(),
+                mute,
+            })
+    }
+
+    pub(crate) fn matches_identity(&self, process_name: &str, pid: u32) -> bool {
+        self.matcher.match_kind(process_name, pid).is_some()
+    }
+
+    pub(crate) fn plan_identity_with_managed(
+        &self,
+        process_name: &str,
+        pid: u32,
+        managed: bool,
+        muted: bool,
+    ) -> Option<bool> {
+        let match_kind = self.matcher.match_kind(process_name, pid);
         if match_kind.is_none() && !managed {
             return None;
         }
 
         let should_mute = match match_kind {
             Some(TargetMatchKind::ProcessName) => {
-                self.foreground_process_name.as_deref() != Some(key.process_name.as_str())
-                    && self.foreground_pid != Some(key.pid)
+                self.foreground_process_name.as_deref() != Some(process_name)
+                    && self.foreground_pid != Some(pid)
             }
-            Some(TargetMatchKind::Pid) => self.foreground_pid != Some(key.pid),
+            Some(TargetMatchKind::Pid) => self.foreground_pid != Some(pid),
             None => false,
         };
         let should_change = if should_mute {
@@ -212,10 +247,7 @@ impl<'a> MutePlanner<'a> {
             muted && managed
         };
 
-        should_change.then(|| MuteAction {
-            key: key.clone(),
-            mute: should_mute,
-        })
+        should_change.then_some(should_mute)
     }
 }
 
@@ -270,6 +302,18 @@ mod tests {
 
         assert!(!pid_matcher.needs_foreground_process_name());
         assert!(exe_matcher.needs_foreground_process_name());
+    }
+
+    #[test]
+    fn identity_planner_skips_unmatched_unmanaged_sessions() {
+        let matcher = TargetMatcher::new(&[TargetProcess::new("game.exe").unwrap()]);
+        let planner = MutePlanner::new(&matcher, Some(20), Some("other.exe"));
+
+        assert!(!planner.matches_identity("browser.exe", 10));
+        assert_eq!(
+            planner.plan_identity_with_managed("browser.exe", 10, false, false),
+            None
+        );
     }
 
     #[test]
