@@ -39,18 +39,19 @@ use windows::Win32::UI::WindowsAndMessaging::{
     CBN_EDITCHANGE, CBN_SELCHANGE, CBN_SELENDOK, CBN_SETFOCUS, CBS_DROPDOWN, CREATESTRUCTW,
     CreatePopupMenu, CreateWindowExW, DefWindowProcW, DestroyMenu, DestroyWindow, DispatchMessageW,
     EN_CHANGE, ES_AUTOHSCROLL, EVENT_SYSTEM_FOREGROUND, FindWindowW, GWLP_USERDATA, GetCursorPos,
-    GetSystemMetrics, GetWindowRect, HICON, HMENU, ICON_BIG, ICON_SMALL, IDC_ARROW, LB_GETCURSEL,
-    LB_RESETCONTENT, LB_SETCURSEL, LBN_SELCHANGE, LBS_NOTIFY, LoadCursorW, MB_ICONINFORMATION,
-    MB_ICONWARNING, MB_OK, MF_SEPARATOR, MF_STRING, MSG, MessageBoxW, MoveWindow, PostMessageW,
-    PostQuitMessage, RegisterClassW, SM_CXSCREEN, SM_CYSCREEN, SW_HIDE, SW_RESTORE, SW_SHOW,
-    SendMessageW, SetForegroundWindow, SetTimer, SetWindowLongPtrW, ShowWindow, TPM_NONOTIFY,
-    TPM_RETURNCMD, TPM_RIGHTBUTTON, TRACK_POPUP_MENU_FLAGS, TrackPopupMenu, TranslateMessage,
-    WINDOW_EX_STYLE, WINDOW_STYLE, WINEVENT_OUTOFCONTEXT, WM_CLOSE, WM_COMMAND, WM_CREATE,
-    WM_CTLCOLOREDIT, WM_CTLCOLORLISTBOX, WM_CTLCOLORSTATIC, WM_DESTROY, WM_LBUTTONDBLCLK,
-    WM_LBUTTONDOWN, WM_MOVE, WM_NCCREATE, WM_NCDESTROY, WM_PAINT, WM_RBUTTONUP, WM_SETFONT,
-    WM_SETICON, WM_SHOWWINDOW, WM_TIMER, WNDCLASSW, WS_BORDER, WS_CAPTION, WS_CHILD,
-    WS_CLIPCHILDREN, WS_EX_CLIENTEDGE, WS_MINIMIZEBOX, WS_OVERLAPPED, WS_SYSMENU, WS_TABSTOP,
-    WS_VISIBLE, WS_VSCROLL,
+    GetSystemMetrics, GetWindowRect, HICON, HMENU, ICON_BIG, ICON_SMALL, IDC_ARROW,
+    IsWindowVisible, LB_GETCURSEL, LB_RESETCONTENT, LB_SETCURSEL, LBN_SELCHANGE, LBS_NOTIFY,
+    LoadCursorW, MB_ICONINFORMATION, MB_ICONWARNING, MB_OK, MF_SEPARATOR, MF_STRING, MSG,
+    MessageBoxW, MoveWindow, PostMessageW, PostQuitMessage, RegisterClassW, RegisterWindowMessageW,
+    SM_CXSCREEN, SM_CXVIRTUALSCREEN, SM_CYSCREEN, SM_CYVIRTUALSCREEN, SM_XVIRTUALSCREEN,
+    SM_YVIRTUALSCREEN, SW_HIDE, SW_RESTORE, SW_SHOW, SendMessageW, SetForegroundWindow, SetTimer,
+    SetWindowLongPtrW, ShowWindow, TPM_NONOTIFY, TPM_RETURNCMD, TPM_RIGHTBUTTON,
+    TRACK_POPUP_MENU_FLAGS, TrackPopupMenu, TranslateMessage, WINDOW_EX_STYLE, WINDOW_STYLE,
+    WINEVENT_OUTOFCONTEXT, WM_CLOSE, WM_COMMAND, WM_CREATE, WM_CTLCOLOREDIT, WM_CTLCOLORLISTBOX,
+    WM_CTLCOLORSTATIC, WM_DESTROY, WM_LBUTTONDBLCLK, WM_LBUTTONDOWN, WM_MOVE, WM_NCCREATE,
+    WM_NCDESTROY, WM_PAINT, WM_RBUTTONUP, WM_SETFONT, WM_SETICON, WM_SHOWWINDOW, WM_TIMER,
+    WNDCLASSW, WS_BORDER, WS_CAPTION, WS_CHILD, WS_CLIPCHILDREN, WS_EX_CLIENTEDGE, WS_MINIMIZEBOX,
+    WS_OVERLAPPED, WS_SYSMENU, WS_TABSTOP, WS_VISIBLE, WS_VSCROLL,
 };
 use windows::core::{PCWSTR, w};
 
@@ -175,7 +176,14 @@ unsafe fn run_window() -> Result<()> {
     let WindowPosition { x, y } = initial_window_position(&config);
 
     let title = to_wide(config.language.strings().app_title);
-    let mut app = Box::new(AppWindow::new(config, icon, tray_icon, initial_issues)?);
+    let taskbar_created_message = unsafe { RegisterWindowMessageW(w!("TaskbarCreated")) };
+    let mut app = Box::new(AppWindow::new(
+        config,
+        icon,
+        tray_icon,
+        taskbar_created_message,
+        initial_issues,
+    )?);
     let app_ptr = app.as_mut() as *mut AppWindow;
     let hwnd = unsafe {
         CreateWindowExW(
@@ -195,7 +203,7 @@ unsafe fn run_window() -> Result<()> {
         .context("create main window")?
     };
 
-    if !start_hidden {
+    if !start_hidden || !app.tray_added {
         unsafe {
             let _ = ShowWindow(hwnd, SW_SHOW);
         }
@@ -346,11 +354,15 @@ unsafe extern "system" fn foreground_event_proc(
 
 unsafe fn bring_existing_window_to_front() {
     if let Ok(hwnd) = unsafe { FindWindowW(CLASS_NAME, PCWSTR::null()) } {
-        unsafe {
-            let _ = ShowWindow(hwnd, SW_SHOW);
-            let _ = ShowWindow(hwnd, SW_RESTORE);
-            let _ = SetForegroundWindow(hwnd);
-        }
+        show_main_window(hwnd);
+    }
+}
+
+fn show_main_window(hwnd: HWND) {
+    unsafe {
+        let _ = ShowWindow(hwnd, SW_SHOW);
+        let _ = ShowWindow(hwnd, SW_RESTORE);
+        let _ = SetForegroundWindow(hwnd);
     }
 }
 
@@ -382,6 +394,7 @@ fn should_start_hidden(first_run: bool, forced_minimized: bool, start_minimized:
 fn initial_window_position(config: &AppConfig) -> WindowPosition {
     config
         .window_position
+        .filter(|position| window_position_is_visible(*position, WINDOW_WIDTH, WINDOW_HEIGHT))
         .unwrap_or_else(centered_window_position)
 }
 
@@ -390,11 +403,44 @@ fn centered_window_position() -> WindowPosition {
 }
 
 fn centered_position(width: i32, height: i32) -> WindowPosition {
-    let screen_width = unsafe { GetSystemMetrics(SM_CXSCREEN) };
-    let screen_height = unsafe { GetSystemMetrics(SM_CYSCREEN) };
+    let screen = virtual_screen_rect();
     WindowPosition {
-        x: ((screen_width - width) / 2).max(0),
-        y: ((screen_height - height) / 2).max(0),
+        x: screen.left + ((screen.right - screen.left - width) / 2).max(0),
+        y: screen.top + ((screen.bottom - screen.top - height) / 2).max(0),
+    }
+}
+
+fn window_position_is_visible(position: WindowPosition, width: i32, height: i32) -> bool {
+    const MIN_VISIBLE_EDGE: i32 = 80;
+
+    let screen = virtual_screen_rect();
+    let right = position.x.saturating_add(width);
+    let bottom = position.y.saturating_add(height);
+    right > screen.left.saturating_add(MIN_VISIBLE_EDGE)
+        && position.x < screen.right.saturating_sub(MIN_VISIBLE_EDGE)
+        && bottom > screen.top.saturating_add(MIN_VISIBLE_EDGE)
+        && position.y < screen.bottom.saturating_sub(MIN_VISIBLE_EDGE)
+}
+
+fn virtual_screen_rect() -> RECT {
+    let left = unsafe { GetSystemMetrics(SM_XVIRTUALSCREEN) };
+    let top = unsafe { GetSystemMetrics(SM_YVIRTUALSCREEN) };
+    let width = unsafe { GetSystemMetrics(SM_CXVIRTUALSCREEN) };
+    let height = unsafe { GetSystemMetrics(SM_CYVIRTUALSCREEN) };
+    if width > 0 && height > 0 {
+        return RECT {
+            left,
+            top,
+            right: left.saturating_add(width),
+            bottom: top.saturating_add(height),
+        };
+    }
+
+    RECT {
+        left: 0,
+        top: 0,
+        right: unsafe { GetSystemMetrics(SM_CXSCREEN) },
+        bottom: unsafe { GetSystemMetrics(SM_CYSCREEN) },
     }
 }
 
@@ -430,6 +476,7 @@ struct AppWindow {
     font_applied: bool,
     icon: HICON,
     tray_icon: HICON,
+    taskbar_created_message: u32,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -486,11 +533,12 @@ impl IssueState {
     }
 }
 
-const STATUS_ISSUE_PRIORITY_ORDER: [StatusIssue; 7] = [
+const STATUS_ISSUE_PRIORITY_ORDER: [StatusIssue; 8] = [
     StatusIssue::ConfigSaveFailed,
     StatusIssue::ConfigLoadFailed,
     StatusIssue::StartupUpdateFailed,
     StatusIssue::TimerSetupFailed,
+    StatusIssue::TrayIconUnavailable,
     StatusIssue::OpenConfigFailed,
     StatusIssue::AudioUnavailable,
     StatusIssue::AudioUpdateFailed,
@@ -505,6 +553,7 @@ enum StatusIssue {
     ConfigSaveFailed,
     StartupUpdateFailed,
     TimerSetupFailed,
+    TrayIconUnavailable,
     OpenConfigFailed,
 }
 
@@ -575,6 +624,16 @@ mod issue_state_tests {
 
         assert_eq!(issues.visible(), Some(StatusIssue::TimerSetupFailed));
     }
+
+    #[test]
+    fn tray_icon_issue_is_prioritized_before_open_config() {
+        let mut issues = IssueState::default();
+
+        issues.set(StatusIssue::OpenConfigFailed);
+        issues.set(StatusIssue::TrayIconUnavailable);
+
+        assert_eq!(issues.visible(), Some(StatusIssue::TrayIconUnavailable));
+    }
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -605,6 +664,7 @@ impl AppWindow {
         config: AppConfig,
         icon: HICON,
         tray_icon: HICON,
+        taskbar_created_message: u32,
         initial_issues: IssueState,
     ) -> Result<Self> {
         let language = config.language;
@@ -641,6 +701,7 @@ impl AppWindow {
             font_applied: false,
             icon,
             tray_icon,
+            taskbar_created_message,
         })
     }
 
@@ -1384,6 +1445,7 @@ impl AppWindow {
     }
 
     fn timer_tick(&mut self, timer_id: usize) {
+        self.retry_missing_timers();
         match timer_id {
             CONFIG_RELOAD_TIMER_ID if self.reload_config_if_due().targets_changed => self.tick(),
             CONFIG_RELOAD_TIMER_ID => {}
@@ -1578,8 +1640,8 @@ impl AppWindow {
     fn set_issue(&mut self, issue: StatusIssue) {
         if self.issues.set(issue) {
             self.last_status = None;
+            self.update_status();
         }
-        self.update_status();
     }
 
     fn clear_issue(&mut self, issue: StatusIssue) {
@@ -1597,6 +1659,7 @@ impl AppWindow {
             StatusIssue::ConfigSaveFailed => self.strings.config_save_failed,
             StatusIssue::StartupUpdateFailed => self.strings.startup_update_failed,
             StatusIssue::TimerSetupFailed => self.strings.timer_setup_failed,
+            StatusIssue::TrayIconUnavailable => self.strings.tray_icon_unavailable,
             StatusIssue::OpenConfigFailed => self.strings.open_config_failed,
         }
     }
@@ -1703,6 +1766,25 @@ impl AppWindow {
             self.config.polling_interval_ms as u32,
         );
         self.update_timer_setup_issue();
+    }
+
+    fn retry_missing_timers(&mut self) {
+        let mut retried = false;
+        if !self.config_reload_timer_ready {
+            self.config_reload_timer_ready =
+                self.set_timer(CONFIG_RELOAD_TIMER_ID, CONFIG_RELOAD_TIMER_INTERVAL_MS);
+            retried = true;
+        }
+        if !self.audio_fallback_timer_ready {
+            self.audio_fallback_timer_ready = self.set_timer(
+                AUDIO_FALLBACK_TIMER_ID,
+                self.config.polling_interval_ms as u32,
+            );
+            retried = true;
+        }
+        if retried {
+            self.update_timer_setup_issue();
+        }
     }
 
     fn set_timer(&self, timer_id: usize, interval_ms: u32) -> bool {
@@ -2175,6 +2257,11 @@ impl AppWindow {
                 x: rect.left,
                 y: rect.top,
             };
+            let width = rect.right.saturating_sub(rect.left);
+            let height = rect.bottom.saturating_sub(rect.top);
+            if !window_position_is_visible(position, width, height) {
+                return false;
+            }
             if self.config.window_position != Some(position) {
                 self.config.window_position = Some(position);
                 return true;
@@ -2210,9 +2297,24 @@ impl AppWindow {
 
     fn add_tray_icon(&mut self) {
         let data = self.tray_data();
-        let command = if self.tray_added { NIM_MODIFY } else { NIM_ADD };
-        if unsafe { Shell_NotifyIconW(command, &data).as_bool() } {
+        if self.tray_added && unsafe { Shell_NotifyIconW(NIM_MODIFY, &data).as_bool() } {
+            self.clear_issue(StatusIssue::TrayIconUnavailable);
+            return;
+        }
+        self.tray_added = false;
+        if unsafe { Shell_NotifyIconW(NIM_ADD, &data).as_bool() } {
             self.tray_added = true;
+            self.clear_issue(StatusIssue::TrayIconUnavailable);
+        } else {
+            self.set_issue(StatusIssue::TrayIconUnavailable);
+        }
+    }
+
+    fn restore_tray_icon(&mut self) {
+        self.tray_added = false;
+        self.add_tray_icon();
+        if !self.tray_added && !unsafe { IsWindowVisible(self.hwnd).as_bool() } {
+            show_main_window(self.hwnd);
         }
     }
 
@@ -2415,6 +2517,10 @@ unsafe extern "system" fn window_proc(
     };
 
     if let Some(app) = app {
+        if app.taskbar_created_message != 0 && message == app.taskbar_created_message {
+            app.restore_tray_icon();
+            return LRESULT(0);
+        }
         match message {
             WM_CREATE => {
                 if unsafe { app.on_create(hwnd) }.is_err() {
@@ -2426,11 +2532,7 @@ unsafe extern "system" fn window_proc(
                 let id = loword(wparam.0 as u32) as i32;
                 let notification = hiword(wparam.0 as u32);
                 if id == ID_SHOW && notification == 0 {
-                    unsafe {
-                        let _ = ShowWindow(hwnd, SW_SHOW);
-                        let _ = ShowWindow(hwnd, SW_RESTORE);
-                        let _ = SetForegroundWindow(hwnd);
-                    }
+                    show_main_window(hwnd);
                 } else {
                     app.command(id, notification);
                 }
@@ -2475,11 +2577,7 @@ unsafe extern "system" fn window_proc(
             }
             WM_TRAY_ICON => {
                 match lparam.0 as u32 {
-                    WM_LBUTTONDBLCLK => unsafe {
-                        let _ = ShowWindow(hwnd, SW_SHOW);
-                        let _ = ShowWindow(hwnd, SW_RESTORE);
-                        let _ = SetForegroundWindow(hwnd);
-                    },
+                    WM_LBUTTONDBLCLK => show_main_window(hwnd),
                     WM_RBUTTONUP => app.tray_menu(),
                     _ => {}
                 }

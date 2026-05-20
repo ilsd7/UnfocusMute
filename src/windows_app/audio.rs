@@ -9,14 +9,16 @@ use std::sync::{
 use windows::Win32::Foundation::PROPERTYKEY;
 use windows::Win32::Media::Audio::{
     DEVICE_STATE, DEVICE_STATE_ACTIVE, EDataFlow, ERole, IAudioSessionControl2,
-    IAudioSessionManager2, IMMDeviceEnumerator, IMMNotificationClient, IMMNotificationClient_Impl,
-    ISimpleAudioVolume, MMDeviceEnumerator, eMultimedia, eRender,
+    IAudioSessionManager2, IMMDevice, IMMDeviceEnumerator, IMMNotificationClient,
+    IMMNotificationClient_Impl, ISimpleAudioVolume, MMDeviceEnumerator, eMultimedia, eRender,
 };
 use windows::Win32::System::Com::{CLSCTX_ALL, CoCreateInstance, CoTaskMemFree};
 use windows::core::{Interface, PCWSTR, PWSTR, implement};
 
 pub struct AudioController {
+    enumerator: IMMDeviceEnumerator,
     managers: Vec<IAudioSessionManager2>,
+    endpoint_ids: Vec<String>,
     endpoint_notification: Option<EndpointNotification>,
 }
 
@@ -33,18 +35,26 @@ impl AudioController {
         unsafe {
             let enumerator = device_enumerator()?;
             let managers = active_render_session_managers(&enumerator)?;
+            let endpoint_ids = active_render_endpoint_ids(&enumerator).unwrap_or_default();
             let endpoint_notification = EndpointNotification::new(&enumerator).ok();
             Ok(Self {
+                enumerator,
                 managers,
+                endpoint_ids,
                 endpoint_notification,
             })
         }
     }
 
     pub fn take_endpoint_changed(&self) -> bool {
-        self.endpoint_notification
-            .as_ref()
-            .is_some_and(EndpointNotification::take_changed)
+        if let Some(notification) = &self.endpoint_notification {
+            notification.take_changed()
+        } else {
+            unsafe {
+                active_render_endpoint_ids(&self.enumerator)
+                    .is_ok_and(|endpoint_ids| endpoint_ids != self.endpoint_ids)
+            }
+        }
     }
 
     pub fn unmute_sessions(
@@ -478,6 +488,33 @@ unsafe fn active_render_session_managers(
     }
 
     Ok(managers)
+}
+
+unsafe fn active_render_endpoint_ids(enumerator: &IMMDeviceEnumerator) -> Result<Vec<String>> {
+    let endpoints = unsafe {
+        enumerator
+            .EnumAudioEndpoints(eRender, DEVICE_STATE_ACTIVE)
+            .context("enumerate active render endpoints")?
+    };
+    let count = unsafe { endpoints.GetCount().context("get render endpoint count")? };
+    let mut ids = Vec::with_capacity(count as usize);
+
+    for index in 0..count {
+        let Ok(device) = (unsafe { endpoints.Item(index) }) else {
+            continue;
+        };
+        if let Some(id) = unsafe { endpoint_id(&device) } {
+            ids.push(id);
+        }
+    }
+
+    ids.sort_unstable();
+    Ok(ids)
+}
+
+unsafe fn endpoint_id(device: &IMMDevice) -> Option<String> {
+    let value = unsafe { device.GetId().ok()? };
+    unsafe { co_task_mem_string(value) }
 }
 
 unsafe fn co_task_mem_string(value: PWSTR) -> Option<String> {
