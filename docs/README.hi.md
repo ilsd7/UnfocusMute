@@ -37,7 +37,7 @@ Rust native app के रूप में build होने के कार�
   <img src="../assets/screenshot_hi.png" alt="UnfocusMute ऐप विंडो">
 </p>
 
-UnfocusMute registered app की audio session को सिर्फ तब mute करता है जब वह app foreground में नहीं होता। जब app वापस foreground में आता है, तो UnfocusMute सिर्फ वही sessions restore करता है जिन्हें उसने खुद mute किया था। आपने जो चीजें manually mute की हैं, वे वैसी ही रहती हैं।
+UnfocusMute registered app की audio session को सिर्फ तब mute करता है जब वह app foreground में नहीं होता। जब app वापस foreground में आता है, तो UnfocusMute सिर्फ वही sessions restore करता है जिन्हें उसने खुद mute किया था। जिन्हें UnfocusMute ने mute नहीं किया था, या जिन्हें आपने पहले से mute कर रखा था, उन्हें यह unmute नहीं करता।
 
 जब कोई game खुला हो और आप Alt+Tab से browser, chat app या work window में जाते-आते हों, तब यह खास तौर पर उपयोगी है। Windows volume mixer बार-बार खोले बिना सिर्फ background app की आवाज बंद की जा सकती है।
 
@@ -111,7 +111,7 @@ UnfocusMute registered targets और अभी foreground में मौज�
 - Target app foreground में हो तो audio state नहीं बदली जाती।
 - Target app background में हो तो सिर्फ उसी app की audio session mute होती है।
 - Target app फिर foreground में आए तो UnfocusMute सिर्फ अपने द्वारा mute की गई sessions restore करता है।
-- Volume mixer या किसी दूसरे tool से manually बदली गई mute state वैसी ही रहती है।
+- जिन्हें UnfocusMute ने mute नहीं किया था, या जिन्हें आपने पहले से mute कर रखा था, उन्हें UnfocusMute unmute नहीं करता।
 
 ## कब उपयोगी है
 

@@ -37,7 +37,7 @@ UnfocusMute 是一个小巧轻量的 Windows 托盘应用。当你选定的游�
   <img src="../assets/screenshot_zh-Hans.png" alt="UnfocusMute 应用窗口">
 </p>
 
-UnfocusMute 只会在注册应用不在前台时静音对应的音频会话。当该应用回到前台时，它只恢复 UnfocusMute 自己静音过的会话，不会改动你手动设置的静音状态。
+UnfocusMute 只会在注册应用不在前台时静音对应的音频会话。当该应用回到前台时，它只恢复 UnfocusMute 自己静音过的会话，不会取消静音它没有静音过的会话，也不会取消静音你原本就静音的会话。
 
 当你开着游戏并用 Alt+Tab 在浏览器、聊天窗口或工作窗口之间切换时，它尤其有用。不用反复打开 Windows 音量混合器，也能只关掉后台应用的声音。
 
@@ -111,7 +111,7 @@ UnfocusMute 会比较已注册目标和当前前台窗口，仅当目标应用�
 - 如果目标应用在前台，UnfocusMute 不会改变其声音状态。
 - 如果目标应用在后台，UnfocusMute 只静音该应用的音频会话。
 - 当目标应用回到前台时，UnfocusMute 只恢复自己静音过的会话。
-- 你在音量混合器或其他工具中手动改变的静音状态会保持不变。
+- UnfocusMute 没有静音过的会话，或你原本就静音的会话，不会被 UnfocusMute 取消静音。
 
 ## 适合这些场景
 

@@ -37,7 +37,7 @@ Built as a native Rust app, it runs without a separate runtime. The current Wind
   <img src="assets/screenshot_en.png" alt="UnfocusMute app window">
 </p>
 
-UnfocusMute mutes the registered app's audio session only while that app is not in the foreground. When the app returns to the foreground, it restores only the sessions that UnfocusMute muted itself, leaving anything you muted manually untouched.
+UnfocusMute mutes the registered app's audio session only while that app is not in the foreground. When the app returns to the foreground, it restores only the sessions that UnfocusMute muted itself, without unmuting sessions it did not mute or sessions that were already muted by you.
 
 It is especially useful when you keep a game open and Alt+Tab between a browser, chat app, or work window. You can stop only the background app audio without repeatedly opening the Windows volume mixer.
 
@@ -111,7 +111,7 @@ UnfocusMute compares the registered targets with the current foreground window a
 - If the target app is in the foreground, UnfocusMute does not change its audio state.
 - If the target app is in the background, UnfocusMute mutes only that app's audio session.
 - When the target app returns to the foreground, UnfocusMute restores only the sessions it muted itself.
-- Audio states changed manually in the volume mixer or by another tool are left as they are.
+- Sessions UnfocusMute did not mute, or sessions that were already muted by you, are not unmuted by UnfocusMute.
 
 ## Useful When
 

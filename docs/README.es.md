@@ -37,7 +37,7 @@ Al estar compilada como app nativa en Rust, se ejecuta sin un runtime adicional.
   <img src="../assets/screenshot_es.png" alt="Ventana de UnfocusMute">
 </p>
 
-UnfocusMute silencia la sesión de audio de una app registrada solo mientras esa app no está en primer plano. Cuando vuelve al primer plano, restaura únicamente las sesiones que UnfocusMute silenció por su cuenta, sin tocar los silencios que hayas aplicado manualmente.
+UnfocusMute silencia la sesión de audio de una app registrada solo mientras esa app no está en primer plano. Cuando vuelve al primer plano, restaura únicamente las sesiones que UnfocusMute silenció por su cuenta, sin reactivar sesiones que no silenció o que ya habías silenciado.
 
 Es especialmente útil cuando dejas un juego abierto y alternas con Alt+Tab entre el navegador, una app de chat o una ventana de trabajo. Puedes apagar solo el audio de fondo sin abrir una y otra vez el mezclador de volumen de Windows.
 
@@ -111,7 +111,7 @@ UnfocusMute compara los objetivos registrados con la ventana que está actualmen
 - Si la app objetivo está en primer plano, no cambia su estado de audio.
 - Si la app objetivo está en segundo plano, silencia solo la sesión de audio de esa app.
 - Cuando la app objetivo vuelve al primer plano, restaura solo las sesiones que UnfocusMute silenció.
-- Los cambios de silencio hechos manualmente en el mezclador de volumen o con otra herramienta se respetan.
+- UnfocusMute no reactiva sesiones que no silenció o que ya habías silenciado.
 
 ## Útil cuando
 

@@ -37,7 +37,7 @@ Criado como app nativo em Rust, ele roda sem runtime separado. O executável atu
   <img src="../assets/screenshot_pt.png" alt="Janela do UnfocusMute">
 </p>
 
-UnfocusMute silencia a sessão de áudio de um app registrado somente enquanto esse app não está em primeiro plano. Quando ele volta ao primeiro plano, o UnfocusMute restaura apenas as sessões que ele próprio silenciou, sem mexer nos estados alterados manualmente por você.
+UnfocusMute silencia a sessão de áudio de um app registrado somente enquanto esse app não está em primeiro plano. Quando ele volta ao primeiro plano, o UnfocusMute restaura apenas as sessões que ele próprio silenciou, sem reativar sessões que ele não silenciou ou que já estavam silenciadas por você.
 
 Ele é especialmente útil quando você deixa um jogo aberto e alterna com Alt+Tab entre navegador, chat ou janelas de trabalho. Assim, dá para desligar só o áudio em segundo plano sem abrir o mixer de volume do Windows toda hora.
 
@@ -111,7 +111,7 @@ UnfocusMute compara os alvos registrados com a janela atualmente em primeiro pla
 - Se o app alvo estiver em primeiro plano, o estado do áudio não é alterado.
 - Se o app alvo estiver em segundo plano, apenas a sessão de áudio desse app é silenciada.
 - Quando o app alvo volta ao primeiro plano, o UnfocusMute restaura apenas as sessões que ele silenciou.
-- Estados de mudo alterados manualmente no mixer de volume ou por outra ferramenta são preservados.
+- Sessões que o UnfocusMute não silenciou, ou que já estavam silenciadas por você, não são reativadas pelo UnfocusMute.
 
 ## Útil quando
 

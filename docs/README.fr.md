@@ -37,7 +37,7 @@ Compilée comme application native Rust, elle s’exécute sans runtime séparé
   <img src="../assets/screenshot_fr.png" alt="Fenêtre de l’application UnfocusMute">
 </p>
 
-UnfocusMute met en sourdine la session audio d’une application enregistrée uniquement tant que cette application n’est pas au premier plan. Quand elle revient au premier plan, UnfocusMute ne réactive que les sessions qu’il avait lui-même mises en sourdine, sans toucher aux choix faits manuellement.
+UnfocusMute met en sourdine la session audio d’une application enregistrée uniquement tant que cette application n’est pas au premier plan. Quand elle revient au premier plan, UnfocusMute ne réactive que les sessions qu’il avait lui-même mises en sourdine, sans réactiver celles qu’il n’a pas coupées ou que vous aviez déjà mises en sourdine.
 
 C’est particulièrement pratique lorsqu’un jeu reste ouvert pendant que vous passez avec Alt+Tab vers un navigateur, une messagerie ou une fenêtre de travail. Vous pouvez couper seulement l’audio de l’application en arrière-plan sans rouvrir sans cesse le mélangeur de volume Windows.
 
@@ -111,7 +111,7 @@ UnfocusMute compare les cibles enregistrées avec la fenêtre actuellement au pr
 - Si l’application cible est au premier plan, son état audio n’est pas modifié.
 - Si l’application cible est en arrière-plan, seule sa session audio est mise en sourdine.
 - Quand l’application cible revient au premier plan, UnfocusMute restaure uniquement les sessions qu’il avait mises en sourdine.
-- Les changements faits manuellement dans le mélangeur de volume ou avec un autre outil sont conservés.
+- UnfocusMute ne réactive pas les sessions qu’il n’a pas mises en sourdine ou que vous aviez déjà mises en sourdine.
 
 ## Utile quand
 
