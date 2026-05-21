@@ -14,7 +14,7 @@ body:
     attributes:
       label: UnfocusMute version
       description: Use the version shown in the ZIP executable name, the release page, or the app version badge.
-      placeholder: "Example: 2.1.0"
+      placeholder: "Example: 2.1.1"
     validations:
       required: true
 

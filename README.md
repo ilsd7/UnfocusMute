@@ -6,15 +6,12 @@
   <p><strong>Lightweight, portable Windows tray app for muting selected background apps.<br>Restores only the audio it changed.</strong></p>
 
   <p>
-    <a href="https://github.com/ilsd7/UnfocusMute/releases/latest/download/UnfocusMute-windows-x64.zip">다운로드</a>
-    · <a href="#사용-방법">사용 방법</a>
-    · <a href="#보안-및-개인정보">개인정보</a>
-    · <a href="LICENSE">Apache-2.0</a>
+    한국어 · <a href="README_en.md">English</a> · <a href="docs/README.ja.md">日本語</a> · <a href="docs/README.zh-CN.md">简体中文</a> · <a href="docs/README.es.md">Español</a> · <a href="docs/README.fr.md">Français</a> · <a href="docs/README.pt.md">Português</a> · <a href="docs/README.hi.md">हिन्दी</a> · <a href="docs/README.ar.md">العربية</a>
   </p>
 
   <p>
     <a href="https://github.com/ilsd7/UnfocusMute/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/ilsd7/UnfocusMute/ci.yml?branch=main&style=flat-square&label=CI&logo=githubactions&logoColor=white" alt="CI status"></a>
-    <img src="https://img.shields.io/badge/version-2.1.0-0D96F6?style=flat-square" alt="Version 2.1.0">
+    <img src="https://img.shields.io/badge/version-2.1.1-0D96F6?style=flat-square" alt="Version 2.1.1">
     <img src="https://img.shields.io/badge/Windows-10%2F11-0078D4?style=flat-square&logo=windows&logoColor=white" alt="Windows 10/11">
     <img src="https://img.shields.io/badge/portable-yes-2E7D32?style=flat-square" alt="Portable app">
     <img src="https://img.shields.io/badge/Rust-native-B7410E?style=flat-square&logo=rust&logoColor=white" alt="Rust native app">
@@ -23,7 +20,10 @@
   </p>
 
   <p>
-    한국어 · <a href="README_en.md">English</a> · <a href="docs/README.ja.md">日本語</a> · <a href="docs/README.zh-CN.md">简体中文</a> · <a href="docs/README.es.md">Español</a> · <a href="docs/README.fr.md">Français</a> · <a href="docs/README.pt.md">Português</a> · <a href="docs/README.hi.md">हिन्दी</a> · <a href="docs/README.ar.md">العربية</a>
+    <a href="https://github.com/ilsd7/UnfocusMute/releases/latest/download/UnfocusMute-windows-x64.zip">다운로드</a>
+    · <a href="#사용-방법">사용 방법</a>
+    · <a href="#보안-및-개인정보">개인정보</a>
+    · <a href="LICENSE">Apache-2.0</a>
   </p>
 </div>
 

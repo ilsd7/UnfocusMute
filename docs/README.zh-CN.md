@@ -6,15 +6,12 @@
   <p><strong>轻量、便携的 Windows 托盘应用，用于静音选定的后台应用。<br>只恢复它自己改过的音频状态。</strong></p>
 
   <p>
-    <a href="https://github.com/ilsd7/UnfocusMute/releases/latest/download/UnfocusMute-windows-x64.zip">下载</a>
-    · <a href="#使用方法">使用方法</a>
-    · <a href="#安全与隐私">隐私</a>
-    · <a href="../LICENSE">Apache-2.0</a>
+    <a href="../README.md">한국어</a> · <a href="../README_en.md">English</a> · <a href="README.ja.md">日本語</a> · 简体中文 · <a href="README.es.md">Español</a> · <a href="README.fr.md">Français</a> · <a href="README.pt.md">Português</a> · <a href="README.hi.md">हिन्दी</a> · <a href="README.ar.md">العربية</a>
   </p>
 
   <p>
     <a href="https://github.com/ilsd7/UnfocusMute/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/ilsd7/UnfocusMute/ci.yml?branch=main&style=flat-square&label=CI&logo=githubactions&logoColor=white" alt="CI status"></a>
-    <img src="https://img.shields.io/badge/version-2.1.0-0D96F6?style=flat-square" alt="Version 2.1.0">
+    <img src="https://img.shields.io/badge/version-2.1.1-0D96F6?style=flat-square" alt="Version 2.1.1">
     <img src="https://img.shields.io/badge/Windows-10%2F11-0078D4?style=flat-square&logo=windows&logoColor=white" alt="Windows 10/11">
     <img src="https://img.shields.io/badge/portable-yes-2E7D32?style=flat-square" alt="Portable app">
     <img src="https://img.shields.io/badge/Rust-native-B7410E?style=flat-square&logo=rust&logoColor=white" alt="Rust native app">
@@ -23,7 +20,10 @@
   </p>
 
   <p>
-    <a href="../README.md">한국어</a> · <a href="../README_en.md">English</a> · <a href="README.ja.md">日本語</a> · 简体中文 · <a href="README.es.md">Español</a> · <a href="README.fr.md">Français</a> · <a href="README.pt.md">Português</a> · <a href="README.hi.md">हिन्दी</a> · <a href="README.ar.md">العربية</a>
+    <a href="https://github.com/ilsd7/UnfocusMute/releases/latest/download/UnfocusMute-windows-x64.zip">下载</a>
+    · <a href="#使用方法">使用方法</a>
+    · <a href="#安全与隐私">隐私</a>
+    · <a href="../LICENSE">Apache-2.0</a>
   </p>
 </div>
 
