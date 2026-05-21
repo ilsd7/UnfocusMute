@@ -615,6 +615,7 @@ struct AppWindow {
     strings: &'static Strings,
     audio: Option<AudioController>,
     foreground_hook: Option<ForegroundEventHook>,
+    foreground_hook_failure_notified: bool,
     running_processes: Vec<ProcessInfo>,
     all_process_choices: Vec<ProcessChoice>,
     process_choice_indices: Vec<usize>,
@@ -866,6 +867,7 @@ impl AppWindow {
             strings,
             audio: None,
             foreground_hook: None,
+            foreground_hook_failure_notified: false,
             running_processes: Vec::new(),
             all_process_choices: Vec::new(),
             process_choice_indices: Vec::new(),
@@ -2058,8 +2060,32 @@ impl AppWindow {
 
     fn install_foreground_hook(&mut self) {
         match unsafe { ForegroundEventHook::new(self.hwnd) } {
-            Ok(hook) => self.foreground_hook = Some(hook),
-            Err(_) => self.foreground_hook = None,
+            Ok(hook) => {
+                self.foreground_hook = Some(hook);
+                self.foreground_hook_failure_notified = false;
+            }
+            Err(_) => {
+                self.foreground_hook = None;
+                self.notify_foreground_hook_failure_once();
+            }
+        }
+    }
+
+    fn notify_foreground_hook_failure_once(&mut self) {
+        if self.foreground_hook_failure_notified {
+            return;
+        }
+
+        self.foreground_hook_failure_notified = true;
+        let title = to_wide(self.strings.status_issue);
+        let body = to_wide(self.strings.foreground_hook_failed);
+        unsafe {
+            let _ = MessageBoxW(
+                Some(self.hwnd),
+                PCWSTR(body.as_ptr()),
+                PCWSTR(title.as_ptr()),
+                MB_OK | MB_ICONWARNING,
+            );
         }
     }
 

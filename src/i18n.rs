@@ -105,6 +105,7 @@ impl Language {
                 timer_setup_failed: "타이머 설정 실패",
                 tray_icon_unavailable: "트레이 아이콘을 표시할 수 없습니다",
                 open_config_failed: "설정 폴더 열기 실패",
+                foreground_hook_failed: "전면 창 변경 알림을 등록하지 못했습니다.\n자동 음소거는 폴링 방식으로 계속 동작합니다.",
             },
             Language::En => &Strings {
                 app_title: "UnfocusMute",
@@ -163,6 +164,7 @@ impl Language {
                 timer_setup_failed: "Could not set app timer",
                 tray_icon_unavailable: "Could not show tray icon",
                 open_config_failed: "Could not open config folder",
+                foreground_hook_failed: "Could not register foreground window notifications.\nAuto-mute will keep working with polling.",
             },
             Language::Ja => &Strings {
                 app_title: "UnfocusMute",
@@ -221,6 +223,7 @@ impl Language {
                 timer_setup_failed: "タイマーを設定できませんでした",
                 tray_icon_unavailable: "トレイアイコンを表示できません",
                 open_config_failed: "設定フォルダーを開けませんでした",
+                foreground_hook_failed: "前面ウィンドウ変更の通知を登録できませんでした。\n自動ミュートはポーリング方式で動作を続けます。",
             },
             Language::ZhHans => &Strings {
                 app_title: "UnfocusMute",
@@ -279,6 +282,7 @@ impl Language {
                 timer_setup_failed: "无法设置计时器",
                 tray_icon_unavailable: "无法显示托盘图标",
                 open_config_failed: "无法打开配置文件夹",
+                foreground_hook_failed: "无法注册前台窗口变化通知。\n自动静音会继续通过轮询方式工作。",
             },
             Language::Es => &Strings {
                 app_title: "UnfocusMute",
@@ -337,6 +341,7 @@ impl Language {
                 timer_setup_failed: "No se pudo configurar el temporizador",
                 tray_icon_unavailable: "No se pudo mostrar el icono de bandeja",
                 open_config_failed: "No se pudo abrir la carpeta de configuración",
+                foreground_hook_failed: "No se pudieron registrar las notificaciones de ventana en primer plano.\nEl silencio automático seguirá funcionando mediante sondeo.",
             },
             Language::Fr => &Strings {
                 app_title: "UnfocusMute",
@@ -395,6 +400,7 @@ impl Language {
                 timer_setup_failed: "Impossible de configurer le minuteur",
                 tray_icon_unavailable: "Impossible d’afficher l’icône de notification",
                 open_config_failed: "Impossible d’ouvrir le dossier de configuration",
+                foreground_hook_failed: "Impossible d’enregistrer les notifications de fenêtre au premier plan.\nLa mise en sourdine automatique continuera avec l’interrogation périodique.",
             },
             Language::Pt => &Strings {
                 app_title: "UnfocusMute",
@@ -453,6 +459,7 @@ impl Language {
                 timer_setup_failed: "Não foi possível configurar o temporizador",
                 tray_icon_unavailable: "Não foi possível mostrar o ícone da bandeja",
                 open_config_failed: "Não foi possível abrir a pasta de configuração",
+                foreground_hook_failed: "Não foi possível registrar notificações de janela em primeiro plano.\nO silenciamento automático continuará funcionando por verificação periódica.",
             },
             Language::Hi => &Strings {
                 app_title: "UnfocusMute",
@@ -511,6 +518,7 @@ impl Language {
                 timer_setup_failed: "टाइमर सेट नहीं हो सका",
                 tray_icon_unavailable: "ट्रे आइकन नहीं दिखाया जा सका",
                 open_config_failed: "कॉन्फिग फ़ोल्डर नहीं खुल सका",
+                foreground_hook_failed: "Foreground window notifications register नहीं हो सकीं.\nAuto-mute polling से काम करता रहेगा.",
             },
             Language::Ar => &Strings {
                 app_title: "UnfocusMute",
@@ -569,6 +577,7 @@ impl Language {
                 timer_setup_failed: "تعذر إعداد المؤقت",
                 tray_icon_unavailable: "تعذر عرض أيقونة علبة النظام",
                 open_config_failed: "تعذر فتح مجلد الإعدادات",
+                foreground_hook_failed: "تعذر تسجيل إشعارات النافذة الأمامية.\nسيستمر الكتم التلقائي بالعمل عبر الفحص الدوري.",
             },
         }
     }
@@ -632,6 +641,7 @@ pub struct Strings {
     pub timer_setup_failed: &'static str,
     pub tray_icon_unavailable: &'static str,
     pub open_config_failed: &'static str,
+    pub foreground_hook_failed: &'static str,
 }
 
 #[cfg(test)]
@@ -654,7 +664,7 @@ mod tests {
     }
 
     impl Strings {
-        fn all_text(self) -> [&'static str; 56] {
+        fn all_text(self) -> [&'static str; 57] {
             [
                 self.app_title,
                 self.status_running,
@@ -712,6 +722,7 @@ mod tests {
                 self.timer_setup_failed,
                 self.tray_icon_unavailable,
                 self.open_config_failed,
+                self.foreground_hook_failed,
             ]
         }
     }
