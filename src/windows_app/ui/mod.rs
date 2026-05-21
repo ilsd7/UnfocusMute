@@ -21,14 +21,19 @@ use windows::Win32::Foundation::{
     POINT, RECT, WPARAM,
 };
 use windows::Win32::Graphics::Gdi::{
-    BeginPaint, EndPaint, FillRect, FrameRect, HDC, PAINTSTRUCT, ScreenToClient, SetBkColor,
-    SetBkMode, SetTextColor, TRANSPARENT,
+    BeginPaint, DRAW_TEXT_FORMAT, DT_END_ELLIPSIS, DT_LEFT, DT_NOPREFIX, DT_RIGHT, DT_SINGLELINE,
+    DT_VCENTER, DrawTextW, EndPaint, FillRect, FrameRect, HDC, HGDIOBJ, OPAQUE, PAINTSTRUCT,
+    RDW_ALLCHILDREN, RDW_ERASE, RDW_INVALIDATE, RDW_UPDATENOW, RedrawWindow, ScreenToClient,
+    SelectObject, SetBkColor, SetBkMode, SetTextColor, TRANSPARENT,
 };
 use windows::Win32::System::Com::{COINIT_APARTMENTTHREADED, CoInitializeEx, CoUninitialize};
 use windows::Win32::System::LibraryLoader::GetModuleHandleW;
 use windows::Win32::System::Threading::CreateMutexW;
 use windows::Win32::UI::Accessibility::{HWINEVENTHOOK, SetWinEventHook, UnhookWinEvent};
-use windows::Win32::UI::Controls::{CB_SETCUEBANNER, CB_SETMINVISIBLE, EM_SETCUEBANNER};
+use windows::Win32::UI::Controls::{
+    CB_SETCUEBANNER, CB_SETMINVISIBLE, DRAWITEMSTRUCT, EM_SETCUEBANNER, MEASUREITEMSTRUCT,
+    ODS_SELECTED,
+};
 use windows::Win32::UI::Input::KeyboardAndMouse::{EnableWindow, SetFocus};
 use windows::Win32::UI::Shell::{
     NIF_ICON, NIF_MESSAGE, NIF_TIP, NIM_ADD, NIM_DELETE, NIM_MODIFY, NOTIFYICONDATAW,
@@ -41,19 +46,20 @@ use windows::Win32::UI::WindowsAndMessaging::{
     EN_CHANGE, ES_AUTOHSCROLL, EVENT_SYSTEM_FOREGROUND, FindWindowW, GWLP_USERDATA, GetCursorPos,
     GetSystemMetrics, GetWindowRect, HICON, HMENU, ICON_BIG, ICON_SMALL, IDC_ARROW,
     IsWindowVisible, KillTimer, LB_GETCURSEL, LB_RESETCONTENT, LB_SETCURSEL, LBN_DBLCLK,
-    LBN_SELCHANGE, LBS_NOTIFY, LoadCursorW, MB_ICONINFORMATION, MB_ICONWARNING, MB_OK, MF_CHECKED,
-    MF_SEPARATOR, MF_STRING, MSG, MessageBoxW, MoveWindow, PostMessageW, PostQuitMessage,
-    RegisterClassW, RegisterWindowMessageW, SM_CXSCREEN, SM_CXVIRTUALSCREEN, SM_CXVSCROLL,
-    SM_CYSCREEN, SM_CYVIRTUALSCREEN, SM_XVIRTUALSCREEN, SM_YVIRTUALSCREEN, SPI_GETWORKAREA,
-    SW_HIDE, SW_RESTORE, SW_SHOW, SYSTEM_PARAMETERS_INFO_UPDATE_FLAGS, SendMessageW,
-    SetForegroundWindow, SetTimer, SetWindowLongPtrW, ShowWindow, SystemParametersInfoW,
-    TPM_NONOTIFY, TPM_RETURNCMD, TPM_RIGHTBUTTON, TRACK_POPUP_MENU_FLAGS, TrackPopupMenu,
-    TranslateMessage, WINDOW_EX_STYLE, WINDOW_STYLE, WINEVENT_OUTOFCONTEXT, WM_CLOSE, WM_COMMAND,
-    WM_CONTEXTMENU, WM_CREATE, WM_CTLCOLOREDIT, WM_CTLCOLORLISTBOX, WM_CTLCOLORSTATIC, WM_DESTROY,
-    WM_LBUTTONDBLCLK, WM_LBUTTONDOWN, WM_MOVE, WM_NCCREATE, WM_NCDESTROY, WM_PAINT, WM_RBUTTONUP,
-    WM_SETFONT, WM_SETICON, WM_SHOWWINDOW, WM_TIMER, WNDCLASSW, WS_BORDER, WS_CAPTION, WS_CHILD,
-    WS_CLIPCHILDREN, WS_EX_CLIENTEDGE, WS_MINIMIZEBOX, WS_OVERLAPPED, WS_SYSMENU, WS_TABSTOP,
-    WS_VISIBLE, WS_VSCROLL,
+    LBN_SELCHANGE, LBS_HASSTRINGS, LBS_NOINTEGRALHEIGHT, LBS_NOTIFY, LBS_OWNERDRAWFIXED,
+    LoadCursorW, MB_ICONINFORMATION, MB_ICONWARNING, MB_OK, MF_CHECKED, MF_SEPARATOR, MF_STRING,
+    MSG, MessageBoxW, MoveWindow, PostMessageW, PostQuitMessage, RegisterClassW,
+    RegisterWindowMessageW, SM_CXSCREEN, SM_CXVIRTUALSCREEN, SM_CXVSCROLL, SM_CYSCREEN,
+    SM_CYVIRTUALSCREEN, SM_XVIRTUALSCREEN, SM_YVIRTUALSCREEN, SPI_GETWORKAREA, SW_HIDE, SW_RESTORE,
+    SW_SHOW, SYSTEM_PARAMETERS_INFO_UPDATE_FLAGS, SendMessageW, SetForegroundWindow, SetTimer,
+    SetWindowLongPtrW, ShowWindow, SystemParametersInfoW, TPM_NONOTIFY, TPM_RETURNCMD,
+    TPM_RIGHTBUTTON, TRACK_POPUP_MENU_FLAGS, TrackPopupMenu, TranslateMessage, WINDOW_EX_STYLE,
+    WINDOW_STYLE, WINEVENT_OUTOFCONTEXT, WM_CLOSE, WM_COMMAND, WM_CONTEXTMENU, WM_CREATE,
+    WM_CTLCOLOREDIT, WM_CTLCOLORLISTBOX, WM_CTLCOLORSTATIC, WM_DESTROY, WM_DRAWITEM,
+    WM_LBUTTONDBLCLK, WM_LBUTTONDOWN, WM_MEASUREITEM, WM_MOVE, WM_NCCREATE, WM_NCDESTROY, WM_PAINT,
+    WM_RBUTTONUP, WM_SETFONT, WM_SETICON, WM_SETREDRAW, WM_SHOWWINDOW, WM_TIMER, WNDCLASSW,
+    WS_BORDER, WS_CAPTION, WS_CHILD, WS_CLIPCHILDREN, WS_MINIMIZEBOX, WS_OVERLAPPED, WS_SYSMENU,
+    WS_TABSTOP, WS_VISIBLE, WS_VSCROLL,
 };
 use windows::core::{PCWSTR, w};
 
@@ -85,26 +91,48 @@ static FOREGROUND_EVENT_PENDING: AtomicBool = AtomicBool::new(false);
 const MAIN_WINDOW_STYLE: WINDOW_STYLE = WINDOW_STYLE(
     WS_OVERLAPPED.0 | WS_CAPTION.0 | WS_SYSMENU.0 | WS_MINIMIZEBOX.0 | WS_CLIPCHILDREN.0,
 );
+const HEADER_LEFT_X: i32 = 36;
+const HEADER_RIGHT_MARGIN: i32 = 36;
+const HEADER_CONTENT_RIGHT: i32 = WINDOW_WIDTH - HEADER_RIGHT_MARGIN;
+const HEADER_RIGHT_WIDTH: i32 = 320;
+const HEADER_RIGHT_X: i32 = HEADER_CONTENT_RIGHT - HEADER_RIGHT_WIDTH;
+const HEADER_TITLE_WIDTH: i32 = HEADER_RIGHT_X - HEADER_LEFT_X - 24;
+const HEADER_FULL_WIDTH: i32 = HEADER_CONTENT_RIGHT - HEADER_LEFT_X;
+const HEADER_TITLE_Y: i32 = 24;
+const HEADER_SUBTITLE_Y: i32 = 56;
+const HEADER_DETAIL_Y: i32 = 82;
 const RESTORE_CHECK_TEXT_PADDING: i32 = 28;
 const RESTORE_CHECK_HEIGHT: i32 = 26;
 const RESTORE_CHECK_TALL_HEIGHT: i32 = 44;
-const RESTORE_CHECK_Y: i32 = 490;
-const RESTORE_CHECK_TALL_Y: i32 = 482;
-const PROCESS_PICKER_HINT_Y: i32 = 154;
-const PROCESS_PICKER_COMBO_Y: i32 = 190;
-const PROCESS_PICKER_COMBO_HEIGHT: i32 = 34;
-const PROCESS_PICKER_BUTTON_Y_OFFSET: i32 = -2;
-const PROCESS_PICKER_BUTTON_HEIGHT: i32 = 30;
-const SETTINGS_LANGUAGE_BUTTON_Y: i32 = 398;
+const TARGET_PANEL_TOP: i32 = 112;
+const TARGET_PANEL_BOTTOM: i32 = 432;
+const TARGET_LIST_Y: i32 = TARGET_PANEL_TOP + 4;
+const TARGET_LIST_HEIGHT: i32 = 270;
+const REMOVE_BUTTON_Y: i32 = 392;
+const RESTORE_CHECK_Y: i32 = 682;
+const RESTORE_CHECK_TALL_Y: i32 = 672;
+const TARGET_ROW_HEIGHT: i32 = 36;
+const PROCESS_PICKER_HINT_Y: i32 = 452;
+const PROCESS_PICKER_COMBO_Y: i32 = 480;
+const PROCESS_PICKER_COMBO_HEIGHT: i32 = 32;
+const PROCESS_PICKER_BUTTON_Y_OFFSET: i32 = -4;
+const PROCESS_PICKER_BUTTON_HEIGHT: i32 = 32;
+const MANUAL_PROCESS_ROW_Y: i32 = 532;
+const MANUAL_PROCESS_EDIT_Y: i32 = MANUAL_PROCESS_ROW_Y + 4;
+const MANUAL_PROCESS_EDIT_WIDTH: i32 = 240;
+const MANUAL_PROCESS_LABEL_WIDTH: i32 = 260;
+const MANUAL_PROCESS_LABEL_GAP: i32 = 20;
+const SETTINGS_PANEL_TOP: i32 = 596;
+const SETTINGS_PANEL_BOTTOM: i32 = 730;
+const SETTINGS_LANGUAGE_BUTTON_Y: i32 = 618;
 const SETTINGS_LANGUAGE_BUTTON_HEIGHT: i32 = 30;
-const START_MINIMIZED_CHECK_Y: i32 = 430;
+const START_MINIMIZED_CHECK_Y: i32 = 618;
+const LAUNCH_STARTUP_CHECK_Y: i32 = 652;
+const OPEN_CONFIG_BUTTON_Y: i32 = 678;
+const FOOTER_BUTTON_Y: i32 = 754;
 const LB_ITEMFROMPOINT_MESSAGE: u32 = 0x01A9;
 const LB_ITEMFROMPOINT_OUTSIDE_MASK: isize = 0x0001_0000;
 const PID_DISPLAY_DECORATION_UTF16_UNITS: usize = " (PID )".len();
-const _: () = assert!(
-    SETTINGS_LANGUAGE_BUTTON_Y + SETTINGS_LANGUAGE_BUTTON_HEIGHT <= START_MINIMIZED_CHECK_Y
-);
-
 pub fn run() -> Result<()> {
     let _com = unsafe { ComApartment::initialize()? };
     unsafe { run_window() }
@@ -940,10 +968,10 @@ impl AppWindow {
                 "",
                 child,
                 WINDOW_EX_STYLE(0),
-                36,
-                34,
-                260,
-                26,
+                HEADER_LEFT_X,
+                HEADER_TITLE_Y,
+                HEADER_TITLE_WIDTH,
+                28,
                 0,
             )?
         };
@@ -953,11 +981,11 @@ impl AppWindow {
                 instance,
                 w!("STATIC"),
                 "",
-                child | SS_ENDELLIPSIS_STYLE,
+                child | SS_CENTERIMAGE_STYLE | SS_ENDELLIPSIS_STYLE,
                 WINDOW_EX_STYLE(0),
-                36,
-                64,
-                540,
+                HEADER_LEFT_X,
+                HEADER_SUBTITLE_Y,
+                HEADER_FULL_WIDTH,
                 24,
                 0,
             )?
@@ -970,9 +998,9 @@ impl AppWindow {
                 "",
                 child | SS_RIGHT_STYLE | SS_ENDELLIPSIS_STYLE,
                 WINDOW_EX_STYLE(0),
-                600,
-                34,
-                328,
+                HEADER_RIGHT_X,
+                HEADER_TITLE_Y,
+                HEADER_RIGHT_WIDTH,
                 24,
                 0,
             )?
@@ -985,9 +1013,9 @@ impl AppWindow {
                 "",
                 child | SS_RIGHT_STYLE | SS_ENDELLIPSIS_STYLE,
                 WINDOW_EX_STYLE(0),
-                600,
-                64,
-                328,
+                HEADER_RIGHT_X,
+                HEADER_DETAIL_Y,
+                HEADER_RIGHT_WIDTH,
                 24,
                 0,
             )?
@@ -1001,9 +1029,9 @@ impl AppWindow {
                 "",
                 child | SS_ENDELLIPSIS_STYLE,
                 WINDOW_EX_STYLE(0),
-                36,
-                150,
-                220,
+                44,
+                TARGET_LIST_Y,
+                260,
                 24,
                 0,
             )?
@@ -1014,17 +1042,32 @@ impl AppWindow {
                 instance,
                 w!("LISTBOX"),
                 "",
-                child | WS_BORDER | WS_VSCROLL | WINDOW_STYLE(LBS_NOTIFY as u32),
-                WS_EX_CLIENTEDGE,
-                36,
-                184,
-                392,
-                280,
+                child
+                    | WS_VSCROLL
+                    | WINDOW_STYLE(
+                        (LBS_NOTIFY | LBS_OWNERDRAWFIXED | LBS_HASSTRINGS | LBS_NOINTEGRALHEIGHT)
+                            as u32,
+                    ),
+                WINDOW_EX_STYLE(0),
+                44,
+                TARGET_LIST_Y,
+                648,
+                TARGET_LIST_HEIGHT,
                 ID_TARGETS,
             )?
         };
-        self.controls.remove_button =
-            unsafe { create_button(self.hwnd, instance, "", 36, 480, 150, 34, ID_REMOVE)? };
+        self.controls.remove_button = unsafe {
+            create_button(
+                self.hwnd,
+                instance,
+                "",
+                590,
+                REMOVE_BUTTON_Y,
+                102,
+                32,
+                ID_REMOVE,
+            )?
+        };
 
         self.controls.add_label = unsafe {
             create_control(
@@ -1034,8 +1077,8 @@ impl AppWindow {
                 "",
                 child | SS_ENDELLIPSIS_STYLE,
                 WINDOW_EX_STYLE(0),
-                484,
-                150,
+                36,
+                336,
                 220,
                 24,
                 0,
@@ -1049,8 +1092,8 @@ impl AppWindow {
                 "",
                 child | SS_ENDELLIPSIS_STYLE,
                 WINDOW_EX_STYLE(0),
-                484,
-                184,
+                36,
+                336,
                 240,
                 22,
                 0,
@@ -1064,9 +1107,9 @@ impl AppWindow {
                 "",
                 child | SS_ENDELLIPSIS_STYLE,
                 WINDOW_EX_STYLE(0),
-                484,
+                36,
                 PROCESS_PICKER_HINT_Y,
-                440,
+                520,
                 22,
                 0,
             )?
@@ -1078,10 +1121,10 @@ impl AppWindow {
                 w!("COMBOBOX"),
                 "",
                 tab_child | WS_VSCROLL | WINDOW_STYLE(CBS_DROPDOWN as u32),
-                WS_EX_CLIENTEDGE,
-                484,
+                WINDOW_EX_STYLE(0),
+                36,
                 PROCESS_PICKER_COMBO_Y,
-                340,
+                320,
                 PROCESS_PICKER_COMBO_HEIGHT,
                 ID_RUNNING,
             )?
@@ -1091,9 +1134,9 @@ impl AppWindow {
                 self.hwnd,
                 instance,
                 "",
-                836,
+                478,
                 PROCESS_PICKER_COMBO_Y + PROCESS_PICKER_BUTTON_Y_OFFSET,
-                108,
+                122,
                 PROCESS_PICKER_BUTTON_HEIGHT,
                 ID_REFRESH,
             )?
@@ -1103,10 +1146,10 @@ impl AppWindow {
                 self.hwnd,
                 instance,
                 "",
-                714,
-                274,
-                110,
-                36,
+                612,
+                PROCESS_PICKER_COMBO_Y + PROCESS_PICKER_BUTTON_Y_OFFSET,
+                122,
+                PROCESS_PICKER_BUTTON_HEIGHT,
                 ID_TOGGLE_PROCESS_DETAILS,
             )?
         };
@@ -1115,15 +1158,24 @@ impl AppWindow {
                 self.hwnd,
                 instance,
                 "?",
-                894,
-                274,
+                742,
+                PROCESS_PICKER_COMBO_Y + PROCESS_PICKER_BUTTON_Y_OFFSET,
                 34,
-                36,
+                PROCESS_PICKER_BUTTON_HEIGHT,
                 ID_PID_DETAILS_HELP,
             )?
         };
         self.controls.add_selected_button = unsafe {
-            create_primary_button(self.hwnd, instance, "", 484, 274, 220, 36, ID_ADD_SELECTED)?
+            create_primary_button(
+                self.hwnd,
+                instance,
+                "",
+                368,
+                PROCESS_PICKER_COMBO_Y + PROCESS_PICKER_BUTTON_Y_OFFSET,
+                98,
+                PROCESS_PICKER_BUTTON_HEIGHT,
+                ID_ADD_SELECTED,
+            )?
         };
         self.controls.manual_label = unsafe {
             create_control(
@@ -1131,12 +1183,12 @@ impl AppWindow {
                 instance,
                 w!("STATIC"),
                 "",
-                child | SS_ENDELLIPSIS_STYLE,
+                child | SS_RIGHT_STYLE | SS_CENTERIMAGE_STYLE | SS_ENDELLIPSIS_STYLE,
                 WINDOW_EX_STYLE(0),
-                484,
-                330,
-                100,
-                22,
+                104,
+                MANUAL_PROCESS_ROW_Y,
+                MANUAL_PROCESS_LABEL_WIDTH,
+                PROCESS_PICKER_BUTTON_HEIGHT,
                 0,
             )?
         };
@@ -1147,16 +1199,26 @@ impl AppWindow {
                 w!("EDIT"),
                 "",
                 tab_child | WS_BORDER | WINDOW_STYLE(ES_AUTOHSCROLL as u32),
-                WS_EX_CLIENTEDGE,
-                594,
-                326,
-                230,
+                WINDOW_EX_STYLE(0),
+                302,
+                MANUAL_PROCESS_EDIT_Y,
+                MANUAL_PROCESS_EDIT_WIDTH,
                 24,
                 ID_MANUAL,
             )?
         };
-        self.controls.add_manual_button =
-            unsafe { create_button(self.hwnd, instance, "", 836, 322, 108, 34, ID_ADD_MANUAL)? };
+        self.controls.add_manual_button = unsafe {
+            create_button(
+                self.hwnd,
+                instance,
+                "",
+                570,
+                MANUAL_PROCESS_ROW_Y,
+                124,
+                32,
+                ID_ADD_MANUAL,
+            )?
+        };
 
         self.controls.settings_label = unsafe {
             create_control(
@@ -1166,8 +1228,8 @@ impl AppWindow {
                 "",
                 child | SS_ENDELLIPSIS_STYLE,
                 WINDOW_EX_STYLE(0),
-                484,
-                402,
+                44,
+                SETTINGS_PANEL_TOP + 8,
                 180,
                 24,
                 0,
@@ -1178,9 +1240,9 @@ impl AppWindow {
                 self.hwnd,
                 instance,
                 "",
-                484,
-                430,
-                260,
+                44,
+                START_MINIMIZED_CHECK_Y,
+                360,
                 26,
                 ID_START_MINIMIZED,
             )?
@@ -1190,15 +1252,24 @@ impl AppWindow {
                 self.hwnd,
                 instance,
                 "",
-                484,
-                456,
-                440,
+                44,
+                LAUNCH_STARTUP_CHECK_Y,
+                500,
                 26,
                 ID_LAUNCH_STARTUP,
             )?
         };
         self.controls.restore_exit_check = unsafe {
-            create_multiline_checkbox(self.hwnd, instance, "", 484, 490, 230, 26, ID_RESTORE_EXIT)?
+            create_multiline_checkbox(
+                self.hwnd,
+                instance,
+                "",
+                44,
+                RESTORE_CHECK_Y,
+                500,
+                26,
+                ID_RESTORE_EXIT,
+            )?
         };
         self.controls.language_label = unsafe {
             create_control(
@@ -1208,9 +1279,9 @@ impl AppWindow {
                 "",
                 child | SS_RIGHT_STYLE | SS_CENTERIMAGE_STYLE | SS_ENDELLIPSIS_STYLE,
                 WINDOW_EX_STYLE(0),
-                726,
+                542,
                 SETTINGS_LANGUAGE_BUTTON_Y,
-                64,
+                42,
                 SETTINGS_LANGUAGE_BUTTON_HEIGHT,
                 0,
             )?
@@ -1220,22 +1291,62 @@ impl AppWindow {
                 self.hwnd,
                 instance,
                 "",
-                798,
+                584,
                 SETTINGS_LANGUAGE_BUTTON_Y,
-                130,
+                120,
                 SETTINGS_LANGUAGE_BUTTON_HEIGHT,
                 ID_LANGUAGE,
             )?
         };
-        self.controls.open_config_button =
-            unsafe { create_button(self.hwnd, instance, "", 724, 484, 220, 34, ID_OPEN_CONFIG)? };
+        self.controls.open_config_button = unsafe {
+            create_button(
+                self.hwnd,
+                instance,
+                "",
+                540,
+                OPEN_CONFIG_BUTTON_Y,
+                164,
+                32,
+                ID_OPEN_CONFIG,
+            )?
+        };
 
-        self.controls.pause_button =
-            unsafe { create_button(self.hwnd, instance, "", 640, 552, 132, 38, ID_PAUSE)? };
-        self.controls.hide_button =
-            unsafe { create_button(self.hwnd, instance, "", 788, 552, 140, 38, ID_HIDE)? };
-        self.controls.quit_button =
-            unsafe { create_button(self.hwnd, instance, "", 492, 552, 132, 38, ID_QUIT)? };
+        self.controls.pause_button = unsafe {
+            create_button(
+                self.hwnd,
+                instance,
+                "",
+                436,
+                FOOTER_BUTTON_Y,
+                132,
+                36,
+                ID_PAUSE,
+            )?
+        };
+        self.controls.hide_button = unsafe {
+            create_button(
+                self.hwnd,
+                instance,
+                "",
+                584,
+                FOOTER_BUTTON_Y,
+                118,
+                36,
+                ID_HIDE,
+            )?
+        };
+        self.controls.quit_button = unsafe {
+            create_button(
+                self.hwnd,
+                instance,
+                "",
+                308,
+                FOOTER_BUTTON_Y,
+                116,
+                36,
+                ID_QUIT,
+            )?
+        };
 
         unsafe {
             SendMessageW(
@@ -1251,12 +1362,10 @@ impl AppWindow {
     fn refresh_text(&mut self) {
         self.strings = self.config.language.strings();
         if self.theme.needs_font_language(self.config.language) {
-            let font = AppTheme::font_for_language(self.config.language);
-            self.apply_font_to_controls(&font);
-            self.theme
-                .replace_font_for_language(self.config.language, font);
-            self.font_applied = true;
-        } else if !self.font_applied {
+            self.theme.replace_fonts_for_language(self.config.language);
+            self.font_applied = false;
+        }
+        if !self.font_applied {
             self.apply_default_font();
             self.font_applied = true;
         }
@@ -1264,12 +1373,9 @@ impl AppWindow {
             set_text(self.hwnd, self.strings.app_title);
             set_text(self.controls.title_label, self.strings.app_title);
             set_text(self.controls.subtitle_label, self.strings.app_subtitle);
-            set_text(
-                self.controls.targets_label,
-                self.strings.registered_processes,
-            );
+            set_text(self.controls.targets_label, "");
             set_text(self.controls.add_label, "");
-            set_text(self.controls.settings_label, self.strings.settings_title);
+            set_text(self.controls.settings_label, "");
             set_text(self.controls.running_label, "");
             set_text(self.controls.manual_label, self.strings.manual_process);
             set_text(self.controls.add_selected_button, self.strings.add_selected);
@@ -1315,6 +1421,8 @@ impl AppWindow {
             );
             let _ = ShowWindow(self.controls.add_label, SW_HIDE);
             let _ = ShowWindow(self.controls.running_label, SW_HIDE);
+            let _ = ShowWindow(self.controls.targets_label, SW_HIDE);
+            let _ = ShowWindow(self.controls.settings_label, SW_HIDE);
         }
         self.refresh_target_list();
         self.refresh_process_details_ui();
@@ -1351,57 +1459,145 @@ impl AppWindow {
         } else {
             self.strings.process_search_hint
         };
-        let details_visibility = if self.show_process_details {
-            SW_SHOW
-        } else {
-            SW_HIDE
-        };
+        let show_help = self.show_process_details;
 
         unsafe {
+            if !show_help {
+                let _ = ShowWindow(self.controls.pid_details_help_button, SW_HIDE);
+            }
+            self.set_process_picker_redraw(false);
             set_text(self.controls.running_hint, hint_text);
             set_text(
                 self.controls.toggle_process_details_button,
                 detail_button_text,
             );
-            let _ = ShowWindow(self.controls.running_hint, SW_SHOW);
-            let _ = ShowWindow(self.controls.pid_details_help_button, details_visibility);
         }
-        self.layout_localized_controls();
+        self.layout_localized_controls_with_pid_help(self.show_process_details);
+        unsafe {
+            let _ = ShowWindow(self.controls.running_hint, SW_SHOW);
+            if show_help {
+                let _ = ShowWindow(self.controls.pid_details_help_button, SW_SHOW);
+            }
+            self.set_process_picker_redraw(true);
+        }
+        self.redraw_process_picker();
     }
 
-    fn layout_localized_controls(&self) {
-        let left_panel_left = 36;
-        let content_right = WINDOW_WIDTH - 52;
-        let right_panel_left = 484;
+    unsafe fn set_process_picker_redraw(&self, enabled: bool) {
+        let value = if enabled { 1 } else { 0 };
+        for hwnd in [
+            self.controls.running_hint,
+            self.controls.running_combo,
+            self.controls.add_selected_button,
+            self.controls.refresh_button,
+            self.controls.toggle_process_details_button,
+            self.controls.manual_label,
+            self.controls.manual_edit,
+            self.controls.add_manual_button,
+        ] {
+            unsafe {
+                SendMessageW(hwnd, WM_SETREDRAW, Some(WPARAM(value)), None);
+            }
+        }
+    }
+
+    fn redraw_process_picker(&self) {
+        let rect = RECT {
+            left: 0,
+            top: PROCESS_PICKER_HINT_Y - 8,
+            right: WINDOW_WIDTH,
+            bottom: MANUAL_PROCESS_ROW_Y + PROCESS_PICKER_BUTTON_HEIGHT + 12,
+        };
+        unsafe {
+            let _ = RedrawWindow(
+                Some(self.hwnd),
+                Some(&rect),
+                None,
+                RDW_INVALIDATE | RDW_ERASE | RDW_ALLCHILDREN | RDW_UPDATENOW,
+            );
+        }
+    }
+
+    fn layout_localized_controls_with_pid_help(&self, reserve_pid_help: bool) {
+        let content_left = 36;
+        let panel_left = 44;
+        let content_right = WINDOW_WIDTH - 36;
         let gap = 12;
         let combo_y = PROCESS_PICKER_COMBO_Y;
-        let button_y = combo_y + 38;
-        let manual_button_y = button_y + 68;
-        let manual_edit_y = manual_button_y + 4;
-        let manual_label_y = manual_button_y + 8;
-        let settings_checkbox_width = content_right - right_panel_left;
+        let button_y = combo_y + PROCESS_PICKER_BUTTON_Y_OFFSET;
+        let manual_button_y = MANUAL_PROCESS_ROW_Y;
+        let manual_edit_y = MANUAL_PROCESS_EDIT_Y;
+        let manual_label_y = MANUAL_PROCESS_ROW_Y;
 
-        let remove_width = self.button_width(self.strings.remove_selected, 130, 220);
+        let remove_width = self.button_width(self.strings.remove_selected, 92, 170);
         let _ = unsafe {
             MoveWindow(
                 self.controls.remove_button,
-                left_panel_left,
-                480,
+                content_right - remove_width - 6,
+                REMOVE_BUTTON_Y,
                 remove_width,
-                34,
+                32,
                 true,
             )
         };
 
-        let refresh_width = self.button_width(self.strings.refresh, 108, 150);
-        let refresh_x = content_right - refresh_width;
+        let add_selected_width = self.button_width(self.strings.add_selected, 90, 124);
+        let refresh_width = self.button_width(self.strings.refresh, 116, 162);
+        let details_text = if self.show_process_details {
+            self.strings.hide_pid_details
+        } else {
+            self.strings.show_pid_details
+        };
+        let details_width = self.button_width(details_text, 108, 154);
+        let help_width = 34;
+        let help_gap = 8;
+        let help_slot = if reserve_pid_help {
+            help_width + help_gap
+        } else {
+            0
+        };
+        let button_group_width =
+            add_selected_width + refresh_width + details_width + help_slot + gap * 3;
+        let combo_width = (content_right - content_left - button_group_width).clamp(116, 292);
+        let add_selected_x = content_left + combo_width + gap;
+        let refresh_x = add_selected_x + add_selected_width + gap;
+        let details_x = refresh_x + refresh_width + gap;
+        let (help_x, help_control_width, help_control_height) = if reserve_pid_help {
+            (
+                details_x + details_width + help_gap,
+                help_width,
+                PROCESS_PICKER_BUTTON_HEIGHT,
+            )
+        } else {
+            (content_right, 0, 0)
+        };
         let _ = unsafe {
             MoveWindow(
                 self.controls.running_hint,
-                right_panel_left,
+                content_left,
                 PROCESS_PICKER_HINT_Y,
-                content_right - right_panel_left,
+                content_right - content_left,
                 22,
+                true,
+            )
+        };
+        let _ = unsafe {
+            MoveWindow(
+                self.controls.running_combo,
+                content_left,
+                combo_y,
+                combo_width,
+                PROCESS_PICKER_COMBO_HEIGHT,
+                true,
+            )
+        };
+        let _ = unsafe {
+            MoveWindow(
+                self.controls.add_selected_button,
+                add_selected_x,
+                button_y,
+                add_selected_width,
+                PROCESS_PICKER_BUTTON_HEIGHT,
                 true,
             )
         };
@@ -1409,7 +1605,7 @@ impl AppWindow {
             MoveWindow(
                 self.controls.refresh_button,
                 refresh_x,
-                combo_y + PROCESS_PICKER_BUTTON_Y_OFFSET,
+                button_y,
                 refresh_width,
                 PROCESS_PICKER_BUTTON_HEIGHT,
                 true,
@@ -1417,65 +1613,41 @@ impl AppWindow {
         };
         let _ = unsafe {
             MoveWindow(
-                self.controls.running_combo,
-                right_panel_left,
-                combo_y,
-                refresh_x - right_panel_left - gap,
-                PROCESS_PICKER_COMBO_HEIGHT,
-                true,
-            )
-        };
-
-        let add_selected_width = self.button_width(self.strings.add_selected, 120, 220);
-        let details_text = if self.show_process_details {
-            self.strings.hide_pid_details
-        } else {
-            self.strings.show_pid_details
-        };
-        let details_width = self.button_width(details_text, 110, 170);
-        let _ = unsafe {
-            MoveWindow(
-                self.controls.add_selected_button,
-                right_panel_left,
-                button_y,
-                add_selected_width,
-                36,
-                true,
-            )
-        };
-        let details_x = right_panel_left + add_selected_width + gap;
-        let _ = unsafe {
-            MoveWindow(
                 self.controls.toggle_process_details_button,
                 details_x,
                 button_y,
                 details_width,
-                36,
+                PROCESS_PICKER_BUTTON_HEIGHT,
                 true,
             )
         };
         let _ = unsafe {
             MoveWindow(
                 self.controls.pid_details_help_button,
-                details_x + details_width + 8,
+                help_x,
                 button_y,
-                34,
-                36,
+                help_control_width,
+                help_control_height,
                 true,
             )
         };
 
-        let manual_label_width = self.label_width(self.strings.manual_process, 100, 130);
-        let manual_edit_x = right_panel_left + manual_label_width + gap;
-        let add_manual_width = self.button_width(self.strings.add_manual, 108, 200);
+        let add_manual_width = self.button_width(self.strings.add_manual, 118, 150);
         let add_manual_x = content_right - add_manual_width;
+        let manual_edit_width =
+            MANUAL_PROCESS_EDIT_WIDTH.min(add_manual_x - content_left - gap - 120);
+        let manual_edit_x = add_manual_x - gap - manual_edit_width;
+        let manual_label_width = (self.text_width(self.strings.manual_process) + 28)
+            .clamp(88, MANUAL_PROCESS_LABEL_WIDTH);
+        let manual_label_x =
+            (manual_edit_x - manual_label_width - MANUAL_PROCESS_LABEL_GAP).max(content_left);
         let _ = unsafe {
             MoveWindow(
                 self.controls.manual_label,
-                right_panel_left,
+                manual_label_x,
                 manual_label_y,
                 manual_label_width,
-                22,
+                PROCESS_PICKER_BUTTON_HEIGHT,
                 true,
             )
         };
@@ -1484,7 +1656,7 @@ impl AppWindow {
                 self.controls.manual_edit,
                 manual_edit_x,
                 manual_edit_y,
-                add_manual_x - manual_edit_x - gap,
+                manual_edit_width,
                 24,
                 true,
             )
@@ -1495,20 +1667,48 @@ impl AppWindow {
                 add_manual_x,
                 manual_button_y,
                 add_manual_width,
-                34,
+                PROCESS_PICKER_BUTTON_HEIGHT,
                 true,
             )
         };
 
-        let open_config_width = self.button_width(self.strings.open_config, 150, 250);
+        let language_width =
+            self.button_width(language_button_text(self.config.language), 112, 160);
+        let language_x = content_right - language_width;
+        let language_label_width = self.label_width(self.strings.language, 72, 128);
+        let language_label_x = language_x - language_label_width - 8;
+        let _ = unsafe {
+            MoveWindow(
+                self.controls.language_label,
+                language_label_x,
+                SETTINGS_LANGUAGE_BUTTON_Y,
+                language_label_width,
+                SETTINGS_LANGUAGE_BUTTON_HEIGHT,
+                true,
+            )
+        };
+        let _ = unsafe {
+            MoveWindow(
+                self.controls.language_button,
+                language_x,
+                SETTINGS_LANGUAGE_BUTTON_Y,
+                language_width,
+                SETTINGS_LANGUAGE_BUTTON_HEIGHT,
+                true,
+            )
+        };
+
+        let open_config_width = self.button_width(self.strings.open_config, 150, 230);
         let open_config_x = content_right - open_config_width;
-        let restore_width = open_config_x - right_panel_left - gap;
+        let right_column_left = language_label_x.min(open_config_x);
+        let settings_checkbox_width = right_column_left - panel_left - gap;
+        let restore_width = settings_checkbox_width;
         let (restore_y, restore_height) =
             restore_checkbox_layout(self.text_width(self.strings.restore_on_exit), restore_width);
         let _ = unsafe {
             MoveWindow(
                 self.controls.start_minimized_check,
-                right_panel_left,
+                panel_left,
                 START_MINIMIZED_CHECK_Y,
                 settings_checkbox_width,
                 26,
@@ -1518,8 +1718,8 @@ impl AppWindow {
         let _ = unsafe {
             MoveWindow(
                 self.controls.launch_startup_check,
-                right_panel_left,
-                456,
+                panel_left,
+                LAUNCH_STARTUP_CHECK_Y,
                 settings_checkbox_width,
                 26,
                 true,
@@ -1528,7 +1728,7 @@ impl AppWindow {
         let _ = unsafe {
             MoveWindow(
                 self.controls.restore_exit_check,
-                right_panel_left,
+                panel_left,
                 restore_y,
                 restore_width,
                 restore_height,
@@ -1539,9 +1739,9 @@ impl AppWindow {
             MoveWindow(
                 self.controls.open_config_button,
                 open_config_x,
-                484,
+                OPEN_CONFIG_BUTTON_Y,
                 open_config_width,
-                34,
+                32,
                 true,
             )
         };
@@ -1549,28 +1749,89 @@ impl AppWindow {
     }
 
     fn layout_footer_buttons(&self, content_right: i32) {
-        let content_left = 36;
         let gap = 12;
-        let quit_width = self.button_width(self.strings.quit, 120, 180);
+        let quit_width = self.button_width(self.strings.quit, 112, 180);
         let pause_width = self.button_width(self.pause_button_text(), 120, 220);
-        let hide_width = self.button_width(self.strings.hide, 132, 320);
+        let hide_width = self.button_width(self.strings.hide, 118, 220);
         let total_width = quit_width + pause_width + hide_width + gap * 2;
-        let x = (content_right - total_width).max(content_left);
+        let quit_x = content_right - total_width;
 
-        let _ = unsafe { MoveWindow(self.controls.quit_button, x, 552, quit_width, 38, true) };
-        let pause_x = x + quit_width + gap;
+        let _ = unsafe {
+            MoveWindow(
+                self.controls.quit_button,
+                quit_x,
+                FOOTER_BUTTON_Y,
+                quit_width,
+                36,
+                true,
+            )
+        };
+        let pause_x = quit_x + quit_width + gap;
         let _ = unsafe {
             MoveWindow(
                 self.controls.pause_button,
                 pause_x,
-                552,
+                FOOTER_BUTTON_Y,
                 pause_width,
-                38,
+                36,
                 true,
             )
         };
         let hide_x = pause_x + pause_width + gap;
-        let _ = unsafe { MoveWindow(self.controls.hide_button, hide_x, 552, hide_width, 38, true) };
+        let _ = unsafe {
+            MoveWindow(
+                self.controls.hide_button,
+                hide_x,
+                FOOTER_BUTTON_Y,
+                hide_width,
+                36,
+                true,
+            )
+        };
+    }
+
+    fn layout_header(&self) {
+        let _ = unsafe {
+            MoveWindow(
+                self.controls.title_label,
+                HEADER_LEFT_X,
+                HEADER_TITLE_Y,
+                HEADER_TITLE_WIDTH,
+                28,
+                true,
+            )
+        };
+        let _ = unsafe {
+            MoveWindow(
+                self.controls.status,
+                HEADER_RIGHT_X,
+                HEADER_TITLE_Y,
+                HEADER_RIGHT_WIDTH,
+                24,
+                true,
+            )
+        };
+
+        let _ = unsafe {
+            MoveWindow(
+                self.controls.subtitle_label,
+                HEADER_LEFT_X,
+                HEADER_SUBTITLE_Y,
+                HEADER_FULL_WIDTH,
+                24,
+                true,
+            )
+        };
+        let _ = unsafe {
+            MoveWindow(
+                self.controls.status_detail,
+                HEADER_RIGHT_X,
+                HEADER_DETAIL_Y,
+                HEADER_RIGHT_WIDTH,
+                24,
+                true,
+            )
+        };
     }
 
     fn button_width(&self, text: &str, min_width: i32, max_width: i32) -> i32 {
@@ -1858,9 +2119,13 @@ impl AppWindow {
             push_decimal_usize(&mut self.status_detail_text, snapshot.muted_count);
         }
         unsafe {
-            set_text(self.controls.status, status);
+            self.display_text_buffer.clear();
+            self.display_text_buffer.push_str("● ");
+            self.display_text_buffer.push_str(status);
+            set_text(self.controls.status, &self.display_text_buffer);
             set_text(self.controls.status_detail, &self.status_detail_text);
         }
+        self.layout_header();
         self.last_status = Some(snapshot);
     }
 
@@ -2390,6 +2655,7 @@ impl AppWindow {
 
     fn toggle_process_details(&mut self) {
         self.show_process_details = !self.show_process_details;
+        self.release_running_process_focus();
         if !self.processes_loaded
             || self.last_process_refresh.elapsed() >= PROCESS_REFRESH_STALE_INTERVAL
         {
@@ -2774,7 +3040,7 @@ impl AppWindow {
     fn toggle_pause(&mut self) {
         self.paused = !self.paused;
         self.update_pause_button_text();
-        self.layout_footer_buttons(WINDOW_WIDTH - 52);
+        self.layout_footer_buttons(WINDOW_WIDTH - 36);
         if self.paused {
             self.restore_managed_mutes();
             self.foreground_hook = None;
@@ -3069,50 +3335,203 @@ impl AppWindow {
         }
     }
 
-    fn control_color(&self, wparam: WPARAM, message: u32) -> LRESULT {
+    fn control_color(&self, wparam: WPARAM, lparam: LPARAM, message: u32) -> LRESULT {
         let hdc = HDC(wparam.0 as *mut c_void);
+        let child = HWND(lparam.0 as *mut c_void);
         unsafe {
-            let _ = SetBkMode(hdc, TRANSPARENT);
-            let _ = SetTextColor(hdc, TEXT_COLOR);
             match message {
                 WM_CTLCOLOREDIT | WM_CTLCOLORLISTBOX => {
+                    let _ = SetBkMode(hdc, TRANSPARENT);
+                    let _ = SetTextColor(hdc, TEXT_COLOR);
                     let _ = SetBkColor(hdc, PANEL_COLOR);
                     LRESULT(self.theme.panel_brush.handle().0 as isize)
                 }
                 _ => {
-                    let _ = SetTextColor(hdc, SUBTLE_TEXT_COLOR);
-                    LRESULT(self.theme.panel_brush.handle().0 as isize)
+                    let color = if child == self.controls.status {
+                        if self.paused {
+                            WARNING_COLOR
+                        } else {
+                            ACCENT_COLOR
+                        }
+                    } else if child == self.controls.title_label
+                        || child == self.controls.targets_label
+                        || child == self.controls.settings_label
+                    {
+                        TEXT_COLOR
+                    } else {
+                        SUBTLE_TEXT_COLOR
+                    };
+                    let _ = SetTextColor(hdc, color);
+                    let (brush, background_color) = if child == self.controls.title_label
+                        || child == self.controls.subtitle_label
+                        || child == self.controls.status
+                        || child == self.controls.status_detail
+                        || child == self.controls.running_hint
+                        || child == self.controls.manual_label
+                    {
+                        (self.theme.page_brush.handle(), PAGE_COLOR)
+                    } else {
+                        (self.theme.panel_brush.handle(), PANEL_COLOR)
+                    };
+                    let _ = SetBkMode(hdc, OPAQUE);
+                    let _ = SetBkColor(hdc, background_color);
+                    LRESULT(brush.0 as isize)
                 }
             }
         }
+    }
+
+    fn measure_item(&self, lparam: LPARAM) -> bool {
+        if lparam.0 == 0 {
+            return false;
+        }
+
+        let measure = unsafe { &mut *(lparam.0 as *mut MEASUREITEMSTRUCT) };
+        if measure.CtlID != ID_TARGETS as u32 {
+            return false;
+        }
+
+        measure.itemHeight = TARGET_ROW_HEIGHT as u32;
+        true
+    }
+
+    fn draw_item(&self, lparam: LPARAM) -> bool {
+        if lparam.0 == 0 {
+            return false;
+        }
+
+        let draw = unsafe { &*(lparam.0 as *const DRAWITEMSTRUCT) };
+        if draw.CtlID != ID_TARGETS as u32 {
+            return false;
+        }
+        if draw.itemID == u32::MAX {
+            return true;
+        }
+
+        let Some(target) = self.config.targets.get(draw.itemID as usize) else {
+            return true;
+        };
+        let mut identity = String::new();
+        target.display_identity_into(&mut identity);
+        let note = target.note.as_deref().unwrap_or_default();
+        let status_text = if target.enabled {
+            self.strings.target_ready
+        } else {
+            self.strings.target_excluded
+        };
+        let primary_color = if target.enabled {
+            TEXT_COLOR
+        } else {
+            DISABLED_TEXT_COLOR
+        };
+        let status_color = if target.enabled {
+            ACCENT_COLOR
+        } else {
+            DISABLED_TEXT_COLOR
+        };
+        let selected = draw.itemState.0 & ODS_SELECTED.0 != 0;
+        let background = if selected {
+            self.theme.selected_row_brush.handle()
+        } else {
+            self.theme.panel_brush.handle()
+        };
+
+        unsafe {
+            let _ = FillRect(draw.hDC, &draw.rcItem, background);
+        }
+
+        let status_width = self.text_width(status_text).clamp(58, 100);
+        let status_rect = RECT {
+            left: draw.rcItem.right - status_width - 12,
+            top: draw.rcItem.top + 1,
+            right: draw.rcItem.right - 12,
+            bottom: draw.rcItem.bottom - 1,
+        };
+        let text_right = status_rect.left - 14;
+
+        if note.is_empty() {
+            let identity_rect = RECT {
+                left: draw.rcItem.left + 12,
+                top: draw.rcItem.top + 1,
+                right: text_right,
+                bottom: draw.rcItem.bottom - 1,
+            };
+            draw_text_line(
+                draw.hDC,
+                self.theme.strong_font.handle(),
+                &identity,
+                identity_rect,
+                primary_color,
+                DT_LEFT | DT_SINGLELINE | DT_VCENTER | DT_END_ELLIPSIS | DT_NOPREFIX,
+            );
+        } else {
+            let note_rect = RECT {
+                left: draw.rcItem.left + 12,
+                top: draw.rcItem.top + 3,
+                right: text_right,
+                bottom: draw.rcItem.top + 20,
+            };
+            draw_text_line(
+                draw.hDC,
+                self.theme.strong_font.handle(),
+                note,
+                note_rect,
+                primary_color,
+                DT_LEFT | DT_SINGLELINE | DT_END_ELLIPSIS | DT_NOPREFIX,
+            );
+
+            let identity_rect = RECT {
+                left: draw.rcItem.left + 12,
+                top: draw.rcItem.top + 19,
+                right: text_right,
+                bottom: draw.rcItem.bottom - 2,
+            };
+            draw_text_line(
+                draw.hDC,
+                self.theme.font.handle(),
+                &identity,
+                identity_rect,
+                SUBTLE_TEXT_COLOR,
+                DT_LEFT | DT_SINGLELINE | DT_END_ELLIPSIS | DT_NOPREFIX,
+            );
+        }
+
+        draw_text_line(
+            draw.hDC,
+            self.theme.font.handle(),
+            status_text,
+            status_rect,
+            status_color,
+            DT_RIGHT | DT_SINGLELINE | DT_VCENTER | DT_END_ELLIPSIS | DT_NOPREFIX,
+        );
+
+        let separator = RECT {
+            left: draw.rcItem.left + 12,
+            top: draw.rcItem.bottom - 1,
+            right: draw.rcItem.right - 12,
+            bottom: draw.rcItem.bottom,
+        };
+        unsafe {
+            let _ = FillRect(draw.hDC, &separator, self.theme.border_brush.handle());
+        }
+
+        true
     }
 
     fn paint(&self, hwnd: HWND) {
         let paint = unsafe { PaintSession::begin(hwnd) };
         for rect in [
             RECT {
-                left: 16,
-                top: 16,
-                right: 948,
-                bottom: 112,
+                left: 24,
+                top: TARGET_PANEL_TOP,
+                right: WINDOW_WIDTH - 24,
+                bottom: TARGET_PANEL_BOTTOM,
             },
             RECT {
-                left: 16,
-                top: 128,
-                right: 448,
-                bottom: 528,
-            },
-            RECT {
-                left: 464,
-                top: 128,
-                right: 948,
-                bottom: 364,
-            },
-            RECT {
-                left: 464,
-                top: 380,
-                right: 948,
-                bottom: 528,
+                left: 24,
+                top: SETTINGS_PANEL_TOP,
+                right: WINDOW_WIDTH - 24,
+                bottom: SETTINGS_PANEL_BOTTOM,
             },
         ] {
             unsafe {
@@ -3124,6 +3543,31 @@ impl AppWindow {
 
     fn apply_default_font(&self) {
         self.apply_font_to_controls(&self.theme.font);
+        unsafe {
+            for hwnd in [
+                self.controls.title_label,
+                self.controls.status,
+                self.controls.targets_label,
+                self.controls.settings_label,
+            ] {
+                if hwnd != HWND::default() {
+                    SendMessageW(
+                        hwnd,
+                        WM_SETFONT,
+                        Some(self.theme.strong_font.wparam()),
+                        Some(LPARAM(1)),
+                    );
+                }
+            }
+            if self.controls.title_label != HWND::default() {
+                SendMessageW(
+                    self.controls.title_label,
+                    WM_SETFONT,
+                    Some(self.theme.title_font.wparam()),
+                    Some(LPARAM(1)),
+                );
+            }
+        }
     }
 
     fn apply_font_to_controls(&self, font: &UiFont) {
@@ -3133,6 +3577,30 @@ impl AppWindow {
                     SendMessageW(hwnd, WM_SETFONT, Some(font.wparam()), Some(LPARAM(1)));
                 }
             }
+        }
+    }
+}
+
+fn draw_text_line(
+    hdc: HDC,
+    font: HGDIOBJ,
+    text: &str,
+    mut rect: RECT,
+    color: windows::Win32::Foundation::COLORREF,
+    format: DRAW_TEXT_FORMAT,
+) {
+    if text.is_empty() {
+        return;
+    }
+
+    let mut wide: Vec<u16> = text.encode_utf16().collect();
+    unsafe {
+        let previous_font = SelectObject(hdc, font);
+        let _ = SetBkMode(hdc, TRANSPARENT);
+        let _ = SetTextColor(hdc, color);
+        let _ = DrawTextW(hdc, &mut wide, &mut rect, format);
+        if !previous_font.0.is_null() {
+            let _ = SelectObject(hdc, previous_font);
         }
     }
 }
@@ -3568,6 +4036,12 @@ unsafe extern "system" fn window_proc(
                 app.paint(hwnd);
                 return LRESULT(0);
             }
+            WM_MEASUREITEM if app.measure_item(lparam) => {
+                return LRESULT(1);
+            }
+            WM_DRAWITEM if app.draw_item(lparam) => {
+                return LRESULT(1);
+            }
             WM_SHOWWINDOW => {
                 if wparam.0 != 0 {
                     app.refresh_processes_if_stale();
@@ -3590,7 +4064,7 @@ unsafe extern "system" fn window_proc(
                 return LRESULT(0);
             }
             WM_CTLCOLORSTATIC | WM_CTLCOLOREDIT | WM_CTLCOLORLISTBOX => {
-                return app.control_color(wparam, message);
+                return app.control_color(wparam, lparam, message);
             }
             WM_TRAY_ICON => {
                 match lparam.0 as u32 {

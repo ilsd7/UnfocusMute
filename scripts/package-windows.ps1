@@ -281,8 +281,42 @@ function Assert-ZipEntryName {
     }
 }
 
+function Remove-PackageOutputs {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$DistPath,
+        [Parameter(Mandatory = $true)]
+        [string]$PackageName
+    )
+
+    if (-not (Test-Path $DistPath)) {
+        return
+    }
+
+    $OutputPaths = @(
+        (Join-Path $DistPath $PackageName),
+        (Join-Path $DistPath "$PackageName.zip"),
+        (Join-Path $DistPath "$PackageName.zip.sha256")
+    )
+    foreach ($OutputPath in $OutputPaths) {
+        if (Test-Path $OutputPath) {
+            Remove-Item $OutputPath -Recurse -Force
+        }
+    }
+
+    Get-ChildItem $DistPath -Force |
+        Where-Object {
+            $_.Name -like ".package-*" -or
+            $_.Name -like "$PackageName.*.tmp.zip" -or
+            $_.Name -like "$PackageName.*.tmp.zip.sha256"
+        } |
+        Remove-Item -Recurse -Force
+}
+
 Push-Location $RepoRoot
 try {
+    Remove-PackageOutputs $Dist $PackageName
+
     cargo build --release --target $Target --locked
     if ($LASTEXITCODE -ne 0) {
         throw "cargo build failed with exit code $LASTEXITCODE"
