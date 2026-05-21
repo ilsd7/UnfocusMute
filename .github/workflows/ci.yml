@@ -8,6 +8,18 @@ permissions:
   contents: read
 
 jobs:
+  audit:
+    name: Cargo audit
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v6.0.2
+        with:
+          persist-credentials: false
+      - run: rustup toolchain install stable --profile minimal
+      - run: cargo install cargo-audit --locked
+      - run: cargo audit
+
   linux:
     name: Linux core checks
     runs-on: ubuntu-latest
