@@ -33,7 +33,7 @@ if (-not $PackageSuffixByTarget.ContainsKey($Target)) {
     throw "Unsupported package target $Target. Supported targets: $SupportedTargets."
 }
 $PackageSuffix = $PackageSuffixByTarget[$Target]
-$ExeFileName = "UnfocusMute-$Version.exe"
+$ExeFileName = "UnfocusMute-v$Version.exe"
 
 $Dist = Join-Path $RepoRoot "dist"
 $PackageName = "UnfocusMute-$PackageSuffix"
