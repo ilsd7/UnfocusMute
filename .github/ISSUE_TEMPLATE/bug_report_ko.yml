@@ -14,7 +14,7 @@ body:
     attributes:
       label: UnfocusMute 버전
       description: ZIP 안의 실행 파일명, Releases 페이지, 또는 앱 버전 배지에서 확인한 버전을 적어 주세요.
-      placeholder: "예: 2.1.1"
+      placeholder: "예: 1.0.0"
     validations:
       required: true
 
