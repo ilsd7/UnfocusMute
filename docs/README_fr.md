@@ -27,13 +27,15 @@
 
 UnfocusMute est une petite application légère pour la zone de notification de Windows. Elle met automatiquement en sourdine uniquement le jeu ou l’application choisi lorsqu’il passe en arrière-plan. Elle ne se limite pas aux jeux : navigateurs, messageries, lanceurs, lecteurs multimédias et autres applications peuvent aussi être enregistrés s’ils apparaissent comme sessions audio Windows.
 
-Compilée comme application native Rust, elle s’exécute sans runtime séparé. L’exécutable fait environ 492 Ko, soit moins de 1 Mo.
+Compilée comme application native Rust, elle s’exécute sans runtime séparé. L’exécutable actuel fait environ 492 Ko, soit moins de 1 Mo.
 
 <p align="center">
   <img src="../assets/screenshot_fr.png" alt="Fenêtre de l’application UnfocusMute">
 </p>
 
 La mise en sourdine et la restauration ne s’appliquent qu’aux sessions qu’UnfocusMute a modifiées lui-même. Les sessions que vous aviez déjà mises en sourdine restent intactes.
+
+---
 
 ## Utile quand
 

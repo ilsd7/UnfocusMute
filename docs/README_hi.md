@@ -27,13 +27,15 @@
 
 UnfocusMute Windows tray के लिए एक छोटा और हल्का app है। चुना हुआ game या app background में जाते ही यह सिर्फ उसी app की आवाज अपने आप mute करता है। यह सिर्फ games तक सीमित नहीं है: browsers, messengers, launchers, media players और दूसरे apps भी register किए जा सकते हैं, अगर वे Windows audio session के रूप में दिखते हों।
 
-Rust native app के रूप में build होने के कारण यह अलग runtime के बिना सीधे चलता है। executable लगभग 492 KB है, यानी 1 MB से कम।
+Rust native app के रूप में build होने के कारण यह अलग runtime के बिना सीधे चलता है। मौजूदा executable लगभग 492 KB है, यानी 1 MB से कम।
 
 <p align="center">
   <img src="../assets/screenshot_hi.png" alt="UnfocusMute ऐप विंडो">
 </p>
 
 Mute और restore, दोनों सिर्फ उन sessions पर लागू होते हैं जिन्हें UnfocusMute ने खुद बदला था। जिन्हें आपने पहले से mute कर रखा था, उन्हें यह नहीं बदलता।
+
+---
 
 ## कब उपयोगी है
 

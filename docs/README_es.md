@@ -27,13 +27,15 @@
 
 UnfocusMute es una app pequeña y ligera para la bandeja de Windows que silencia automáticamente solo el sonido del juego o la app seleccionada cuando pasa a segundo plano. No sirve solo para juegos: también puedes registrar navegadores, apps de chat, launchers, reproductores multimedia y otras apps que aparezcan como sesiones de audio de Windows.
 
-Al estar compilada como app nativa en Rust, se ejecuta sin un runtime adicional. El ejecutable ocupa unos 492 KB, menos de 1 MB.
+Al estar compilada como app nativa en Rust, se ejecuta sin un runtime adicional. El ejecutable actual ocupa unos 492 KB, menos de 1 MB.
 
 <p align="center">
   <img src="../assets/screenshot_es.png" alt="Ventana de UnfocusMute">
 </p>
 
 El silencio y la restauración solo se aplican a las sesiones que UnfocusMute cambió directamente. Las sesiones que ya habías silenciado se dejan intactas.
+
+---
 
 ## Útil cuando
 

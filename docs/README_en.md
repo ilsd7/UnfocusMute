@@ -27,13 +27,15 @@
 
 UnfocusMute is a small, lightweight Windows tray app that automatically mutes only the selected game or app when it moves to the background. It is not limited to games: browsers, messengers, launchers, media players, and other apps can be registered as long as they appear as Windows audio sessions.
 
-Built as a native Rust app, it runs without a separate runtime. The executable is about 492 KB, under 1 MB.
+Built as a native Rust app, it runs without a separate runtime. The current executable is about 492 KB, under 1 MB.
 
 <p align="center">
   <img src="../assets/screenshot_en.png" alt="UnfocusMute app window">
 </p>
 
 Mute and restore actions apply only to sessions UnfocusMute changed itself. Sessions that were already muted by you are left untouched.
+
+---
 
 ## Useful When
 
