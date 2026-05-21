@@ -124,9 +124,6 @@ impl Drop for UiFont {
     }
 }
 
-pub(super) fn ui_font_point_size(language: Language) -> i32 {
-    match language {
-        Language::Hi | Language::Ar => 10,
-        _ => 9,
-    }
+pub(super) fn ui_font_point_size(_language: Language) -> i32 {
+    9
 }

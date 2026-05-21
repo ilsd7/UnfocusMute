@@ -43,8 +43,12 @@ fn main() {
     resource.set_manifest(&manifest);
 
     if let Err(error) = resource.compile() {
-        let message = format!("failed to compile Windows resources: {error}");
-        assert!(!is_release_profile(), "{message}");
+        let message = format!(
+            "failed to compile Windows resources: {error}. Install llvm-rc or build from a Visual Studio Developer Prompt with rc.exe available"
+        );
+        if is_release_profile() {
+            panic!("{message}");
+        }
         println!("cargo:warning={message}");
     }
 }

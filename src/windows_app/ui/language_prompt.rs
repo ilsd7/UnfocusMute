@@ -445,13 +445,11 @@ mod tests {
     }
 
     #[test]
-    fn prompt_reuses_font_for_same_point_size_languages() {
-        assert!(!prompt_needs_font_refresh(Language::Ko, Language::En));
-    }
-
-    #[test]
-    fn prompt_refreshes_font_for_larger_script_point_size() {
-        assert!(prompt_needs_font_refresh(Language::Ko, Language::Hi));
-        assert!(prompt_needs_font_refresh(Language::Ar, Language::En));
+    fn prompt_reuses_font_for_all_current_languages() {
+        for current in Language::ALL {
+            for next in Language::ALL {
+                assert!(!prompt_needs_font_refresh(current, next));
+            }
+        }
     }
 }

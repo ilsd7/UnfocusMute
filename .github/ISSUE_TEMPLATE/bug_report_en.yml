@@ -13,8 +13,8 @@ body:
     id: version
     attributes:
       label: UnfocusMute version
-      description: Use the version shown in the release, ZIP file name, or executable package.
-      placeholder: "Example: 2.0.1"
+      description: Use the version shown in the ZIP executable name, the release page, or the app version badge.
+      placeholder: "Example: 2.1.0"
     validations:
       required: true
 

@@ -152,6 +152,10 @@ impl TargetMatcher {
     }
 
     pub fn needs_foreground_process_name(&self) -> bool {
+        !self.is_empty()
+    }
+
+    pub fn needs_all_session_process_names(&self) -> bool {
         !self.names.is_empty()
     }
 
@@ -332,11 +336,10 @@ impl<'a> MutePlanner<'a> {
         }
 
         let should_mute = match match_kind {
-            Some(TargetMatchKind::ProcessName) => {
+            Some(TargetMatchKind::ProcessName | TargetMatchKind::Pid) => {
                 self.foreground_pid != Some(pid)
                     && self.foreground_process_name.as_deref() != Some(process_name)
             }
-            Some(TargetMatchKind::Pid) => self.foreground_pid != Some(pid),
             None => false,
         };
 
@@ -389,12 +392,14 @@ mod tests {
     }
 
     #[test]
-    fn pid_only_targets_do_not_need_foreground_process_name() {
+    fn pid_only_targets_need_foreground_name_without_full_session_scan() {
         let pid_matcher = TargetMatcher::new(&[TargetProcess::for_pid("game.exe", 10).unwrap()]);
         let exe_matcher = TargetMatcher::new(&[TargetProcess::new("game.exe").unwrap()]);
 
-        assert!(!pid_matcher.needs_foreground_process_name());
+        assert!(pid_matcher.needs_foreground_process_name());
+        assert!(!pid_matcher.needs_all_session_process_names());
         assert!(exe_matcher.needs_foreground_process_name());
+        assert!(exe_matcher.needs_all_session_process_names());
     }
 
     #[test]
@@ -443,6 +448,7 @@ mod tests {
 
         assert!(matcher.is_empty());
         assert!(!matcher.needs_foreground_process_name());
+        assert!(!matcher.needs_all_session_process_names());
     }
 
     #[test]
@@ -451,6 +457,7 @@ mod tests {
 
         assert!(matcher.is_empty());
         assert!(!matcher.needs_foreground_process_name());
+        assert!(!matcher.needs_all_session_process_names());
     }
 
     #[test]
@@ -600,21 +607,42 @@ mod tests {
     }
 
     #[test]
-    fn pid_target_stays_strict_even_when_process_name_is_foreground() {
+    fn pid_target_allows_same_process_name_foreground_as_technical_fallback() {
         let targets = vec![TargetProcess::for_pid("browser.exe", 20).unwrap()];
         let sessions = vec![session(20, "browser.exe", false)];
 
-        assert_eq!(
+        assert!(
             plan_mute_actions_with_foreground_name(
                 &targets,
                 Some(10),
                 Some("browser.exe"),
                 &HashSet::new(),
                 &sessions,
+            )
+            .is_empty()
+        );
+    }
+
+    #[test]
+    fn pid_target_unmutes_managed_session_when_same_process_name_is_foreground() {
+        let targets = vec![TargetProcess::for_pid("browser.exe", 20).unwrap()];
+        let session_key = AudioSessionKey::new(20, "browser.exe", None).unwrap();
+        let sessions = vec![AudioSessionSnapshot {
+            key: session_key.clone(),
+            muted: true,
+        }];
+
+        assert_eq!(
+            plan_mute_actions_with_foreground_name(
+                &targets,
+                Some(10),
+                Some("browser.exe"),
+                &HashSet::from([session_key.clone()]),
+                &sessions,
             ),
             vec![MuteAction {
-                key: AudioSessionKey::new(20, "browser.exe", None).unwrap(),
-                mute: true,
+                key: session_key,
+                mute: false,
             }]
         );
     }

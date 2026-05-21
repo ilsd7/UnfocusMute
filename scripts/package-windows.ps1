@@ -33,9 +33,10 @@ if (-not $PackageSuffixByTarget.ContainsKey($Target)) {
     throw "Unsupported package target $Target. Supported targets: $SupportedTargets."
 }
 $PackageSuffix = $PackageSuffixByTarget[$Target]
+$ExeFileName = "UnfocusMute-$Version.exe"
 
 $Dist = Join-Path $RepoRoot "dist"
-$PackageName = "UnfocusMute-$Version-$PackageSuffix"
+$PackageName = "UnfocusMute-$PackageSuffix"
 $LegacyStage = Join-Path $Dist $PackageName
 $StageRoot = Join-Path $Dist ".package-$([System.Guid]::NewGuid().ToString('N'))"
 $Stage = Join-Path $StageRoot $PackageName
@@ -55,6 +56,7 @@ function Convert-ReadmeForPackage {
     $Content = Remove-ReadmeHeaderBlock $Content
     $Content = Remove-ReadmeLanguageLinks $Content
     $Content = Remove-ReadmeScreenshotBlock $Content
+    $Content = Remove-ReadmeLatestDownloadTable $Content
     return $Content.TrimStart()
 }
 
@@ -79,7 +81,7 @@ function Remove-ReadmeHeaderBlock {
 
     return [System.Text.RegularExpressions.Regex]::Replace(
         $Content,
-        '(?ms)^\s*<div align="center">\s*<img src="(?:\.\./)?assets/app-icon\.png"[\s\S]*?</div>\s*',
+        '(?ms)^\s*<div align="center">\s*<img src="(?:\.\./)?assets/app-icon\.png"[\s\S]*?</div>\s*(?:---\s*)?',
         "# UnfocusMute`r`n`r`n"
     )
 }
@@ -92,7 +94,20 @@ function Remove-ReadmeScreenshotBlock {
 
     return [System.Text.RegularExpressions.Regex]::Replace(
         $Content,
-        '(?ms)^[ \t]*<p align="center">\s*<img src="(?:\.\./)?assets/screenshot\.png"[^>]*>\s*</p>\s*',
+        '(?ms)^[ \t]*<p align="center">\s*<img src="(?:\.\./)?assets/screenshot(?:_[A-Za-z0-9-]+)?\.png"[^>]*>\s*</p>\s*',
+        ''
+    )
+}
+
+function Remove-ReadmeLatestDownloadTable {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$Content
+    )
+
+    return [System.Text.RegularExpressions.Regex]::Replace(
+        $Content,
+        '(?m)^[ \t]*\|[^\r\n]*\|\r?\n[ \t]*\|[ \t]*---[ \t]*\|\r?\n[ \t]*\|[^\r\n]*releases/latest/download/UnfocusMute-windows-x64\.zip[^\r\n]*\|\r?\n[ \t]*\|[^\r\n]*releases/latest[^\r\n]*\|\r?\n(?:[ \t]*\r?\n)?',
         ''
     )
 }
@@ -168,6 +183,8 @@ function Assert-PackageZip {
         [Parameter(Mandatory = $true)]
         [string]$Path,
         [Parameter(Mandatory = $true)]
+        [string]$ExpectedExeFileName,
+        [Parameter(Mandatory = $true)]
         [string[]]$RequiredEntries
     )
 
@@ -186,6 +203,9 @@ function Assert-PackageZip {
                 continue
             }
             Assert-ZipEntryName $EntryName
+            if ([System.Text.RegularExpressions.Regex]::IsMatch($EntryName, '(^|/)README[^/]*\.md$', [System.Text.RegularExpressions.RegexOptions]::IgnoreCase)) {
+                throw "Package README must use .txt extension, found $EntryName"
+            }
             if ($Entries.ContainsKey($EntryName)) {
                 throw "Package ZIP contains duplicate entry $EntryName"
             }
@@ -208,8 +228,15 @@ function Assert-PackageZip {
             }
         }
 
+        if (-not $Entries.ContainsKey($ExpectedExeFileName)) {
+            throw "Package ZIP is missing versioned executable $ExpectedExeFileName"
+        }
+
         foreach ($Entry in $ZipFile.Entries) {
-            if (-not $Entry.FullName.EndsWith(".md", [System.StringComparison]::OrdinalIgnoreCase)) {
+            if (-not (
+                $Entry.FullName.EndsWith(".md", [System.StringComparison]::OrdinalIgnoreCase) -or
+                $Entry.FullName.EndsWith(".txt", [System.StringComparison]::OrdinalIgnoreCase)
+            )) {
                 continue
             }
             $Reader = [System.IO.StreamReader]::new($Entry.Open(), [System.Text.Encoding]::UTF8, $true)
@@ -223,8 +250,11 @@ function Assert-PackageZip {
             if ($Content.Contains('src="assets/app-icon.png"') -or $Content.Contains('src="../assets/app-icon.png"')) {
                 throw "Package README $($Entry.FullName) still references app-icon.png"
             }
-            if ($Content.Contains('src="assets/screenshot.png"') -or $Content.Contains('src="../assets/screenshot.png"')) {
-                throw "Package README $($Entry.FullName) still references screenshot.png"
+            if ([System.Text.RegularExpressions.Regex]::IsMatch($Content, 'src="(?:\.\./)?assets/screenshot(?:_[A-Za-z0-9-]+)?\.png"')) {
+                throw "Package README $($Entry.FullName) still references a screenshot image"
+            }
+            if ($Content.Contains("releases/latest/download/UnfocusMute-windows-x64.zip")) {
+                throw "Package README $($Entry.FullName) still references the latest ZIP download"
             }
         }
     }
@@ -260,7 +290,7 @@ try {
 
     New-Item -ItemType Directory -Force -Path $Stage | Out-Null
 
-    Copy-Item "target\$Target\release\unfocusmute.exe" (Join-Path $Stage "UnfocusMute.exe")
+    Copy-Item "target\$Target\release\unfocusmute.exe" (Join-Path $Stage $ExeFileName)
     Copy-Item "LICENSE" $Stage
     Copy-Item "THIRD_PARTY_NOTICES.md" $Stage
     $DocFiles = @()
@@ -274,11 +304,11 @@ try {
 
     $ReadmeKo = [System.IO.File]::ReadAllText((Join-Path $RepoRoot "README.md"), [System.Text.Encoding]::UTF8)
     $ReadmeKo = Convert-ReadmeForPackage $ReadmeKo
-    [System.IO.File]::WriteAllText((Join-Path $Stage "README_ko.md"), $ReadmeKo, $Utf8NoBom)
+    [System.IO.File]::WriteAllText((Join-Path $Stage "README_ko.txt"), $ReadmeKo, $Utf8NoBom)
 
     $ReadmeEn = [System.IO.File]::ReadAllText((Join-Path $RepoRoot "README_en.md"), [System.Text.Encoding]::UTF8)
     $ReadmeEn = Convert-ReadmeForPackage $ReadmeEn
-    [System.IO.File]::WriteAllText((Join-Path $Stage "README_en.md"), $ReadmeEn, $Utf8NoBom)
+    [System.IO.File]::WriteAllText((Join-Path $Stage "README_en.txt"), $ReadmeEn, $Utf8NoBom)
 
     if ($DocFiles.Count -gt 0) {
         $DocsStage = Join-Path $Stage "docs"
@@ -286,22 +316,23 @@ try {
         foreach ($DocFile in $DocFiles) {
             $Readme = [System.IO.File]::ReadAllText($DocFile.FullName, [System.Text.Encoding]::UTF8)
             $Readme = Convert-ReadmeForPackage $Readme
-            [System.IO.File]::WriteAllText((Join-Path $DocsStage $DocFile.Name), $Readme, $Utf8NoBom)
+            $DocTextName = [System.IO.Path]::ChangeExtension($DocFile.Name, ".txt")
+            [System.IO.File]::WriteAllText((Join-Path $DocsStage $DocTextName), $Readme, $Utf8NoBom)
         }
     }
     $RequiredEntries = @(
-        "UnfocusMute.exe",
+        $ExeFileName,
         "LICENSE",
         "THIRD_PARTY_NOTICES.md",
-        "README_ko.md",
-        "README_en.md"
+        "README_ko.txt",
+        "README_en.txt"
     )
     if ($DocFiles.Count -gt 0) {
-        $RequiredEntries += $DocFiles | ForEach-Object { "docs/$($_.Name)" }
+        $RequiredEntries += $DocFiles | ForEach-Object { "docs/$([System.IO.Path]::ChangeExtension($_.Name, '.txt'))" }
     }
 
     Compress-Archive -Path (Join-Path $Stage "*") -DestinationPath $TempZip -CompressionLevel Optimal
-    Assert-PackageZip $TempZip $RequiredEntries
+    Assert-PackageZip $TempZip $ExeFileName $RequiredEntries
     Write-ZipChecksum $TempZip $TempChecksum $ZipFileName
     Assert-ZipChecksum $TempZip $TempChecksum $ZipFileName
 

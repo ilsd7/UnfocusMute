@@ -5,6 +5,7 @@ use windows::core::{PCWSTR, w};
 
 pub(super) const CLASS_NAME: PCWSTR = w!("UnfocusMuteWindow");
 pub(super) const LANGUAGE_PROMPT_CLASS_NAME: PCWSTR = w!("UnfocusMuteLanguagePrompt");
+pub(super) const TARGET_NOTE_PROMPT_CLASS_NAME: PCWSTR = w!("UnfocusMuteTargetNotePrompt");
 pub(super) const MUTEX_NAME: PCWSTR = w!("Local\\UnfocusMute.SingleInstance");
 pub(super) const AUDIO_FALLBACK_TIMER_ID: usize = 1;
 pub(super) const CONFIG_RELOAD_TIMER_ID: usize = 2;
@@ -38,6 +39,12 @@ pub(super) const ID_PID_DETAILS_HELP: i32 = 1019;
 pub(super) const ID_LANGUAGE_PROMPT_COMBO: i32 = 2001;
 pub(super) const ID_LANGUAGE_PROMPT_OK: i32 = 2002;
 pub(super) const ID_LANGUAGE_PROMPT_STARTUP: i32 = 2003;
+pub(super) const ID_TARGET_NOTE_EDIT: i32 = 2101;
+pub(super) const ID_TARGET_NOTE_SAVE: i32 = 2102;
+pub(super) const ID_TARGET_NOTE_CLEAR: i32 = 2103;
+pub(super) const ID_TARGET_NOTE_CANCEL: i32 = 2104;
+pub(super) const ID_TARGET_CONTEXT_TOGGLE_ENABLED: i32 = 3100;
+pub(super) const ID_TARGET_CONTEXT_EDIT_NOTE: i32 = 3101;
 pub(super) const ID_LANGUAGE_MENU_BASE: i32 = 3000;
 
 pub(super) const PAGE_COLOR: COLORREF = rgb(245, 247, 250);
@@ -46,6 +53,7 @@ pub(super) const PANEL_BORDER_COLOR: COLORREF = rgb(228, 232, 238);
 pub(super) const TEXT_COLOR: COLORREF = rgb(25, 33, 45);
 pub(super) const SUBTLE_TEXT_COLOR: COLORREF = rgb(85, 96, 112);
 pub(super) const SS_RIGHT_STYLE: WINDOW_STYLE = WINDOW_STYLE(2);
+pub(super) const SS_CENTERIMAGE_STYLE: WINDOW_STYLE = WINDOW_STYLE(0x0000_0200);
 pub(super) const SS_ENDELLIPSIS_STYLE: WINDOW_STYLE = WINDOW_STYLE(0x0000_4000);
 
 const fn rgb(red: u8, green: u8, blue: u8) -> COLORREF {

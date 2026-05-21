@@ -197,4 +197,16 @@ mod tests {
         );
         assert_eq!(command.last(), Some(&0));
     }
+
+    #[test]
+    fn startup_command_allows_versioned_executable_name() {
+        let command = startup_command(Path::new(r"C:\Tools\UnfocusMute\UnfocusMute-2.1.0.exe"));
+        let text = String::from_utf16(&command[..command.len() - 1]).unwrap();
+
+        assert_eq!(
+            text,
+            r#""C:\Tools\UnfocusMute\UnfocusMute-2.1.0.exe" --minimized"#
+        );
+        assert_eq!(command.last(), Some(&0));
+    }
 }

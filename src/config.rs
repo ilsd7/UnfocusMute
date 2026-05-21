@@ -24,12 +24,16 @@ const EVENT_FALLBACK_DEFAULT_POLLING_INTERVAL_MS: u64 = 5_000;
 const DEFAULT_POLLING_INTERVAL_MS: u64 = 3_000;
 const MIN_POLLING_INTERVAL_MS: u64 = 100;
 const MAX_POLLING_INTERVAL_MS: u64 = 10_000;
+pub(crate) const MAX_TARGET_NOTE_CHARS: usize = 120;
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct TargetProcess {
     pub name: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub pid: Option<u32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub note: Option<String>,
+    #[serde(default = "target_enabled_default", skip_serializing_if = "is_true")]
     pub enabled: bool,
 }
 
@@ -43,6 +47,7 @@ impl TargetProcess {
         Some(Self {
             name,
             pid: None,
+            note: None,
             enabled: true,
         })
     }
@@ -59,11 +64,12 @@ impl TargetProcess {
         Some(Self {
             name,
             pid: Some(pid),
+            note: None,
             enabled: true,
         })
     }
 
-    pub fn display_name_into(&self, output: &mut String) {
+    pub fn display_identity_into(&self, output: &mut String) {
         output.clear();
         output.push_str(&self.name);
         if let Some(pid) = self.pid {
@@ -72,6 +78,22 @@ impl TargetProcess {
             output.push(')');
         }
     }
+
+    pub fn display_name_into(&self, output: &mut String) {
+        self.display_identity_into(output);
+        if let Some(note) = &self.note {
+            output.push_str(" - ");
+            output.push_str(note);
+        }
+    }
+}
+
+const fn target_enabled_default() -> bool {
+    true
+}
+
+fn is_true(value: &bool) -> bool {
+    *value
 }
 
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -196,6 +218,7 @@ impl AppConfig {
         self.add_target_process(TargetProcess {
             name,
             pid: None,
+            note: None,
             enabled: true,
         })
     }
@@ -208,6 +231,7 @@ impl AppConfig {
         self.add_target_process(TargetProcess {
             name,
             pid: Some(pid),
+            note: None,
             enabled: true,
         })
     }
@@ -257,6 +281,29 @@ impl AppConfig {
         true
     }
 
+    pub(crate) fn set_target_note_at(&mut self, index: usize, note: Option<String>) -> bool {
+        let Some(target) = self.targets.get_mut(index) else {
+            return false;
+        };
+        let note = note.and_then(|note| normalize_target_note(&note));
+        if target.note == note {
+            return false;
+        }
+        target.note = note;
+        true
+    }
+
+    pub(crate) fn set_target_enabled_at(&mut self, index: usize, enabled: bool) -> bool {
+        let Some(target) = self.targets.get_mut(index) else {
+            return false;
+        };
+        if target.enabled == enabled {
+            return false;
+        }
+        target.enabled = enabled;
+        true
+    }
+
     pub(crate) fn contains_normalized_target(&self, name: &str, pid: Option<u32>) -> bool {
         debug_assert!(is_normalized_process_name(name));
         match self.targets.as_slice() {
@@ -280,6 +327,9 @@ impl AppConfig {
                 return false;
             }
             target.name = name;
+            if let Some(note) = target.note.take() {
+                target.note = normalize_target_note(&note);
+            }
             true
         });
         if self.targets.len() > 1 {
@@ -558,6 +608,37 @@ pub fn normalize_process_name_owned(mut input: String) -> Option<String> {
     } else {
         Some(candidate.name.to_owned())
     }
+}
+
+pub(crate) fn normalize_target_note(input: &str) -> Option<String> {
+    let mut output = String::with_capacity(input.len().min(MAX_TARGET_NOTE_CHARS * 4));
+    let mut previous_was_space = false;
+    let mut chars = 0;
+
+    for ch in input.trim().chars() {
+        let is_space = ch.is_whitespace() || ch.is_control();
+        if is_space {
+            if !output.is_empty() && !previous_was_space {
+                output.push(' ');
+                previous_was_space = true;
+                chars += 1;
+            }
+        } else {
+            output.push(ch);
+            previous_was_space = false;
+            chars += 1;
+        }
+
+        if chars >= MAX_TARGET_NOTE_CHARS {
+            break;
+        }
+    }
+
+    while output.ends_with(' ') {
+        output.pop();
+    }
+
+    (!output.is_empty()).then_some(output)
 }
 
 #[cfg(test)]
@@ -1176,17 +1257,93 @@ mod tests {
     }
 
     #[test]
+    fn target_note_is_shown_after_identity() {
+        let mut target = TargetProcess::for_pid("browser.exe", 42).unwrap();
+        target.note = Some("main window".to_owned());
+        let mut display_name = String::new();
+
+        target.display_name_into(&mut display_name);
+
+        assert_eq!(display_name, "browser.exe (PID 42) - main window");
+    }
+
+    #[test]
+    fn target_notes_are_trimmed_collapsed_and_limited() {
+        let mut config = AppConfig::default();
+        assert!(config.add_target("browser.exe"));
+        let long_note = format!(
+            "  main\twindow\n{}  ",
+            "x".repeat(MAX_TARGET_NOTE_CHARS + 10)
+        );
+
+        assert!(config.set_target_note_at(0, Some(long_note)));
+        let note = config.targets[0].note.as_deref().unwrap();
+
+        assert!(!note.contains('\n'));
+        assert!(!note.contains('\t'));
+        assert!(note.chars().count() <= MAX_TARGET_NOTE_CHARS);
+        assert!(note.starts_with("main window "));
+    }
+
+    #[test]
+    fn empty_target_note_is_not_stored() {
+        let mut config = AppConfig::default();
+        assert!(config.add_target("browser.exe"));
+
+        assert!(!config.set_target_note_at(0, Some("  ".to_owned())));
+        assert_eq!(config.targets[0].note, None);
+        assert!(config.set_target_note_at(0, Some("game".to_owned())));
+        assert!(config.set_target_note_at(0, Some("  ".to_owned())));
+        assert_eq!(config.targets[0].note, None);
+    }
+
+    #[test]
+    fn target_enabled_state_changes_only_when_needed() {
+        let mut config = AppConfig::default();
+        assert!(config.add_target("browser.exe"));
+
+        assert!(!config.set_target_enabled_at(0, true));
+        assert!(config.targets[0].enabled);
+        assert!(config.set_target_enabled_at(0, false));
+        assert!(!config.targets[0].enabled);
+        assert!(!config.set_target_enabled_at(0, false));
+        assert!(!config.set_target_enabled_at(1, true));
+    }
+
+    #[test]
+    fn legacy_target_without_enabled_defaults_to_enabled() {
+        let config: AppConfig =
+            serde_json::from_str(r#"{"targets":[{"name":"game.exe"}]}"#).unwrap();
+
+        assert!(config.targets[0].enabled);
+    }
+
+    #[test]
+    fn enabled_targets_skip_default_enabled_when_serialized() {
+        let mut target = TargetProcess::new("game.exe").unwrap();
+
+        let enabled = serde_json::to_string(&target).unwrap();
+        assert!(!enabled.contains("enabled"));
+
+        target.enabled = false;
+        let disabled = serde_json::to_string(&target).unwrap();
+        assert!(disabled.contains(r#""enabled":false"#));
+    }
+
+    #[test]
     fn loaded_targets_are_normalized_and_deduplicated() {
         let mut config = AppConfig {
             targets: vec![
                 TargetProcess {
                     name: r"C:\Games\Game.EXE".to_owned(),
                     pid: None,
+                    note: None,
                     enabled: true,
                 },
                 TargetProcess {
                     name: "game.exe".to_owned(),
                     pid: None,
+                    note: None,
                     enabled: true,
                 },
             ],
@@ -1205,6 +1362,7 @@ mod tests {
             targets: vec![TargetProcess {
                 name: "game.exe".to_owned(),
                 pid: Some(0),
+                note: None,
                 enabled: true,
             }],
             ..AppConfig::default()
@@ -1221,6 +1379,7 @@ mod tests {
             targets: vec![TargetProcess {
                 name: "system".to_owned(),
                 pid: None,
+                note: None,
                 enabled: true,
             }],
             ..AppConfig::default()
@@ -1237,6 +1396,7 @@ mod tests {
             targets: vec![TargetProcess {
                 name: "nul.exe".to_owned(),
                 pid: None,
+                note: None,
                 enabled: true,
             }],
             ..AppConfig::default()
@@ -1254,11 +1414,13 @@ mod tests {
                 TargetProcess {
                     name: "Game.EXE".to_owned(),
                     pid: None,
+                    note: None,
                     enabled: false,
                 },
                 TargetProcess {
                     name: "game.exe".to_owned(),
                     pid: None,
+                    note: None,
                     enabled: true,
                 },
             ],

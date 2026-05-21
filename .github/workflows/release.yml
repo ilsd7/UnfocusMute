@@ -29,10 +29,9 @@ jobs:
           if (-not $tag.StartsWith("v", [System.StringComparison]::Ordinal) -or $tag.Length -le 1) {
             throw "Release tag must use v<version> format"
           }
-          $version = $tag.Substring(1)
           $assets = @(
-            "dist\UnfocusMute-$version-windows-x64.zip",
-            "dist\UnfocusMute-$version-windows-x64.zip.sha256"
+            "dist\UnfocusMute-windows-x64.zip",
+            "dist\UnfocusMute-windows-x64.zip.sha256"
           )
           foreach ($asset in $assets) {
             if (-not (Test-Path $asset -PathType Leaf)) {

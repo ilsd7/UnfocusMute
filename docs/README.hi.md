@@ -3,21 +3,23 @@
 
   <h1>UnfocusMute</h1>
 
-  <p><strong>Windows tray के लिए हल्का portable app, जो selected background apps को mute करता है और सिर्फ वही audio restore करता है जिसे उसने बदला था।</strong></p>
+  <p><strong>चुने हुए background apps को mute करने वाला हल्का, portable Windows tray app।<br>यह सिर्फ वही audio restore करता है जिसे इसने खुद बदला था।</strong></p>
 
   <p>
-    <a href="https://github.com/ilsd7/UnfocusMute/releases">डाउनलोड</a>
+    <a href="https://github.com/ilsd7/UnfocusMute/releases/latest/download/UnfocusMute-windows-x64.zip">डाउनलोड</a>
     · <a href="#उपयोग">उपयोग</a>
     · <a href="#सुरक्षा-और-प्राइवेसी">प्राइवेसी</a>
     · <a href="../LICENSE">Apache-2.0</a>
   </p>
 
   <p>
-    <code>Windows 10/11</code>
-    <code>Portable</code>
-    <code>Rust Native</code>
-    <code>~477KB</code>
-    <code>No telemetry</code>
+    <a href="https://github.com/ilsd7/UnfocusMute/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/ilsd7/UnfocusMute/ci.yml?branch=main&style=flat-square&label=CI&logo=githubactions&logoColor=white" alt="CI status"></a>
+    <img src="https://img.shields.io/badge/version-2.1.0-0D96F6?style=flat-square" alt="Version 2.1.0">
+    <img src="https://img.shields.io/badge/Windows-10%2F11-0078D4?style=flat-square&logo=windows&logoColor=white" alt="Windows 10/11">
+    <img src="https://img.shields.io/badge/portable-yes-2E7D32?style=flat-square" alt="Portable app">
+    <img src="https://img.shields.io/badge/Rust-native-B7410E?style=flat-square&logo=rust&logoColor=white" alt="Rust native app">
+    <img src="https://img.shields.io/badge/binary-~491KB-5E35B1?style=flat-square" alt="Executable size about 491KB">
+    <img src="https://img.shields.io/badge/telemetry-none-455A64?style=flat-square" alt="No telemetry">
   </p>
 
   <p>
@@ -25,87 +27,108 @@
   </p>
 </div>
 
-UnfocusMute Windows ट्रे के लिए एक छोटा और हल्का ऐप है। जब चुना गया गेम या ऐप बैकग्राउंड में जाता है, तो यह सिर्फ उसी ऐप की आवाज अपने आप म्यूट करता है।
+---
 
-Rust native app के रूप में build होने के कारण यह अलग runtime के बिना सीधे चलता है। मौजूदा Windows executable लगभग 477 KB है, यानी 1 MB से कम।
+UnfocusMute Windows tray के लिए एक छोटा और हल्का app है। चुना हुआ game या app background में जाते ही यह सिर्फ उसी app की आवाज अपने आप mute करता है। यह सिर्फ games तक सीमित नहीं है: browsers, messengers, launchers, media players और दूसरे apps भी register किए जा सकते हैं, अगर वे Windows audio session के रूप में दिखते हों।
+
+Rust native app के रूप में build होने के कारण यह अलग runtime के बिना सीधे चलता है। मौजूदा Windows executable लगभग 491 KB है, यानी 1 MB से कम।
 
 <p align="center">
-  <img src="../assets/screenshot.png" alt="UnfocusMute ऐप विंडो" width="760" loading="lazy" decoding="async">
+  <img src="../assets/screenshot_hi.png" alt="UnfocusMute ऐप विंडो">
 </p>
 
-जिन ऐप्स को संभालना है उन्हें रजिस्टर करें; जब वे सामने नहीं होते, UnfocusMute सिर्फ उनके ऑडियो सेशन म्यूट करता है। जब ऐप फिर से सामने आता है, तो UnfocusMute सिर्फ वही सेशन अनम्यूट करता है जिन्हें उसने खुद म्यूट किया था, इसलिए आपके मैन्युअल म्यूट वैसे ही रहते हैं।
+UnfocusMute registered app की audio session को सिर्फ तब mute करता है जब वह app foreground में नहीं होता। जब app वापस foreground में आता है, तो UnfocusMute सिर्फ वही sessions restore करता है जिन्हें उसने खुद mute किया था। आपने जो चीजें manually mute की हैं, वे वैसी ही रहती हैं।
 
-जब आप Alt+Tab से गेम से ब्राउज़र, चैट ऐप या काम की विंडो पर जाते हैं, तब यह खास तौर पर उपयोगी है। बैकग्राउंड ऑडियो संभालने के लिए Windows वॉल्यूम मिक्सर बार-बार खोलने की जरूरत नहीं पड़ती।
+जब कोई game खुला हो और आप Alt+Tab से browser, chat app या work window में जाते-आते हों, तब यह खास तौर पर उपयोगी है। Windows volume mixer बार-बार खोले बिना सिर्फ background app की आवाज बंद की जा सकती है।
 
 ---
 
 ## डाउनलोड और चलाएं
 
-[GitHub Releases](https://github.com/ilsd7/UnfocusMute/releases) से Windows 10/11 ZIP डाउनलोड करें और उसे extract करें। Extract की गई `UnfocusMute-<version>-windows-x64` फ़ोल्डर को उस जगह ले जाएं जहां आप ऐप रखना चाहते हैं, फिर उसी फ़ोल्डर से `UnfocusMute.exe` चलाएं। यह portable है, इसलिए installer की जरूरत नहीं है और अलग runtime, Rust, Visual Studio Build Tools या MinGW भी जरूरी नहीं हैं।
+Windows 10/11 पर ZIP package डाउनलोड करके extract करें, फिर app चला सकते हैं।
+
+| नवीनतम पैकेज |
+| --- |
+| [UnfocusMute-windows-x64.zip](https://github.com/ilsd7/UnfocusMute/releases/latest/download/UnfocusMute-windows-x64.zip) |
+| [SHA-256 file](https://github.com/ilsd7/UnfocusMute/releases/latest/download/UnfocusMute-windows-x64.zip.sha256) · [रिलीज़ नोट्स](https://github.com/ilsd7/UnfocusMute/releases/latest) |
+
+निकले हुए `UnfocusMute-windows-x64` folder को अपनी पसंद की जगह पर ले जाएं, फिर उसी folder में `UnfocusMute-<version>.exe` चलाएं। यह portable app है, इसलिए installer की जरूरत नहीं है और अलग runtime, Rust, Visual Studio Build Tools या MinGW भी जरूरी नहीं हैं।
 
 ## उपयोग
 
 1. UnfocusMute चलाएं।
-2. पहली बार खुलने पर भाषा चुनें। डिफॉल्ट भाषा English है।
-3. जिस गेम या ऐप को मैनेज करना है, उसे शुरू करें।
-4. चल रहे ऐप्स की सूची refresh करें, कोई item चुनें और `चयनित जोड़ें` दबाएं।
-5. किसी खास process instance को register करना हो तो ही `PID विवरण दिखाएं` इस्तेमाल करें। PID से register किया गया target सिर्फ अभी चल रहे instance पर लागू होता है; app restart होकर PID बदल जाए तो उसे फिर से चुनें।
-6. Window बंद करने पर UnfocusMute tray में चलता रहता है। पूरी तरह बंद करने के लिए `बंद करें` इस्तेमाल करें।
+2. पहली बार खुलने वाली भाषा स्क्रीन में भाषा चुनें। Default चयन English है।
+3. वह game या app शुरू करें जिसे background में जाने पर mute करना है।
+4. `प्रक्रिया खोजें` list खोलें या search term लिखें, item चुनें और `चयनित जोड़ें` दबाएं।
+5. अगर सिर्फ किसी खास PID को register करना है, तो `PID विवरण दिखाएं` दबाकर अलग entry चुनें। PID target सिर्फ अभी चल रहे instance पर लागू होता है; app restart होकर PID बदल जाए तो उसे फिर से चुनें।
+6. पंजीकृत ऐप पर right-click करके उसका नोट संपादित किया जा सकता है या उस ऐप को `ऑटो-म्यूट से बाहर करें` किया जा सकता है।
+7. विंडो बंद करने पर ऐप tray में रहकर निगरानी जारी रखता है। पूरी तरह बंद करने के लिए `बंद करें` दबाएं।
+
+## पंजीकृत ऐप्स में नोट इस्तेमाल करें
+
+अगर प्रक्रिया नाम देखकर ऐप पहचानना मुश्किल हो, तो पंजीकृत ऐप पर right-click करें और `नोट संपादित करें` चुनें। नोट पंजीकृत ऐप सूची में प्रक्रिया नाम के साथ दिखाई देता है और लक्ष्य पहचान को प्रभावित नहीं करता।
+
+यह तब काम आता है जब एक ही game launcher कई प्रक्रियाएं खोलता हो, या executable name देखकर उसका उपयोग साफ न समझ आए।
+
+- `htgame.exe - NTE`
+- `chrome.exe (PID 18432) - music playback profile`
+- `game.exe (PID 21976) - test server client`
+- `launcher.exe - असली game शुरू होने से पहले वाला launcher`
+
+नोट बाकी settings के साथ local रूप से `%APPDATA%\UnfocusMute\config.json` में save होते हैं।
 
 ## गेम का executable नाम कैसे देखें
 
-अगर समझ न आए कि कौन सा नाम लिखना है, तो Task Manager में `.exe` पर खत्म होने वाला executable नाम देखें।
+अगर register करने वाला नाम साफ न हो, तो Task Manager में `.exe` पर खत्म होने वाला executable name देखें।
 
-1. पहले गेम चलाएं।
-2. `Alt`+`Tab` या `Windows`+`Tab` से गेम screen से बाहर निकलकर Windows पर लौटें।
-3. `Ctrl`+`Shift`+`Esc` दबाकर Task Manager खोलें।
-4. Process list को `CPU` के हिसाब से sort करें ताकि अभी चलाया गया गेम जल्दी मिले।
-5. गेम पर right-click करें और `Properties` खोलें।
-6. `game.exe` जैसे `.exe` पर खत्म होने वाले executable नाम को देखें और UnfocusMute में add करें।
-
----
-
-## फायदे
-
-- गेम या ऐप के हिसाब से बैकग्राउंड म्यूट अपने आप होता है, इसलिए window बदलते समय आवाज अलग से संभालनी नहीं पड़ती।
-- UnfocusMute सिर्फ वही ऑडियो वापस अनम्यूट करता है जिसे उसने बदला था, मैन्युअल म्यूट वैसे ही रहते हैं।
-- बिना installer, account या network connection के local चलने वाला हल्का portable tool है।
-
-## कब उपयोगी है
-
-- गेम या ऐप से Alt+Tab करके दूसरी विंडो पर बार-बार जाते समय
-- ऐसे गेम जिनमें बैकग्राउंड में जाने पर म्यूट करने का अपना विकल्प नहीं है
-- बैकग्राउंड गेम की आवाज बंद रखनी हो, लेकिन ब्राउज़र या कॉल ऐप सुनाई देता रहे
-- एक ही `.exe` से कई processes खुलते हों और कभी पूरे app को, कभी सिर्फ एक PID को control करना हो
-
-## मुख्य सुविधाएं
-
-- रजिस्टर किए गए ऐप्स बैकग्राउंड में हों तो उनके audio sessions अपने आप mute करता है, और foreground में लौटने पर restore करता है।
-- चल रहे ऐप्स की सूची से target जोड़ें या `game.exe` जैसा executable नाम टाइप करें।
-- `.exe` target, current instance के PID target और `PID विवरण दिखाएं` को support करता है।
-- tray में चलता है और pause, config folder खोलने व single-instance protection की सुविधा देता है।
-- पहली बार भाषा चुनें, फिर app में तुरंत English, 한국어, 日本語, 简体中文, Español, Français, Português, हिन्दी और العربية के बीच बदलें।
-- लोकल config `%APPDATA%\UnfocusMute\config.json` में सेव होती है।
-
----
+1. पहले game शुरू करें।
+2. `Alt`+`Tab` या `Windows`+`Tab` से game screen छोड़कर Windows पर लौटें।
+3. Task Manager खोलने के लिए `Ctrl`+`Shift`+`Esc` दबाएं।
+4. Process list को `CPU` के अनुसार sort करके अभी शुरू किया हुआ game ढूंढें।
+5. Game item पर right-click करें और `Properties` खोलें।
+6. `game.exe` जैसा `.exe` पर खत्म होने वाला executable name देखें और उसे UnfocusMute में add करें।
 
 ## इस्तेमाल से पहले ध्यान दें
 
-UnfocusMute games में code inject नहीं करता, game memory नहीं पढ़ता, input hook नहीं करता और game files modify नहीं करता। क्योंकि यह केवल Windows process/foreground window information और CoreAudio session mute controls इस्तेमाल करता है, इसलिए ज्यादातर anti-cheat systems में समस्या न होने की उम्मीद है, लेकिन हर anti-cheat system के साथ compatibility की guarantee नहीं दी जा सकती।
+UnfocusMute Windows से मिलने वाले process names, foreground window information और CoreAudio sessions के आधार पर काम करता है। अगर किसी app ने अभी audio session नहीं बनाया है, या driver, permission setting या security tool session access को सीमित करता है, तो list दिखना या mute control सीमित हो सकता है।
+
+PID targets foreground window के `.exe` name को fallback की तरह भी इस्तेमाल करते हैं, क्योंकि Windows foreground window और audio session के लिए हमेशा एक ही PID नहीं बताता। अगर एक ही `.exe` के कई instances चल रहे हों, तो PID target उन्हें पूरी तरह अलग नहीं कर सकता: उसी `.exe` का दूसरा instance foreground में आने पर आवाज़ वापस आ सकती है।
+
+UnfocusMute games में code inject नहीं करता, game memory नहीं पढ़ता, input hook नहीं करता और game files modify नहीं करता। यह सिर्फ Windows process/foreground window information और CoreAudio session mute controls इस्तेमाल करता है, इसलिए ज्यादातर anti-cheat systems में समस्या नहीं होनी चाहिए, लेकिन हर anti-cheat के साथ compatibility की guarantee नहीं दी जा सकती।
 
 ## सुरक्षा और प्राइवेसी
 
-UnfocusMute local-first तरीके से काम करता है। यह local config file में सिर्फ registered process names, optional PIDs, UI language, window position और startup preferences सेव करता है।
+UnfocusMute local-first तरीके से काम करता है। यह local config file में सिर्फ registered process names, optional PIDs, UI language, window position और startup options save करता है।
 
-Audio session detection और mute control आपके PC पर Windows CoreAudio APIs के जरिए होते हैं। इसमें network requests, accounts, telemetry, analytics, crash reporting या remote logging नहीं है, और यह अलग app log files भी नहीं बनाता।
+Audio session detection और mute control आपके PC पर Windows CoreAudio APIs के जरिए ही होते हैं। इसमें network requests, accounts, telemetry, analytics, crash reporting या remote logging नहीं है, और UnfocusMute अलग app log files भी नहीं बनाता।
 
-## शुरुआती सेटिंग
+---
 
-पहली बार चलाने पर आप चुन सकते हैं कि Windows में sign in करते ही UnfocusMute अपने आप शुरू हो या नहीं। नई config में auto-start बंद रहता है, start minimized to tray चालू रहता है, और exit पर apps को unmute करना चालू रहता है।
+## यह कैसे काम करता है
 
-ऐप में `भाषा` पर क्लिक करके English, 한국어, 日本語, 简体中文, Español, Français, Português, हिन्दी और العربية के बीच तुरंत बदल सकते हैं। चुनी गई भाषा अपने आप सेव हो जाती है।
+UnfocusMute registered targets और अभी foreground में मौजूद window की तुलना करता है, और target app background में होने पर ही उसकी audio session mute करता है।
 
-Config file सीधे देखनी हो या backup files manage करनी हों, तो app में `Config folder खोलें` इस्तेमाल करें।
+- Target app foreground में हो तो audio state नहीं बदली जाती।
+- Target app background में हो तो सिर्फ उसी app की audio session mute होती है।
+- Target app फिर foreground में आए तो UnfocusMute सिर्फ अपने द्वारा mute की गई sessions restore करता है।
+- Volume mixer या किसी दूसरे tool से manually बदली गई mute state वैसी ही रहती है।
+
+## कब उपयोगी है
+
+- Game या app खुला रखते हुए आप अक्सर Alt+Tab से दूसरी window में जाते हों।
+- Game या app में background में जाने पर mute करने का अपना option न हो।
+- Browser या call app की आवाज रखते हुए सिर्फ background game audio बंद करना हो।
+- एक ही `.exe` कई processes खोलता हो और कभी पूरे app को, कभी किसी खास PID को control करना हो।
+
+## मुख्य सुविधाएं
+
+- Registered apps background में होने पर audio session अपने आप mute करता है और foreground में लौटने पर restore करता है।
+- Running app list से target जोड़ें या `game.exe` जैसा नाम manually लिखें।
+- `.exe` targets, current-instance PID targets और `PID विवरण दिखाएं` support करता है।
+- App-wise notes, app-wise `ऑटो-म्यूट से बाहर करें` और `ऑटो-म्यूट में शामिल करें`।
+- Tray में चलना, global pause, config folder खोलना और duplicate instance protection।
+- पहली बार language चुनें, फिर app के अंदर English/한국어/日本語/简体中文/Español/Français/Português/हिन्दी/العربية तुरंत बदलें।
+- Settings local रूप से `%APPDATA%\UnfocusMute\config.json` में save होती हैं।
 
 ---
 
@@ -124,7 +147,7 @@ rustup target add x86_64-pc-windows-msvc
 cargo build --release --target x86_64-pc-windows-msvc --locked
 ```
 
-Release builds छोटे output size के लिए configured हैं। `Cargo.toml` का release profile symbols हटाता है, LTO enable करता है, एक codegen unit इस्तेमाल करता है, `panic = "abort"` सेट करता है और size के लिए optimize करता है।
+Release build छोटे output size के लिए configured है। `Cargo.toml` का release profile symbols strip करता है, LTO enable करता है, single codegen unit इस्तेमाल करता है, `panic = "abort"` set करता है और size के लिए optimize करता है।
 
 Executable:
 
@@ -132,7 +155,7 @@ Executable:
 target\x86_64-pc-windows-msvc\release\unfocusmute.exe
 ```
 
-Distribution ZIP बनाएं:
+Distribution ZIP:
 
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File scripts\package-windows.ps1
@@ -144,12 +167,12 @@ Third-party license notices refresh करें:
 cargo about generate about.hbs -c about.toml --locked --offline -o THIRD_PARTY_NOTICES.md
 ```
 
-पैकेज `dist\UnfocusMute-<version>-windows-x64.zip` में बनता है, और SHA-256 सत्यापन फ़ाइल `dist\UnfocusMute-<version>-windows-x64.zip.sha256` में बनती है। ZIP में executable फ़ाइल, `LICENSE`, `THIRD_PARTY_NOTICES.md`, root में `README_ko.md` और `README_en.md`, और `docs` में बाकी स्थानीयकृत दस्तावेज़ शामिल होते हैं।
+परिणाम `dist\UnfocusMute-windows-x64.zip` में बनता है, और उसी जगह SHA-256 जांच फ़ाइल `dist\UnfocusMute-windows-x64.zip.sha256` भी बनती है। ZIP में version वाला executable (`UnfocusMute-<version>.exe`), `LICENSE`, `THIRD_PARTY_NOTICES.md`, root के `README_ko.txt` और `README_en.txt`, और `docs` folder की बाकी README `.txt` files शामिल होती हैं।
 
 ---
 
 ## लाइसेंस
 
-Apache License 2.0. [LICENSE](../LICENSE) देखें।
+Apache License 2.0। जानकारी के लिए [LICENSE](../LICENSE) देखें।
 
-Third-party Rust crate license notices के लिए [THIRD_PARTY_NOTICES.md](../THIRD_PARTY_NOTICES.md) देखें।
+तीसरे पक्ष के Rust crate license notices के लिए [THIRD_PARTY_NOTICES.md](../THIRD_PARTY_NOTICES.md) देखें।

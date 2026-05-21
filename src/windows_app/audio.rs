@@ -117,10 +117,14 @@ impl AudioController {
         let mut apply_result = PlanApplyResult::new(managed_muted_sessions.len());
         {
             let lookup = ManagedSessionLookup::new(managed_muted_sessions);
-            let needs_all_pids = matcher.needs_foreground_process_name();
+            let needs_all_session_process_names = matcher.needs_all_session_process_names();
             self.visit_sessions_matching(
-                needs_all_pids,
-                |pid| needs_all_pids || matcher.has_pid_target(pid) || lookup.may_include_pid(pid),
+                needs_all_session_process_names,
+                |pid| {
+                    needs_all_session_process_names
+                        || matcher.has_pid_target(pid)
+                        || lookup.may_include_pid(pid)
+                },
                 |visit| match visit {
                     SessionVisit::Resolved(session) => {
                         apply_plan_to_session(
@@ -135,8 +139,11 @@ impl AudioController {
                         if lookup.may_include_pid(pid) {
                             apply_result.keep_active_sessions_for_pid(pid, managed_muted_sessions);
                             apply_result.had_failures = true;
-                        } else if unresolved_unmanaged_pid_is_failure(needs_all_pids, matcher, pid)
-                        {
+                        } else if unresolved_unmanaged_pid_is_failure(
+                            needs_all_session_process_names,
+                            matcher,
+                            pid,
+                        ) {
                             apply_result.had_failures = true;
                         }
                     }
@@ -492,11 +499,11 @@ fn insert_session_keys_for_pid(
 }
 
 fn unresolved_unmanaged_pid_is_failure(
-    needs_all_pids: bool,
+    needs_all_session_process_names: bool,
     matcher: &TargetMatcher,
     pid: u32,
 ) -> bool {
-    !needs_all_pids || matcher.has_pid_target(pid)
+    !needs_all_session_process_names || matcher.has_pid_target(pid)
 }
 
 struct EndpointNotification {

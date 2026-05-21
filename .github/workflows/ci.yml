@@ -34,12 +34,7 @@ jobs:
         id: package_artifacts
         shell: pwsh
         run: |
-          $versionLine = Select-String -Path Cargo.toml -Pattern '^version\s*=\s*"([^"]+)"' | Select-Object -First 1
-          if (-not $versionLine) {
-            throw "Could not read package version from Cargo.toml"
-          }
-          $version = $versionLine.Matches[0].Groups[1].Value
-          $zip = "dist/UnfocusMute-$version-windows-x64.zip"
+          $zip = "dist/UnfocusMute-windows-x64.zip"
           $checksum = "$zip.sha256"
           foreach ($asset in @($zip, $checksum)) {
             if (-not (Test-Path $asset -PathType Leaf)) {
