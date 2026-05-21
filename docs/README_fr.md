@@ -3,7 +3,7 @@
 
   <h1>UnfocusMute</h1>
 
-  <p><strong>Application Windows légère et portable, dans la zone de notification, qui coupe le son des jeux et apps choisis lorsqu’ils ne sont plus au premier plan.<br>Elle restaure uniquement l’audio qu’elle a coupé.</strong></p>
+  <p><strong>Application Windows légère, portable et entièrement locale, dans la zone de notification, qui coupe le son des jeux et apps choisis lorsqu’ils ne sont plus au premier plan.<br>Elle restaure uniquement l’audio qu’elle a coupé : aucun réseau, aucun journal.</strong></p>
 
   <p>
     <a href="../README.md">한국어</a> · <a href="README_en.md">English</a> · <a href="README_ja.md">日本語</a> · <a href="README_zh-CN.md">简体中文</a> · <a href="README_es.md">Español</a> · Français · <a href="README_pt.md">Português</a> · <a href="README_hi.md">हिन्दी</a> · <a href="README_ar.md">العربية</a>
@@ -14,6 +14,8 @@
     <img src="https://img.shields.io/badge/Windows-10%2F11-0078D4?style=flat-square&logo=windows&logoColor=white" alt="Windows 10/11">
     <a href="../LICENSE"><img src="https://img.shields.io/badge/license-Apache--2.0-blue?style=flat-square" alt="Apache-2.0 license"></a>
   </p>
+
+  <p>Fonctionnement entièrement local &nbsp;·&nbsp; Aucune connexion réseau &nbsp;·&nbsp; Aucun fichier journal &nbsp;·&nbsp; Aucun droit administrateur requis</p>
 
   <p>
     <a href="https://github.com/ilsd7/UnfocusMute/releases/latest/download/UnfocusMute-windows-x64.zip">Télécharger</a>
@@ -27,7 +29,7 @@
 
 UnfocusMute est une petite application légère pour la zone de notification de Windows. Elle met automatiquement en sourdine uniquement le jeu ou l’application choisi lorsqu’il passe en arrière-plan. Elle ne se limite pas aux jeux : navigateurs, messageries, lanceurs, lecteurs multimédias et autres applications peuvent aussi être enregistrés s’ils apparaissent comme sessions audio Windows.
 
-Compilée comme application native Rust, elle s’exécute sans runtime séparé. L’exécutable actuel fait environ 492 Ko, soit moins de 1 Mo.
+Compilée comme application native Rust, elle s’exécute sans runtime séparé. L’exécutable actuel fait environ 489 Ko, soit moins de 1 Mo.
 
 <p align="center">
   <img src="../assets/screenshot_fr.png" alt="Fenêtre de l’application UnfocusMute">
@@ -115,9 +117,15 @@ Si vous ne savez pas quel nom enregistrer, vérifiez dans le Gestionnaire des t�
 
 ## Sécurité et confidentialité
 
-UnfocusMute fonctionne d’abord en local. Il stocke uniquement les noms de processus enregistrés, les PID facultatifs, la langue de l’interface, la position de la fenêtre et les options de démarrage dans un fichier de configuration local.
+UnfocusMute est une application entièrement locale. Tout se passe sur votre PC, et l’application fonctionne normalement même sans connexion internet.
 
-La détection des sessions audio et le contrôle de la sourdine sont traités sur votre PC via les API Windows CoreAudio. Il n’y a pas de requêtes réseau, télémétrie, rapport de crash ni journalisation distante, et UnfocusMute ne crée pas de fichier journal séparé.
+**Ce qui est stocké** — Les noms de processus enregistrés, les PID facultatifs, la langue de l’interface, la position de la fenêtre et les options de démarrage. Ces données sont stockées uniquement dans `%APPDATA%\UnfocusMute\config.json` et ne sont envoyées nulle part.
+
+**Ce qui n’est pas stocké** — L’application ne crée pas de fichier journal. Aucun historique d’activité n’est conservé entre les sessions.
+
+**Ce qui n’est pas fait** — Il n’y a pas de requêtes réseau, de télémétrie, de rapport de crash ni de journalisation distante. L’application ne demande pas non plus de droits administrateur.
+
+La détection des sessions audio et le contrôle de la sourdine utilisent uniquement les API Windows CoreAudio, et UnfocusMute n’injecte pas de code dans les processus de jeux ni ne lit leur mémoire.
 
 ---
 

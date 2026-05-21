@@ -3,7 +3,7 @@
 
   <h1>UnfocusMute</h1>
 
-  <p><strong>轻量、便携的 Windows 托盘应用，可在选定的游戏和应用失去焦点时将其静音。<br>只恢复它自己静音的音频。</strong></p>
+  <p><strong>轻量、便携、完全本地运行的 Windows 托盘应用，可在选定的游戏和应用失去焦点时将其静音。<br>只恢复它自己静音的音频；没有网络连接，也没有日志。</strong></p>
 
   <p>
     <a href="../README.md">한국어</a> · <a href="README_en.md">English</a> · <a href="README_ja.md">日本語</a> · 简体中文 · <a href="README_es.md">Español</a> · <a href="README_fr.md">Français</a> · <a href="README_pt.md">Português</a> · <a href="README_hi.md">हिन्दी</a> · <a href="README_ar.md">العربية</a>
@@ -14,6 +14,8 @@
     <img src="https://img.shields.io/badge/Windows-10%2F11-0078D4?style=flat-square&logo=windows&logoColor=white" alt="Windows 10/11">
     <a href="../LICENSE"><img src="https://img.shields.io/badge/license-Apache--2.0-blue?style=flat-square" alt="Apache-2.0 license"></a>
   </p>
+
+  <p>完全本地运行 &nbsp;·&nbsp; 无网络连接 &nbsp;·&nbsp; 无日志文件 &nbsp;·&nbsp; 不需要管理员权限</p>
 
   <p>
     <a href="https://github.com/ilsd7/UnfocusMute/releases/latest/download/UnfocusMute-windows-x64.zip">下载</a>
@@ -27,7 +29,7 @@
 
 UnfocusMute 是一个小巧轻量的 Windows 托盘应用。当你选定的游戏或应用切到后台时，它会自动只静音该应用的声音。它不仅适用于游戏，浏览器、聊天工具、启动器、媒体播放器等只要显示为 Windows 音频会话，也可以注册使用。
 
-它是 Rust 原生应用，无需额外运行时即可直接运行。当前可执行文件约 492KB，小于 1MB。
+它是 Rust 原生应用，无需额外运行时即可直接运行。当前可执行文件约 489KB，小于 1MB。
 
 <p align="center">
   <img src="../assets/screenshot_zh-Hans.png" alt="UnfocusMute 应用窗口">
@@ -115,9 +117,15 @@ UnfocusMute 不会向游戏注入代码，不会读取游戏内存，不会 hook
 
 ## 安全与隐私
 
-UnfocusMute 以本地优先方式工作。它只在本地配置文件中保存已注册的进程名、可选 PID、界面语言、窗口位置和启动选项。
+UnfocusMute 是完全本地运行的应用。所有操作都只在当前电脑内完成，即使没有互联网连接也能正常工作。
 
-音频会话检测和静音控制都通过 Windows CoreAudio API 在当前电脑内完成。它不包含网络请求、遥测、崩溃报告或远程日志，也不会创建单独的应用日志文件。
+**保存的内容** — 已注册的进程名、可选 PID、界面语言、窗口位置和启动选项。这些数据只保存在 `%APPDATA%\UnfocusMute\config.json`，不会发送到外部。
+
+**不会保存的内容** — 不会创建应用日志文件。跨会话的操作记录也不会保留在任何地方。
+
+**不会做的事** — 没有网络请求、遥测、崩溃报告或远程日志，也不要求管理员权限。
+
+音频会话检测和静音控制只使用 Windows CoreAudio API，并且不会向游戏进程注入代码或读取其内存。
 
 ---
 

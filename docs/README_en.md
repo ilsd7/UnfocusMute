@@ -3,7 +3,7 @@
 
   <h1>UnfocusMute</h1>
 
-  <p><strong>Lightweight, portable Windows tray app that mutes selected games and apps when they lose focus.<br>Restores only the audio it muted.</strong></p>
+  <p><strong>Lightweight, portable, fully local Windows tray app that mutes selected games and apps when they lose focus.<br>Restores only the audio it muted — no network, no logs.</strong></p>
 
   <p>
     <a href="../README.md">한국어</a> · English · <a href="README_ja.md">日本語</a> · <a href="README_zh-CN.md">简体中文</a> · <a href="README_es.md">Español</a> · <a href="README_fr.md">Français</a> · <a href="README_pt.md">Português</a> · <a href="README_hi.md">हिन्दी</a> · <a href="README_ar.md">العربية</a>
@@ -14,6 +14,8 @@
     <img src="https://img.shields.io/badge/Windows-10%2F11-0078D4?style=flat-square&logo=windows&logoColor=white" alt="Windows 10/11">
     <a href="../LICENSE"><img src="https://img.shields.io/badge/license-Apache--2.0-blue?style=flat-square" alt="Apache-2.0 license"></a>
   </p>
+
+  <p>Fully local operation &nbsp;·&nbsp; No network connections &nbsp;·&nbsp; No log files &nbsp;·&nbsp; No administrator rights required</p>
 
   <p>
     <a href="https://github.com/ilsd7/UnfocusMute/releases/latest/download/UnfocusMute-windows-x64.zip">Download</a>
@@ -27,7 +29,7 @@
 
 UnfocusMute is a small, lightweight Windows tray app that automatically mutes only the selected game or app when it moves to the background. It is not limited to games: browsers, messengers, launchers, media players, and other apps can be registered as long as they appear as Windows audio sessions.
 
-Built as a native Rust app, it runs without a separate runtime. The current executable is about 492 KB, under 1 MB.
+Built as a native Rust app, it runs without a separate runtime. The current executable is about 489 KB, under 1 MB.
 
 <p align="center">
   <img src="../assets/screenshot_en.png" alt="UnfocusMute app window">
@@ -115,9 +117,15 @@ If you are not sure what to register, check the `.exe` name in Task Manager.
 
 ## Security and Privacy
 
-UnfocusMute is local-first. It stores only registered process names, optional PIDs, UI language, window position, and startup options in a local config file.
+UnfocusMute is a fully local app. Everything happens on your current PC, and it works normally without an internet connection.
 
-Audio session detection and mute control are handled only on your current PC through Windows CoreAudio APIs. There are no network requests, telemetry, crash reporting, or remote logging, and UnfocusMute does not create separate app log files.
+**What it stores** — Registered process names, optional PIDs, UI language, window position, and startup options. This data is stored only in `%APPDATA%\UnfocusMute\config.json` and is not sent anywhere.
+
+**What it does not store** — It does not create app log files. No behavior history is retained between sessions.
+
+**What it does not do** — There are no network requests, telemetry, crash reporting, or remote logging. It also does not require administrator rights.
+
+Audio session detection and mute control use only Windows CoreAudio APIs, and UnfocusMute does not inject code into game processes or read their memory.
 
 ---
 

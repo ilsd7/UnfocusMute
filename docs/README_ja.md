@@ -3,7 +3,7 @@
 
   <h1>UnfocusMute</h1>
 
-  <p><strong>フォーカスを失った選択済みのゲームやアプリをミュートする、軽量なポータブルWindowsトレイアプリです。<br>ミュートした音声だけを元に戻します。</strong></p>
+  <p><strong>フォーカスを失った選択済みのゲームやアプリをミュートする、軽量・ポータブル・完全ローカルなWindowsトレイアプリです。<br>ミュートした音声だけを元に戻します。ネットワーク通信もログもありません。</strong></p>
 
   <p>
     <a href="../README.md">한국어</a> · <a href="README_en.md">English</a> · 日本語 · <a href="README_zh-CN.md">简体中文</a> · <a href="README_es.md">Español</a> · <a href="README_fr.md">Français</a> · <a href="README_pt.md">Português</a> · <a href="README_hi.md">हिन्दी</a> · <a href="README_ar.md">العربية</a>
@@ -14,6 +14,8 @@
     <img src="https://img.shields.io/badge/Windows-10%2F11-0078D4?style=flat-square&logo=windows&logoColor=white" alt="Windows 10/11">
     <a href="../LICENSE"><img src="https://img.shields.io/badge/license-Apache--2.0-blue?style=flat-square" alt="Apache-2.0 license"></a>
   </p>
+
+  <p>完全ローカル動作 &nbsp;·&nbsp; ネットワーク接続なし &nbsp;·&nbsp; ログファイルなし &nbsp;·&nbsp; 管理者権限不要</p>
 
   <p>
     <a href="https://github.com/ilsd7/UnfocusMute/releases/latest/download/UnfocusMute-windows-x64.zip">ダウンロード</a>
@@ -27,7 +29,7 @@
 
 UnfocusMuteは、選択したゲームやアプリがバックグラウンドに移ったとき、そのアプリの音だけを自動でミュートする小さく軽いWindows用トレイアプリです。ゲームだけでなく、ブラウザ、メッセンジャー、ランチャー、メディアプレイヤーなど、Windowsのオーディオセッションとして表示される一般的なアプリも登録できます。
 
-Rust製のネイティブアプリなので、別途ランタイムなしでそのまま実行できます。現在の実行ファイルは約492KBで、1MB未満です。
+Rust製のネイティブアプリなので、別途ランタイムなしでそのまま実行できます。現在の実行ファイルは約489KBで、1MB未満です。
 
 <p align="center">
   <img src="../assets/screenshot_ja.png" alt="UnfocusMuteのアプリ画面">
@@ -115,9 +117,15 @@ UnfocusMuteはゲームにコードを注入したり、ゲームメモリを読
 
 ## セキュリティとプライバシー
 
-UnfocusMuteはローカル優先で動作します。保存するのは、登録したプロセス名、任意のPID、UI言語、ウィンドウ位置、起動オプションだけです。
+UnfocusMuteは完全ローカルのアプリです。すべての動作は現在のPC内だけで行われ、インターネット接続がなくても通常どおり動作します。
 
-オーディオセッションの検出とミュート制御は、Windows CoreAudio APIを使って現在のPC内だけで処理されます。ネットワーク要求、テレメトリ、クラッシュレポート、リモートログ送信は含まれておらず、別途アプリログファイルも作成しません。
+**保存するもの** — 登録したプロセス名、任意のPID、UI言語、ウィンドウ位置、起動オプション。このデータは `%APPDATA%\UnfocusMute\config.json` にのみ保存され、外部へ送信されません。
+
+**保存しないもの** — アプリのログファイルは作成しません。セッションをまたいだ動作履歴も残しません。
+
+**行わないこと** — ネットワーク要求、テレメトリ、クラッシュレポート、リモートログ送信はありません。管理者権限も要求しません。
+
+オーディオセッションの検出とミュート制御にはWindows CoreAudio APIだけを使用し、ゲームプロセスにコードを注入したりメモリを読んだりしません。
 
 ---
 

@@ -3,7 +3,7 @@
 
   <h1>UnfocusMute</h1>
 
-  <p><strong>App de bandeja para Windows, ligera y portátil, que silencia juegos y apps seleccionados cuando pierden el foco.<br>Solo restaura el audio que ella misma silenció.</strong></p>
+  <p><strong>App de bandeja para Windows ligera, portátil y completamente local que silencia juegos y apps seleccionados cuando pierden el foco.<br>Solo restaura el audio que ella misma silenció: sin red ni logs.</strong></p>
 
   <p>
     <a href="../README.md">한국어</a> · <a href="README_en.md">English</a> · <a href="README_ja.md">日本語</a> · <a href="README_zh-CN.md">简体中文</a> · Español · <a href="README_fr.md">Français</a> · <a href="README_pt.md">Português</a> · <a href="README_hi.md">हिन्दी</a> · <a href="README_ar.md">العربية</a>
@@ -14,6 +14,8 @@
     <img src="https://img.shields.io/badge/Windows-10%2F11-0078D4?style=flat-square&logo=windows&logoColor=white" alt="Windows 10/11">
     <a href="../LICENSE"><img src="https://img.shields.io/badge/license-Apache--2.0-blue?style=flat-square" alt="Apache-2.0 license"></a>
   </p>
+
+  <p>Funcionamiento completamente local &nbsp;·&nbsp; Sin conexiones de red &nbsp;·&nbsp; Sin archivos de log &nbsp;·&nbsp; No requiere permisos de administrador</p>
 
   <p>
     <a href="https://github.com/ilsd7/UnfocusMute/releases/latest/download/UnfocusMute-windows-x64.zip">Descargar</a>
@@ -27,7 +29,7 @@
 
 UnfocusMute es una app pequeña y ligera para la bandeja de Windows que silencia automáticamente solo el sonido del juego o la app seleccionada cuando pasa a segundo plano. No sirve solo para juegos: también puedes registrar navegadores, apps de chat, launchers, reproductores multimedia y otras apps que aparezcan como sesiones de audio de Windows.
 
-Al estar compilada como app nativa en Rust, se ejecuta sin un runtime adicional. El ejecutable actual ocupa unos 492 KB, menos de 1 MB.
+Al estar compilada como app nativa en Rust, se ejecuta sin un runtime adicional. El ejecutable actual ocupa unos 489 KB, menos de 1 MB.
 
 <p align="center">
   <img src="../assets/screenshot_es.png" alt="Ventana de UnfocusMute">
@@ -115,9 +117,15 @@ Si no sabes qué nombre registrar, busca el ejecutable terminado en `.exe` en el
 
 ## Seguridad y privacidad
 
-UnfocusMute funciona con un enfoque local. Solo guarda en un archivo de configuración local los nombres de procesos registrados, los PID opcionales, el idioma de la interfaz, la posición de la ventana y las opciones de inicio.
+UnfocusMute es una app completamente local. Todo ocurre dentro de tu PC y funciona con normalidad aunque no tengas conexión a internet.
 
-La detección de sesiones de audio y el control de silencio se procesan dentro de tu PC mediante las API CoreAudio de Windows. No hay solicitudes de red, telemetría, informes de fallos ni registro remoto, y UnfocusMute no crea archivos de log propios.
+**Lo que guarda** — Nombres de procesos registrados, PID opcionales, idioma de la interfaz, posición de la ventana y opciones de inicio. Estos datos solo se guardan en `%APPDATA%\UnfocusMute\config.json` y no se envían fuera.
+
+**Lo que no guarda** — No crea archivos de log de la app. Tampoco conserva historial de actividad entre sesiones.
+
+**Lo que no hace** — No hay solicitudes de red, telemetría, informes de fallos ni registro remoto. Tampoco requiere permisos de administrador.
+
+La detección de sesiones de audio y el control de silencio solo usan las API CoreAudio de Windows, y UnfocusMute no inyecta código en procesos de juegos ni lee su memoria.
 
 ---
 

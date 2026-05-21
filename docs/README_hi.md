@@ -3,7 +3,7 @@
 
   <h1>UnfocusMute</h1>
 
-  <p><strong>चुने हुए गेम और ऐप्स का फ़ोकस हटने पर उन्हें म्यूट करने वाला हल्का, पोर्टेबल Windows ट्रे ऐप।<br>यह केवल उसी ऑडियो को पुनर्स्थापित करता है जिसे इसने म्यूट किया था।</strong></p>
+  <p><strong>चुने हुए गेम और ऐप्स का फ़ोकस हटने पर उन्हें म्यूट करने वाला हल्का, पोर्टेबल और पूरी तरह local Windows tray app।<br>यह सिर्फ उसी audio को restore करता है जिसे इसने mute किया था — कोई network नहीं, कोई logs नहीं।</strong></p>
 
   <p>
     <a href="../README.md">한국어</a> · <a href="README_en.md">English</a> · <a href="README_ja.md">日本語</a> · <a href="README_zh-CN.md">简体中文</a> · <a href="README_es.md">Español</a> · <a href="README_fr.md">Français</a> · <a href="README_pt.md">Português</a> · हिन्दी · <a href="README_ar.md">العربية</a>
@@ -14,6 +14,8 @@
     <img src="https://img.shields.io/badge/Windows-10%2F11-0078D4?style=flat-square&logo=windows&logoColor=white" alt="Windows 10/11">
     <a href="../LICENSE"><img src="https://img.shields.io/badge/license-Apache--2.0-blue?style=flat-square" alt="Apache-2.0 license"></a>
   </p>
+
+  <p>पूरी तरह local operation &nbsp;·&nbsp; कोई network connection नहीं &nbsp;·&nbsp; कोई log file नहीं &nbsp;·&nbsp; administrator rights की जरूरत नहीं</p>
 
   <p>
     <a href="https://github.com/ilsd7/UnfocusMute/releases/latest/download/UnfocusMute-windows-x64.zip">डाउनलोड</a>
@@ -27,7 +29,7 @@
 
 UnfocusMute Windows tray के लिए एक छोटा और हल्का app है। चुना हुआ game या app background में जाते ही यह सिर्फ उसी app की आवाज अपने आप mute करता है। यह सिर्फ games तक सीमित नहीं है: browsers, messengers, launchers, media players और दूसरे apps भी register किए जा सकते हैं, अगर वे Windows audio session के रूप में दिखते हों।
 
-Rust native app के रूप में build होने के कारण यह अलग runtime के बिना सीधे चलता है। मौजूदा executable लगभग 492 KB है, यानी 1 MB से कम।
+Rust native app के रूप में build होने के कारण यह अलग runtime के बिना सीधे चलता है। मौजूदा executable लगभग 489 KB है, यानी 1 MB से कम।
 
 <p align="center">
   <img src="../assets/screenshot_hi.png" alt="UnfocusMute ऐप विंडो">
@@ -115,9 +117,15 @@ UnfocusMute games में code inject नहीं करता, game memory �
 
 ## सुरक्षा और प्राइवेसी
 
-UnfocusMute local-first तरीके से काम करता है। यह local config file में सिर्फ registered process names, optional PIDs, UI language, window position और startup options save करता है।
+UnfocusMute पूरी तरह local app है। सब कुछ आपके इसी PC के अंदर होता है, और internet connection न होने पर भी यह सामान्य रूप से काम करता है।
 
-Audio session detection और mute control आपके PC पर Windows CoreAudio APIs के जरिए ही होते हैं। इसमें network requests, telemetry, crash reporting या remote logging नहीं है, और UnfocusMute अलग app log files भी नहीं बनाता।
+**यह क्या save करता है** — Registered process names, optional PIDs, UI language, window position और startup options। यह data सिर्फ `%APPDATA%\UnfocusMute\config.json` में save होता है और बाहर कहीं नहीं भेजा जाता।
+
+**यह क्या save नहीं करता** — App log files नहीं बनाता। Sessions के बीच behavior history कहीं भी नहीं रखी जाती।
+
+**यह क्या नहीं करता** — Network requests, telemetry, crash reporting या remote logging नहीं है। Administrator rights की भी जरूरत नहीं होती।
+
+Audio session detection और mute control सिर्फ Windows CoreAudio APIs इस्तेमाल करते हैं, और UnfocusMute game processes में code inject नहीं करता या उनकी memory नहीं पढ़ता।
 
 ---
 

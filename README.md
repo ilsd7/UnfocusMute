@@ -3,7 +3,7 @@
 
   <h1>UnfocusMute</h1>
 
-  <p><strong>Lightweight, portable Windows tray app that mutes selected games and apps when they lose focus.<br>Restores only the audio it muted.</strong></p>
+  <p><strong>Lightweight, portable, fully local Windows tray app that mutes selected games and apps when they lose focus.<br>Restores only the audio it muted — no network, no logs.</strong></p>
 
   <p>
     한국어 · <a href="docs/README_en.md">English</a> · <a href="docs/README_ja.md">日本語</a> · <a href="docs/README_zh-CN.md">简体中文</a> · <a href="docs/README_es.md">Español</a> · <a href="docs/README_fr.md">Français</a> · <a href="docs/README_pt.md">Português</a> · <a href="docs/README_hi.md">हिन्दी</a> · <a href="docs/README_ar.md">العربية</a>
@@ -14,6 +14,8 @@
     <img src="https://img.shields.io/badge/Windows-10%2F11-0078D4?style=flat-square&logo=windows&logoColor=white" alt="Windows 10/11">
     <a href="LICENSE"><img src="https://img.shields.io/badge/license-Apache--2.0-blue?style=flat-square" alt="Apache-2.0 license"></a>
   </p>
+
+  <p>완전한 로컬 실행 &nbsp;·&nbsp; 네트워크 연결 없음 &nbsp;·&nbsp; 로그 파일 없음 &nbsp;·&nbsp; 관리자 권한 불필요</p>
 
   <p>
     <a href="https://github.com/ilsd7/UnfocusMute/releases/latest/download/UnfocusMute-windows-x64.zip">다운로드</a>
@@ -27,7 +29,7 @@
 
 UnfocusMute는 선택한 게임이나 앱이 백그라운드로 전환될 때 그 앱의 소리만 자동으로 음소거하는 작고 가벼운 Windows용 트레이 앱입니다. 게임뿐 아니라 브라우저, 메신저, 런처, 미디어 플레이어처럼 Windows 오디오 세션으로 표시되는 일반 앱도 등록할 수 있습니다.
 
-Rust 네이티브 앱으로 빌드되어 별도 런타임 없이 바로 실행됩니다. 현재 실행 파일은 약 492KB로, 1MB 미만입니다.
+Rust 네이티브 앱으로 빌드되어 별도 런타임 없이 바로 실행됩니다. 현재 실행 파일은 약 489KB로, 1MB 미만입니다.
 
 <p align="center">
   <img src="assets/screenshot_ko.png" alt="UnfocusMute 앱 화면">
@@ -115,9 +117,15 @@ UnfocusMute는 게임에 코드를 주입하거나, 게임 메모리를 읽거�
 
 ## 보안 및 개인정보
 
-UnfocusMute는 로컬 우선 방식으로 동작합니다. 등록한 프로세스 이름, 선택적으로 등록한 PID, UI 언어, 창 위치, 시작 옵션만 로컬 설정 파일에 저장합니다.
+UnfocusMute는 완전한 로컬 앱입니다. 모든 동작이 현재 PC 안에서만 이루어지며, 인터넷 연결이 없어도 정상 작동합니다.
 
-오디오 세션 감지와 음소거 제어는 Windows CoreAudio API를 통해 현재 PC 안에서만 처리됩니다. 네트워크 요청, 텔레메트리, 크래시 리포팅, 원격 로깅은 포함되어 있지 않으며, 별도의 앱 로그 파일도 생성하지 않습니다.
+**저장하는 것** — 등록한 프로세스 이름, 선택적으로 등록한 PID, UI 언어, 창 위치, 시작 옵션. 이 데이터는 `%APPDATA%\UnfocusMute\config.json`에만 저장되며, 외부로 전송되지 않습니다.
+
+**저장하지 않는 것** — 앱 로그 파일을 생성하지 않습니다. 세션 간 동작 기록은 어디에도 남지 않습니다.
+
+**하지 않는 것** — 네트워크 요청, 텔레메트리, 크래시 리포팅, 원격 로깅이 없습니다. 관리자 권한도 요구하지 않습니다.
+
+오디오 세션 감지와 음소거 제어는 Windows CoreAudio API만 사용하며, 게임 프로세스에 코드를 주입하거나 메모리를 읽지 않습니다.
 
 ---
 
