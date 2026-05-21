@@ -15,7 +15,7 @@
     <img src="https://img.shields.io/badge/Windows-10%2F11-0078D4?style=flat-square&logo=windows&logoColor=white" alt="Windows 10/11">
     <img src="https://img.shields.io/badge/portable-yes-2E7D32?style=flat-square" alt="Portable app">
     <img src="https://img.shields.io/badge/Rust-native-B7410E?style=flat-square&logo=rust&logoColor=white" alt="Rust native app">
-    <img src="https://img.shields.io/badge/binary-~491KB-5E35B1?style=flat-square" alt="Executable size about 491KB">
+    <img src="https://img.shields.io/badge/binary-~492KB-5E35B1?style=flat-square" alt="Executable size about 492KB">
     <img src="https://img.shields.io/badge/telemetry-none-455A64?style=flat-square" alt="No telemetry">
   </p>
 
@@ -31,15 +31,30 @@
 
 UnfocusMute es una app pequeña y ligera para la bandeja de Windows que silencia automáticamente solo el sonido del juego o la app seleccionada cuando pasa a segundo plano. No sirve solo para juegos: también puedes registrar navegadores, apps de chat, launchers, reproductores multimedia y otras apps que aparezcan como sesiones de audio de Windows.
 
-Al estar compilada como app nativa en Rust, se ejecuta sin un runtime adicional. El ejecutable actual para Windows ocupa unos 491 KB, menos de 1 MB.
+Al estar compilada como app nativa en Rust, se ejecuta sin un runtime adicional. El ejecutable ocupa unos 492 KB, menos de 1 MB.
 
 <p align="center">
   <img src="../assets/screenshot_es.png" alt="Ventana de UnfocusMute">
 </p>
 
-UnfocusMute silencia la sesión de audio de una app registrada solo mientras esa app no está en primer plano. Cuando vuelve al primer plano, restaura únicamente las sesiones que UnfocusMute silenció por su cuenta, sin reactivar sesiones que no silenció o que ya habías silenciado.
+El silencio y la restauración solo se aplican a las sesiones que UnfocusMute cambió directamente. Las sesiones que ya habías silenciado se dejan intactas.
 
-Es especialmente útil cuando dejas un juego abierto y alternas con Alt+Tab entre el navegador, una app de chat o una ventana de trabajo. Puedes apagar solo el audio de fondo sin abrir una y otra vez el mezclador de volumen de Windows.
+## Útil cuando
+
+- Sueles usar Alt+Tab para salir de un juego o app mientras sigue abierta.
+- Un juego o app no ofrece su propia opción de silenciarse en segundo plano.
+- Quieres silenciar solo el juego en segundo plano mientras sigues oyendo el navegador o una llamada.
+- Un mismo `.exe` abre varios procesos y necesitas alternar entre gestionar toda la app y controlar un PID concreto.
+
+## Funciones
+
+- Silencia automáticamente las apps registradas mientras están en segundo plano y restaura el audio al volver al primer plano.
+- Añade objetivos desde la lista de apps en ejecución o escribiendo un nombre como `game.exe`.
+- Admite objetivos por `.exe`, objetivos por PID de la instancia actual y `Ver PID`.
+- Notas por app, `Excluir del silencio automático` e `Incluir en el silencio automático` por app.
+- Permanencia en bandeja, pausa global, acceso a la carpeta de configuración y protección contra instancias duplicadas.
+- Permite elegir idioma en el primer inicio y cambiar después dentro de la app entre English/한국어/日本語/简体中文/Español/Français/Português/हिन्दी/العربية.
+- La configuración se guarda localmente en `%APPDATA%\UnfocusMute\config.json`.
 
 ---
 
@@ -52,7 +67,17 @@ En Windows 10/11, descarga el paquete ZIP y extráelo para ejecutar la app.
 | [UnfocusMute-windows-x64.zip](https://github.com/ilsd7/UnfocusMute/releases/latest/download/UnfocusMute-windows-x64.zip) |
 | [Archivo SHA-256](https://github.com/ilsd7/UnfocusMute/releases/latest/download/UnfocusMute-windows-x64.zip.sha256) · [Notas de la versión](https://github.com/ilsd7/UnfocusMute/releases/latest) |
 
-Mueve la carpeta extraída `UnfocusMute-windows-x64` a la ubicación donde quieras guardar la app y ejecuta `UnfocusMute-<version>.exe` dentro de esa carpeta. Es una app portátil: no hay instalador y no necesitas runtime adicional, Rust, Visual Studio Build Tools ni MinGW.
+Mueve la carpeta extraída `UnfocusMute-windows-x64` a la ubicación donde quieras guardar la app y ejecuta `UnfocusMute-<version>.exe` dentro de esa carpeta. Es una app portátil: no hay instalador y no necesitas Rust, Visual Studio Build Tools, MinGW ni otras herramientas de desarrollo.
+
+> **Nota:** Debido al coste de los certificados de firma de código, la app se distribuye actualmente sin firma de código de Windows. En el primer inicio puede aparecer Windows SmartScreen o un aviso de "editor desconocido". Si quieres comprobar la integridad del archivo por tu cuenta, consulta la sección de verificación de archivos de release más abajo.
+
+## Antes de usar
+
+UnfocusMute funciona con los nombres de proceso, la información de la ventana en primer plano y las sesiones CoreAudio que proporciona Windows. Si una app aún no ha creado una sesión de audio, o si un controlador, permiso o programa de seguridad limita el acceso a la sesión, la lista o el control de silencio pueden estar limitados.
+
+Hay un comportamiento que conviene conocer al registrar por PID. Windows no siempre proporciona el mismo PID para una sesión de audio y para la ventana en primer plano. Para compensarlo, UnfocusMute considera que la app volvió al primer plano cuando el nombre `.exe` del PID registrado coincide con el nombre `.exe` de la ventana activa. Por eso, si hay varias instancias del mismo `.exe`, un PID concreto no siempre puede separarse perfectamente, y el sonido puede restaurarse cuando otra instancia está en primer plano.
+
+UnfocusMute no inyecta código en juegos, no lee memoria del juego, no intercepta entradas y no modifica archivos del juego. Solo usa la información de procesos/ventana en primer plano de Windows y los controles de silencio de sesiones CoreAudio, por lo que debería funcionar sin problemas con la mayoría de sistemas anti-cheat, aunque no se puede garantizar compatibilidad con todos.
 
 ## Uso
 
@@ -88,47 +113,30 @@ Si no sabes qué nombre registrar, busca el ejecutable terminado en `.exe` en el
 5. Haz clic derecho en el juego y abre `Propiedades`.
 6. Busca el nombre del ejecutable terminado en `.exe`, como `game.exe`, y añádelo a UnfocusMute.
 
-## Antes de usar
-
-UnfocusMute funciona con los nombres de proceso, la información de la ventana en primer plano y las sesiones CoreAudio que proporciona Windows. Si una app aún no ha creado una sesión de audio, o si un controlador, permiso o programa de seguridad limita el acceso a la sesión, la lista o el control de silencio pueden estar limitados.
-
-Los objetivos por PID también usan el nombre `.exe` de la ventana en primer plano como respaldo, porque Windows no siempre informa el mismo PID para la ventana activa y la sesión de audio. Si hay varias instancias del mismo `.exe`, un objetivo por PID no puede separarlas perfectamente: el sonido puede restaurarse cuando otra instancia del mismo `.exe` está en primer plano.
-
-UnfocusMute no inyecta código en juegos, no lee memoria del juego, no intercepta entradas y no modifica archivos del juego. Solo usa la información de procesos/ventana en primer plano de Windows y los controles de silencio de sesiones CoreAudio, por lo que debería funcionar sin problemas con la mayoría de sistemas anti-cheat, aunque no se puede garantizar compatibilidad con todos.
+---
 
 ## Seguridad y privacidad
 
 UnfocusMute funciona con un enfoque local. Solo guarda en un archivo de configuración local los nombres de procesos registrados, los PID opcionales, el idioma de la interfaz, la posición de la ventana y las opciones de inicio.
 
-La detección de sesiones de audio y el control de silencio se procesan dentro de tu PC mediante las API CoreAudio de Windows. No hay solicitudes de red, cuentas, telemetría, analíticas, informes de fallos ni registro remoto, y UnfocusMute no crea archivos de log propios.
+La detección de sesiones de audio y el control de silencio se procesan dentro de tu PC mediante las API CoreAudio de Windows. No hay solicitudes de red, telemetría, informes de fallos ni registro remoto, y UnfocusMute no crea archivos de log propios.
 
 ---
 
-## Cómo funciona
+## Verificar archivos de release
 
-UnfocusMute compara los objetivos registrados con la ventana que está actualmente en primer plano y silencia la sesión de audio de un objetivo solo cuando esa app está en segundo plano.
+Por seguridad, los usuarios deben poder protegerse si un desarrollador distribuye maliciosamente archivos distintos del código publicado en el repositorio, o si los archivos de release se alteran por una cuenta comprometida u otro incidente similar. Para eso hace falta un procedimiento que permita verificar directamente que los archivos subidos a GitHub Releases son builds oficiales que coinciden con el código fuente público.
 
-- Si la app objetivo está en primer plano, no cambia su estado de audio.
-- Si la app objetivo está en segundo plano, silencia solo la sesión de audio de esa app.
-- Cuando la app objetivo vuelve al primer plano, restaura solo las sesiones que UnfocusMute silenció.
-- UnfocusMute no reactiva sesiones que no silenció o que ya habías silenciado.
+Por seguridad y transparencia, UnfocusMute ofrece un método de verificación que permite confirmar directamente que los archivos subidos a GitHub Releases son builds oficiales que coinciden con el código fuente de este repositorio.
 
-## Útil cuando
+El ZIP de release y el archivo de checksum SHA-256 se generan con GitHub Actions, el sistema de build automático de GitHub, y ambos archivos se entregan con attestations que prueban su origen.
 
-- Sueles usar Alt+Tab para salir de un juego o app mientras sigue abierta.
-- Un juego o app no ofrece su propia opción de silenciarse en segundo plano.
-- Quieres silenciar solo el juego en segundo plano mientras sigues oyendo el navegador o una llamada.
-- Un mismo `.exe` abre varios procesos y necesitas alternar entre gestionar toda la app y controlar un PID concreto.
+Los comandos de abajo permiten verificar que el ZIP descargado desde GitHub Releases es idéntico al build oficial de este repositorio.
 
-## Funciones
-
-- Silencia automáticamente las apps registradas mientras están en segundo plano y restaura el audio al volver al primer plano.
-- Añade objetivos desde la lista de apps en ejecución o escribiendo un nombre como `game.exe`.
-- Admite objetivos por `.exe`, objetivos por PID de la instancia actual y `Ver PID`.
-- Notas por app, `Excluir del silencio automático` e `Incluir en el silencio automático` por app.
-- Permanencia en bandeja, pausa global, acceso a la carpeta de configuración y protección contra instancias duplicadas.
-- Permite elegir idioma en el primer inicio y cambiar después dentro de la app entre English/한국어/日本語/简体中文/Español/Français/Português/हिन्दी/العربية.
-- La configuración se guarda localmente en `%APPDATA%\UnfocusMute\config.json`.
+```powershell
+gh attestation verify .\UnfocusMute-windows-x64.zip -R ilsd7/UnfocusMute
+gh attestation verify .\UnfocusMute-windows-x64.zip.sha256 -R ilsd7/UnfocusMute
+```
 
 ---
 

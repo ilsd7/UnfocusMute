@@ -13,7 +13,9 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6.0.2
+        with:
+          persist-credentials: false
       - run: rustup toolchain install stable --profile minimal --component rustfmt --component clippy
       - run: cargo fmt --check
       - run: cargo test --locked
@@ -24,7 +26,9 @@ jobs:
     runs-on: windows-latest
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6.0.2
+        with:
+          persist-credentials: false
       - run: rustup toolchain install stable --profile minimal --component rustfmt --component clippy --target x86_64-pc-windows-msvc
       - run: cargo fmt --check
       - run: cargo test --locked --target x86_64-pc-windows-msvc
@@ -43,7 +47,7 @@ jobs:
           }
           Add-Content -Path $env:GITHUB_OUTPUT -Value "zip=$zip"
           Add-Content -Path $env:GITHUB_OUTPUT -Value "checksum=$checksum"
-      - uses: actions/upload-artifact@v6
+      - uses: actions/upload-artifact@v7.0.1
         with:
           name: UnfocusMute-windows-x64
           path: |

@@ -15,7 +15,7 @@
     <img src="https://img.shields.io/badge/Windows-10%2F11-0078D4?style=flat-square&logo=windows&logoColor=white" alt="Windows 10/11">
     <img src="https://img.shields.io/badge/portable-yes-2E7D32?style=flat-square" alt="Portable app">
     <img src="https://img.shields.io/badge/Rust-native-B7410E?style=flat-square&logo=rust&logoColor=white" alt="Rust native app">
-    <img src="https://img.shields.io/badge/binary-~491KB-5E35B1?style=flat-square" alt="Executable size about 491KB">
+    <img src="https://img.shields.io/badge/binary-~492KB-5E35B1?style=flat-square" alt="Executable size about 492KB">
     <img src="https://img.shields.io/badge/telemetry-none-455A64?style=flat-square" alt="No telemetry">
   </p>
 
@@ -31,15 +31,30 @@
 
 UnfocusMute 是一个小巧轻量的 Windows 托盘应用。当你选定的游戏或应用切到后台时，它会自动只静音该应用的声音。它不仅适用于游戏，浏览器、聊天工具、启动器、媒体播放器等只要显示为 Windows 音频会话，也可以注册使用。
 
-它是 Rust 原生应用，无需额外运行时即可直接运行。当前 Windows 可执行文件约 491KB，小于 1MB。
+它是 Rust 原生应用，无需额外运行时即可直接运行。可执行文件约 492KB，小于 1MB。
 
 <p align="center">
   <img src="../assets/screenshot_zh-Hans.png" alt="UnfocusMute 应用窗口">
 </p>
 
-UnfocusMute 只会在注册应用不在前台时静音对应的音频会话。当该应用回到前台时，它只恢复 UnfocusMute 自己静音过的会话，不会取消静音它没有静音过的会话，也不会取消静音你原本就静音的会话。
+静音和恢复都只会作用于 UnfocusMute 自己改动过的会话。你原本就静音的会话不会被改动。
 
-当你开着游戏并用 Alt+Tab 在浏览器、聊天窗口或工作窗口之间切换时，它尤其有用。不用反复打开 Windows 音量混合器，也能只关掉后台应用的声音。
+## 适合这些场景
+
+- 游戏或应用保持运行时，你经常用 Alt+Tab 切换到其他窗口
+- 游戏或应用本身没有后台自动静音选项
+- 想暂时关掉后台游戏声音，同时保留浏览器或通话应用的声音
+- 同一个 `.exe` 会启动多个进程，需要在应用级管理和指定 PID 控制之间切换
+
+## 功能
+
+- 注册应用位于后台时自动静音其音频会话，回到前台时恢复
+- 可从正在运行的应用列表中选择添加，也可手动输入 `game.exe` 这样的名称
+- 支持按 `.exe` 注册、当前运行实例的单个 PID 注册，以及 `显示 PID`
+- 可为每个注册应用添加备注，并单独 `从自动静音中排除` 或 `加入自动静音`
+- 托盘常驻、全局暂停、打开配置文件夹、防止重复启动
+- 首次运行时选择语言，之后可在应用内立即切换 English/한국어/日本語/简体中文/Español/Français/Português/हिन्दी/العربية
+- 设置保存在本地 `%APPDATA%\UnfocusMute\config.json`
 
 ---
 
@@ -52,7 +67,17 @@ UnfocusMute 只会在注册应用不在前台时静音对应的音频会话。�
 | [UnfocusMute-windows-x64.zip](https://github.com/ilsd7/UnfocusMute/releases/latest/download/UnfocusMute-windows-x64.zip) |
 | [SHA-256 校验文件](https://github.com/ilsd7/UnfocusMute/releases/latest/download/UnfocusMute-windows-x64.zip.sha256) · [发行说明](https://github.com/ilsd7/UnfocusMute/releases/latest) |
 
-把解压后的 `UnfocusMute-windows-x64` 文件夹移动到你想保存的位置，再运行其中的 `UnfocusMute-<version>.exe`。它是便携应用，没有安装步骤，也不需要额外运行时、Rust、Visual Studio Build Tools 或 MinGW。
+把解压后的 `UnfocusMute-windows-x64` 文件夹移动到你想保存的位置，再运行其中的 `UnfocusMute-<version>.exe`。它是便携应用，没有安装步骤，也不需要 Rust、Visual Studio Build Tools、MinGW 等开发工具。
+
+> **提示：** 由于代码签名证书需要成本，目前发布文件未进行 Windows 代码签名。首次运行时，Windows SmartScreen 或“未知发布者”警告可能会出现。如果你想自行确认文件完整性，请参阅下面的发布文件验证部分。
+
+## 使用前须知
+
+UnfocusMute 依赖 Windows 提供的进程名、前台窗口信息和 CoreAudio 会话工作。如果应用尚未创建音频会话，或驱动、权限、安防软件限制了会话访问，列表显示或静音控制可能会受到一定限制。
+
+PID 注册有一点需要注意。Windows 不一定总是为音频会话和前台窗口报告同一个 PID。为修正这种情况，UnfocusMute 会在已注册 PID 的 `.exe` 名称与当前前台窗口的 `.exe` 名称相同时，将该应用视为已回到前台。因此，若同时运行多个相同 `.exe` 实例，指定 PID 可能无法被完全区分；当其他实例在前台时，声音也可能被恢复。
+
+UnfocusMute 不会向游戏注入代码，不会读取游戏内存，不会 hook 输入，也不会修改游戏文件。它只使用 Windows 的进程/前台窗口信息和 CoreAudio 会话静音功能，因此预计在大多数反作弊系统中不会有问题，但无法保证兼容所有反作弊系统。
 
 ## 使用方法
 
@@ -88,47 +113,30 @@ UnfocusMute 只会在注册应用不在前台时静音对应的音频会话。�
 5. 右键点击游戏项目并打开 `属性`。
 6. 找到类似 `game.exe` 这样以 `.exe` 结尾的执行文件名，并添加到 UnfocusMute。
 
-## 使用前须知
-
-UnfocusMute 依赖 Windows 提供的进程名、前台窗口信息和 CoreAudio 会话工作。如果应用尚未创建音频会话，或驱动、权限、安防软件限制了会话访问，列表显示或静音控制可能会受限。
-
-PID 注册会把前台窗口的 `.exe` 名称也作为回退依据，因为 Windows 不一定总是为前台窗口和音频会话报告同一个 PID。若同时运行多个相同 `.exe` 实例，PID 目标无法做到完全隔离：当同一 `.exe` 的其他实例在前台时，声音也可能被恢复。
-
-UnfocusMute 不会向游戏注入代码，不会读取游戏内存，不会 hook 输入，也不会修改游戏文件。它只使用 Windows 的进程/前台窗口信息和 CoreAudio 会话静音功能，因此预计在大多数反作弊系统中不会有问题，但无法保证兼容所有反作弊系统。
+---
 
 ## 安全与隐私
 
 UnfocusMute 以本地优先方式工作。它只在本地配置文件中保存已注册的进程名、可选 PID、界面语言、窗口位置和启动选项。
 
-音频会话检测和静音控制都通过 Windows CoreAudio API 在当前电脑内完成。它不包含网络请求、账号、遥测、分析工具、崩溃报告或远程日志，也不会创建单独的应用日志文件。
+音频会话检测和静音控制都通过 Windows CoreAudio API 在当前电脑内完成。它不包含网络请求、遥测、崩溃报告或远程日志，也不会创建单独的应用日志文件。
 
 ---
 
-## 工作方式
+## 验证发布文件
 
-UnfocusMute 会比较已注册目标和当前前台窗口，仅当目标应用位于后台时，才静音该应用的音频会话。
+出于安全考虑，用户需要能够防范开发者恶意发布与仓库公开代码不同的文件，或账号被盗等情况导致发布文件遭到篡改。为此，需要提供一个流程，让用户可以直接验证上传到 GitHub Releases 的文件是否是与公开源代码一致的官方构建。
 
-- 如果目标应用在前台，UnfocusMute 不会改变其声音状态。
-- 如果目标应用在后台，UnfocusMute 只静音该应用的音频会话。
-- 当目标应用回到前台时，UnfocusMute 只恢复自己静音过的会话。
-- UnfocusMute 没有静音过的会话，或你原本就静音的会话，不会被 UnfocusMute 取消静音。
+为了安全和透明，UnfocusMute 提供了验证方法，让用户可以直接确认上传到 GitHub Releases 的发布文件是否是与本仓库源代码一致的官方构建。
 
-## 适合这些场景
+发布 ZIP 文件和 SHA-256 校验和文件由 GitHub 的自动构建系统 GitHub Actions 生成，并且两个文件都会随附用于证明来源的 attestation。
 
-- 游戏或应用保持运行时，你经常用 Alt+Tab 切换到其他窗口
-- 游戏或应用本身没有后台自动静音选项
-- 想暂时关掉后台游戏声音，同时保留浏览器或通话应用的声音
-- 同一个 `.exe` 会启动多个进程，需要在应用级管理和指定 PID 控制之间切换
+使用下面的命令可以验证从 GitHub Releases 下载的 ZIP 文件是否与本仓库的官方构建完全一致。
 
-## 功能
-
-- 注册应用位于后台时自动静音其音频会话，回到前台时恢复
-- 可从正在运行的应用列表中选择添加，也可手动输入 `game.exe` 这样的名称
-- 支持按 `.exe` 注册、当前运行实例的单个 PID 注册，以及 `显示 PID`
-- 可为每个注册应用添加备注，并单独 `从自动静音中排除` 或 `加入自动静音`
-- 托盘常驻、全局暂停、打开配置文件夹、防止重复启动
-- 首次运行时选择语言，之后可在应用内立即切换 English/한국어/日本語/简体中文/Español/Français/Português/हिन्दी/العربية
-- 设置保存在本地 `%APPDATA%\UnfocusMute\config.json`
+```powershell
+gh attestation verify .\UnfocusMute-windows-x64.zip -R ilsd7/UnfocusMute
+gh attestation verify .\UnfocusMute-windows-x64.zip.sha256 -R ilsd7/UnfocusMute
+```
 
 ---
 

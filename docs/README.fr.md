@@ -15,7 +15,7 @@
     <img src="https://img.shields.io/badge/Windows-10%2F11-0078D4?style=flat-square&logo=windows&logoColor=white" alt="Windows 10/11">
     <img src="https://img.shields.io/badge/portable-yes-2E7D32?style=flat-square" alt="Portable app">
     <img src="https://img.shields.io/badge/Rust-native-B7410E?style=flat-square&logo=rust&logoColor=white" alt="Rust native app">
-    <img src="https://img.shields.io/badge/binary-~491KB-5E35B1?style=flat-square" alt="Executable size about 491KB">
+    <img src="https://img.shields.io/badge/binary-~492KB-5E35B1?style=flat-square" alt="Executable size about 492KB">
     <img src="https://img.shields.io/badge/telemetry-none-455A64?style=flat-square" alt="No telemetry">
   </p>
 
@@ -31,15 +31,30 @@
 
 UnfocusMute est une petite application légère pour la zone de notification de Windows. Elle met automatiquement en sourdine uniquement le jeu ou l’application choisi lorsqu’il passe en arrière-plan. Elle ne se limite pas aux jeux : navigateurs, messageries, lanceurs, lecteurs multimédias et autres applications peuvent aussi être enregistrés s’ils apparaissent comme sessions audio Windows.
 
-Compilée comme application native Rust, elle s’exécute sans runtime séparé. L’exécutable Windows actuel fait environ 489 Ko, soit moins de 1 Mo.
+Compilée comme application native Rust, elle s’exécute sans runtime séparé. L’exécutable fait environ 492 Ko, soit moins de 1 Mo.
 
 <p align="center">
   <img src="../assets/screenshot_fr.png" alt="Fenêtre de l’application UnfocusMute">
 </p>
 
-UnfocusMute met en sourdine la session audio d’une application enregistrée uniquement tant que cette application n’est pas au premier plan. Quand elle revient au premier plan, UnfocusMute ne réactive que les sessions qu’il avait lui-même mises en sourdine, sans réactiver celles qu’il n’a pas coupées ou que vous aviez déjà mises en sourdine.
+La mise en sourdine et la restauration ne s’appliquent qu’aux sessions qu’UnfocusMute a modifiées lui-même. Les sessions que vous aviez déjà mises en sourdine restent intactes.
 
-C’est particulièrement pratique lorsqu’un jeu reste ouvert pendant que vous passez avec Alt+Tab vers un navigateur, une messagerie ou une fenêtre de travail. Vous pouvez couper seulement l’audio de l’application en arrière-plan sans rouvrir sans cesse le mélangeur de volume Windows.
+## Utile quand
+
+- Vous laissez un jeu ou une application ouvert et passez souvent à une autre fenêtre avec Alt+Tab.
+- Un jeu ou une application ne propose pas sa propre option de sourdine en arrière-plan.
+- Vous voulez couper seulement le son d’un jeu en arrière-plan tout en gardant audible un navigateur ou une application d’appel.
+- Le même `.exe` lance plusieurs processus et vous devez passer d’une gestion par application entière à un PID précis.
+
+## Fonctionnalités
+
+- Met automatiquement en sourdine les applications enregistrées lorsqu’elles sont en arrière-plan et réactive l’audio à leur retour au premier plan.
+- Ajoute des cibles depuis la liste des applications en cours ou par saisie directe d’un nom comme `game.exe`.
+- Prend en charge les cibles par `.exe`, les cibles par PID de l’instance en cours et `Afficher les PID`.
+- Notes par application, `Exclure de la sourdine auto` et `Inclure dans la sourdine auto` par application.
+- Présence dans la zone de notification, pause globale, accès au dossier de configuration et protection contre les instances multiples.
+- Choix de la langue au premier démarrage, puis changement immédiat dans l’application entre English/한국어/日本語/简体中文/Español/Français/Português/हिन्दी/العربية.
+- Les réglages sont stockés localement dans `%APPDATA%\UnfocusMute\config.json`.
 
 ---
 
@@ -52,7 +67,17 @@ Sous Windows 10/11, téléchargez le paquet ZIP puis extrayez-le pour lancer l�
 | [UnfocusMute-windows-x64.zip](https://github.com/ilsd7/UnfocusMute/releases/latest/download/UnfocusMute-windows-x64.zip) |
 | [Fichier SHA-256](https://github.com/ilsd7/UnfocusMute/releases/latest/download/UnfocusMute-windows-x64.zip.sha256) · [Notes de version](https://github.com/ilsd7/UnfocusMute/releases/latest) |
 
-Déplacez le dossier extrait `UnfocusMute-windows-x64` à l’emplacement où vous souhaitez conserver l’application, puis lancez `UnfocusMute-<version>.exe` depuis ce dossier. L’application est portable : il n’y a pas d’installateur et aucun runtime séparé, Rust, Visual Studio Build Tools ou MinGW n’est nécessaire.
+Déplacez le dossier extrait `UnfocusMute-windows-x64` à l’emplacement où vous souhaitez conserver l’application, puis lancez `UnfocusMute-<version>.exe` depuis ce dossier. L’application est portable : il n’y a pas d’installateur et vous n’avez pas besoin de Rust, Visual Studio Build Tools, MinGW ni d’autres outils de développement.
+
+> **Remarque :** En raison du coût des certificats de signature de code, l’application est actuellement distribuée sans signature de code Windows. Windows SmartScreen ou un avertissement d’éditeur inconnu peut apparaître au premier lancement. Pour vérifier vous-même l’intégrité du fichier, consultez la section de vérification des fichiers de release ci-dessous.
+
+## À savoir avant utilisation
+
+UnfocusMute s’appuie sur les noms de processus, les informations de fenêtre au premier plan et les sessions CoreAudio fournies par Windows. Si une application n’a pas encore créé de session audio, ou si un pilote, un réglage de permission ou un logiciel de sécurité limite l’accès aux sessions, l’affichage dans la liste ou le contrôle de sourdine peut être limité.
+
+Il faut connaître un comportement particulier pour les cibles par PID. Windows ne fournit pas toujours le même PID pour une session audio et pour la fenêtre au premier plan. Pour compenser cela, UnfocusMute considère que l’application est revenue au premier plan lorsque le nom `.exe` du PID enregistré correspond au nom `.exe` de la fenêtre actuellement active. Si plusieurs instances du même `.exe` sont ouvertes, un PID précis ne peut donc pas toujours être séparé parfaitement, et le son peut être rétabli lorsqu’une autre instance est au premier plan.
+
+UnfocusMute n’injecte pas de code dans les jeux, ne lit pas la mémoire du jeu, n’intercepte pas les entrées et ne modifie pas les fichiers du jeu. Il utilise seulement les informations de processus/fenêtre au premier plan de Windows et les commandes de sourdine des sessions CoreAudio. Il devrait donc être acceptable pour la plupart des systèmes anti-triche, mais la compatibilité avec tous les systèmes anti-triche ne peut pas être garantie.
 
 ## Utilisation
 
@@ -88,47 +113,30 @@ Si vous ne savez pas quel nom enregistrer, vérifiez dans le Gestionnaire des t�
 5. Faites un clic droit sur le jeu et ouvrez `Propriétés`.
 6. Relevez le nom de l’exécutable se terminant par `.exe`, par exemple `game.exe`, puis ajoutez-le à UnfocusMute.
 
-## À savoir avant utilisation
-
-UnfocusMute s’appuie sur les noms de processus, les informations de fenêtre au premier plan et les sessions CoreAudio fournies par Windows. Si une application n’a pas encore créé de session audio, ou si un pilote, un réglage de permission ou un logiciel de sécurité limite l’accès aux sessions, l’affichage dans la liste ou le contrôle de sourdine peut être limité.
-
-Les cibles par PID utilisent aussi le nom `.exe` de la fenêtre au premier plan comme solution de repli, car Windows ne signale pas toujours le même PID pour la fenêtre active et la session audio. Si plusieurs instances du même `.exe` sont ouvertes, une cible par PID ne peut pas les séparer parfaitement : le son peut être rétabli lorsqu’une autre instance du même `.exe` est au premier plan.
-
-UnfocusMute n’injecte pas de code dans les jeux, ne lit pas la mémoire du jeu, n’intercepte pas les entrées et ne modifie pas les fichiers du jeu. Il utilise seulement les informations de processus/fenêtre au premier plan de Windows et les commandes de sourdine des sessions CoreAudio. Il devrait donc être acceptable pour la plupart des systèmes anti-triche, mais la compatibilité avec tous les systèmes anti-triche ne peut pas être garantie.
+---
 
 ## Sécurité et confidentialité
 
 UnfocusMute fonctionne d’abord en local. Il stocke uniquement les noms de processus enregistrés, les PID facultatifs, la langue de l’interface, la position de la fenêtre et les options de démarrage dans un fichier de configuration local.
 
-La détection des sessions audio et le contrôle de la sourdine sont traités sur votre PC via les API Windows CoreAudio. Il n’y a pas de requêtes réseau, compte, télémétrie, outil d’analyse, rapport de crash ni journalisation distante, et UnfocusMute ne crée pas de fichier journal séparé.
+La détection des sessions audio et le contrôle de la sourdine sont traités sur votre PC via les API Windows CoreAudio. Il n’y a pas de requêtes réseau, télémétrie, rapport de crash ni journalisation distante, et UnfocusMute ne crée pas de fichier journal séparé.
 
 ---
 
-## Fonctionnement
+## Vérifier les fichiers de release
 
-UnfocusMute compare les cibles enregistrées avec la fenêtre actuellement au premier plan, puis met en sourdine la session audio de la cible uniquement lorsque l’application est en arrière-plan.
+Pour la sécurité, les utilisateurs doivent pouvoir se protéger si un développeur distribue malicieusement des fichiers différents du code publié dans le dépôt, ou si des fichiers de release sont altérés après la compromission d’un compte ou un incident similaire. Il faut donc une procédure permettant de vérifier directement que les fichiers mis en ligne sur GitHub Releases sont des builds officiels correspondant au code source public.
 
-- Si l’application cible est au premier plan, son état audio n’est pas modifié.
-- Si l’application cible est en arrière-plan, seule sa session audio est mise en sourdine.
-- Quand l’application cible revient au premier plan, UnfocusMute restaure uniquement les sessions qu’il avait mises en sourdine.
-- UnfocusMute ne réactive pas les sessions qu’il n’a pas mises en sourdine ou que vous aviez déjà mises en sourdine.
+Pour la sécurité et la transparence, UnfocusMute fournit une méthode de vérification permettant aux utilisateurs de confirmer directement que les fichiers mis en ligne sur GitHub Releases sont des builds officiels correspondant au code source de ce dépôt.
 
-## Utile quand
+Le ZIP de release et le fichier de somme de contrôle SHA-256 sont générés par GitHub Actions, le système de build automatique de GitHub, et les deux fichiers sont fournis avec des attestations prouvant leur provenance.
 
-- Vous laissez un jeu ou une application ouvert et passez souvent à une autre fenêtre avec Alt+Tab.
-- Un jeu ou une application ne propose pas sa propre option de sourdine en arrière-plan.
-- Vous voulez couper seulement le son d’un jeu en arrière-plan tout en gardant audible un navigateur ou une application d’appel.
-- Le même `.exe` lance plusieurs processus et vous devez passer d’une gestion par application entière à un PID précis.
+Les commandes ci-dessous permettent de vérifier que le ZIP téléchargé depuis GitHub Releases est identique au build officiel de ce dépôt.
 
-## Fonctionnalités
-
-- Met automatiquement en sourdine les applications enregistrées lorsqu’elles sont en arrière-plan et réactive l’audio à leur retour au premier plan.
-- Ajoute des cibles depuis la liste des applications en cours ou par saisie directe d’un nom comme `game.exe`.
-- Prend en charge les cibles par `.exe`, les cibles par PID de l’instance en cours et `Afficher les PID`.
-- Notes par application, `Exclure de la sourdine auto` et `Inclure dans la sourdine auto` par application.
-- Présence dans la zone de notification, pause globale, accès au dossier de configuration et protection contre les instances multiples.
-- Choix de la langue au premier démarrage, puis changement immédiat dans l’application entre English/한국어/日本語/简体中文/Español/Français/Português/हिन्दी/العربية.
-- Les réglages sont stockés localement dans `%APPDATA%\UnfocusMute\config.json`.
+```powershell
+gh attestation verify .\UnfocusMute-windows-x64.zip -R ilsd7/UnfocusMute
+gh attestation verify .\UnfocusMute-windows-x64.zip.sha256 -R ilsd7/UnfocusMute
+```
 
 ---
 

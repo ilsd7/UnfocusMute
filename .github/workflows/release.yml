@@ -7,6 +7,8 @@ on:
 
 permissions:
   contents: write
+  id-token: write
+  attestations: write
 
 jobs:
   windows:
@@ -14,12 +16,20 @@ jobs:
     runs-on: windows-latest
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6.0.2
+        with:
+          persist-credentials: false
       - run: rustup toolchain install stable --profile minimal --component rustfmt --component clippy --target x86_64-pc-windows-msvc
       - run: cargo fmt --check
       - run: cargo test --locked --target x86_64-pc-windows-msvc
       - run: cargo clippy --locked --target x86_64-pc-windows-msvc --all-targets -- -D warnings
       - run: powershell -NoProfile -ExecutionPolicy Bypass -File scripts\package-windows.ps1 -ReleaseTag $env:GITHUB_REF_NAME
+      - name: Generate artifact attestations
+        uses: actions/attest@v4.1.0
+        with:
+          subject-path: |
+            dist/UnfocusMute-windows-x64.zip
+            dist/UnfocusMute-windows-x64.zip.sha256
       - name: Create draft release
         shell: pwsh
         env:
