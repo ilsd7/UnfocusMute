@@ -1,25 +1,25 @@
 <div align="center">
-  <img src="assets/app-icon.png" alt="UnfocusMute icon" width="96" height="96">
+  <img src="../assets/app-icon.png" alt="UnfocusMute icon" width="96" height="96">
 
   <h1>UnfocusMute</h1>
 
   <p><strong>Lightweight, portable Windows tray app that mutes selected games and apps when they lose focus.<br>Restores only the audio it muted.</strong></p>
 
   <p>
-    <a href="README.md">한국어</a> · English · <a href="docs/README.ja.md">日本語</a> · <a href="docs/README.zh-CN.md">简体中文</a> · <a href="docs/README.es.md">Español</a> · <a href="docs/README.fr.md">Français</a> · <a href="docs/README.pt.md">Português</a> · <a href="docs/README.hi.md">हिन्दी</a> · <a href="docs/README.ar.md">العربية</a>
+    <a href="../README.md">한국어</a> · English · <a href="README_ja.md">日本語</a> · <a href="README_zh-CN.md">简体中文</a> · <a href="README_es.md">Español</a> · <a href="README_fr.md">Français</a> · <a href="README_pt.md">Português</a> · <a href="README_hi.md">हिन्दी</a> · <a href="README_ar.md">العربية</a>
   </p>
 
   <p>
     <a href="https://github.com/ilsd7/UnfocusMute/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/ilsd7/UnfocusMute/ci.yml?branch=main&style=flat-square&label=CI&logo=githubactions&logoColor=white" alt="CI status"></a>
     <img src="https://img.shields.io/badge/Windows-10%2F11-0078D4?style=flat-square&logo=windows&logoColor=white" alt="Windows 10/11">
-    <a href="LICENSE"><img src="https://img.shields.io/badge/license-Apache--2.0-blue?style=flat-square" alt="Apache-2.0 license"></a>
+    <a href="../LICENSE"><img src="https://img.shields.io/badge/license-Apache--2.0-blue?style=flat-square" alt="Apache-2.0 license"></a>
   </p>
 
   <p>
     <a href="https://github.com/ilsd7/UnfocusMute/releases/latest/download/UnfocusMute-windows-x64.zip">Download</a>
     · <a href="#usage">Usage</a>
     · <a href="#security-and-privacy">Privacy</a>
-    · <a href="LICENSE">Apache-2.0</a>
+    · <a href="../LICENSE">Apache-2.0</a>
   </p>
 </div>
 
@@ -30,7 +30,7 @@ UnfocusMute is a small, lightweight Windows tray app that automatically mutes on
 Built as a native Rust app, it runs without a separate runtime. The executable is about 492 KB, under 1 MB.
 
 <p align="center">
-  <img src="assets/screenshot_en.png" alt="UnfocusMute app window">
+  <img src="../assets/screenshot_en.png" alt="UnfocusMute app window">
 </p>
 
 Mute and restore actions apply only to sessions UnfocusMute changed itself. Sessions that were already muted by you are left untouched.
@@ -171,12 +171,12 @@ Refresh third-party license notices:
 cargo about generate about.hbs -c about.toml --locked --offline -o THIRD_PARTY_NOTICES.md
 ```
 
-The output is created at `dist\UnfocusMute-windows-x64.zip`, with a SHA-256 verification file at `dist\UnfocusMute-windows-x64.zip.sha256`. The ZIP includes the versioned executable (`UnfocusMute-<version>.exe`), `LICENSE`, `THIRD_PARTY_NOTICES.md`, root-level `README_ko.txt` and `README_en.txt`, plus the other localized README `.txt` files under `docs`.
+The output is created at `dist\UnfocusMute-windows-x64.zip`, with a SHA-256 verification file at `dist\UnfocusMute-windows-x64.zip.sha256`. The ZIP includes the versioned executable (`UnfocusMute-<version>.exe`), `LICENSE`, `THIRD_PARTY_NOTICES.md`, and localized README `.txt` files under `docs`.
 
 ---
 
 ## License
 
-Apache License 2.0. See [LICENSE](LICENSE) for details.
+Apache License 2.0. See [LICENSE](../LICENSE) for details.
 
 See [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) for third-party Rust crate license notices.

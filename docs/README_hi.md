@@ -6,7 +6,7 @@
   <p><strong>चुने हुए गेम और ऐप्स का फ़ोकस हटने पर उन्हें म्यूट करने वाला हल्का, पोर्टेबल Windows ट्रे ऐप।<br>यह केवल उसी ऑडियो को पुनर्स्थापित करता है जिसे इसने म्यूट किया था।</strong></p>
 
   <p>
-    <a href="../README.md">한국어</a> · <a href="../README_en.md">English</a> · <a href="README.ja.md">日本語</a> · <a href="README.zh-CN.md">简体中文</a> · <a href="README.es.md">Español</a> · <a href="README.fr.md">Français</a> · <a href="README.pt.md">Português</a> · हिन्दी · <a href="README.ar.md">العربية</a>
+    <a href="../README.md">한국어</a> · <a href="README_en.md">English</a> · <a href="README_ja.md">日本語</a> · <a href="README_zh-CN.md">简体中文</a> · <a href="README_es.md">Español</a> · <a href="README_fr.md">Français</a> · <a href="README_pt.md">Português</a> · हिन्दी · <a href="README_ar.md">العربية</a>
   </p>
 
   <p>
@@ -171,7 +171,7 @@ Third-party license notices refresh करें:
 cargo about generate about.hbs -c about.toml --locked --offline -o THIRD_PARTY_NOTICES.md
 ```
 
-परिणाम `dist\UnfocusMute-windows-x64.zip` में बनता है, और उसी जगह SHA-256 जांच फ़ाइल `dist\UnfocusMute-windows-x64.zip.sha256` भी बनती है। ZIP में version वाला executable (`UnfocusMute-<version>.exe`), `LICENSE`, `THIRD_PARTY_NOTICES.md`, root के `README_ko.txt` और `README_en.txt`, और `docs` folder की बाकी README `.txt` files शामिल होती हैं।
+परिणाम `dist\UnfocusMute-windows-x64.zip` में बनता है, और उसी जगह SHA-256 जांच फ़ाइल `dist\UnfocusMute-windows-x64.zip.sha256` भी बनती है। ZIP में version वाला executable (`UnfocusMute-<version>.exe`), `LICENSE`, `THIRD_PARTY_NOTICES.md`, और `docs` folder में भाषा के अनुसार README `.txt` files शामिल होती हैं।
 
 ---
 

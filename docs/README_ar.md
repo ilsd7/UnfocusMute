@@ -6,7 +6,7 @@
   <p><strong>تطبيق خفيف ومحمول لعلبة نظام Windows يكتم الألعاب والتطبيقات المحددة عند فقدان التركيز.<br>لا يعيد إلا الصوت الذي كتمه بنفسه.</strong></p>
 
   <p>
-    <a href="../README.md">한국어</a> · <a href="../README_en.md">English</a> · <a href="README.ja.md">日本語</a> · <a href="README.zh-CN.md">简体中文</a> · <a href="README.es.md">Español</a> · <a href="README.fr.md">Français</a> · <a href="README.pt.md">Português</a> · <a href="README.hi.md">हिन्दी</a> · العربية
+    <a href="../README.md">한국어</a> · <a href="README_en.md">English</a> · <a href="README_ja.md">日本語</a> · <a href="README_zh-CN.md">简体中文</a> · <a href="README_es.md">Español</a> · <a href="README_fr.md">Français</a> · <a href="README_pt.md">Português</a> · <a href="README_hi.md">हिन्दी</a> · العربية
   </p>
 
   <p>
@@ -171,7 +171,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts\package-windows.ps1
 cargo about generate about.hbs -c about.toml --locked --offline -o THIRD_PARTY_NOTICES.md
 ```
 
-يتم إنشاء الناتج في `dist\UnfocusMute-windows-x64.zip`، ومعه ملف تحقق SHA-256 في `dist\UnfocusMute-windows-x64.zip.sha256`. يحتوي ZIP على الملف التنفيذي الذي يتضمن رقم الإصدار (`UnfocusMute-<version>.exe`)، و`LICENSE`، و`THIRD_PARTY_NOTICES.md`، و`README_ko.txt` و`README_en.txt` في الجذر، بالإضافة إلى بقية ملفات README بصيغة `.txt` داخل مجلد `docs`.
+يتم إنشاء الناتج في `dist\UnfocusMute-windows-x64.zip`، ومعه ملف تحقق SHA-256 في `dist\UnfocusMute-windows-x64.zip.sha256`. يحتوي ZIP على الملف التنفيذي الذي يتضمن رقم الإصدار (`UnfocusMute-<version>.exe`)، و`LICENSE`، و`THIRD_PARTY_NOTICES.md`، وملفات README بصيغة `.txt` لكل لغة داخل مجلد `docs`.
 
 ---
 

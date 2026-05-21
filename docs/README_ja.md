@@ -6,7 +6,7 @@
   <p><strong>フォーカスを失った選択済みのゲームやアプリをミュートする、軽量なポータブルWindowsトレイアプリです。<br>ミュートした音声だけを元に戻します。</strong></p>
 
   <p>
-    <a href="../README.md">한국어</a> · <a href="../README_en.md">English</a> · 日本語 · <a href="README.zh-CN.md">简体中文</a> · <a href="README.es.md">Español</a> · <a href="README.fr.md">Français</a> · <a href="README.pt.md">Português</a> · <a href="README.hi.md">हिन्दी</a> · <a href="README.ar.md">العربية</a>
+    <a href="../README.md">한국어</a> · <a href="README_en.md">English</a> · 日本語 · <a href="README_zh-CN.md">简体中文</a> · <a href="README_es.md">Español</a> · <a href="README_fr.md">Français</a> · <a href="README_pt.md">Português</a> · <a href="README_hi.md">हिन्दी</a> · <a href="README_ar.md">العربية</a>
   </p>
 
   <p>
@@ -171,7 +171,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts\package-windows.ps1
 cargo about generate about.hbs -c about.toml --locked --offline -o THIRD_PARTY_NOTICES.md
 ```
 
-成果物は `dist\UnfocusMute-windows-x64.zip` に作成され、同じ場所にSHA-256確認用の `dist\UnfocusMute-windows-x64.zip.sha256` も作成されます。ZIPにはバージョン付きの実行ファイル（`UnfocusMute-<version>.exe`）、`LICENSE`、`THIRD_PARTY_NOTICES.md`、ルートの `README_ko.txt` と `README_en.txt`、`docs` フォルダー内のその他の言語README `.txt` 文書が含まれます。
+成果物は `dist\UnfocusMute-windows-x64.zip` に作成され、同じ場所にSHA-256確認用の `dist\UnfocusMute-windows-x64.zip.sha256` も作成されます。ZIPにはバージョン付きの実行ファイル（`UnfocusMute-<version>.exe`）、`LICENSE`、`THIRD_PARTY_NOTICES.md`、`docs` フォルダー内の言語別README `.txt` 文書が含まれます。
 
 ---
 

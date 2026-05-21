@@ -296,23 +296,18 @@ try {
     $DocFiles = @()
     if (Test-Path "docs" -PathType Container) {
         $DocFiles = @(
-            Get-ChildItem "docs" -File -Filter "*.md" |
-                Where-Object { $_.Name -ne "README.en.md" } |
+            Get-ChildItem "docs" -File -Filter "README_*.md" |
                 Sort-Object Name
         )
     }
+    $DocsStage = Join-Path $Stage "docs"
+    New-Item -ItemType Directory -Force -Path $DocsStage | Out-Null
 
     $ReadmeKo = [System.IO.File]::ReadAllText((Join-Path $RepoRoot "README.md"), [System.Text.Encoding]::UTF8)
     $ReadmeKo = Convert-ReadmeForPackage $ReadmeKo
-    [System.IO.File]::WriteAllText((Join-Path $Stage "README_ko.txt"), $ReadmeKo, $Utf8NoBom)
-
-    $ReadmeEn = [System.IO.File]::ReadAllText((Join-Path $RepoRoot "README_en.md"), [System.Text.Encoding]::UTF8)
-    $ReadmeEn = Convert-ReadmeForPackage $ReadmeEn
-    [System.IO.File]::WriteAllText((Join-Path $Stage "README_en.txt"), $ReadmeEn, $Utf8NoBom)
+    [System.IO.File]::WriteAllText((Join-Path $DocsStage "README_ko.txt"), $ReadmeKo, $Utf8NoBom)
 
     if ($DocFiles.Count -gt 0) {
-        $DocsStage = Join-Path $Stage "docs"
-        New-Item -ItemType Directory -Force -Path $DocsStage | Out-Null
         foreach ($DocFile in $DocFiles) {
             $Readme = [System.IO.File]::ReadAllText($DocFile.FullName, [System.Text.Encoding]::UTF8)
             $Readme = Convert-ReadmeForPackage $Readme
@@ -324,8 +319,7 @@ try {
         $ExeFileName,
         "LICENSE",
         "THIRD_PARTY_NOTICES.md",
-        "README_ko.txt",
-        "README_en.txt"
+        "docs/README_ko.txt"
     )
     if ($DocFiles.Count -gt 0) {
         $RequiredEntries += $DocFiles | ForEach-Object { "docs/$([System.IO.Path]::ChangeExtension($_.Name, '.txt'))" }
