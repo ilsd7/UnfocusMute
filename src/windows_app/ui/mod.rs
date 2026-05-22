@@ -133,6 +133,7 @@ const FOOTER_BUTTON_Y: i32 = 754;
 const LB_ITEMFROMPOINT_MESSAGE: u32 = 0x01A9;
 const LB_ITEMFROMPOINT_OUTSIDE_MASK: isize = 0x0001_0000;
 const PID_DISPLAY_DECORATION_UTF16_UNITS: usize = " (PID )".len();
+const DRAW_TEXT_STACK_BUFFER_LEN: usize = 256;
 pub fn run() -> Result<()> {
     let _com = unsafe { ComApartment::initialize()? };
     unsafe { run_window() }
@@ -665,6 +666,7 @@ struct AppWindow {
     issues: IssueState,
     last_status: Option<StatusSnapshot>,
     last_action_buttons: Option<ActionButtonState>,
+    target_status_width: i32,
     config_stamp: Option<ConfigFileStamp>,
     next_config_check: Instant,
     theme: AppTheme,
@@ -917,6 +919,7 @@ impl AppWindow {
             issues: initial_issues,
             last_status: None,
             last_action_buttons: None,
+            target_status_width: 0,
             config_stamp: current_config_stamp(),
             next_config_check: Instant::now() + CONFIG_RELOAD_CHECK_INTERVAL,
             theme: AppTheme::new(language),
@@ -1362,13 +1365,15 @@ impl AppWindow {
     fn refresh_text(&mut self) {
         self.strings = self.config.language.strings();
         if self.theme.needs_font_language(self.config.language) {
-            self.theme.replace_fonts_for_language(self.config.language);
-            self.font_applied = false;
-        }
-        if !self.font_applied {
+            let fonts = AppTheme::fonts_for_language(self.config.language);
+            self.apply_font_set_to_controls(&fonts.font, &fonts.title_font, &fonts.strong_font);
+            self.theme.replace_fonts(fonts);
+            self.font_applied = true;
+        } else if !self.font_applied {
             self.apply_default_font();
             self.font_applied = true;
         }
+        self.refresh_target_status_width();
         unsafe {
             set_text(self.hwnd, self.strings.app_title);
             set_text(self.controls.title_label, self.strings.app_title);
@@ -1429,6 +1434,13 @@ impl AppWindow {
         self.last_status = None;
         self.update_status();
         self.add_tray_icon();
+    }
+
+    fn refresh_target_status_width(&mut self) {
+        self.target_status_width = self
+            .text_width(self.strings.target_ready)
+            .max(self.text_width(self.strings.target_excluded))
+            .clamp(58, 100);
     }
 
     fn refresh_checkboxes(&self) {
@@ -1790,7 +1802,7 @@ impl AppWindow {
         };
     }
 
-    fn layout_header(&self) {
+    fn layout_header(&self, issue_visible: bool) {
         let _ = unsafe {
             MoveWindow(
                 self.controls.title_label,
@@ -1822,16 +1834,38 @@ impl AppWindow {
                 true,
             )
         };
+        let (detail_x, detail_width) = if issue_visible {
+            (HEADER_LEFT_X, HEADER_FULL_WIDTH)
+        } else {
+            (HEADER_RIGHT_X, HEADER_RIGHT_WIDTH)
+        };
         let _ = unsafe {
             MoveWindow(
                 self.controls.status_detail,
-                HEADER_RIGHT_X,
+                detail_x,
                 HEADER_DETAIL_Y,
-                HEADER_RIGHT_WIDTH,
+                detail_width,
                 24,
                 true,
             )
         };
+    }
+
+    fn redraw_header(&self) {
+        let rect = RECT {
+            left: 0,
+            top: 0,
+            right: WINDOW_WIDTH,
+            bottom: TARGET_PANEL_TOP,
+        };
+        unsafe {
+            let _ = RedrawWindow(
+                Some(self.hwnd),
+                Some(&rect),
+                None,
+                RDW_INVALIDATE | RDW_ERASE | RDW_ALLCHILDREN | RDW_UPDATENOW,
+            );
+        }
     }
 
     fn button_width(&self, text: &str, min_width: i32, max_width: i32) -> i32 {
@@ -2097,17 +2131,22 @@ impl AppWindow {
         {
             return;
         }
+        let header_layout_changed = self
+            .last_status
+            .as_ref()
+            .map(|last_snapshot| last_snapshot.issue.is_some() != snapshot.issue.is_some())
+            .unwrap_or(true);
 
-        let status = if self.paused {
+        let issue_text = snapshot.issue.map(|issue| self.issue_text(issue));
+        let status = if issue_text.is_some() {
+            self.strings.status_issue
+        } else if self.paused {
             self.strings.status_paused
         } else {
             self.strings.status_running
         };
-        let issue_text = snapshot.issue.map(|issue| self.issue_text(issue));
         self.status_detail_text.clear();
         if let Some(issue_text) = issue_text {
-            self.status_detail_text.push_str(self.strings.status_issue);
-            self.status_detail_text.push_str(" · ");
             self.status_detail_text.push_str(issue_text);
         } else {
             self.status_detail_text.push_str(self.strings.target_count);
@@ -2125,7 +2164,10 @@ impl AppWindow {
             set_text(self.controls.status, &self.display_text_buffer);
             set_text(self.controls.status_detail, &self.status_detail_text);
         }
-        self.layout_header();
+        if header_layout_changed {
+            self.layout_header(snapshot.issue.is_some());
+            self.redraw_header();
+        }
         self.last_status = Some(snapshot);
     }
 
@@ -3347,8 +3389,11 @@ impl AppWindow {
                     LRESULT(self.theme.panel_brush.handle().0 as isize)
                 }
                 _ => {
-                    let color = if child == self.controls.status {
-                        if self.paused {
+                    let issue_visible = self.issues.visible().is_some();
+                    let color = if child == self.controls.status
+                        || (child == self.controls.status_detail && issue_visible)
+                    {
+                        if issue_visible || self.paused {
                             WARNING_COLOR
                         } else {
                             ACCENT_COLOR
@@ -3411,8 +3456,6 @@ impl AppWindow {
         let Some(target) = self.config.targets.get(draw.itemID as usize) else {
             return true;
         };
-        let mut identity = String::new();
-        target.display_identity_into(&mut identity);
         let note = target.note.as_deref().unwrap_or_default();
         let status_text = if target.enabled {
             self.strings.target_ready
@@ -3440,7 +3483,7 @@ impl AppWindow {
             let _ = FillRect(draw.hDC, &draw.rcItem, background);
         }
 
-        let status_width = self.text_width(status_text).clamp(58, 100);
+        let status_width = self.target_status_width;
         let status_rect = RECT {
             left: draw.rcItem.right - status_width - 12,
             top: draw.rcItem.top + 1,
@@ -3456,10 +3499,10 @@ impl AppWindow {
                 right: text_right,
                 bottom: draw.rcItem.bottom - 1,
             };
-            draw_text_line(
+            draw_target_identity_line(
                 draw.hDC,
                 self.theme.strong_font.handle(),
-                &identity,
+                target,
                 identity_rect,
                 primary_color,
                 DT_LEFT | DT_SINGLELINE | DT_VCENTER | DT_END_ELLIPSIS | DT_NOPREFIX,
@@ -3486,10 +3529,10 @@ impl AppWindow {
                 right: text_right,
                 bottom: draw.rcItem.bottom - 2,
             };
-            draw_text_line(
+            draw_target_identity_line(
                 draw.hDC,
                 self.theme.font.handle(),
-                &identity,
+                target,
                 identity_rect,
                 SUBTLE_TEXT_COLOR,
                 DT_LEFT | DT_SINGLELINE | DT_END_ELLIPSIS | DT_NOPREFIX,
@@ -3542,7 +3585,15 @@ impl AppWindow {
     }
 
     fn apply_default_font(&self) {
-        self.apply_font_to_controls(&self.theme.font);
+        self.apply_font_set_to_controls(
+            &self.theme.font,
+            &self.theme.title_font,
+            &self.theme.strong_font,
+        );
+    }
+
+    fn apply_font_set_to_controls(&self, font: &UiFont, title_font: &UiFont, strong_font: &UiFont) {
+        self.apply_font_to_controls(font);
         unsafe {
             for hwnd in [
                 self.controls.title_label,
@@ -3554,7 +3605,7 @@ impl AppWindow {
                     SendMessageW(
                         hwnd,
                         WM_SETFONT,
-                        Some(self.theme.strong_font.wparam()),
+                        Some(strong_font.wparam()),
                         Some(LPARAM(1)),
                     );
                 }
@@ -3563,7 +3614,7 @@ impl AppWindow {
                 SendMessageW(
                     self.controls.title_label,
                     WM_SETFONT,
-                    Some(self.theme.title_font.wparam()),
+                    Some(title_font.wparam()),
                     Some(LPARAM(1)),
                 );
             }
@@ -3585,7 +3636,7 @@ fn draw_text_line(
     hdc: HDC,
     font: HGDIOBJ,
     text: &str,
-    mut rect: RECT,
+    rect: RECT,
     color: windows::Win32::Foundation::COLORREF,
     format: DRAW_TEXT_FORMAT,
 ) {
@@ -3593,12 +3644,140 @@ fn draw_text_line(
         return;
     }
 
-    let mut wide: Vec<u16> = text.encode_utf16().collect();
+    let mut stack = [0u16; DRAW_TEXT_STACK_BUFFER_LEN];
+    if let Some(wide) = encode_draw_text_stack(text, &mut stack) {
+        draw_wide_text_line(hdc, font, wide, rect, color, format);
+        return;
+    }
+
+    let mut wide = text.encode_utf16().collect::<Vec<_>>();
+    draw_wide_text_line(hdc, font, &mut wide, rect, color, format);
+}
+
+fn draw_target_identity_line(
+    hdc: HDC,
+    font: HGDIOBJ,
+    target: &TargetProcess,
+    rect: RECT,
+    color: windows::Win32::Foundation::COLORREF,
+    format: DRAW_TEXT_FORMAT,
+) {
+    let mut stack = [0u16; DRAW_TEXT_STACK_BUFFER_LEN];
+    if let Some(wide) = encode_target_identity_stack(target, &mut stack) {
+        draw_wide_text_line(hdc, font, wide, rect, color, format);
+        return;
+    }
+
+    let mut wide = Vec::with_capacity(target_identity_utf16_units(target));
+    push_target_identity_wide(target, &mut wide);
+    draw_wide_text_line(hdc, font, &mut wide, rect, color, format);
+}
+
+fn encode_draw_text_stack<'a>(text: &str, buffer: &'a mut [u16]) -> Option<&'a mut [u16]> {
+    if text.is_ascii() {
+        let len = text.len();
+        if len > buffer.len() {
+            return None;
+        }
+        for (slot, byte) in buffer.iter_mut().zip(text.bytes()) {
+            *slot = u16::from(byte);
+        }
+        return Some(&mut buffer[..len]);
+    }
+
+    let mut len = 0;
+    for ch in text.encode_utf16() {
+        if len == buffer.len() {
+            return None;
+        }
+        buffer[len] = ch;
+        len += 1;
+    }
+    Some(&mut buffer[..len])
+}
+
+fn encode_target_identity_stack<'a>(
+    target: &TargetProcess,
+    buffer: &'a mut [u16],
+) -> Option<&'a mut [u16]> {
+    if target_identity_utf16_units(target) > buffer.len() {
+        return None;
+    }
+
+    let mut len = 0;
+    for ch in target.name.encode_utf16() {
+        buffer[len] = ch;
+        len += 1;
+    }
+    if let Some(pid) = target.pid {
+        for ch in " (PID ".encode_utf16() {
+            buffer[len] = ch;
+            len += 1;
+        }
+        write_decimal_u32_wide(pid, buffer, &mut len);
+        buffer[len] = ')' as u16;
+        len += 1;
+    }
+    Some(&mut buffer[..len])
+}
+
+fn push_target_identity_wide(target: &TargetProcess, output: &mut Vec<u16>) {
+    output.extend(target.name.encode_utf16());
+    if let Some(pid) = target.pid {
+        output.extend(" (PID ".encode_utf16());
+        push_decimal_u32_wide(pid, output);
+        output.push(')' as u16);
+    }
+}
+
+fn target_identity_utf16_units(target: &TargetProcess) -> usize {
+    let mut units = target.name.encode_utf16().count();
+    if let Some(pid) = target.pid {
+        units += PID_DISPLAY_DECORATION_UTF16_UNITS + decimal_digit_count(pid);
+    }
+    units
+}
+
+fn write_decimal_u32_wide(number: u32, output: &mut [u16], len: &mut usize) {
+    let mut digits = [0u16; 10];
+    let digit_count = decimal_digits_u32(number, &mut digits);
+    for digit in digits[..digit_count].iter().rev() {
+        output[*len] = *digit;
+        *len += 1;
+    }
+}
+
+fn push_decimal_u32_wide(number: u32, output: &mut Vec<u16>) {
+    let mut digits = [0u16; 10];
+    let digit_count = decimal_digits_u32(number, &mut digits);
+    output.extend(digits[..digit_count].iter().rev().copied());
+}
+
+fn decimal_digits_u32(mut number: u32, output: &mut [u16; 10]) -> usize {
+    let mut len = 0;
+    loop {
+        output[len] = u16::from(b'0' + (number % 10) as u8);
+        len += 1;
+        number /= 10;
+        if number == 0 {
+            return len;
+        }
+    }
+}
+
+fn draw_wide_text_line(
+    hdc: HDC,
+    font: HGDIOBJ,
+    wide: &mut [u16],
+    mut rect: RECT,
+    color: windows::Win32::Foundation::COLORREF,
+    format: DRAW_TEXT_FORMAT,
+) {
     unsafe {
         let previous_font = SelectObject(hdc, font);
         let _ = SetBkMode(hdc, TRANSPARENT);
         let _ = SetTextColor(hdc, color);
-        let _ = DrawTextW(hdc, &mut wide, &mut rect, format);
+        let _ = DrawTextW(hdc, wide, &mut rect, format);
         if !previous_font.0.is_null() {
             let _ = SelectObject(hdc, previous_font);
         }

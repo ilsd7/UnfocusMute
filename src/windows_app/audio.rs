@@ -14,6 +14,7 @@ use windows::Win32::Media::Audio::{
 };
 use windows::Win32::System::Com::{CLSCTX_ALL, CoCreateInstance, CoTaskMemFree};
 use windows::core::{Interface, PCWSTR, PWSTR, implement};
+use windows_core::BOOL;
 
 const LINEAR_MANAGED_SESSION_LIMIT: usize = 8;
 
@@ -232,7 +233,7 @@ impl AudioSessionControl<'_> {
 }
 
 fn session_muted(volume: &ISimpleAudioVolume) -> windows::core::Result<bool> {
-    unsafe { volume.GetMute() }.map(|value| value.as_bool())
+    unsafe { volume.GetMute() }.map(BOOL::as_bool)
 }
 
 struct PlanApplyResult {

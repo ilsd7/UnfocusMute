@@ -379,24 +379,21 @@ fn load_or_default_from_path(path: &Path) -> io::Result<AppConfigLoad> {
         }
         Err(error) => return Err(error),
     };
-    match parse_config_file(file) {
-        Ok(mut config) => {
-            config.sanitize();
-            Ok(AppConfigLoad {
-                config,
-                first_run: false,
-                recovered_invalid_config: false,
-            })
-        }
-        Err(_) => {
-            let _ = backup_invalid_config(path);
-            Ok(AppConfigLoad {
-                config: AppConfig::default(),
-                first_run: false,
-                recovered_invalid_config: true,
-            })
-        }
+    if let Ok(mut config) = parse_config_file(file) {
+        config.sanitize();
+        return Ok(AppConfigLoad {
+            config,
+            first_run: false,
+            recovered_invalid_config: false,
+        });
     }
+
+    let _ = backup_invalid_config(path);
+    Ok(AppConfigLoad {
+        config: AppConfig::default(),
+        first_run: false,
+        recovered_invalid_config: true,
+    })
 }
 
 fn parse_config_file(file: fs::File) -> io::Result<AppConfig> {
@@ -460,7 +457,7 @@ fn create_temp_config_file(destination: &Path) -> io::Result<(fs::File, PathBuf)
             .open(&temp_path)
         {
             Ok(file) => return Ok((file, temp_path)),
-            Err(error) if error.kind() == io::ErrorKind::AlreadyExists => continue,
+            Err(error) if error.kind() == io::ErrorKind::AlreadyExists => {}
             Err(error) => return Err(error),
         }
     }
@@ -750,6 +747,7 @@ fn ascii_u16_eq_ignore_case(ch: u16, ascii: u8) -> bool {
     ch <= 0x7f && (ch as u8).eq_ignore_ascii_case(&ascii)
 }
 
+#[derive(Clone, Copy)]
 struct Utf16ProcessNameCandidate<'a> {
     name: &'a [u16],
     has_uppercase: bool,

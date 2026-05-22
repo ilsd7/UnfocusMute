@@ -44,18 +44,25 @@ pub(super) struct AppTheme {
     font_point_size: i32,
 }
 
+pub(super) struct UiFonts {
+    pub(super) font: UiFont,
+    pub(super) title_font: UiFont,
+    pub(super) strong_font: UiFont,
+    point_size: i32,
+}
+
 impl AppTheme {
     pub(super) fn new(language: Language) -> Self {
-        let font_point_size = ui_font_point_size(language);
+        let fonts = UiFonts::for_language(language);
         Self {
             page_brush: OwnedBrush::solid(PAGE_COLOR),
             panel_brush: OwnedBrush::solid(PANEL_COLOR),
             border_brush: OwnedBrush::solid(PANEL_BORDER_COLOR),
             selected_row_brush: OwnedBrush::solid(SELECTED_ROW_COLOR),
-            font: UiFont::new(font_point_size),
-            title_font: UiFont::new_with_weight(font_point_size + 2, 600),
-            strong_font: UiFont::new_with_weight(font_point_size, 500),
-            font_point_size,
+            font: fonts.font,
+            title_font: fonts.title_font,
+            strong_font: fonts.strong_font,
+            font_point_size: fonts.point_size,
         }
     }
 
@@ -63,12 +70,27 @@ impl AppTheme {
         self.font_point_size != ui_font_point_size(language)
     }
 
-    pub(super) fn replace_fonts_for_language(&mut self, language: Language) {
+    pub(super) fn fonts_for_language(language: Language) -> UiFonts {
+        UiFonts::for_language(language)
+    }
+
+    pub(super) fn replace_fonts(&mut self, fonts: UiFonts) {
+        self.font = fonts.font;
+        self.title_font = fonts.title_font;
+        self.strong_font = fonts.strong_font;
+        self.font_point_size = fonts.point_size;
+    }
+}
+
+impl UiFonts {
+    fn for_language(language: Language) -> Self {
         let font_point_size = ui_font_point_size(language);
-        self.font = UiFont::new(font_point_size);
-        self.title_font = UiFont::new_with_weight(font_point_size + 2, 600);
-        self.strong_font = UiFont::new_with_weight(font_point_size, 500);
-        self.font_point_size = ui_font_point_size(language);
+        Self {
+            font: UiFont::new(font_point_size),
+            title_font: UiFont::new_with_weight(font_point_size + 2, 600),
+            strong_font: UiFont::new_with_weight(font_point_size, 500),
+            point_size: font_point_size,
+        }
     }
 }
 

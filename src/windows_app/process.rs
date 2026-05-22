@@ -246,7 +246,8 @@ fn visit_process_snapshot_entries(mut visit: impl FnMut(&PROCESSENTRY32W) -> boo
         let snapshot = OwnedHandle(snapshot);
 
         let mut entry = PROCESSENTRY32W {
-            dwSize: size_of::<PROCESSENTRY32W>() as u32,
+            dwSize: u32::try_from(size_of::<PROCESSENTRY32W>())
+                .expect("PROCESSENTRY32W size fits in u32"),
             ..Default::default()
         };
 
@@ -327,7 +328,7 @@ unsafe fn query_process_image_name_into(
     handle: HANDLE,
     buffer: &mut [u16],
 ) -> Result<usize, Error> {
-    let mut len = buffer.len() as u32;
+    let mut len = u32::try_from(buffer.len()).expect("process image buffer length fits in u32");
     unsafe {
         QueryFullProcessImageNameW(
             handle,
