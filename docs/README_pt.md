@@ -51,7 +51,7 @@ O mudo e a restauração se aplicam apenas às sessões que o UnfocusMute altero
 - Silencia automaticamente apps registrados enquanto estão em segundo plano e restaura o áudio quando voltam ao primeiro plano.
 - Adiciona alvos pela lista de apps em execução ou digitando um nome como `game.exe`.
 - Suporta alvos por `.exe`, alvos por PID da instância atual e `Mostrar PIDs`.
-- Notas por app, estado de mudo em tempo real por alvo, `Excluir do mudo automático` e `Incluir no mudo automático` por app.
+- Notas por app, estado de mudo em tempo real por alvo, `Pausar monitoramento` e `Retomar monitoramento` por app.
 - Execução na bandeja, resumo de status na bandeja, pausa global, acesso à pasta de configuração e proteção contra instâncias duplicadas.
 - Escolha de idioma no primeiro uso e troca imediata dentro do app entre English/한국어/日本語/简体中文/Español/Français/Português/हिन्दी/العربية.
 - Configurações salvas localmente em `%APPDATA%\UnfocusMute\config.json`.
@@ -86,7 +86,7 @@ UnfocusMute não injeta código em jogos, não lê memória do jogo, não interc
 3. Inicie o jogo ou app que você quer silenciar quando estiver em segundo plano.
 4. Abra a lista `Pesquisar processo` ou digite uma busca, escolha um item e clique em `Adicionar seleção`.
 5. Se precisar registrar apenas um PID específico, clique em `Mostrar PIDs` e escolha a entrada individual. Alvos por PID valem só para a instância em execução; se o app reiniciar com outro PID, selecione novamente.
-6. Clique com o botão direito em um app registrado para editar sua nota ou `Excluir do mudo automático` esse app.
+6. Clique com o botão direito em um app registrado para editar sua nota ou usar `Pausar monitoramento`.
 7. Ao fechar a janela, o app continua rodando na bandeja e monitorando. Use `Sair` para encerrar completamente.
 
 ## Usar notas em apps registrados

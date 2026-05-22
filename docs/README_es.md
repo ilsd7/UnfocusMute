@@ -51,7 +51,7 @@ El silencio y la restauración solo se aplican a las sesiones que UnfocusMute ca
 - Silencia automáticamente las apps registradas mientras están en segundo plano y restaura el audio al volver al primer plano.
 - Añade objetivos desde la lista de apps en ejecución o escribiendo un nombre como `game.exe`.
 - Admite objetivos por `.exe`, objetivos por PID de la instancia actual y `Ver PID`.
-- Notas por app, estado de silencio en vivo por objetivo, `Excluir del silencio automático` e `Incluir en el silencio automático` por app.
+- Notas por app, estado de silencio en vivo por objetivo, `Pausar supervisión` y `Reanudar supervisión` por app.
 - Permanencia en bandeja, resumen de estado en bandeja, pausa global, acceso a la carpeta de configuración y protección contra instancias duplicadas.
 - Permite elegir idioma en el primer inicio y cambiar después dentro de la app entre English/한국어/日本語/简体中文/Español/Français/Português/हिन्दी/العربية.
 - La configuración se guarda localmente en `%APPDATA%\UnfocusMute\config.json`.
@@ -86,7 +86,7 @@ UnfocusMute no inyecta código en juegos, no lee memoria del juego, no intercept
 3. Inicia el juego o la app que quieres silenciar cuando esté en segundo plano.
 4. Abre la lista `Buscar proceso` o escribe una búsqueda, selecciona un elemento y pulsa `Añadir selección`.
 5. Si necesitas registrar solo un PID concreto, pulsa `Ver PID` y elige el elemento individual. Los objetivos por PID solo se aplican a la instancia que está en ejecución; si la app se reinicia con otro PID, selecciónala de nuevo.
-6. Haz clic derecho en una app registrada para editar su nota o `Excluir del silencio automático` esa app.
+6. Haz clic derecho en una app registrada para editar su nota o usar `Pausar supervisión`.
 7. Al cerrar la ventana, la app permanece en la bandeja y sigue vigilando. Usa `Salir` para cerrarla por completo.
 
 ## Usar notas en apps registradas

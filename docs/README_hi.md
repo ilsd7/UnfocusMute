@@ -51,7 +51,7 @@ Mute और restore, दोनों सिर्फ उन sessions पर ल�
 - Registered apps background में होने पर audio session अपने आप mute करता है और foreground में लौटने पर restore करता है।
 - Running app list से target जोड़ें या `game.exe` जैसा नाम manually लिखें।
 - `.exe` targets, current-instance PID targets और `PID विवरण दिखाएं` support करता है।
-- App-wise notes, target-wise live mute state, app-wise `ऑटो-म्यूट से बाहर करें` और `ऑटो-म्यूट में शामिल करें`।
+- App-wise notes, target-wise live mute state, app-wise `निगरानी रोकें` और `निगरानी फिर शुरू करें`।
 - Tray में चलना, tray status summary, global pause, config folder खोलना और duplicate instance protection।
 - पहली बार language चुनें, फिर app के अंदर English/한국어/日本語/简体中文/Español/Français/Português/हिन्दी/العربية तुरंत बदलें।
 - Settings local रूप से `%APPDATA%\UnfocusMute\config.json` में save होती हैं।
@@ -86,7 +86,7 @@ UnfocusMute games में code inject नहीं करता, game memory �
 3. वह game या app शुरू करें जिसे background में जाने पर mute करना है।
 4. `प्रक्रिया खोजें` list खोलें या search term लिखें, item चुनें और `चयनित जोड़ें` दबाएं।
 5. अगर सिर्फ किसी खास PID को register करना है, तो `PID विवरण दिखाएं` दबाकर अलग entry चुनें। PID target सिर्फ अभी चल रहे instance पर लागू होता है; app restart होकर PID बदल जाए तो उसे फिर से चुनें।
-6. पंजीकृत ऐप पर right-click करके उसका नोट संपादित किया जा सकता है या उस ऐप को `ऑटो-म्यूट से बाहर करें` किया जा सकता है।
+6. पंजीकृत ऐप पर right-click करके उसका नोट संपादित किया जा सकता है या `निगरानी रोकें` इस्तेमाल किया जा सकता है।
 7. विंडो बंद करने पर ऐप tray में रहकर निगरानी जारी रखता है। पूरी तरह बंद करने के लिए `बंद करें` दबाएं।
 
 ## पंजीकृत ऐप्स में नोट इस्तेमाल करें

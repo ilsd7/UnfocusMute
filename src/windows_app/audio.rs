@@ -291,7 +291,7 @@ enum ManagedSessionLookup<'a> {
     },
     // Prefilter only; exact AudioSessionKey lookup still decides ownership.
     Many {
-        pids: HashSet<u32>,
+        pids: Vec<u32>,
     },
 }
 
@@ -328,12 +328,14 @@ impl<'a> ManagedSessionLookup<'a> {
             return Self::Few { identities, len };
         }
 
-        let mut pids = HashSet::with_capacity(session_keys.len());
-        pids.insert(first.pid);
-        pids.insert(second.pid);
+        let mut pids = Vec::with_capacity(session_keys.len());
+        pids.push(first.pid);
+        pids.push(second.pid);
         for key in keys {
-            pids.insert(key.pid);
+            pids.push(key.pid);
         }
+        pids.sort_unstable();
+        pids.dedup();
         Self::Many { pids }
     }
 
@@ -351,7 +353,7 @@ impl<'a> ManagedSessionLookup<'a> {
             Self::Few { identities, len } => identities[..*len]
                 .iter()
                 .any(|(managed_pid, _)| *managed_pid == pid),
-            Self::Many { pids, .. } => pids.contains(&pid),
+            Self::Many { pids, .. } => pids.binary_search(&pid).is_ok(),
         }
     }
 
@@ -378,7 +380,7 @@ impl<'a> ManagedSessionLookup<'a> {
                         *managed_pid == pid && *managed_process_name == process_name
                     })
             }
-            Self::Many { pids } => pids.contains(&pid),
+            Self::Many { pids } => pids.binary_search(&pid).is_ok(),
         }
     }
 }
@@ -754,6 +756,25 @@ mod tests {
         assert!(lookup.may_include_pid(3));
         assert!(lookup.may_include(3, "other.exe"));
         assert!(!lookup.may_include_pid(99));
+    }
+
+    #[test]
+    fn many_managed_session_lookup_deduplicates_prefilter_pids() {
+        let session_keys = (1..=LINEAR_MANAGED_SESSION_LIMIT + 1)
+            .map(|index| {
+                AudioSessionKey::from_normalized(
+                    7,
+                    "game.exe".to_owned(),
+                    Some(format!("session-{index}")),
+                )
+            })
+            .collect::<HashSet<_>>();
+        let lookup = ManagedSessionLookup::new(&session_keys);
+
+        match lookup {
+            ManagedSessionLookup::Many { pids } => assert_eq!(pids, vec![7]),
+            _ => panic!("more than the linear limit should use the many-session lookup"),
+        }
     }
 
     #[test]

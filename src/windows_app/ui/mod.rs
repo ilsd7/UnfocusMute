@@ -91,7 +91,8 @@ static FOREGROUND_EVENT_PENDING: AtomicBool = AtomicBool::new(false);
 const MAIN_WINDOW_STYLE: WINDOW_STYLE = WINDOW_STYLE(
     WS_OVERLAPPED.0 | WS_CAPTION.0 | WS_SYSMENU.0 | WS_MINIMIZEBOX.0 | WS_CLIPCHILDREN.0,
 );
-const HEADER_LEFT_X: i32 = 36;
+const LEFT_EDGE_TRIM: i32 = 16;
+const HEADER_LEFT_X: i32 = 36 - LEFT_EDGE_TRIM;
 const HEADER_RIGHT_MARGIN: i32 = 36;
 const HEADER_CONTENT_RIGHT: i32 = WINDOW_WIDTH - HEADER_RIGHT_MARGIN;
 const HEADER_RIGHT_WIDTH: i32 = 320;
@@ -107,6 +108,7 @@ const RESTORE_CHECK_TALL_HEIGHT: i32 = 44;
 const TARGET_PANEL_TOP: i32 = 112;
 const TARGET_PANEL_BOTTOM: i32 = 432;
 const TARGET_LIST_Y: i32 = TARGET_PANEL_TOP + 4;
+const TARGET_LIST_X: i32 = 44 - LEFT_EDGE_TRIM + 2;
 const TARGET_LIST_HEIGHT: i32 = 270;
 const REMOVE_BUTTON_Y: i32 = 392;
 const RESTORE_CHECK_Y: i32 = 682;
@@ -1041,7 +1043,7 @@ impl AppWindow {
                 "",
                 child | SS_ENDELLIPSIS_STYLE,
                 WINDOW_EX_STYLE(0),
-                44,
+                44 - LEFT_EDGE_TRIM,
                 TARGET_LIST_Y,
                 260,
                 24,
@@ -1061,7 +1063,7 @@ impl AppWindow {
                             as u32,
                     ),
                 WINDOW_EX_STYLE(0),
-                44,
+                TARGET_LIST_X,
                 TARGET_LIST_Y,
                 648,
                 TARGET_LIST_HEIGHT,
@@ -1073,7 +1075,7 @@ impl AppWindow {
                 self.hwnd,
                 instance,
                 "",
-                590,
+                590 - LEFT_EDGE_TRIM,
                 REMOVE_BUTTON_Y,
                 102,
                 32,
@@ -1089,7 +1091,7 @@ impl AppWindow {
                 "",
                 child | SS_ENDELLIPSIS_STYLE,
                 WINDOW_EX_STYLE(0),
-                36,
+                36 - LEFT_EDGE_TRIM,
                 336,
                 220,
                 24,
@@ -1104,7 +1106,7 @@ impl AppWindow {
                 "",
                 child | SS_ENDELLIPSIS_STYLE,
                 WINDOW_EX_STYLE(0),
-                36,
+                36 - LEFT_EDGE_TRIM,
                 336,
                 240,
                 22,
@@ -1119,7 +1121,7 @@ impl AppWindow {
                 "",
                 child | SS_ENDELLIPSIS_STYLE,
                 WINDOW_EX_STYLE(0),
-                36,
+                36 - LEFT_EDGE_TRIM,
                 PROCESS_PICKER_HINT_Y,
                 520,
                 22,
@@ -1134,7 +1136,7 @@ impl AppWindow {
                 "",
                 tab_child | WS_VSCROLL | WINDOW_STYLE(CBS_DROPDOWN as u32),
                 WINDOW_EX_STYLE(0),
-                36,
+                36 - LEFT_EDGE_TRIM,
                 PROCESS_PICKER_COMBO_Y,
                 320,
                 PROCESS_PICKER_COMBO_HEIGHT,
@@ -1146,7 +1148,7 @@ impl AppWindow {
                 self.hwnd,
                 instance,
                 "",
-                478,
+                478 - LEFT_EDGE_TRIM,
                 PROCESS_PICKER_COMBO_Y + PROCESS_PICKER_BUTTON_Y_OFFSET,
                 122,
                 PROCESS_PICKER_BUTTON_HEIGHT,
@@ -1158,7 +1160,7 @@ impl AppWindow {
                 self.hwnd,
                 instance,
                 "",
-                612,
+                612 - LEFT_EDGE_TRIM,
                 PROCESS_PICKER_COMBO_Y + PROCESS_PICKER_BUTTON_Y_OFFSET,
                 122,
                 PROCESS_PICKER_BUTTON_HEIGHT,
@@ -1170,7 +1172,7 @@ impl AppWindow {
                 self.hwnd,
                 instance,
                 "?",
-                742,
+                742 - LEFT_EDGE_TRIM,
                 PROCESS_PICKER_COMBO_Y + PROCESS_PICKER_BUTTON_Y_OFFSET,
                 34,
                 PROCESS_PICKER_BUTTON_HEIGHT,
@@ -1182,7 +1184,7 @@ impl AppWindow {
                 self.hwnd,
                 instance,
                 "",
-                368,
+                368 - LEFT_EDGE_TRIM,
                 PROCESS_PICKER_COMBO_Y + PROCESS_PICKER_BUTTON_Y_OFFSET,
                 98,
                 PROCESS_PICKER_BUTTON_HEIGHT,
@@ -1197,7 +1199,7 @@ impl AppWindow {
                 "",
                 child | SS_RIGHT_STYLE | SS_CENTERIMAGE_STYLE | SS_ENDELLIPSIS_STYLE,
                 WINDOW_EX_STYLE(0),
-                104,
+                104 - LEFT_EDGE_TRIM,
                 MANUAL_PROCESS_ROW_Y,
                 MANUAL_PROCESS_LABEL_WIDTH,
                 PROCESS_PICKER_BUTTON_HEIGHT,
@@ -1212,7 +1214,7 @@ impl AppWindow {
                 "",
                 tab_child | WS_BORDER | WINDOW_STYLE(ES_AUTOHSCROLL as u32),
                 WINDOW_EX_STYLE(0),
-                302,
+                302 - LEFT_EDGE_TRIM,
                 MANUAL_PROCESS_EDIT_Y,
                 MANUAL_PROCESS_EDIT_WIDTH,
                 24,
@@ -1224,7 +1226,7 @@ impl AppWindow {
                 self.hwnd,
                 instance,
                 "",
-                570,
+                570 - LEFT_EDGE_TRIM,
                 MANUAL_PROCESS_ROW_Y,
                 124,
                 32,
@@ -1240,7 +1242,7 @@ impl AppWindow {
                 "",
                 child | SS_ENDELLIPSIS_STYLE,
                 WINDOW_EX_STYLE(0),
-                44,
+                44 - LEFT_EDGE_TRIM,
                 SETTINGS_PANEL_TOP + 8,
                 180,
                 24,
@@ -1252,7 +1254,7 @@ impl AppWindow {
                 self.hwnd,
                 instance,
                 "",
-                44,
+                44 - LEFT_EDGE_TRIM,
                 START_MINIMIZED_CHECK_Y,
                 360,
                 26,
@@ -1264,7 +1266,7 @@ impl AppWindow {
                 self.hwnd,
                 instance,
                 "",
-                44,
+                44 - LEFT_EDGE_TRIM,
                 LAUNCH_STARTUP_CHECK_Y,
                 500,
                 26,
@@ -1276,7 +1278,7 @@ impl AppWindow {
                 self.hwnd,
                 instance,
                 "",
-                44,
+                44 - LEFT_EDGE_TRIM,
                 RESTORE_CHECK_Y,
                 500,
                 26,
@@ -1291,7 +1293,7 @@ impl AppWindow {
                 "",
                 child | SS_RIGHT_STYLE | SS_CENTERIMAGE_STYLE | SS_ENDELLIPSIS_STYLE,
                 WINDOW_EX_STYLE(0),
-                542,
+                542 - LEFT_EDGE_TRIM,
                 SETTINGS_LANGUAGE_BUTTON_Y,
                 42,
                 SETTINGS_LANGUAGE_BUTTON_HEIGHT,
@@ -1303,7 +1305,7 @@ impl AppWindow {
                 self.hwnd,
                 instance,
                 "",
-                584,
+                584 - LEFT_EDGE_TRIM,
                 SETTINGS_LANGUAGE_BUTTON_Y,
                 120,
                 SETTINGS_LANGUAGE_BUTTON_HEIGHT,
@@ -1315,7 +1317,7 @@ impl AppWindow {
                 self.hwnd,
                 instance,
                 "",
-                540,
+                540 - LEFT_EDGE_TRIM,
                 OPEN_CONFIG_BUTTON_Y,
                 164,
                 32,
@@ -1328,7 +1330,7 @@ impl AppWindow {
                 self.hwnd,
                 instance,
                 "",
-                436,
+                436 - LEFT_EDGE_TRIM,
                 FOOTER_BUTTON_Y,
                 132,
                 36,
@@ -1340,7 +1342,7 @@ impl AppWindow {
                 self.hwnd,
                 instance,
                 "",
-                584,
+                584 - LEFT_EDGE_TRIM,
                 FOOTER_BUTTON_Y,
                 118,
                 36,
@@ -1352,7 +1354,7 @@ impl AppWindow {
                 self.hwnd,
                 instance,
                 "",
-                308,
+                308 - LEFT_EDGE_TRIM,
                 FOOTER_BUTTON_Y,
                 116,
                 36,
@@ -1541,8 +1543,8 @@ impl AppWindow {
     }
 
     fn layout_localized_controls_with_pid_help(&self, reserve_pid_help: bool) {
-        let content_left = 36;
-        let panel_left = 44;
+        let content_left = 36 - LEFT_EDGE_TRIM;
+        let panel_left = 44 - LEFT_EDGE_TRIM;
         let content_right = WINDOW_WIDTH - 36;
         let gap = 12;
         let combo_y = PROCESS_PICKER_COMBO_Y;
@@ -3697,13 +3699,13 @@ impl AppWindow {
         let paint = unsafe { PaintSession::begin(hwnd) };
         for rect in [
             RECT {
-                left: 24,
+                left: 24 - LEFT_EDGE_TRIM,
                 top: TARGET_PANEL_TOP,
                 right: WINDOW_WIDTH - 24,
                 bottom: TARGET_PANEL_BOTTOM,
             },
             RECT {
-                left: 24,
+                left: 24 - LEFT_EDGE_TRIM,
                 top: SETTINGS_PANEL_TOP,
                 right: WINDOW_WIDTH - 24,
                 bottom: SETTINGS_PANEL_BOTTOM,
@@ -4286,7 +4288,7 @@ mod layout_tests {
         assert_eq!(target_status_text(&target, true, strings), "음소거 중");
 
         target.enabled = false;
-        assert_eq!(target_status_text(&target, true, strings), "감시 제외");
+        assert_eq!(target_status_text(&target, true, strings), "일시 중지");
     }
 
     #[test]

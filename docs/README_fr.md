@@ -51,7 +51,7 @@ La mise en sourdine et la restauration ne s’appliquent qu’aux sessions qu’
 - Met automatiquement en sourdine les applications enregistrées lorsqu’elles sont en arrière-plan et réactive l’audio à leur retour au premier plan.
 - Ajout depuis la liste des applications en cours ou en saisissant un nom comme `game.exe`.
 - Prend en charge les cibles par `.exe`, les cibles par PID de l’instance en cours et `Afficher les PID`.
-- Notes par application, état de sourdine en direct par cible, `Exclure de la sourdine auto` et `Inclure dans la sourdine auto` par application.
+- Notes par application, état de sourdine en direct par cible, `Mettre la surveillance en pause` et `Reprendre la surveillance` par application.
 - Présence dans la zone de notification, résumé d’état dans la zone de notification, pause globale, accès au dossier de configuration et protection contre les instances multiples.
 - Choix de la langue au premier démarrage, puis changement immédiat dans l’application entre English/한국어/日本語/简体中文/Español/Français/Português/हिन्दी/العربية.
 - Les réglages sont stockés localement dans `%APPDATA%\UnfocusMute\config.json`.
@@ -86,7 +86,7 @@ UnfocusMute n’injecte pas de code dans les jeux, ne lit pas la mémoire du jeu
 3. Lancez le jeu ou l’application à mettre en sourdine lorsqu’il passe en arrière-plan.
 4. Ouvrez la liste `Rechercher un processus` ou saisissez un terme de recherche, choisissez un élément, puis cliquez sur `Ajouter la sélection`.
 5. Si vous devez enregistrer seulement un PID précis, cliquez sur `Afficher les PID` et choisissez l’entrée concernée. Une cible par PID ne vaut que pour l’instance actuellement ouverte ; si l’application redémarre avec un autre PID, sélectionnez-la à nouveau.
-6. Faites un clic droit sur une application enregistrée pour modifier sa note ou l’`Exclure de la sourdine auto`.
+6. Faites un clic droit sur une application enregistrée pour modifier sa note ou utiliser `Mettre la surveillance en pause`.
 7. Fermer la fenêtre laisse l’application dans la zone de notification, où elle continue de surveiller les cibles. Cliquez sur `Quitter` pour l’arrêter complètement.
 
 ## Utiliser les notes des applications enregistrées

@@ -51,7 +51,7 @@ Mute and restore actions apply only to sessions UnfocusMute changed itself. Sess
 - Automatically mutes registered apps while they are in the background and restores them when they return to the foreground.
 - Add targets from the running app list or by typing a name such as `game.exe`.
 - Supports `.exe` targets, current-instance PID targets, and `Show PIDs`.
-- Per-app notes, per-target live mute state, per-app `Exclude from auto-mute`, and `Include in auto-mute`.
+- Per-app notes, per-target live mute state, per-app `Pause monitoring`, and `Resume monitoring`.
 - Tray resident behavior, tray status summaries, global pause, config folder access, and single-instance protection.
 - Choose a language on first run, then switch in-app between English/한국어/日本語/简体中文/Español/Français/Português/हिन्दी/العربية.
 - Settings are stored locally at `%APPDATA%\UnfocusMute\config.json`.
@@ -86,7 +86,7 @@ UnfocusMute does not inject code into games, read game memory, hook input, or mo
 3. Start the game or app you want to mute when it is in the background.
 4. Open the `Search process` list or type a search term, choose an item, and click `Add selected`.
 5. If you need to register only one specific PID, click `Show PIDs` and choose the individual entry. PID targets apply only to the currently running instance, so choose it again if the app restarts and receives a different PID.
-6. Right-click a registered app to edit its note or exclude that app from monitoring.
+6. Right-click a registered app to edit its note or use `Pause monitoring`.
 7. Closing the window leaves the app running in the tray. Click `Quit` to exit completely.
 
 ## Using Notes for Registered Apps
