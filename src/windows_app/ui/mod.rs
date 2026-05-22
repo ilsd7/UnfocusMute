@@ -1,7 +1,7 @@
 use crate::config::{
     AppConfig, AppConfigLoad, TargetProcess, WindowPosition, cached_config_file_path,
     is_normalized_process_name, is_supported_normalized_target_process_name,
-    normalize_process_name, normalize_process_name_cow,
+    normalize_manual_process_name, normalize_manual_process_name_cow,
 };
 use crate::engine::{AudioSessionKey, TargetMatcher};
 use crate::i18n::{Language, Strings};
@@ -34,7 +34,7 @@ use windows::Win32::UI::Controls::{
     CB_SETCUEBANNER, CB_SETMINVISIBLE, DRAWITEMSTRUCT, EM_SETCUEBANNER, MEASUREITEMSTRUCT,
     ODS_SELECTED,
 };
-use windows::Win32::UI::Input::KeyboardAndMouse::{EnableWindow, SetFocus};
+use windows::Win32::UI::Input::KeyboardAndMouse::{EnableWindow, SetFocus, VK_RETURN};
 use windows::Win32::UI::Shell::{
     NIF_ICON, NIF_MESSAGE, NIF_TIP, NIM_ADD, NIM_DELETE, NIM_MODIFY, NOTIFYICONDATAW,
     Shell_NotifyIconW, ShellExecuteW,
@@ -45,21 +45,21 @@ use windows::Win32::UI::WindowsAndMessaging::{
     CreatePopupMenu, CreateWindowExW, DefWindowProcW, DestroyMenu, DestroyWindow, DispatchMessageW,
     EN_CHANGE, ES_AUTOHSCROLL, EVENT_SYSTEM_FOREGROUND, FindWindowW, GWLP_USERDATA, GetCursorPos,
     GetSystemMetrics, GetWindowRect, HICON, HMENU, ICON_BIG, ICON_SMALL, IDC_ARROW,
-    IsWindowVisible, KillTimer, LB_GETCURSEL, LB_RESETCONTENT, LB_SETCURSEL, LBN_DBLCLK,
-    LBN_SELCHANGE, LBS_HASSTRINGS, LBS_NOINTEGRALHEIGHT, LBS_NOTIFY, LBS_OWNERDRAWFIXED,
-    LoadCursorW, MB_ICONINFORMATION, MB_ICONWARNING, MB_OK, MF_CHECKED, MF_GRAYED, MF_SEPARATOR,
-    MF_STRING, MSG, MessageBoxW, MoveWindow, PostMessageW, PostQuitMessage, RegisterClassW,
-    RegisterWindowMessageW, SM_CXSCREEN, SM_CXVIRTUALSCREEN, SM_CXVSCROLL, SM_CYSCREEN,
-    SM_CYVIRTUALSCREEN, SM_XVIRTUALSCREEN, SM_YVIRTUALSCREEN, SPI_GETWORKAREA, SW_HIDE, SW_RESTORE,
-    SW_SHOW, SYSTEM_PARAMETERS_INFO_UPDATE_FLAGS, SendMessageW, SetForegroundWindow, SetTimer,
-    SetWindowLongPtrW, ShowWindow, SystemParametersInfoW, TPM_NONOTIFY, TPM_RETURNCMD,
-    TPM_RIGHTBUTTON, TRACK_POPUP_MENU_FLAGS, TrackPopupMenu, TranslateMessage, WINDOW_EX_STYLE,
-    WINDOW_STYLE, WINEVENT_OUTOFCONTEXT, WM_CLOSE, WM_COMMAND, WM_CONTEXTMENU, WM_CREATE,
-    WM_CTLCOLOREDIT, WM_CTLCOLORLISTBOX, WM_CTLCOLORSTATIC, WM_DESTROY, WM_DRAWITEM,
-    WM_LBUTTONDBLCLK, WM_LBUTTONDOWN, WM_MEASUREITEM, WM_MOVE, WM_NCCREATE, WM_NCDESTROY, WM_PAINT,
-    WM_RBUTTONUP, WM_SETFONT, WM_SETICON, WM_SETREDRAW, WM_SHOWWINDOW, WM_TIMER, WNDCLASSW,
-    WS_BORDER, WS_CAPTION, WS_CHILD, WS_CLIPCHILDREN, WS_MINIMIZEBOX, WS_OVERLAPPED, WS_SYSMENU,
-    WS_TABSTOP, WS_VISIBLE, WS_VSCROLL,
+    IsDialogMessageW, IsWindowVisible, KillTimer, LB_GETCURSEL, LB_RESETCONTENT, LB_SETCURSEL,
+    LBN_DBLCLK, LBN_SELCHANGE, LBS_HASSTRINGS, LBS_NOINTEGRALHEIGHT, LBS_NOTIFY,
+    LBS_OWNERDRAWFIXED, LoadCursorW, MB_ICONINFORMATION, MB_ICONWARNING, MB_OK, MF_CHECKED,
+    MF_GRAYED, MF_SEPARATOR, MF_STRING, MSG, MessageBoxW, MoveWindow, PostMessageW,
+    PostQuitMessage, RegisterClassW, RegisterWindowMessageW, SM_CXSCREEN, SM_CXVIRTUALSCREEN,
+    SM_CXVSCROLL, SM_CYSCREEN, SM_CYVIRTUALSCREEN, SM_XVIRTUALSCREEN, SM_YVIRTUALSCREEN,
+    SPI_GETWORKAREA, SW_HIDE, SW_RESTORE, SW_SHOW, SYSTEM_PARAMETERS_INFO_UPDATE_FLAGS,
+    SendMessageW, SetForegroundWindow, SetTimer, SetWindowLongPtrW, ShowWindow,
+    SystemParametersInfoW, TPM_NONOTIFY, TPM_RETURNCMD, TPM_RIGHTBUTTON, TRACK_POPUP_MENU_FLAGS,
+    TrackPopupMenu, TranslateMessage, WINDOW_EX_STYLE, WINDOW_STYLE, WINEVENT_OUTOFCONTEXT,
+    WM_CLOSE, WM_COMMAND, WM_CONTEXTMENU, WM_CREATE, WM_CTLCOLOREDIT, WM_CTLCOLORLISTBOX,
+    WM_CTLCOLORSTATIC, WM_DESTROY, WM_DRAWITEM, WM_KEYDOWN, WM_LBUTTONDBLCLK, WM_LBUTTONDOWN,
+    WM_MEASUREITEM, WM_MOVE, WM_NCCREATE, WM_NCDESTROY, WM_PAINT, WM_RBUTTONUP, WM_SETFONT,
+    WM_SETICON, WM_SETREDRAW, WM_SHOWWINDOW, WM_TIMER, WNDCLASSW, WS_BORDER, WS_CAPTION, WS_CHILD,
+    WS_CLIPCHILDREN, WS_MINIMIZEBOX, WS_OVERLAPPED, WS_SYSMENU, WS_TABSTOP, WS_VISIBLE, WS_VSCROLL,
 };
 use windows::core::{PCWSTR, w};
 
@@ -134,6 +134,7 @@ const LB_ITEMFROMPOINT_MESSAGE: u32 = 0x01A9;
 const LB_ITEMFROMPOINT_OUTSIDE_MASK: isize = 0x0001_0000;
 const PID_DISPLAY_DECORATION_UTF16_UNITS: usize = " (PID )".len();
 const DRAW_TEXT_STACK_BUFFER_LEN: usize = 256;
+const APP_VERSION: &str = env!("CARGO_PKG_VERSION");
 pub fn run() -> Result<()> {
     let _com = unsafe { ComApartment::initialize()? };
     unsafe { run_window() }
@@ -272,6 +273,12 @@ unsafe fn run_window() -> Result<()> {
     let mut msg = MSG::default();
     while unsafe { get_message(&mut msg)? } {
         unsafe {
+            if app.handle_pretranslated_message(&msg) {
+                continue;
+            }
+            if IsDialogMessageW(hwnd, &msg).as_bool() {
+                continue;
+            }
             let _ = TranslateMessage(&msg);
             DispatchMessageW(&msg);
         }
@@ -1377,8 +1384,9 @@ impl AppWindow {
         }
         self.refresh_target_status_width();
         unsafe {
-            set_text(self.hwnd, self.strings.app_title);
-            set_text(self.controls.title_label, self.strings.app_title);
+            app_title_with_version_into(self.strings, &mut self.display_text_buffer);
+            set_text(self.hwnd, &self.display_text_buffer);
+            set_text(self.controls.title_label, &self.display_text_buffer);
             set_text(self.controls.subtitle_label, self.strings.app_subtitle);
             set_text(self.controls.targets_label, "");
             set_text(self.controls.add_label, "");
@@ -2565,6 +2573,20 @@ impl AppWindow {
         }
     }
 
+    fn handle_pretranslated_message(&mut self, msg: &MSG) -> bool {
+        if msg.message == WM_KEYDOWN
+            && msg.wParam.0 == VK_RETURN.0 as usize
+            && msg.hwnd == self.controls.manual_edit
+        {
+            if self.can_submit_manual_target() {
+                self.add_manual_target();
+            }
+            return true;
+        }
+
+        false
+    }
+
     fn command(&mut self, id: i32, notification: u16) {
         if id != ID_TARGETS && id != ID_REMOVE {
             self.clear_target_selection();
@@ -2586,9 +2608,7 @@ impl AppWindow {
             {
                 self.update_action_buttons()
             }
-            ID_RUNNING if notification == CBN_CLOSEUP as u16 => {
-                self.release_running_process_focus()
-            }
+            ID_RUNNING if notification == CBN_CLOSEUP as u16 => self.focus_main_window(),
             ID_MANUAL if notification == EN_CHANGE as u16 => self.update_manual_process_text(),
             ID_OPEN_CONFIG => self.open_config_folder(),
             ID_PAUSE => self.toggle_pause(),
@@ -2739,7 +2759,7 @@ impl AppWindow {
         self.update_action_buttons();
     }
 
-    fn release_running_process_focus(&self) {
+    fn focus_main_window(&self) {
         unsafe {
             let _ = SetFocus(Some(self.hwnd));
         }
@@ -2747,7 +2767,7 @@ impl AppWindow {
 
     fn toggle_process_details(&mut self) {
         self.show_process_details = !self.show_process_details;
-        self.release_running_process_focus();
+        self.focus_main_window();
         if !self.processes_loaded
             || self.last_process_refresh.elapsed() >= PROCESS_REFRESH_STALE_INTERVAL
         {
@@ -2777,7 +2797,7 @@ impl AppWindow {
         unsafe {
             window_text_into(self.controls.manual_edit, &mut self.manual_process_text);
         }
-        let Some(name) = normalize_process_name(&self.manual_process_text) else {
+        let Some(name) = normalize_manual_process_name(&self.manual_process_text) else {
             return;
         };
         if !is_supported_normalized_target_process_name(&name) {
@@ -3085,7 +3105,7 @@ impl AppWindow {
     }
 
     fn can_submit_manual_target(&self) -> bool {
-        let Some(name) = normalize_process_name_cow(&self.manual_process_text) else {
+        let Some(name) = normalize_manual_process_name_cow(&self.manual_process_text) else {
             return false;
         };
         is_supported_normalized_target_process_name(name.as_ref())
@@ -3292,9 +3312,15 @@ impl AppWindow {
 
     fn save_window_position(&mut self) {
         self.reload_config_if_changed();
-        if self.remember_window_position() {
+        let position_changed = self.remember_window_position();
+        if position_changed || self.issues.contains(StatusIssue::ConfigLoadFailed) {
             self.save_config();
         }
+    }
+
+    fn background_click(&mut self) {
+        self.clear_target_selection();
+        self.focus_main_window();
     }
 
     fn hide_to_tray(&mut self) {
@@ -3937,14 +3963,21 @@ fn status_detail_text_into(
 
 fn tray_tip_text_into(strings: &Strings, status: &str, detail: &str, output: &mut String) {
     output.clear();
-    output.reserve(strings.app_title.len() + status.len() + detail.len() + 6);
-    output.push_str(strings.app_title);
+    output.reserve(strings.app_title.len() + APP_VERSION.len() + status.len() + detail.len() + 8);
+    app_title_with_version_into(strings, output);
     output.push_str(" - ");
     output.push_str(status);
     if !detail.is_empty() {
         output.push_str(" | ");
         output.push_str(detail);
     }
+}
+
+fn app_title_with_version_into(strings: &Strings, output: &mut String) {
+    output.clear();
+    output.push_str(strings.app_title);
+    output.push_str(" v");
+    output.push_str(APP_VERSION);
 }
 
 fn status_summary_text_into(status: &str, detail: &str, output: &mut String) {
@@ -4011,7 +4044,20 @@ mod status_text_tests {
             &mut tip,
         );
 
-        assert_eq!(tip, "UnfocusMute - Monitoring | Apps 2 · Muted 1");
+        assert_eq!(
+            tip,
+            format!("UnfocusMute v{APP_VERSION} - Monitoring | Apps 2 · Muted 1")
+        );
+    }
+
+    #[test]
+    fn app_title_includes_package_version() {
+        let strings = Language::Ko.strings();
+        let mut title = String::new();
+
+        app_title_with_version_into(strings, &mut title);
+
+        assert_eq!(title, format!("UnfocusMute v{APP_VERSION}"));
     }
 
     #[test]
@@ -4547,7 +4593,7 @@ unsafe extern "system" fn window_proc(
                 return LRESULT(0);
             }
             WM_LBUTTONDOWN => {
-                app.clear_target_selection();
+                app.background_click();
                 return LRESULT(0);
             }
             WM_CONTEXTMENU if app.target_context_menu(wparam, lparam) => {

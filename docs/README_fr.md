@@ -49,7 +49,7 @@ La mise en sourdine et la restauration ne s’appliquent qu’aux sessions qu’
 ## Fonctionnalités
 
 - Met automatiquement en sourdine les applications enregistrées lorsqu’elles sont en arrière-plan et réactive l’audio à leur retour au premier plan.
-- Ajoute des cibles depuis la liste des applications en cours ou par saisie directe d’un nom comme `game.exe`.
+- Ajout depuis la liste des applications en cours ou en saisissant un nom comme `game.exe`.
 - Prend en charge les cibles par `.exe`, les cibles par PID de l’instance en cours et `Afficher les PID`.
 - Notes par application, état de sourdine en direct par cible, `Exclure de la sourdine auto` et `Inclure dans la sourdine auto` par application.
 - Présence dans la zone de notification, résumé d’état dans la zone de notification, pause globale, accès au dossier de configuration et protection contre les instances multiples.

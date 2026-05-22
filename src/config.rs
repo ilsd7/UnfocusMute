@@ -334,8 +334,7 @@ impl AppConfig {
         });
         if self.targets.len() > 1 {
             self.sort_targets();
-            self.targets
-                .dedup_by(|right, left| right.name == left.name && right.pid == left.pid);
+            self.merge_duplicate_targets();
         }
     }
 
@@ -357,6 +356,25 @@ impl AppConfig {
 
     fn sort_targets(&mut self) {
         self.targets.sort_by(compare_targets);
+    }
+
+    fn merge_duplicate_targets(&mut self) {
+        let mut merged = Vec::with_capacity(self.targets.len());
+        for target in self.targets.drain(..) {
+            let Some(previous) = merged.last_mut() else {
+                merged.push(target);
+                continue;
+            };
+            if previous.name == target.name && previous.pid == target.pid {
+                previous.enabled |= target.enabled;
+                if previous.note.is_none() {
+                    previous.note = target.note;
+                }
+            } else {
+                merged.push(target);
+            }
+        }
+        self.targets = merged;
     }
 }
 
@@ -388,9 +406,11 @@ fn load_or_default_from_path(path: &Path) -> io::Result<AppConfigLoad> {
         });
     }
 
-    let _ = backup_invalid_config(path);
+    let config = AppConfig::default();
+    backup_invalid_config(path)?;
+    config.save_to_path(path, false)?;
     Ok(AppConfigLoad {
-        config: AppConfig::default(),
+        config,
         first_run: false,
         recovered_invalid_config: true,
     })
@@ -549,7 +569,6 @@ fn process_name_candidate(input: &str) -> Option<ProcessNameCandidate<'_>> {
     }
 
     let name = input
-        .trim()
         .trim_matches('"')
         .rsplit(['\\', '/'])
         .next()
@@ -576,13 +595,53 @@ fn process_name_candidate(input: &str) -> Option<ProcessNameCandidate<'_>> {
     })
 }
 
+fn direct_process_name_candidate(input: &str) -> Option<ProcessNameCandidate<'_>> {
+    if input.as_bytes().contains(&0) {
+        return None;
+    }
+
+    let name = input.trim().trim_matches('"').trim();
+    if name.is_empty() || name.bytes().any(|byte| matches!(byte, b'\\' | b'/')) {
+        return None;
+    }
+
+    let mut has_uppercase = false;
+    for byte in name.bytes() {
+        if is_invalid_process_file_name_byte(byte) {
+            return None;
+        }
+        has_uppercase |= byte.is_ascii_uppercase();
+    }
+
+    Some(ProcessNameCandidate {
+        name,
+        has_uppercase,
+    })
+}
+
+#[cfg(test)]
 pub fn normalize_process_name(input: &str) -> Option<String> {
     Some(normalize_process_name_cow(input)?.into_owned())
 }
 
+#[cfg(test)]
 pub fn normalize_process_name_cow(input: &str) -> Option<Cow<'_, str>> {
     let candidate = process_name_candidate(input)?;
 
+    normalized_process_name_cow(candidate)
+}
+
+pub(crate) fn normalize_manual_process_name(input: &str) -> Option<String> {
+    Some(normalize_manual_process_name_cow(input)?.into_owned())
+}
+
+pub(crate) fn normalize_manual_process_name_cow(input: &str) -> Option<Cow<'_, str>> {
+    let candidate = direct_process_name_candidate(input)?;
+
+    normalized_process_name_cow(candidate)
+}
+
+fn normalized_process_name_cow(candidate: ProcessNameCandidate<'_>) -> Option<Cow<'_, str>> {
     if candidate.has_uppercase {
         Some(Cow::Owned(candidate.name.to_ascii_lowercase()))
     } else {
@@ -1078,6 +1137,24 @@ mod tests {
     }
 
     #[test]
+    fn manual_process_names_accept_only_direct_supported_exe_names() {
+        let plain = normalize_manual_process_name("  Game.EXE  ").unwrap();
+        let quoted = normalize_manual_process_name(r#""Game.EXE""#).unwrap();
+        let command_line = normalize_manual_process_name("game.exe --fullscreen").unwrap();
+
+        assert_eq!(plain, "game.exe");
+        assert_eq!(quoted, "game.exe");
+        assert!(is_supported_normalized_target_process_name(&plain));
+        assert!(is_supported_normalized_target_process_name(&quoted));
+        assert!(!is_supported_normalized_target_process_name(&command_line));
+        assert_eq!(normalize_manual_process_name(r"C:\Games\Game.EXE"), None);
+        assert_eq!(
+            normalize_manual_process_name(r#""C:\Games\Game.EXE" --fullscreen"#),
+            None
+        );
+    }
+
+    #[test]
     fn supported_utf16_names_are_filtered_before_allocating_name() {
         assert_eq!(
             normalize_supported_process_name_utf16(&wide_null_terminated(r"C:\Games\Example.EXE")),
@@ -1406,19 +1483,19 @@ mod tests {
     }
 
     #[test]
-    fn deduplicate_targets_keeps_first_duplicate_after_normalization() {
+    fn deduplicate_targets_merges_duplicate_state_after_normalization() {
         let mut config = AppConfig {
             targets: vec![
                 TargetProcess {
                     name: "Game.EXE".to_owned(),
                     pid: None,
-                    note: None,
+                    note: Some("primary".to_owned()),
                     enabled: false,
                 },
                 TargetProcess {
                     name: "game.exe".to_owned(),
                     pid: None,
-                    note: None,
+                    note: Some("duplicate".to_owned()),
                     enabled: true,
                 },
             ],
@@ -1428,7 +1505,37 @@ mod tests {
         config.deduplicate_targets();
 
         assert_eq!(config.targets.len(), 1);
-        assert!(!config.targets[0].enabled);
+        assert_eq!(config.targets[0].name, "game.exe");
+        assert!(config.targets[0].enabled);
+        assert_eq!(config.targets[0].note.as_deref(), Some("primary"));
+    }
+
+    #[test]
+    fn deduplicate_targets_keeps_note_from_later_duplicate_when_missing() {
+        let mut config = AppConfig {
+            targets: vec![
+                TargetProcess {
+                    name: "game.exe".to_owned(),
+                    pid: Some(42),
+                    note: None,
+                    enabled: true,
+                },
+                TargetProcess {
+                    name: "GAME.EXE".to_owned(),
+                    pid: Some(42),
+                    note: Some("main".to_owned()),
+                    enabled: true,
+                },
+            ],
+            ..AppConfig::default()
+        };
+
+        config.deduplicate_targets();
+
+        assert_eq!(config.targets.len(), 1);
+        assert_eq!(config.targets[0].name, "game.exe");
+        assert_eq!(config.targets[0].pid, Some(42));
+        assert_eq!(config.targets[0].note.as_deref(), Some("main"));
     }
 
     #[test]
@@ -1546,6 +1653,31 @@ mod tests {
         assert!(!loaded.first_run);
         assert!(loaded.recovered_invalid_config);
         assert_eq!(loaded.config, AppConfig::default());
+        assert!(
+            !load_or_default_from_path(&config_path)
+                .unwrap()
+                .recovered_invalid_config
+        );
+        assert!(
+            fs::read_to_string(&config_path)
+                .unwrap()
+                .contains("\"version\"")
+        );
+        let backups = fs::read_dir(dir.path())
+            .unwrap()
+            .filter_map(Result::ok)
+            .filter(|entry| {
+                entry
+                    .file_name()
+                    .to_string_lossy()
+                    .starts_with("config.invalid-")
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(backups.len(), 1);
+        assert_eq!(
+            fs::read_to_string(backups[0].path()).unwrap(),
+            "{not valid json"
+        );
     }
 
     #[test]

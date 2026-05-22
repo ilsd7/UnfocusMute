@@ -111,7 +111,7 @@ UnfocusMute 不会向游戏注入代码，不会读取游戏内存，不会 hook
 3. 按 `Ctrl`+`Shift`+`Esc` 打开任务管理器。
 4. 将进程列表按 `CPU` 排序，找到刚启动的游戏。
 5. 右键点击游戏项目并打开 `属性`。
-6. 找到类似 `game.exe` 这样以 `.exe` 结尾的执行文件名，并添加到 UnfocusMute。
+6. 找到类似 `game.exe` 这样以 `.exe` 结尾的执行文件名，并将其添加到 UnfocusMute。
 
 ---
 

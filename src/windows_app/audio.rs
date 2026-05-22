@@ -757,6 +757,36 @@ mod tests {
     }
 
     #[test]
+    fn small_managed_session_lookup_matches_pid_and_name() {
+        let session_keys = HashSet::from([
+            AudioSessionKey::from_normalized(7, "game.exe".to_owned(), None),
+            AudioSessionKey::from_normalized(8, "chat.exe".to_owned(), None),
+            AudioSessionKey::from_normalized(9, "music.exe".to_owned(), None),
+        ]);
+        let lookup = ManagedSessionLookup::new(&session_keys);
+
+        assert!(lookup.may_include_pid(7));
+        assert!(lookup.may_include(7, "game.exe"));
+        assert!(!lookup.may_include(7, "other.exe"));
+        assert!(!lookup.may_include(42, "game.exe"));
+    }
+
+    #[test]
+    fn single_managed_session_lookup_matches_pid_and_name() {
+        let session_keys = HashSet::from([AudioSessionKey::from_normalized(
+            7,
+            "game.exe".to_owned(),
+            None,
+        )]);
+        let lookup = ManagedSessionLookup::new(&session_keys);
+
+        assert!(lookup.may_include_pid(7));
+        assert!(lookup.may_include(7, "game.exe"));
+        assert!(!lookup.may_include(7, "other.exe"));
+        assert!(!lookup.may_include(8, "game.exe"));
+    }
+
+    #[test]
     fn unresolved_pid_only_filter_failures_reuse_prefilter_decision() {
         let matcher =
             TargetMatcher::new(&[crate::config::TargetProcess::for_pid("game.exe", 7).unwrap()]);
