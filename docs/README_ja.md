@@ -29,7 +29,7 @@
 
 UnfocusMuteは、選択したゲームやアプリがバックグラウンドに移ったとき、そのアプリの音だけを自動でミュートする小さく軽いWindows用トレイアプリです。ゲームだけでなく、ブラウザ、メッセンジャー、ランチャー、メディアプレイヤーなど、Windowsのオーディオセッションとして表示される一般的なアプリも登録できます。
 
-Rust製のネイティブアプリなので、別途ランタイムなしでそのまま実行できます。現在の実行ファイルは約489KBで、1MB未満です。
+Rust製のネイティブアプリなので、別途ランタイムなしでそのまま実行できます。リリースビルドは小さな実行ファイルサイズを優先するよう構成されています。
 
 <p align="center">
   <img src="../assets/screenshot_ja.png" alt="UnfocusMuteのアプリ画面">
@@ -51,8 +51,8 @@ Rust製のネイティブアプリなので、別途ランタイムなしでそ�
 - 登録したアプリがバックグラウンドにある間はオーディオセッションを自動でミュートし、前面に戻ると復元
 - 実行中のアプリ一覧から選択して追加、または `game.exe` 形式で直接入力
 - `.exe` 単位の登録、現在実行中のインスタンス向けの個別PID登録、`PID詳細を表示` に対応
-- 登録アプリごとのメモ作成、アプリごとの `自動ミュートから除外` と `自動ミュートに含める`
-- トレイ常駐、全体一時停止、設定フォルダーを開く、二重起動防止
+- 登録アプリごとのメモ作成、対象ごとのリアルタイムミュート状態表示、アプリごとの `自動ミュートから除外` と `自動ミュートに含める`
+- トレイ常駐、トレイでの状態要約、全体一時停止、設定フォルダーを開く、二重起動防止
 - 初回起動時に言語を選び、以後アプリ内でEnglish/한국어/日本語/简体中文/Español/Français/Português/हिन्दी/العربيةをすぐに切り替え
 - 設定は `%APPDATA%\UnfocusMute\config.json` にローカル保存
 
@@ -67,7 +67,7 @@ Windows 10/11では、配布ZIPをダウンロードして展開すればすぐ�
 | [UnfocusMute-windows-x64.zip](https://github.com/ilsd7/UnfocusMute/releases/latest/download/UnfocusMute-windows-x64.zip) |
 | [SHA-256確認ファイル](https://github.com/ilsd7/UnfocusMute/releases/latest/download/UnfocusMute-windows-x64.zip.sha256) · [リリースノート](https://github.com/ilsd7/UnfocusMute/releases/latest) |
 
-展開した `UnfocusMute-windows-x64` フォルダーを好きな場所へ移動し、その中の `UnfocusMute-<version>.exe` を実行します。ポータブルアプリなのでインストーラーはなく、Rust、Visual Studio Build Tools、MinGWなどの開発ツールも不要です。
+展開した `UnfocusMute-windows-x64` フォルダーを好きな場所へ移動し、その中の `UnfocusMute-v<version>.exe` を実行します。ポータブルアプリなのでインストーラーはなく、Rust、Visual Studio Build Tools、MinGWなどの開発ツールも不要です。
 
 > **参考:** コード署名証明書には費用がかかるため、現在の配布ファイルはWindowsコード署名なしで提供しています。初回実行時にWindows SmartScreenや「不明な発行元」の警告が表示される場合があります。ファイルの整合性を自分で確認したい場合は、下のリリースファイル検証セクションを参照してください。
 
@@ -181,7 +181,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts\package-windows.ps1
 cargo about generate about.hbs -c about.toml --locked --offline -o THIRD_PARTY_NOTICES.md
 ```
 
-成果物は `dist\UnfocusMute-windows-x64.zip` に作成され、同じ場所にSHA-256確認用の `dist\UnfocusMute-windows-x64.zip.sha256` も作成されます。ZIPにはバージョン付きの実行ファイル（`UnfocusMute-<version>.exe`）、`LICENSE`、`THIRD_PARTY_NOTICES.md`、`docs` フォルダー内の言語別README `.txt` 文書が含まれます。
+成果物は `dist\UnfocusMute-windows-x64.zip` に作成され、同じ場所にSHA-256確認用の `dist\UnfocusMute-windows-x64.zip.sha256` も作成されます。ZIPにはバージョン付きの実行ファイル（`UnfocusMute-v<version>.exe`）、`LICENSE`、`THIRD_PARTY_NOTICES.md`、`docs` フォルダー内の言語別README `.txt` 文書が含まれます。
 
 ---
 

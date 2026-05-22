@@ -29,7 +29,7 @@
 
 UnfocusMute هو تطبيق صغير وخفيف لعلبة نظام Windows. عندما تنتقل لعبة أو تطبيق قمت بتحديده إلى الخلفية، يكتم صوت ذلك التطبيق فقط تلقائيًا. لا يقتصر على الألعاب؛ يمكن أيضًا تسجيل المتصفحات، وتطبيقات المحادثة، والمشغلات، ومشغلات الوسائط، وأي تطبيق يظهر كجلسة صوت في Windows.
 
-لأنه مبني كتطبيق Rust أصلي، يعمل مباشرة دون runtime منفصل. حجم الملف التنفيذي الحالي نحو 489KB، أي أقل من 1MB.
+لأنه مبني كتطبيق Rust أصلي، يعمل مباشرة دون runtime منفصل. تم إعداد إصدارات النشر لإعطاء الأولوية لصغر حجم الملف التنفيذي.
 
 <p align="center">
   <img src="../assets/screenshot_ar.png" alt="نافذة تطبيق UnfocusMute">
@@ -51,8 +51,8 @@ UnfocusMute هو تطبيق صغير وخفيف لعلبة نظام Windows. ع�
 - يكتم تلقائيًا جلسة الصوت للتطبيقات المسجلة عندما تكون في الخلفية ويعيدها عند عودتها إلى المقدمة.
 - يضيف الأهداف من قائمة التطبيقات قيد التشغيل أو عبر كتابة اسم مثل `game.exe`.
 - يدعم أهداف `.exe`، وأهداف PID للنسخة الحالية، وخيار `إظهار تفاصيل PID`.
-- ملاحظات لكل تطبيق، و`استبعاد من الكتم التلقائي` و`إدراجه في الكتم التلقائي` لكل تطبيق.
-- البقاء في علبة النظام، إيقاف مؤقت عام، فتح مجلد الإعدادات، ومنع تشغيل نسخ متعددة.
+- ملاحظات لكل تطبيق، وحالة كتم مباشرة لكل هدف، و`استبعاد من الكتم التلقائي` و`إدراجه في الكتم التلقائي` لكل تطبيق.
+- البقاء في علبة النظام، ملخص حالة في علبة النظام، إيقاف مؤقت عام، فتح مجلد الإعدادات، ومنع تشغيل نسخ متعددة.
 - اختيار اللغة عند التشغيل الأول، ثم التبديل داخل التطبيق بين English/한국어/日本語/简体中文/Español/Français/Português/हिन्दी/العربية.
 - تُحفظ الإعدادات محليًا في `%APPDATA%\UnfocusMute\config.json`.
 
@@ -67,7 +67,7 @@ UnfocusMute هو تطبيق صغير وخفيف لعلبة نظام Windows. ع�
 | [UnfocusMute-windows-x64.zip](https://github.com/ilsd7/UnfocusMute/releases/latest/download/UnfocusMute-windows-x64.zip) |
 | [ملف تحقق SHA-256](https://github.com/ilsd7/UnfocusMute/releases/latest/download/UnfocusMute-windows-x64.zip.sha256) · [ملاحظات الإصدار](https://github.com/ilsd7/UnfocusMute/releases/latest) |
 
-انقل مجلد `UnfocusMute-windows-x64` الناتج إلى المكان الذي تريد حفظ التطبيق فيه، ثم شغّل `UnfocusMute-<version>.exe` من داخل ذلك المجلد. التطبيق محمول، لذلك لا توجد عملية تثبيت ولا تحتاج إلى Rust أو Visual Studio Build Tools أو MinGW أو أدوات تطوير أخرى.
+انقل مجلد `UnfocusMute-windows-x64` الناتج إلى المكان الذي تريد حفظ التطبيق فيه، ثم شغّل `UnfocusMute-v<version>.exe` من داخل ذلك المجلد. التطبيق محمول، لذلك لا توجد عملية تثبيت ولا تحتاج إلى Rust أو Visual Studio Build Tools أو MinGW أو أدوات تطوير أخرى.
 
 > **ملاحظة:** بسبب تكلفة شهادات توقيع الكود، يُوزع التطبيق حاليًا من دون توقيع كود Windows. قد يظهر تحذير Windows SmartScreen أو تحذير "ناشر غير معروف" عند التشغيل الأول. إذا أردت التحقق من سلامة الملف بنفسك، فراجع قسم التحقق من ملفات الإصدار أدناه.
 
@@ -181,7 +181,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts\package-windows.ps1
 cargo about generate about.hbs -c about.toml --locked --offline -o THIRD_PARTY_NOTICES.md
 ```
 
-يتم إنشاء الناتج في `dist\UnfocusMute-windows-x64.zip`، ومعه ملف تحقق SHA-256 في `dist\UnfocusMute-windows-x64.zip.sha256`. يحتوي ZIP على الملف التنفيذي الذي يتضمن رقم الإصدار (`UnfocusMute-<version>.exe`)، و`LICENSE`، و`THIRD_PARTY_NOTICES.md`، وملفات README بصيغة `.txt` لكل لغة داخل مجلد `docs`.
+يتم إنشاء الناتج في `dist\UnfocusMute-windows-x64.zip`، ومعه ملف تحقق SHA-256 في `dist\UnfocusMute-windows-x64.zip.sha256`. يحتوي ZIP على الملف التنفيذي الذي يتضمن رقم الإصدار (`UnfocusMute-v<version>.exe`)، و`LICENSE`، و`THIRD_PARTY_NOTICES.md`، وملفات README بصيغة `.txt` لكل لغة داخل مجلد `docs`.
 
 ---
 

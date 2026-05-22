@@ -29,7 +29,7 @@
 
 UnfocusMute는 선택한 게임이나 앱이 백그라운드로 전환될 때 그 앱의 소리만 자동으로 음소거하는 작고 가벼운 Windows용 트레이 앱입니다. 게임뿐 아니라 브라우저, 메신저, 런처, 미디어 플레이어처럼 Windows 오디오 세션으로 표시되는 일반 앱도 등록할 수 있습니다.
 
-Rust 네이티브 앱으로 빌드되어 별도 런타임 없이 바로 실행됩니다. 현재 실행 파일은 약 489KB로, 1MB 미만입니다.
+Rust 네이티브 앱으로 빌드되어 별도 런타임 없이 바로 실행됩니다. 릴리스 빌드는 작은 실행 파일 크기를 우선하도록 구성되어 있습니다.
 
 <p align="center">
   <img src="assets/screenshot_ko.png" alt="UnfocusMute 앱 화면">
@@ -51,8 +51,8 @@ Rust 네이티브 앱으로 빌드되어 별도 런타임 없이 바로 실행�
 - 등록한 앱이 백그라운드에 있을 때 오디오 세션을 자동으로 음소거하고, 전면으로 돌아오면 복원
 - 실행 중인 앱 목록에서 선택해 추가하거나 `game.exe` 형식으로 직접 입력
 - `.exe` 단위 등록, 현재 실행 중인 인스턴스용 개별 PID 등록, `세부 PID 보기` 지원
-- 등록 앱별 메모 작성, 앱별 `자동 음소거 제외` 및 `자동 음소거에 포함`
-- 트레이 상주, 전체 일시 중지, 설정 폴더 열기, 중복 실행 방지
+- 등록 앱별 메모와 대상별 실시간 음소거 상태 표시, 앱별 `자동 음소거 제외` 및 `자동 음소거에 포함`
+- 트레이 상주, 트레이 상태 요약, 전체 일시 중지, 설정 폴더 열기, 중복 실행 방지
 - 첫 실행 시 언어 선택, 이후 앱 안에서 English/한국어/日本語/简体中文/Español/Français/Português/हिन्दी/العربية 즉시 전환
 - 설정은 `%APPDATA%\UnfocusMute\config.json`에 로컬 저장
 
@@ -67,7 +67,7 @@ Windows 10/11에서는 배포 ZIP을 다운로드해 압축을 풀면 바로 사
 | [UnfocusMute-windows-x64.zip](https://github.com/ilsd7/UnfocusMute/releases/latest/download/UnfocusMute-windows-x64.zip) |
 | [SHA-256 확인 파일](https://github.com/ilsd7/UnfocusMute/releases/latest/download/UnfocusMute-windows-x64.zip.sha256) · [릴리스 노트](https://github.com/ilsd7/UnfocusMute/releases/latest) |
 
-압축을 푼 `UnfocusMute-windows-x64` 폴더를 원하는 위치로 옮긴 다음, 폴더 안의 `UnfocusMute-<version>.exe`를 실행하면 됩니다. 포터블 실행 파일이라 별도 설치 과정이 없으며, Rust, Visual Studio Build Tools, MinGW 같은 개발 도구도 필요하지 않습니다.
+압축을 푼 `UnfocusMute-windows-x64` 폴더를 원하는 위치로 옮긴 다음, 폴더 안의 `UnfocusMute-v<version>.exe`를 실행하면 됩니다. 포터블 실행 파일이라 별도 설치 과정이 없으며, Rust, Visual Studio Build Tools, MinGW 같은 개발 도구도 필요하지 않습니다.
 
 > **참고:** 비용 문제로 인해 코드 서명 인증서가 없어 처음 실행할 때 Windows SmartScreen 또는 "알 수 없는 게시자" 경고가 뜰 수 있습니다. 파일의 무결성을 직접 확인하고 싶다면 [배포 파일 검증](#배포-파일-검증) 섹션을 참고하세요.
 
@@ -181,7 +181,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts\package-windows.ps1
 cargo about generate about.hbs -c about.toml --locked --offline -o THIRD_PARTY_NOTICES.md
 ```
 
-결과물은 `dist\UnfocusMute-windows-x64.zip`에 생성되며, 같은 위치에 SHA-256 확인용 `dist\UnfocusMute-windows-x64.zip.sha256`도 함께 만들어집니다. ZIP에는 버전명이 포함된 실행 파일(`UnfocusMute-<version>.exe`), `LICENSE`, `THIRD_PARTY_NOTICES.md`, `docs` 폴더의 언어별 README `.txt` 문서가 들어 있습니다.
+결과물은 `dist\UnfocusMute-windows-x64.zip`에 생성되며, 같은 위치에 SHA-256 확인용 `dist\UnfocusMute-windows-x64.zip.sha256`도 함께 만들어집니다. ZIP에는 버전명이 포함된 실행 파일(`UnfocusMute-v<version>.exe`), `LICENSE`, `THIRD_PARTY_NOTICES.md`, `docs` 폴더의 언어별 README `.txt` 문서가 들어 있습니다.
 
 ---
 

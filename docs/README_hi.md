@@ -29,7 +29,7 @@
 
 UnfocusMute Windows tray के लिए एक छोटा और हल्का app है। चुना हुआ game या app background में जाते ही यह सिर्फ उसी app की आवाज अपने आप mute करता है। यह सिर्फ games तक सीमित नहीं है: browsers, messengers, launchers, media players और दूसरे apps भी register किए जा सकते हैं, अगर वे Windows audio session के रूप में दिखते हों।
 
-Rust native app के रूप में build होने के कारण यह अलग runtime के बिना सीधे चलता है। मौजूदा executable लगभग 489 KB है, यानी 1 MB से कम।
+Rust native app के रूप में build होने के कारण यह अलग runtime के बिना सीधे चलता है। Release builds छोटे executable को प्राथमिकता देने के लिए configured हैं।
 
 <p align="center">
   <img src="../assets/screenshot_hi.png" alt="UnfocusMute ऐप विंडो">
@@ -51,8 +51,8 @@ Mute और restore, दोनों सिर्फ उन sessions पर ल�
 - Registered apps background में होने पर audio session अपने आप mute करता है और foreground में लौटने पर restore करता है।
 - Running app list से target जोड़ें या `game.exe` जैसा नाम manually लिखें।
 - `.exe` targets, current-instance PID targets और `PID विवरण दिखाएं` support करता है।
-- App-wise notes, app-wise `ऑटो-म्यूट से बाहर करें` और `ऑटो-म्यूट में शामिल करें`।
-- Tray में चलना, global pause, config folder खोलना और duplicate instance protection।
+- App-wise notes, target-wise live mute state, app-wise `ऑटो-म्यूट से बाहर करें` और `ऑटो-म्यूट में शामिल करें`।
+- Tray में चलना, tray status summary, global pause, config folder खोलना और duplicate instance protection।
 - पहली बार language चुनें, फिर app के अंदर English/한국어/日本語/简体中文/Español/Français/Português/हिन्दी/العربية तुरंत बदलें।
 - Settings local रूप से `%APPDATA%\UnfocusMute\config.json` में save होती हैं।
 
@@ -67,7 +67,7 @@ Windows 10/11 पर ZIP package डाउनलोड करके extract क�
 | [UnfocusMute-windows-x64.zip](https://github.com/ilsd7/UnfocusMute/releases/latest/download/UnfocusMute-windows-x64.zip) |
 | [SHA-256 file](https://github.com/ilsd7/UnfocusMute/releases/latest/download/UnfocusMute-windows-x64.zip.sha256) · [रिलीज़ नोट्स](https://github.com/ilsd7/UnfocusMute/releases/latest) |
 
-निकले हुए `UnfocusMute-windows-x64` folder को अपनी पसंद की जगह पर ले जाएं, फिर उसी folder में `UnfocusMute-<version>.exe` चलाएं। यह portable app है, इसलिए installer की जरूरत नहीं है और Rust, Visual Studio Build Tools, MinGW या दूसरे development tools भी जरूरी नहीं हैं।
+निकले हुए `UnfocusMute-windows-x64` folder को अपनी पसंद की जगह पर ले जाएं, फिर उसी folder में `UnfocusMute-v<version>.exe` चलाएं। यह portable app है, इसलिए installer की जरूरत नहीं है और Rust, Visual Studio Build Tools, MinGW या दूसरे development tools भी जरूरी नहीं हैं।
 
 > **ध्यान दें:** code-signing certificate की cost के कारण app अभी Windows code signing के बिना distribute किया जाता है। पहली बार चलाते समय Windows SmartScreen या "unknown publisher" warning दिख सकती है। File integrity खुद verify करनी हो, तो नीचे release file verification section देखें।
 
@@ -181,7 +181,7 @@ Third-party license notices refresh करें:
 cargo about generate about.hbs -c about.toml --locked --offline -o THIRD_PARTY_NOTICES.md
 ```
 
-परिणाम `dist\UnfocusMute-windows-x64.zip` में बनता है, और उसी जगह SHA-256 जांच फ़ाइल `dist\UnfocusMute-windows-x64.zip.sha256` भी बनती है। ZIP में version वाला executable (`UnfocusMute-<version>.exe`), `LICENSE`, `THIRD_PARTY_NOTICES.md`, और `docs` folder में भाषा के अनुसार README `.txt` files शामिल होती हैं।
+परिणाम `dist\UnfocusMute-windows-x64.zip` में बनता है, और उसी जगह SHA-256 जांच फ़ाइल `dist\UnfocusMute-windows-x64.zip.sha256` भी बनती है। ZIP में version वाला executable (`UnfocusMute-v<version>.exe`), `LICENSE`, `THIRD_PARTY_NOTICES.md`, और `docs` folder में भाषा के अनुसार README `.txt` files शामिल होती हैं।
 
 ---
 

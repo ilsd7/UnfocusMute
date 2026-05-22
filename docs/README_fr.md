@@ -29,7 +29,7 @@
 
 UnfocusMute est une petite application légère pour la zone de notification de Windows. Elle met automatiquement en sourdine uniquement le jeu ou l’application choisi lorsqu’il passe en arrière-plan. Elle ne se limite pas aux jeux : navigateurs, messageries, lanceurs, lecteurs multimédias et autres applications peuvent aussi être enregistrés s’ils apparaissent comme sessions audio Windows.
 
-Compilée comme application native Rust, elle s’exécute sans runtime séparé. L’exécutable actuel fait environ 489 Ko, soit moins de 1 Mo.
+Compilée comme application native Rust, elle s’exécute sans runtime séparé. Les builds de publication sont configurés pour privilégier un petit exécutable.
 
 <p align="center">
   <img src="../assets/screenshot_fr.png" alt="Fenêtre de l’application UnfocusMute">
@@ -51,8 +51,8 @@ La mise en sourdine et la restauration ne s’appliquent qu’aux sessions qu’
 - Met automatiquement en sourdine les applications enregistrées lorsqu’elles sont en arrière-plan et réactive l’audio à leur retour au premier plan.
 - Ajoute des cibles depuis la liste des applications en cours ou par saisie directe d’un nom comme `game.exe`.
 - Prend en charge les cibles par `.exe`, les cibles par PID de l’instance en cours et `Afficher les PID`.
-- Notes par application, `Exclure de la sourdine auto` et `Inclure dans la sourdine auto` par application.
-- Présence dans la zone de notification, pause globale, accès au dossier de configuration et protection contre les instances multiples.
+- Notes par application, état de sourdine en direct par cible, `Exclure de la sourdine auto` et `Inclure dans la sourdine auto` par application.
+- Présence dans la zone de notification, résumé d’état dans la zone de notification, pause globale, accès au dossier de configuration et protection contre les instances multiples.
 - Choix de la langue au premier démarrage, puis changement immédiat dans l’application entre English/한국어/日本語/简体中文/Español/Français/Português/हिन्दी/العربية.
 - Les réglages sont stockés localement dans `%APPDATA%\UnfocusMute\config.json`.
 
@@ -67,7 +67,7 @@ Sous Windows 10/11, téléchargez le paquet ZIP puis extrayez-le pour lancer l�
 | [UnfocusMute-windows-x64.zip](https://github.com/ilsd7/UnfocusMute/releases/latest/download/UnfocusMute-windows-x64.zip) |
 | [Fichier SHA-256](https://github.com/ilsd7/UnfocusMute/releases/latest/download/UnfocusMute-windows-x64.zip.sha256) · [Notes de version](https://github.com/ilsd7/UnfocusMute/releases/latest) |
 
-Déplacez le dossier extrait `UnfocusMute-windows-x64` à l’emplacement où vous souhaitez conserver l’application, puis lancez `UnfocusMute-<version>.exe` depuis ce dossier. L’application est portable : il n’y a pas d’installateur et vous n’avez pas besoin de Rust, Visual Studio Build Tools, MinGW ni d’autres outils de développement.
+Déplacez le dossier extrait `UnfocusMute-windows-x64` à l’emplacement où vous souhaitez conserver l’application, puis lancez `UnfocusMute-v<version>.exe` depuis ce dossier. L’application est portable : il n’y a pas d’installateur et vous n’avez pas besoin de Rust, Visual Studio Build Tools, MinGW ni d’autres outils de développement.
 
 > **Remarque :** En raison du coût des certificats de signature de code, l’application est actuellement distribuée sans signature de code Windows. Windows SmartScreen ou un avertissement d’éditeur inconnu peut apparaître au premier lancement. Pour vérifier vous-même l’intégrité du fichier, consultez la section de vérification des fichiers de release ci-dessous.
 
@@ -181,7 +181,7 @@ Actualiser les avis de licences tierces :
 cargo about generate about.hbs -c about.toml --locked --offline -o THIRD_PARTY_NOTICES.md
 ```
 
-Le résultat est créé dans `dist\UnfocusMute-windows-x64.zip`, avec le fichier de vérification SHA-256 `dist\UnfocusMute-windows-x64.zip.sha256` au même emplacement. Le ZIP contient l’exécutable avec version (`UnfocusMute-<version>.exe`), `LICENSE`, `THIRD_PARTY_NOTICES.md` et les README `.txt` localisés par langue dans `docs`.
+Le résultat est créé dans `dist\UnfocusMute-windows-x64.zip`, avec le fichier de vérification SHA-256 `dist\UnfocusMute-windows-x64.zip.sha256` au même emplacement. Le ZIP contient l’exécutable avec version (`UnfocusMute-v<version>.exe`), `LICENSE`, `THIRD_PARTY_NOTICES.md` et les README `.txt` localisés par langue dans `docs`.
 
 ---
 

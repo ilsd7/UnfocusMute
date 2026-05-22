@@ -29,7 +29,7 @@
 
 UnfocusMute 是一个小巧轻量的 Windows 托盘应用。当你选定的游戏或应用切到后台时，它会自动只静音该应用的声音。它不仅适用于游戏，浏览器、聊天工具、启动器、媒体播放器等只要显示为 Windows 音频会话，也可以注册使用。
 
-它是 Rust 原生应用，无需额外运行时即可直接运行。当前可执行文件约 489KB，小于 1MB。
+它是 Rust 原生应用，无需额外运行时即可直接运行。发行版构建已配置为优先减小可执行文件体积。
 
 <p align="center">
   <img src="../assets/screenshot_zh-Hans.png" alt="UnfocusMute 应用窗口">
@@ -51,8 +51,8 @@ UnfocusMute 是一个小巧轻量的 Windows 托盘应用。当你选定的游�
 - 注册应用位于后台时自动静音其音频会话，回到前台时恢复
 - 可从正在运行的应用列表中选择添加，也可手动输入 `game.exe` 这样的名称
 - 支持按 `.exe` 注册、当前运行实例的单个 PID 注册，以及 `显示 PID`
-- 可为每个注册应用添加备注，并单独 `从自动静音中排除` 或 `加入自动静音`
-- 托盘常驻、全局暂停、打开配置文件夹、防止重复启动
+- 可为每个注册应用添加备注，显示每个目标的实时静音状态，并单独 `从自动静音中排除` 或 `加入自动静音`
+- 托盘常驻、托盘状态摘要、全局暂停、打开配置文件夹、防止重复启动
 - 首次运行时选择语言，之后可在应用内立即切换 English/한국어/日本語/简体中文/Español/Français/Português/हिन्दी/العربية
 - 设置保存在本地 `%APPDATA%\UnfocusMute\config.json`
 
@@ -67,7 +67,7 @@ UnfocusMute 是一个小巧轻量的 Windows 托盘应用。当你选定的游�
 | [UnfocusMute-windows-x64.zip](https://github.com/ilsd7/UnfocusMute/releases/latest/download/UnfocusMute-windows-x64.zip) |
 | [SHA-256 校验文件](https://github.com/ilsd7/UnfocusMute/releases/latest/download/UnfocusMute-windows-x64.zip.sha256) · [发行说明](https://github.com/ilsd7/UnfocusMute/releases/latest) |
 
-把解压后的 `UnfocusMute-windows-x64` 文件夹移动到你想保存的位置，再运行其中的 `UnfocusMute-<version>.exe`。它是便携应用，没有安装步骤，也不需要 Rust、Visual Studio Build Tools、MinGW 等开发工具。
+把解压后的 `UnfocusMute-windows-x64` 文件夹移动到你想保存的位置，再运行其中的 `UnfocusMute-v<version>.exe`。它是便携应用，没有安装步骤，也不需要 Rust、Visual Studio Build Tools、MinGW 等开发工具。
 
 > **提示：** 由于代码签名证书需要成本，目前发布文件未进行 Windows 代码签名。首次运行时，Windows SmartScreen 或“未知发布者”警告可能会出现。如果你想自行确认文件完整性，请参阅下面的发布文件验证部分。
 
@@ -181,7 +181,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts\package-windows.ps1
 cargo about generate about.hbs -c about.toml --locked --offline -o THIRD_PARTY_NOTICES.md
 ```
 
-结果会生成到 `dist\UnfocusMute-windows-x64.zip`，同一位置还会生成用于 SHA-256 校验的 `dist\UnfocusMute-windows-x64.zip.sha256`。ZIP 包含带版本号的可执行文件（`UnfocusMute-<version>.exe`）、`LICENSE`、`THIRD_PARTY_NOTICES.md`，以及 `docs` 文件夹中的各语言 README `.txt` 文件。
+结果会生成到 `dist\UnfocusMute-windows-x64.zip`，同一位置还会生成用于 SHA-256 校验的 `dist\UnfocusMute-windows-x64.zip.sha256`。ZIP 包含带版本号的可执行文件（`UnfocusMute-v<version>.exe`）、`LICENSE`、`THIRD_PARTY_NOTICES.md`，以及 `docs` 文件夹中的各语言 README `.txt` 文件。
 
 ---
 

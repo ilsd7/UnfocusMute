@@ -29,7 +29,7 @@
 
 UnfocusMute is a small, lightweight Windows tray app that automatically mutes only the selected game or app when it moves to the background. It is not limited to games: browsers, messengers, launchers, media players, and other apps can be registered as long as they appear as Windows audio sessions.
 
-Built as a native Rust app, it runs without a separate runtime. The current executable is about 489 KB, under 1 MB.
+Built as a native Rust app, it runs without a separate runtime. Release builds are configured to prioritize a small executable.
 
 <p align="center">
   <img src="../assets/screenshot_en.png" alt="UnfocusMute app window">
@@ -51,8 +51,8 @@ Mute and restore actions apply only to sessions UnfocusMute changed itself. Sess
 - Automatically mutes registered apps while they are in the background and restores them when they return to the foreground.
 - Add targets from the running app list or by typing a name such as `game.exe`.
 - Supports `.exe` targets, current-instance PID targets, and `Show PIDs`.
-- Per-app notes, per-app `Exclude from auto-mute`, and `Include in auto-mute`.
-- Tray resident behavior, global pause, config folder access, and single-instance protection.
+- Per-app notes, per-target live mute state, per-app `Exclude from auto-mute`, and `Include in auto-mute`.
+- Tray resident behavior, tray status summaries, global pause, config folder access, and single-instance protection.
 - Choose a language on first run, then switch in-app between English/한국어/日本語/简体中文/Español/Français/Português/हिन्दी/العربية.
 - Settings are stored locally at `%APPDATA%\UnfocusMute\config.json`.
 
@@ -67,7 +67,7 @@ On Windows 10/11, download the ZIP package and extract it to run the app.
 | [UnfocusMute-windows-x64.zip](https://github.com/ilsd7/UnfocusMute/releases/latest/download/UnfocusMute-windows-x64.zip) |
 | [SHA-256 checksum](https://github.com/ilsd7/UnfocusMute/releases/latest/download/UnfocusMute-windows-x64.zip.sha256) · [Release notes](https://github.com/ilsd7/UnfocusMute/releases/latest) |
 
-Move the extracted `UnfocusMute-windows-x64` folder wherever you want to keep the app, then run `UnfocusMute-<version>.exe` inside that folder. It is portable, so there is no installer, and you do not need Rust, Visual Studio Build Tools, MinGW, or any other development tools.
+Move the extracted `UnfocusMute-windows-x64` folder wherever you want to keep the app, then run `UnfocusMute-v<version>.exe` inside that folder. It is portable, so there is no installer, and you do not need Rust, Visual Studio Build Tools, MinGW, or any other development tools.
 
 > **Note:** Because of code-signing certificate costs, the app is currently distributed without Windows code signing. Windows SmartScreen or an "unknown publisher" warning may appear on first run. To verify the file integrity yourself, see [Verifying Release Files](#verifying-release-files).
 
@@ -181,7 +181,7 @@ Refresh third-party license notices:
 cargo about generate about.hbs -c about.toml --locked --offline -o THIRD_PARTY_NOTICES.md
 ```
 
-The output is created at `dist\UnfocusMute-windows-x64.zip`, with a SHA-256 verification file at `dist\UnfocusMute-windows-x64.zip.sha256`. The ZIP includes the versioned executable (`UnfocusMute-<version>.exe`), `LICENSE`, `THIRD_PARTY_NOTICES.md`, and localized README `.txt` files under `docs`.
+The output is created at `dist\UnfocusMute-windows-x64.zip`, with a SHA-256 verification file at `dist\UnfocusMute-windows-x64.zip.sha256`. The ZIP includes the versioned executable (`UnfocusMute-v<version>.exe`), `LICENSE`, `THIRD_PARTY_NOTICES.md`, and localized README `.txt` files under `docs`.
 
 ---
 

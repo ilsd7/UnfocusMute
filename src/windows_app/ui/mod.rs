@@ -47,8 +47,8 @@ use windows::Win32::UI::WindowsAndMessaging::{
     GetSystemMetrics, GetWindowRect, HICON, HMENU, ICON_BIG, ICON_SMALL, IDC_ARROW,
     IsWindowVisible, KillTimer, LB_GETCURSEL, LB_RESETCONTENT, LB_SETCURSEL, LBN_DBLCLK,
     LBN_SELCHANGE, LBS_HASSTRINGS, LBS_NOINTEGRALHEIGHT, LBS_NOTIFY, LBS_OWNERDRAWFIXED,
-    LoadCursorW, MB_ICONINFORMATION, MB_ICONWARNING, MB_OK, MF_CHECKED, MF_SEPARATOR, MF_STRING,
-    MSG, MessageBoxW, MoveWindow, PostMessageW, PostQuitMessage, RegisterClassW,
+    LoadCursorW, MB_ICONINFORMATION, MB_ICONWARNING, MB_OK, MF_CHECKED, MF_GRAYED, MF_SEPARATOR,
+    MF_STRING, MSG, MessageBoxW, MoveWindow, PostMessageW, PostQuitMessage, RegisterClassW,
     RegisterWindowMessageW, SM_CXSCREEN, SM_CXVIRTUALSCREEN, SM_CXVSCROLL, SM_CYSCREEN,
     SM_CYVIRTUALSCREEN, SM_XVIRTUALSCREEN, SM_YVIRTUALSCREEN, SPI_GETWORKAREA, SW_HIDE, SW_RESTORE,
     SW_SHOW, SYSTEM_PARAMETERS_INFO_UPDATE_FLAGS, SendMessageW, SetForegroundWindow, SetTimer,
@@ -658,6 +658,7 @@ struct AppWindow {
     last_process_refresh: Instant,
     updating_process_combo: bool,
     muted_by_app: HashSet<AudioSessionKey>,
+    last_target_muted: Vec<bool>,
     paused: bool,
     show_process_details: bool,
     tray_added: bool,
@@ -911,6 +912,7 @@ impl AppWindow {
             last_process_refresh: Instant::now(),
             updating_process_combo: false,
             muted_by_app: HashSet::new(),
+            last_target_muted: Vec::new(),
             paused: false,
             show_process_details: false,
             tray_added: false,
@@ -1433,12 +1435,12 @@ impl AppWindow {
         self.refresh_process_details_ui();
         self.last_status = None;
         self.update_status();
-        self.add_tray_icon();
     }
 
     fn refresh_target_status_width(&mut self) {
         self.target_status_width = self
             .text_width(self.strings.target_ready)
+            .max(self.text_width(self.strings.target_muted))
             .max(self.text_width(self.strings.target_excluded))
             .clamp(58, 100);
     }
@@ -1910,7 +1912,56 @@ impl AppWindow {
                 add_list_item_with_buffer(controls.target_list, display_buffer, text_buffer);
             }
         }
+        self.refresh_target_mute_snapshot();
         self.update_action_buttons();
+    }
+
+    fn refresh_target_mute_snapshot(&mut self) {
+        self.last_target_muted.clear();
+        self.last_target_muted.reserve(self.config.targets.len());
+        self.last_target_muted.extend(
+            self.config
+                .targets
+                .iter()
+                .map(|target| target_has_managed_mute(target, &self.muted_by_app)),
+        );
+    }
+
+    fn sync_target_mute_indicators(&mut self) {
+        if self.config.targets.is_empty() {
+            if !self.last_target_muted.is_empty() {
+                self.last_target_muted.clear();
+                self.redraw_target_list();
+            }
+            return;
+        }
+
+        let mut changed = self.last_target_muted.len() != self.config.targets.len();
+        if changed {
+            self.last_target_muted
+                .resize(self.config.targets.len(), false);
+        }
+        for (muted, target) in self.last_target_muted.iter_mut().zip(&self.config.targets) {
+            let next = target_has_managed_mute(target, &self.muted_by_app);
+            if *muted != next {
+                *muted = next;
+                changed = true;
+            }
+        }
+        if changed {
+            self.redraw_target_list();
+        }
+    }
+
+    fn redraw_target_list(&self) {
+        unsafe {
+            let _ = RedrawWindow(
+                Some(self.controls.target_list),
+                None,
+                None,
+                RDW_INVALIDATE | RDW_ERASE | RDW_UPDATENOW,
+            );
+        }
     }
 
     fn refresh_processes(&mut self) {
@@ -2113,6 +2164,7 @@ impl AppWindow {
             self.audio = None;
         }
 
+        self.sync_target_mute_indicators();
         self.sync_audio_fallback_timer();
         self.update_status();
     }
@@ -2137,26 +2189,21 @@ impl AppWindow {
             .map(|last_snapshot| last_snapshot.issue.is_some() != snapshot.issue.is_some())
             .unwrap_or(true);
 
-        let issue_text = snapshot.issue.map(|issue| self.issue_text(issue));
-        let status = if issue_text.is_some() {
-            self.strings.status_issue
-        } else if self.paused {
-            self.strings.status_paused
-        } else {
-            self.strings.status_running
-        };
-        self.status_detail_text.clear();
-        if let Some(issue_text) = issue_text {
-            self.status_detail_text.push_str(issue_text);
-        } else {
-            self.status_detail_text.push_str(self.strings.target_count);
-            self.status_detail_text.push(' ');
-            push_decimal_usize(&mut self.status_detail_text, snapshot.target_count);
-            self.status_detail_text.push_str(" · ");
-            self.status_detail_text.push_str(self.strings.muted_count);
-            self.status_detail_text.push(' ');
-            push_decimal_usize(&mut self.status_detail_text, snapshot.muted_count);
-        }
+        let status = status_text_and_detail_into(
+            self.strings,
+            snapshot.issue.map(|issue| self.issue_text(issue)),
+            snapshot.paused,
+            snapshot.target_count,
+            snapshot.muted_count,
+            &mut self.status_detail_text,
+        );
+        let mut tray_tip = String::new();
+        tray_tip_text_into(
+            self.strings,
+            status,
+            &self.status_detail_text,
+            &mut tray_tip,
+        );
         unsafe {
             self.display_text_buffer.clear();
             self.display_text_buffer.push_str("● ");
@@ -2169,6 +2216,7 @@ impl AppWindow {
             self.redraw_header();
         }
         self.last_status = Some(snapshot);
+        self.add_tray_icon_with_tip(&tray_tip);
     }
 
     fn reset_audio_after_endpoint_change(&mut self) {
@@ -2177,6 +2225,7 @@ impl AppWindow {
             self.apply_audio_update_result(had_failures);
         }
         self.audio = None;
+        self.sync_target_mute_indicators();
     }
 
     fn update_foreground_process_name_cache(&mut self, foreground_pid: Option<u32>) {
@@ -2210,6 +2259,7 @@ impl AppWindow {
             let had_failures = restore_mute_set(audio, &mut self.muted_by_app);
             self.apply_audio_update_result(had_failures);
         }
+        self.sync_target_mute_indicators();
     }
 
     fn release_idle_audio_while_paused(&mut self) {
@@ -3271,7 +3321,7 @@ impl AppWindow {
             }
         }
         if self.tray_added {
-            let data = self.tray_data();
+            let data = self.tray_data(self.strings.app_title);
             unsafe {
                 let _ = Shell_NotifyIconW(NIM_DELETE, &data);
             }
@@ -3280,7 +3330,12 @@ impl AppWindow {
     }
 
     fn add_tray_icon(&mut self) {
-        let data = self.tray_data();
+        let tip = self.current_tray_tip_text();
+        self.add_tray_icon_with_tip(&tip);
+    }
+
+    fn add_tray_icon_with_tip(&mut self, tip: &str) {
+        let data = self.tray_data(tip);
         if self.tray_added && unsafe { Shell_NotifyIconW(NIM_MODIFY, &data).as_bool() } {
             self.clear_issue(StatusIssue::TrayIconUnavailable);
             return;
@@ -3302,7 +3357,7 @@ impl AppWindow {
         }
     }
 
-    fn tray_data(&self) -> NOTIFYICONDATAW {
+    fn tray_data(&self, tip: &str) -> NOTIFYICONDATAW {
         let mut data = NOTIFYICONDATAW {
             cbSize: size_of::<NOTIFYICONDATAW>() as u32,
             hWnd: self.hwnd,
@@ -3312,8 +3367,23 @@ impl AppWindow {
             hIcon: self.tray_icon,
             ..Default::default()
         };
-        copy_wide_fixed(self.strings.app_title, &mut data.szTip);
+        copy_wide_fixed(tip, &mut data.szTip);
         data
+    }
+
+    fn current_tray_tip_text(&self) -> String {
+        let mut detail = String::new();
+        let status = status_text_and_detail_into(
+            self.strings,
+            self.issues.visible().map(|issue| self.issue_text(issue)),
+            self.paused,
+            self.config.targets.len(),
+            self.muted_by_app.len(),
+            &mut detail,
+        );
+        let mut tip = String::new();
+        tray_tip_text_into(self.strings, status, &detail, &mut tip);
+        tip
     }
 
     fn tray_menu(&mut self) {
@@ -3321,8 +3391,19 @@ impl AppWindow {
             let Some(menu) = PopupMenu::create() else {
                 return;
             };
-            let text_buffer = &mut self.wide_text_buffer;
             let window_visible = IsWindowVisible(self.hwnd).as_bool();
+            let status_summary = self.current_status_summary_text();
+
+            let text_buffer = &mut self.wide_text_buffer;
+            write_wide_buffer(&status_summary, text_buffer);
+            let _ = AppendMenuW(
+                menu.handle(),
+                MF_STRING | MF_GRAYED,
+                0,
+                PCWSTR(text_buffer.as_ptr()),
+            );
+            let _ = AppendMenuW(menu.handle(), MF_SEPARATOR, 0, PCWSTR::null());
+
             let visibility_command = if window_visible { ID_HIDE } else { ID_SHOW };
             write_wide_buffer(
                 if window_visible {
@@ -3352,6 +3433,13 @@ impl AppWindow {
                 ID_PAUSE as usize,
                 PCWSTR(text_buffer.as_ptr()),
             );
+            write_wide_buffer(self.strings.open_config, text_buffer);
+            let _ = AppendMenuW(
+                menu.handle(),
+                MF_STRING,
+                ID_OPEN_CONFIG as usize,
+                PCWSTR(text_buffer.as_ptr()),
+            );
             let _ = AppendMenuW(menu.handle(), MF_SEPARATOR, 0, PCWSTR::null());
             write_wide_buffer(self.strings.quit, text_buffer);
             let _ = AppendMenuW(
@@ -3375,6 +3463,21 @@ impl AppWindow {
                 );
             }
         }
+    }
+
+    fn current_status_summary_text(&self) -> String {
+        let mut detail = String::new();
+        let status = status_text_and_detail_into(
+            self.strings,
+            self.issues.visible().map(|issue| self.issue_text(issue)),
+            self.paused,
+            self.config.targets.len(),
+            self.muted_by_app.len(),
+            &mut detail,
+        );
+        let mut summary = String::new();
+        status_summary_text_into(status, &detail, &mut summary);
+        summary
     }
 
     fn control_color(&self, wparam: WPARAM, lparam: LPARAM, message: u32) -> LRESULT {
@@ -3457,20 +3560,23 @@ impl AppWindow {
             return true;
         };
         let note = target.note.as_deref().unwrap_or_default();
-        let status_text = if target.enabled {
-            self.strings.target_ready
-        } else {
-            self.strings.target_excluded
-        };
+        let target_muted = self
+            .last_target_muted
+            .get(draw.itemID as usize)
+            .copied()
+            .unwrap_or_else(|| target_has_managed_mute(target, &self.muted_by_app));
+        let status_text = target_status_text(target, target_muted, self.strings);
         let primary_color = if target.enabled {
             TEXT_COLOR
         } else {
             DISABLED_TEXT_COLOR
         };
-        let status_color = if target.enabled {
-            ACCENT_COLOR
-        } else {
+        let status_color = if !target.enabled {
             DISABLED_TEXT_COLOR
+        } else if target_muted {
+            WARNING_COLOR
+        } else {
+            ACCENT_COLOR
         };
         let selected = draw.itemState.0 & ODS_SELECTED.0 != 0;
         let background = if selected {
@@ -3784,6 +3890,149 @@ fn draw_wide_text_line(
     }
 }
 
+fn status_text(strings: &Strings, paused: bool, has_issue: bool) -> &'static str {
+    if has_issue {
+        strings.status_issue
+    } else if paused {
+        strings.status_paused
+    } else {
+        strings.status_running
+    }
+}
+
+fn status_text_and_detail_into(
+    strings: &Strings,
+    issue_text: Option<&str>,
+    paused: bool,
+    target_count: usize,
+    muted_count: usize,
+    output: &mut String,
+) -> &'static str {
+    let status = status_text(strings, paused, issue_text.is_some());
+    status_detail_text_into(strings, issue_text, target_count, muted_count, output);
+    status
+}
+
+fn status_detail_text_into(
+    strings: &Strings,
+    issue_text: Option<&str>,
+    target_count: usize,
+    muted_count: usize,
+    output: &mut String,
+) {
+    output.clear();
+    if let Some(issue_text) = issue_text {
+        output.push_str(issue_text);
+        return;
+    }
+
+    output.push_str(strings.target_count);
+    output.push(' ');
+    push_decimal_usize(output, target_count);
+    output.push_str(" · ");
+    output.push_str(strings.muted_count);
+    output.push(' ');
+    push_decimal_usize(output, muted_count);
+}
+
+fn tray_tip_text_into(strings: &Strings, status: &str, detail: &str, output: &mut String) {
+    output.clear();
+    output.reserve(strings.app_title.len() + status.len() + detail.len() + 6);
+    output.push_str(strings.app_title);
+    output.push_str(" - ");
+    output.push_str(status);
+    if !detail.is_empty() {
+        output.push_str(" | ");
+        output.push_str(detail);
+    }
+}
+
+fn status_summary_text_into(status: &str, detail: &str, output: &mut String) {
+    output.clear();
+    output.reserve(status.len() + detail.len() + 3);
+    output.push_str(status);
+    if !detail.is_empty() {
+        output.push_str(" - ");
+        output.push_str(detail);
+    }
+}
+
+#[cfg(test)]
+mod status_text_tests {
+    use super::*;
+
+    #[test]
+    fn running_status_detail_includes_target_and_muted_counts() {
+        let strings = Language::Ko.strings();
+        let mut detail = String::new();
+
+        status_detail_text_into(strings, None, 12, 3, &mut detail);
+
+        assert_eq!(detail, "등록 12 · 음소거 3");
+    }
+
+    #[test]
+    fn issue_status_detail_prefers_issue_text() {
+        let strings = Language::En.strings();
+        let mut detail = String::new();
+
+        status_detail_text_into(strings, Some(strings.audio_unavailable), 12, 3, &mut detail);
+
+        assert_eq!(detail, "Could not access audio sessions");
+    }
+
+    #[test]
+    fn status_text_and_detail_share_issue_decision() {
+        let strings = Language::En.strings();
+        let mut detail = String::new();
+
+        let status = status_text_and_detail_into(
+            strings,
+            Some(strings.audio_unavailable),
+            true,
+            12,
+            3,
+            &mut detail,
+        );
+
+        assert_eq!(status, strings.status_issue);
+        assert_eq!(detail, "Audio device unavailable");
+    }
+
+    #[test]
+    fn tray_tip_combines_app_status_and_detail() {
+        let strings = Language::En.strings();
+        let mut tip = String::new();
+
+        tray_tip_text_into(
+            strings,
+            strings.status_running,
+            "Apps 2 · Muted 1",
+            &mut tip,
+        );
+
+        assert_eq!(tip, "UnfocusMute - Monitoring | Apps 2 · Muted 1");
+    }
+
+    #[test]
+    fn status_summary_combines_status_and_detail_for_tray_menu() {
+        let mut summary = String::new();
+
+        status_summary_text_into("감시 중", "등록 2 · 음소거 1", &mut summary);
+
+        assert_eq!(summary, "감시 중 - 등록 2 · 음소거 1");
+    }
+
+    #[test]
+    fn status_text_prioritizes_issue_over_pause() {
+        let strings = Language::En.strings();
+
+        assert_eq!(status_text(strings, true, true), strings.status_issue);
+        assert_eq!(status_text(strings, true, false), strings.status_paused);
+        assert_eq!(status_text(strings, false, false), strings.status_running);
+    }
+}
+
 fn language_button_text(language: Language) -> &'static str {
     language.native_name()
 }
@@ -3915,6 +4164,34 @@ fn should_release_idle_audio_while_paused(paused: bool, muted_count: usize) -> b
     paused && muted_count == 0
 }
 
+fn target_status_text(
+    target: &TargetProcess,
+    muted_by_app: bool,
+    strings: &Strings,
+) -> &'static str {
+    if !target.enabled {
+        strings.target_excluded
+    } else if muted_by_app {
+        strings.target_muted
+    } else {
+        strings.target_ready
+    }
+}
+
+fn target_has_managed_mute(
+    target: &TargetProcess,
+    muted_by_app: &HashSet<AudioSessionKey>,
+) -> bool {
+    target.enabled
+        && muted_by_app
+            .iter()
+            .any(|key| target_matches_session_key(target, key))
+}
+
+fn target_matches_session_key(target: &TargetProcess, key: &AudioSessionKey) -> bool {
+    target.name.as_str() == key.process_name.as_str() && target.pid.is_none_or(|pid| pid == key.pid)
+}
+
 #[cfg(test)]
 mod layout_tests {
     use super::*;
@@ -3952,6 +4229,48 @@ mod layout_tests {
         assert!(should_release_idle_audio_while_paused(true, 0));
         assert!(!should_release_idle_audio_while_paused(true, 1));
         assert!(!should_release_idle_audio_while_paused(false, 0));
+    }
+
+    #[test]
+    fn target_status_reports_muted_only_for_enabled_managed_target() {
+        let strings = Language::Ko.strings();
+        let mut target = TargetProcess::new("game.exe").unwrap();
+
+        assert_eq!(target_status_text(&target, false, strings), "대기 중");
+        assert_eq!(target_status_text(&target, true, strings), "음소거 중");
+
+        target.enabled = false;
+        assert_eq!(target_status_text(&target, true, strings), "감시 제외");
+    }
+
+    #[test]
+    fn exe_target_is_muted_when_any_matching_session_is_managed() {
+        let target = TargetProcess::new("game.exe").unwrap();
+        let muted_by_app = HashSet::from([
+            AudioSessionKey::new(10, "chat.exe", None).unwrap(),
+            AudioSessionKey::new(20, "game.exe", None).unwrap(),
+        ]);
+
+        assert!(target_has_managed_mute(&target, &muted_by_app));
+    }
+
+    #[test]
+    fn pid_target_is_muted_only_for_matching_pid() {
+        let target = TargetProcess::for_pid("game.exe", 20).unwrap();
+        let wrong_pid = HashSet::from([AudioSessionKey::new(21, "game.exe", None).unwrap()]);
+        let matching_pid = HashSet::from([AudioSessionKey::new(20, "game.exe", None).unwrap()]);
+
+        assert!(!target_has_managed_mute(&target, &wrong_pid));
+        assert!(target_has_managed_mute(&target, &matching_pid));
+    }
+
+    #[test]
+    fn disabled_target_does_not_report_managed_mute() {
+        let mut target = TargetProcess::new("game.exe").unwrap();
+        target.enabled = false;
+        let muted_by_app = HashSet::from([AudioSessionKey::new(20, "game.exe", None).unwrap()]);
+
+        assert!(!target_has_managed_mute(&target, &muted_by_app));
     }
 }
 
