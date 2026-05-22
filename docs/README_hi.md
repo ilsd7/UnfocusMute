@@ -3,7 +3,7 @@
 
   <h1>UnfocusMute</h1>
 
-  <p><strong>चुने हुए गेम या ऐप के background में जाते ही उन्हें अपने आप mute करने वाला हल्का और portable Windows tray app।<br>यह सिर्फ वही sessions restore करता है जिन्हें UnfocusMute ने खुद mute किया था, और network connection के बिना पूरी तरह local काम करता है।</strong></p>
+  <p><strong>चुने हुए गेम या ऐप के background में जाते ही उन्हें अपने आप mute करने वाला हल्का और portable Windows tray app।<br>यह सिर्फ वही sessions restore करता है जिन्हें UnfocusMute ने खुद mute किया था, और background network connection के बिना पूरी तरह local काम करता है।</strong></p>
 
   <p>
     <a href="README_ko.md">한국어</a> · <a href="../README.md">English</a> · <a href="README_ja.md">日本語</a> · <a href="README_zh-CN.md">简体中文</a> · <a href="README_es.md">Español</a> · <a href="README_fr.md">Français</a> · <a href="README_pt.md">Português</a> · हिन्दी · <a href="README_ar.md">العربية</a>
@@ -15,7 +15,7 @@
     <a href="../LICENSE"><img src="https://img.shields.io/badge/license-Apache--2.0-blue?style=flat-square" alt="Apache-2.0 license"></a>
   </p>
 
-  <p>पूरी तरह local operation &nbsp;·&nbsp; कोई network connection नहीं &nbsp;·&nbsp; कोई log file नहीं &nbsp;·&nbsp; administrator rights की जरूरत नहीं</p>
+  <p>पूरी तरह local operation &nbsp;·&nbsp; कोई background network connection नहीं &nbsp;·&nbsp; कोई log file नहीं &nbsp;·&nbsp; administrator rights की जरूरत नहीं</p>
 
   <p>
     <a href="https://github.com/ilsd7/UnfocusMute/releases/latest/download/UnfocusMute-windows-x64.zip">डाउनलोड</a>
@@ -53,6 +53,7 @@ Mute और restore, दोनों सिर्फ उन sessions पर ल�
 - `.exe` targets, current-instance PID targets और `PID विवरण दिखाएं` support करता है।
 - App-wise notes, target-wise live mute state, app-wise `निगरानी रोकें` और `निगरानी फिर शुरू करें`।
 - Tray में चलना, tray status summary, global pause, config folder खोलना और duplicate instance protection।
+- नीचे बाएं छोटा GitHub icon, जिससे default browser में project page खुलता है। Hover करने पर project URL दिखता है।
 - पहली बार language चुनें, फिर app के अंदर English/한국어/日本語/简体中文/Español/Français/Português/हिन्दी/العربية तुरंत बदलें।
 - Settings local रूप से `%APPDATA%\UnfocusMute\config.json` में save होती हैं।
 
@@ -89,7 +90,8 @@ UnfocusMute Windows से मिलने वाले process names, foregroun
 4. `प्रक्रिया खोजें` list खोलें या search term लिखें, item चुनें और `चयनित जोड़ें` दबाएं।
 5. अगर सिर्फ किसी खास PID को register करना है, तो `PID विवरण दिखाएं` दबाकर अलग entry चुनें। PID target सिर्फ अभी चल रहे instance पर लागू होता है; app restart होकर PID बदल जाए तो उसे फिर से चुनें।
 6. पंजीकृत ऐप पर right-click करके उसका नोट संपादित किया जा सकता है या `निगरानी रोकें` इस्तेमाल किया जा सकता है।
-7. विंडो बंद करने पर ऐप tray में रहकर निगरानी जारी रखता है। पूरी तरह बंद करने के लिए `बंद करें` दबाएं।
+7. नीचे बाएं छोटा `GitHub` icon दबाने पर default browser में GitHub project page खुलता है। Hover करने पर project URL दिखता है।
+8. विंडो बंद करने पर ऐप tray में रहकर निगरानी जारी रखता है। पूरी तरह बंद करने के लिए `बंद करें` दबाएं।
 
 ## पंजीकृत ऐप्स में नोट इस्तेमाल करें
 
@@ -117,14 +119,14 @@ UnfocusMute Windows से मिलने वाले process names, foregroun
 
 ## सुरक्षा और प्राइवेसी
 
-UnfocusMute पूरी तरह local app है। सब कुछ आपके इसी PC के अंदर होता है, और internet connection न होने पर भी यह सामान्य रूप से काम करता है।
+UnfocusMute पूरी तरह local app है। सब कुछ आपके इसी PC के अंदर होता है, और internet connection न होने पर भी यह सामान्य रूप से काम करता है। GitHub icon सिर्फ आपके दबाने पर default browser में project page खोलता है।
 
 **यह क्या save करता है:** Registered process names, optional PIDs, आपके लिखे notes, चुनी हुई language, window position और startup options।
 यह data सिर्फ `%APPDATA%\UnfocusMute\config.json` में save होता है और बाहर कहीं नहीं भेजा जाता।
 
 **यह क्या save नहीं करता:** App log files नहीं बनाता। Sessions के बीच behavior history कहीं भी नहीं रखी जाती।
 
-**यह क्या नहीं करता:** Network requests नहीं करता, telemetry इस्तेमाल नहीं करता, crash reports नहीं भेजता, remote logging नहीं करता और data collect नहीं करता। Administrator rights की भी जरूरत नहीं होती।
+**यह क्या नहीं करता:** Automatic network requests नहीं करता, telemetry इस्तेमाल नहीं करता, crash reports नहीं भेजता, remote logging नहीं करता और data collect नहीं करता। Administrator rights की भी जरूरत नहीं होती।
 
 Audio session detection और mute control सिर्फ Windows CoreAudio APIs इस्तेमाल करते हैं, और UnfocusMute game processes में code inject नहीं करता या उनकी memory नहीं पढ़ता।
 

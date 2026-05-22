@@ -3,7 +3,7 @@
 
   <h1>UnfocusMute</h1>
 
-  <p><strong>轻量、便携的 Windows 托盘应用，可在选定的游戏或应用切到后台时自动将其静音。<br>只恢复 UnfocusMute 自己静音过的会话，并且无需网络连接，完全在本地运行。</strong></p>
+  <p><strong>轻量、便携的 Windows 托盘应用，可在选定的游戏或应用切到后台时自动将其静音。<br>只恢复 UnfocusMute 自己静音过的会话，并且没有后台网络连接，完全在本地运行。</strong></p>
 
   <p>
     <a href="README_ko.md">한국어</a> · <a href="../README.md">English</a> · <a href="README_ja.md">日本語</a> · 简体中文 · <a href="README_es.md">Español</a> · <a href="README_fr.md">Français</a> · <a href="README_pt.md">Português</a> · <a href="README_hi.md">हिन्दी</a> · <a href="README_ar.md">العربية</a>
@@ -15,7 +15,7 @@
     <a href="../LICENSE"><img src="https://img.shields.io/badge/license-Apache--2.0-blue?style=flat-square" alt="Apache-2.0 license"></a>
   </p>
 
-  <p>完全本地运行 &nbsp;·&nbsp; 无网络连接 &nbsp;·&nbsp; 无日志文件 &nbsp;·&nbsp; 不需要管理员权限</p>
+  <p>完全本地运行 &nbsp;·&nbsp; 无后台网络连接 &nbsp;·&nbsp; 无日志文件 &nbsp;·&nbsp; 不需要管理员权限</p>
 
   <p>
     <a href="https://github.com/ilsd7/UnfocusMute/releases/latest/download/UnfocusMute-windows-x64.zip">下载</a>
@@ -53,6 +53,7 @@ UnfocusMute 是一个小巧轻量的 Windows 托盘应用。当你选定的游�
 - 支持按 `.exe` 注册、当前运行实例的单个 PID 注册，以及 `显示 PID`
 - 可为每个注册应用添加备注，显示每个目标的实时静音状态，并单独 `暂停监控` 或 `恢复监控`
 - 托盘常驻、托盘状态摘要、全局暂停、打开配置文件夹、防止重复启动
+- 点击左下角的小 GitHub 图标，可在默认浏览器中打开项目页面；悬停时会显示项目 URL
 - 首次运行时选择语言，之后可在应用内立即切换 English/한국어/日本語/简体中文/Español/Français/Português/हिन्दी/العربية
 - 设置保存在本地 `%APPDATA%\UnfocusMute\config.json`
 
@@ -89,7 +90,8 @@ UnfocusMute 依赖 Windows 提供的进程名、前台窗口信息和 CoreAudio 
 4. 打开 `搜索进程` 列表或输入搜索词，选择项目后点击 `添加所选`。
 5. 如果只需要注册某个 PID，请点击 `显示 PID` 并选择单独项目。按 PID 注册的目标只适用于当前运行的实例；如果应用重启后 PID 变化，请重新选择。
 6. 右键点击已注册应用，可以编辑该应用的备注，或使用 `暂停监控`。
-7. 关闭窗口后，应用会留在托盘中继续监视。如需完全退出，请点击 `退出`。
+7. 点击左下角的小 `GitHub` 图标，会在默认浏览器中打开 GitHub 项目页面。悬停在图标上会显示项目 URL。
+8. 关闭窗口后，应用会留在托盘中继续监视。如需完全退出，请点击 `退出`。
 
 ## 使用已注册应用备注
 
@@ -117,14 +119,14 @@ UnfocusMute 依赖 Windows 提供的进程名、前台窗口信息和 CoreAudio 
 
 ## 安全与隐私
 
-UnfocusMute 是完全本地运行的应用。所有操作都只在当前电脑内完成，即使没有互联网连接也能正常工作。
+UnfocusMute 是完全本地运行的应用。所有操作都只在当前电脑内完成，即使没有互联网连接也能正常工作。GitHub 图标只会在你点击时通过默认浏览器打开项目页面。
 
 **保存的内容：** 已注册的进程名、可选 PID、你写入的备注、选择的语言、窗口位置和启动选项。
 这些数据只保存在 `%APPDATA%\UnfocusMute\config.json`，不会发送到外部。
 
 **不会保存的内容：** 不会创建应用日志文件。跨会话的操作记录也不会保留在任何地方。
 
-**不会做的事：** 不会发起网络请求，不使用遥测，不发送崩溃报告，不进行远程日志记录，也不会收集数据。它也不要求管理员权限。
+**不会做的事：** 不会发起自动网络请求，不使用遥测，不发送崩溃报告，不进行远程日志记录，也不会收集数据。它也不要求管理员权限。
 
 音频会话检测和静音控制只使用 Windows CoreAudio API，并且不会向游戏进程注入代码或读取其内存。
 

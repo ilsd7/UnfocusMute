@@ -566,6 +566,22 @@ pub(super) unsafe fn load_tray_icon(instance: HINSTANCE) -> HICON {
     unsafe { load_sized_app_icon(instance, size).unwrap_or_else(|| load_app_icon(instance)) }
 }
 
+pub(super) unsafe fn load_github_icon(instance: HINSTANCE, size: i32) -> HICON {
+    unsafe {
+        LoadImageW(
+            Some(instance),
+            int_resource(2),
+            IMAGE_ICON,
+            size,
+            size,
+            LR_DEFAULTCOLOR | LR_SHARED,
+        )
+        .ok()
+        .map(|handle| HICON(handle.0))
+        .unwrap_or_default()
+    }
+}
+
 unsafe fn load_sized_app_icon(instance: HINSTANCE, size: i32) -> Option<HICON> {
     unsafe {
         LoadImageW(

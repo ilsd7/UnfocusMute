@@ -3,7 +3,7 @@
 
   <h1>UnfocusMute</h1>
 
-  <p><strong>Application Windows légère et portable, dans la zone de notification, qui coupe automatiquement le son des jeux et apps choisis lorsqu’ils passent en arrière-plan.<br>Elle restaure uniquement les sessions qu’UnfocusMute a lui-même mises en sourdine et fonctionne entièrement en local, sans connexion réseau.</strong></p>
+  <p><strong>Application Windows légère et portable, dans la zone de notification, qui coupe automatiquement le son des jeux et apps choisis lorsqu’ils passent en arrière-plan.<br>Elle restaure uniquement les sessions qu’UnfocusMute a lui-même mises en sourdine et fonctionne entièrement en local, sans connexion réseau en arrière-plan.</strong></p>
 
   <p>
     <a href="README_ko.md">한국어</a> · <a href="../README.md">English</a> · <a href="README_ja.md">日本語</a> · <a href="README_zh-CN.md">简体中文</a> · <a href="README_es.md">Español</a> · Français · <a href="README_pt.md">Português</a> · <a href="README_hi.md">हिन्दी</a> · <a href="README_ar.md">العربية</a>
@@ -15,7 +15,7 @@
     <a href="../LICENSE"><img src="https://img.shields.io/badge/license-Apache--2.0-blue?style=flat-square" alt="Apache-2.0 license"></a>
   </p>
 
-  <p>Fonctionnement entièrement local &nbsp;·&nbsp; Aucune connexion réseau &nbsp;·&nbsp; Aucun fichier journal &nbsp;·&nbsp; Aucun droit administrateur requis</p>
+  <p>Fonctionnement entièrement local &nbsp;·&nbsp; Aucune connexion réseau en arrière-plan &nbsp;·&nbsp; Aucun fichier journal &nbsp;·&nbsp; Aucun droit administrateur requis</p>
 
   <p>
     <a href="https://github.com/ilsd7/UnfocusMute/releases/latest/download/UnfocusMute-windows-x64.zip">Télécharger</a>
@@ -53,6 +53,7 @@ La mise en sourdine et la restauration ne s’appliquent qu’aux sessions qu’
 - Prend en charge les cibles par `.exe`, les cibles par PID de l’instance en cours et `Afficher les PID`.
 - Notes par application, état de sourdine en direct par cible, `Mettre la surveillance en pause` et `Reprendre la surveillance` par application.
 - Présence dans la zone de notification, résumé d’état dans la zone de notification, pause globale, accès au dossier de configuration et protection contre les instances multiples.
+- Petite icône GitHub en bas à gauche pour ouvrir la page du projet dans le navigateur par défaut. Le survol affiche l’URL du projet.
 - Choix de la langue au premier démarrage, puis changement immédiat dans l’application entre English/한국어/日本語/简体中文/Español/Français/Português/हिन्दी/العربية.
 - Les réglages sont stockés localement dans `%APPDATA%\UnfocusMute\config.json`.
 
@@ -89,7 +90,8 @@ Si plusieurs instances du même `.exe` sont ouvertes en même temps, un PID pré
 4. Ouvrez la liste `Rechercher un processus` ou saisissez un terme de recherche, choisissez un élément, puis cliquez sur `Ajouter la sélection`.
 5. Si vous devez enregistrer seulement un PID précis, cliquez sur `Afficher les PID` et choisissez l’entrée concernée. Une cible par PID ne vaut que pour l’instance actuellement ouverte ; si l’application redémarre avec un autre PID, sélectionnez-la à nouveau.
 6. Faites un clic droit sur une application enregistrée pour modifier sa note ou utiliser `Mettre la surveillance en pause`.
-7. Fermer la fenêtre laisse l’application dans la zone de notification, où elle continue de surveiller les cibles. Cliquez sur `Quitter` pour l’arrêter complètement.
+7. Cliquez sur la petite icône `GitHub` en bas à gauche pour ouvrir la page du projet dans le navigateur par défaut. Le survol affiche l’URL du projet.
+8. Fermer la fenêtre laisse l’application dans la zone de notification, où elle continue de surveiller les cibles. Cliquez sur `Quitter` pour l’arrêter complètement.
 
 ## Utiliser les notes des applications enregistrées
 
@@ -117,14 +119,14 @@ Si vous ne savez pas quel nom enregistrer, vérifiez dans le Gestionnaire des t�
 
 ## Sécurité et confidentialité
 
-UnfocusMute est une application entièrement locale. Tout se passe sur votre PC, et l’application fonctionne normalement même sans connexion internet.
+UnfocusMute est une application entièrement locale. Tout se passe sur votre PC, et l’application fonctionne normalement même sans connexion internet. L’icône GitHub ouvre votre navigateur par défaut uniquement lorsque vous cliquez dessus.
 
 **Ce qui est stocké :** Les noms de processus enregistrés, les PID facultatifs, les notes que vous écrivez, la langue choisie, la position de la fenêtre et les options de démarrage.
 Ces données sont stockées uniquement dans `%APPDATA%\UnfocusMute\config.json` et ne sont envoyées nulle part.
 
 **Ce qui n’est pas stocké :** L’application ne crée pas de fichier journal. Aucun historique d’activité n’est conservé entre les sessions.
 
-**Ce qui n’est pas fait :** L’application n’effectue pas de requêtes réseau, n’utilise pas de télémétrie, n’envoie pas de rapports de crash, ne fait pas de journalisation distante et ne collecte pas de données. Elle ne demande pas non plus de droits administrateur.
+**Ce qui n’est pas fait :** L’application n’effectue pas de requêtes réseau automatiques, n’utilise pas de télémétrie, n’envoie pas de rapports de crash, ne fait pas de journalisation distante et ne collecte pas de données. Elle ne demande pas non plus de droits administrateur.
 
 La détection des sessions audio et le contrôle de la sourdine utilisent uniquement les API Windows CoreAudio, et UnfocusMute n’injecte pas de code dans les processus de jeux ni ne lit leur mémoire.
 

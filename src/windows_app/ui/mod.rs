@@ -31,8 +31,8 @@ use windows::Win32::System::LibraryLoader::GetModuleHandleW;
 use windows::Win32::System::Threading::CreateMutexW;
 use windows::Win32::UI::Accessibility::{HWINEVENTHOOK, SetWinEventHook, UnhookWinEvent};
 use windows::Win32::UI::Controls::{
-    CB_SETCUEBANNER, CB_SETMINVISIBLE, DRAWITEMSTRUCT, EM_SETCUEBANNER, MEASUREITEMSTRUCT,
-    ODS_SELECTED,
+    CB_SETCUEBANNER, CB_SETMINVISIBLE, DRAWITEMSTRUCT, EM_SETCUEBANNER, ICC_WIN95_CLASSES,
+    INITCOMMONCONTROLSEX, InitCommonControlsEx, MEASUREITEMSTRUCT, ODS_DISABLED, ODS_SELECTED,
 };
 use windows::Win32::UI::Input::KeyboardAndMouse::{EnableWindow, SetFocus, VK_RETURN};
 use windows::Win32::UI::Shell::{
@@ -40,26 +40,27 @@ use windows::Win32::UI::Shell::{
     Shell_NotifyIconW, ShellExecuteW,
 };
 use windows::Win32::UI::WindowsAndMessaging::{
-    AppendMenuW, CB_GETCURSEL, CB_RESETCONTENT, CB_SETCURSEL, CB_SHOWDROPDOWN, CBN_CLOSEUP,
-    CBN_EDITCHANGE, CBN_SELCHANGE, CBN_SELENDOK, CBN_SETFOCUS, CBS_DROPDOWN, CREATESTRUCTW,
-    CreatePopupMenu, CreateWindowExW, DefWindowProcW, DestroyMenu, DestroyWindow, DispatchMessageW,
-    EN_CHANGE, ES_AUTOHSCROLL, EVENT_SYSTEM_FOREGROUND, FindWindowW, GWLP_USERDATA, GetCursorPos,
-    GetSystemMetrics, GetWindowRect, HICON, HMENU, ICON_BIG, ICON_SMALL, IDC_ARROW,
-    IsDialogMessageW, IsWindowVisible, KillTimer, LB_GETCURSEL, LB_RESETCONTENT, LB_SETCURSEL,
-    LBN_DBLCLK, LBN_SELCHANGE, LBS_HASSTRINGS, LBS_NOINTEGRALHEIGHT, LBS_NOTIFY,
-    LBS_OWNERDRAWFIXED, LoadCursorW, MB_ICONINFORMATION, MB_ICONWARNING, MB_OK, MF_CHECKED,
-    MF_GRAYED, MF_SEPARATOR, MF_STRING, MSG, MessageBoxW, MoveWindow, PostMessageW,
-    PostQuitMessage, RegisterClassW, RegisterWindowMessageW, SM_CXSCREEN, SM_CXVIRTUALSCREEN,
-    SM_CXVSCROLL, SM_CYSCREEN, SM_CYVIRTUALSCREEN, SM_XVIRTUALSCREEN, SM_YVIRTUALSCREEN,
-    SPI_GETWORKAREA, SW_HIDE, SW_RESTORE, SW_SHOW, SYSTEM_PARAMETERS_INFO_UPDATE_FLAGS,
-    SendMessageW, SetForegroundWindow, SetTimer, SetWindowLongPtrW, ShowWindow,
-    SystemParametersInfoW, TPM_NONOTIFY, TPM_RETURNCMD, TPM_RIGHTBUTTON, TRACK_POPUP_MENU_FLAGS,
-    TrackPopupMenu, TranslateMessage, WINDOW_EX_STYLE, WINDOW_STYLE, WINEVENT_OUTOFCONTEXT,
-    WM_CLOSE, WM_COMMAND, WM_CONTEXTMENU, WM_CREATE, WM_CTLCOLOREDIT, WM_CTLCOLORLISTBOX,
-    WM_CTLCOLORSTATIC, WM_DESTROY, WM_DRAWITEM, WM_KEYDOWN, WM_LBUTTONDBLCLK, WM_LBUTTONDOWN,
-    WM_MEASUREITEM, WM_MOVE, WM_NCCREATE, WM_NCDESTROY, WM_PAINT, WM_RBUTTONUP, WM_SETFONT,
-    WM_SETICON, WM_SETREDRAW, WM_SHOWWINDOW, WM_TIMER, WNDCLASSW, WS_BORDER, WS_CAPTION, WS_CHILD,
-    WS_CLIPCHILDREN, WS_MINIMIZEBOX, WS_OVERLAPPED, WS_SYSMENU, WS_TABSTOP, WS_VISIBLE, WS_VSCROLL,
+    AppendMenuW, BS_OWNERDRAW, CB_GETCURSEL, CB_RESETCONTENT, CB_SETCURSEL, CB_SHOWDROPDOWN,
+    CBN_CLOSEUP, CBN_EDITCHANGE, CBN_SELCHANGE, CBN_SELENDOK, CBN_SETFOCUS, CBS_DROPDOWN,
+    CREATESTRUCTW, CreatePopupMenu, CreateWindowExW, DI_NORMAL, DefWindowProcW, DestroyMenu,
+    DestroyWindow, DispatchMessageW, DrawIconEx, EN_CHANGE, ES_AUTOHSCROLL,
+    EVENT_SYSTEM_FOREGROUND, FindWindowW, GWLP_USERDATA, GetCursorPos, GetSystemMetrics,
+    GetWindowRect, HICON, HMENU, ICON_BIG, ICON_SMALL, IDC_ARROW, IDC_HAND, IsDialogMessageW,
+    IsWindowVisible, KillTimer, LB_GETCURSEL, LB_RESETCONTENT, LB_SETCURSEL, LBN_DBLCLK,
+    LBN_SELCHANGE, LBS_HASSTRINGS, LBS_NOINTEGRALHEIGHT, LBS_NOTIFY, LBS_OWNERDRAWFIXED,
+    LoadCursorW, MB_ICONINFORMATION, MB_ICONWARNING, MB_OK, MF_CHECKED, MF_GRAYED, MF_SEPARATOR,
+    MF_STRING, MSG, MessageBoxW, MoveWindow, PostMessageW, PostQuitMessage, RegisterClassW,
+    RegisterWindowMessageW, SM_CXSCREEN, SM_CXVIRTUALSCREEN, SM_CXVSCROLL, SM_CYSCREEN,
+    SM_CYVIRTUALSCREEN, SM_XVIRTUALSCREEN, SM_YVIRTUALSCREEN, SPI_GETWORKAREA, SW_HIDE, SW_RESTORE,
+    SW_SHOW, SYSTEM_PARAMETERS_INFO_UPDATE_FLAGS, SendMessageW, SetCursor, SetForegroundWindow,
+    SetTimer, SetWindowLongPtrW, ShowWindow, SystemParametersInfoW, TPM_NONOTIFY, TPM_RETURNCMD,
+    TPM_RIGHTBUTTON, TRACK_POPUP_MENU_FLAGS, TrackPopupMenu, TranslateMessage, WINDOW_EX_STYLE,
+    WINDOW_STYLE, WINEVENT_OUTOFCONTEXT, WM_CLOSE, WM_COMMAND, WM_CONTEXTMENU, WM_CREATE,
+    WM_CTLCOLOREDIT, WM_CTLCOLORLISTBOX, WM_CTLCOLORSTATIC, WM_DESTROY, WM_DRAWITEM, WM_KEYDOWN,
+    WM_LBUTTONDBLCLK, WM_LBUTTONDOWN, WM_MEASUREITEM, WM_MOVE, WM_NCCREATE, WM_NCDESTROY, WM_PAINT,
+    WM_RBUTTONUP, WM_SETCURSOR, WM_SETFONT, WM_SETICON, WM_SETREDRAW, WM_SHOWWINDOW, WM_TIMER,
+    WNDCLASSW, WS_BORDER, WS_CAPTION, WS_CHILD, WS_CLIPCHILDREN, WS_MINIMIZEBOX, WS_OVERLAPPED,
+    WS_SYSMENU, WS_TABSTOP, WS_VISIBLE, WS_VSCROLL,
 };
 use windows::core::{PCWSTR, w};
 
@@ -81,9 +82,9 @@ use win32::{
     WindowClassRegistration, add_combo_item_with_buffer, add_list_item_with_buffer,
     copy_wide_fixed, create_button, create_checkbox, create_control, create_multiline_checkbox,
     create_primary_button, current_config_stamp, get_message, hiword, is_checked, load_app_icon,
-    load_tray_icon, loword, measure_text_width, path_to_wide, reserve_combo_items,
-    reserve_list_items, set_checkbox, set_combo_edit_caret, set_text, storage_bytes_hint, to_wide,
-    window_text_into, write_wide_buffer,
+    load_github_icon, load_tray_icon, loword, measure_text_width, path_to_wide,
+    reserve_combo_items, reserve_list_items, set_checkbox, set_combo_edit_caret, set_text,
+    storage_bytes_hint, to_wide, window_text_into, write_wide_buffer,
 };
 
 static FOREGROUND_EVENT_HWND: AtomicIsize = AtomicIsize::new(0);
@@ -132,6 +133,20 @@ const START_MINIMIZED_CHECK_Y: i32 = 618;
 const LAUNCH_STARTUP_CHECK_Y: i32 = 652;
 const OPEN_CONFIG_BUTTON_Y: i32 = 678;
 const FOOTER_BUTTON_Y: i32 = 754;
+const GITHUB_PAGE_URL: &str = "https://github.com/ilsd7/UnfocusMute";
+const GITHUB_LINK_TEXT: &str = "GitHub";
+const GITHUB_ICON_X: i32 = HEADER_LEFT_X;
+const GITHUB_LINK_Y: i32 = FOOTER_BUTTON_Y + 6;
+const GITHUB_LINK_HEIGHT: i32 = 18;
+const GITHUB_ICON_SIZE: i32 = 16;
+const GITHUB_ICON_TEXT_GAP: i32 = 6;
+const GITHUB_ICON_Y: i32 = GITHUB_LINK_Y + (GITHUB_LINK_HEIGHT - GITHUB_ICON_SIZE) / 2;
+const GITHUB_LINK_X: i32 = GITHUB_ICON_X + GITHUB_ICON_SIZE + GITHUB_ICON_TEXT_GAP;
+const GITHUB_LINK_HIT_TOP: i32 = 1;
+const GITHUB_LINK_HIT_BOTTOM: i32 = 15;
+const GITHUB_TOOLTIP_HEIGHT: i32 = 24;
+const GITHUB_TOOLTIP_X_PADDING: i32 = 8;
+const GITHUB_TOOLTIP_Y_GAP: i32 = 6;
 const LB_ITEMFROMPOINT_MESSAGE: u32 = 0x01A9;
 const LB_ITEMFROMPOINT_OUTSIDE_MASK: isize = 0x0001_0000;
 const PID_DISPLAY_DECORATION_UTF16_UNITS: usize = " (PID )".len();
@@ -166,10 +181,15 @@ unsafe fn run_window() -> Result<()> {
         return Ok(());
     };
 
+    unsafe {
+        initialize_common_controls()?;
+    }
+
     let module = unsafe { GetModuleHandleW(None).context("get module handle")? };
     let instance = HINSTANCE(module.0);
     let icon = unsafe { load_app_icon(instance) };
     let tray_icon = unsafe { load_tray_icon(instance) };
+    let github_icon = unsafe { load_github_icon(instance, GITHUB_ICON_SIZE) };
     let cursor = unsafe { LoadCursorW(None, IDC_ARROW).context("load cursor")? };
     let background = OwnedBrush::solid(PAGE_COLOR);
 
@@ -244,6 +264,7 @@ unsafe fn run_window() -> Result<()> {
         config,
         icon,
         tray_icon,
+        github_icon,
         taskbar_created_message,
         initial_issues,
     )?);
@@ -287,6 +308,18 @@ unsafe fn run_window() -> Result<()> {
     }
 
     Ok(())
+}
+
+unsafe fn initialize_common_controls() -> Result<()> {
+    let classes = INITCOMMONCONTROLSEX {
+        dwSize: size_of::<INITCOMMONCONTROLSEX>() as u32,
+        dwICC: ICC_WIN95_CLASSES,
+    };
+    if unsafe { InitCommonControlsEx(&classes).as_bool() } {
+        Ok(())
+    } else {
+        Err(message_error("initialize common controls"))
+    }
 }
 
 struct SingleInstance(HANDLE);
@@ -662,6 +695,8 @@ struct AppWindow {
     status_detail_text: String,
     display_text_buffer: String,
     wide_text_buffer: Vec<u16>,
+    github_icon: HICON,
+    github_link_hot: bool,
     foreground_process_name_cache: Option<(u32, Option<String>)>,
     processes_loaded: bool,
     last_process_refresh: Instant,
@@ -894,6 +929,7 @@ impl AppWindow {
         config: AppConfig,
         icon: HICON,
         tray_icon: HICON,
+        github_icon: HICON,
         taskbar_created_message: u32,
         initial_issues: IssueState,
     ) -> Result<Self> {
@@ -916,6 +952,8 @@ impl AppWindow {
             status_detail_text: String::new(),
             display_text_buffer: String::new(),
             wide_text_buffer: Vec::new(),
+            github_icon,
+            github_link_hot: false,
             foreground_process_name_cache: None,
             processes_loaded: false,
             last_process_refresh: Instant::now(),
@@ -1324,6 +1362,37 @@ impl AppWindow {
                 ID_OPEN_CONFIG,
             )?
         };
+        let github_link_width = self.github_link_width();
+        self.controls.github_button = unsafe {
+            create_control(
+                self.hwnd,
+                instance,
+                w!("BUTTON"),
+                GITHUB_LINK_TEXT,
+                tab_child | WINDOW_STYLE(BS_OWNERDRAW as u32),
+                WINDOW_EX_STYLE(0),
+                GITHUB_LINK_X,
+                GITHUB_LINK_Y,
+                github_link_width,
+                GITHUB_LINK_HEIGHT,
+                ID_OPEN_GITHUB,
+            )?
+        };
+        self.controls.tooltip = unsafe {
+            create_control(
+                self.hwnd,
+                instance,
+                w!("STATIC"),
+                GITHUB_PAGE_URL,
+                WS_CHILD | SS_OWNERDRAW_STYLE,
+                WINDOW_EX_STYLE(0),
+                0,
+                0,
+                0,
+                0,
+                ID_GITHUB_TOOLTIP,
+            )?
+        };
 
         self.controls.pause_button = unsafe {
             create_button(
@@ -1420,6 +1489,9 @@ impl AppWindow {
             set_text(self.controls.hide_button, self.strings.hide);
             set_text(self.controls.quit_button, self.strings.quit);
             set_text(self.controls.open_config_button, self.strings.open_config);
+            set_text(self.controls.github_button, GITHUB_LINK_TEXT);
+            set_text(self.controls.tooltip, GITHUB_PAGE_URL);
+            self.layout_github_link();
 
             let cue_banner_buffer = &mut self.wide_text_buffer;
             write_wide_buffer(self.strings.manual_placeholder, cue_banner_buffer);
@@ -1445,6 +1517,117 @@ impl AppWindow {
         self.refresh_process_details_ui();
         self.last_status = None;
         self.update_status();
+    }
+
+    fn layout_github_link(&self) {
+        if self.controls.github_button.0.is_null() {
+            return;
+        }
+
+        unsafe {
+            let _ = MoveWindow(
+                self.controls.github_button,
+                GITHUB_LINK_X,
+                GITHUB_LINK_Y,
+                self.github_link_width(),
+                GITHUB_LINK_HEIGHT,
+                true,
+            );
+        }
+    }
+
+    fn github_link_width(&self) -> i32 {
+        self.text_width(GITHUB_LINK_TEXT).max(1)
+    }
+
+    fn set_github_link_cursor(&mut self, child: HWND) -> bool {
+        if child != self.controls.github_button {
+            self.set_github_link_hot(false);
+            return false;
+        }
+
+        if !self.cursor_is_on_github_link_text() {
+            self.set_github_link_hot(false);
+            return false;
+        }
+
+        self.set_github_link_hot(true);
+        let Ok(cursor) = (unsafe { LoadCursorW(None, IDC_HAND) }) else {
+            return false;
+        };
+        unsafe {
+            let _ = SetCursor(Some(cursor));
+        }
+        true
+    }
+
+    fn cursor_is_on_github_link_text(&self) -> bool {
+        let mut point = POINT::default();
+        if unsafe { GetCursorPos(&mut point) }.is_err()
+            || !unsafe { ScreenToClient(self.controls.github_button, &mut point).as_bool() }
+        {
+            return false;
+        }
+
+        let rect = self.github_link_hit_rect();
+        point.x >= rect.left && point.x < rect.right && point.y >= rect.top && point.y < rect.bottom
+    }
+
+    fn github_link_hit_rect(&self) -> RECT {
+        RECT {
+            left: 0,
+            top: GITHUB_LINK_HIT_TOP,
+            right: self.github_link_width(),
+            bottom: GITHUB_LINK_HIT_BOTTOM,
+        }
+    }
+
+    fn set_github_link_hot(&mut self, hot: bool) {
+        if self.github_link_hot == hot {
+            return;
+        }
+        self.github_link_hot = hot;
+
+        unsafe {
+            let _ = RedrawWindow(
+                Some(self.controls.github_button),
+                None,
+                None,
+                RDW_INVALIDATE | RDW_UPDATENOW,
+            );
+        }
+        if hot {
+            self.show_github_tooltip();
+        } else {
+            self.hide_github_tooltip();
+        }
+    }
+
+    fn show_github_tooltip(&self) {
+        if self.controls.tooltip.0.is_null() || self.controls.github_button.0.is_null() {
+            return;
+        }
+
+        let (x, y, width, height) = self.github_tooltip_rect();
+        unsafe {
+            let _ = MoveWindow(self.controls.tooltip, x, y, width, height, true);
+            let _ = ShowWindow(self.controls.tooltip, SW_SHOW);
+        }
+    }
+
+    fn hide_github_tooltip(&self) {
+        unsafe {
+            let _ = ShowWindow(self.controls.tooltip, SW_HIDE);
+        }
+    }
+
+    fn github_tooltip_rect(&self) -> (i32, i32, i32, i32) {
+        let width = (self.text_width(GITHUB_PAGE_URL) + GITHUB_TOOLTIP_X_PADDING * 2)
+            .min(WINDOW_WIDTH - 16);
+        let max_x = (WINDOW_WIDTH - width - 8).max(8);
+        let x = GITHUB_LINK_X.clamp(8, max_x);
+        let y = (GITHUB_LINK_Y - GITHUB_TOOLTIP_HEIGHT - GITHUB_TOOLTIP_Y_GAP).max(0);
+        (x, y, width, GITHUB_TOOLTIP_HEIGHT)
     }
 
     fn refresh_target_status_width(&mut self) {
@@ -2613,6 +2796,7 @@ impl AppWindow {
             ID_RUNNING if notification == CBN_CLOSEUP as u16 => self.focus_main_window(),
             ID_MANUAL if notification == EN_CHANGE as u16 => self.update_manual_process_text(),
             ID_OPEN_CONFIG => self.open_config_folder(),
+            ID_OPEN_GITHUB => self.open_github_page(),
             ID_PAUSE => self.toggle_pause(),
             ID_HIDE => self.hide_to_tray(),
             ID_QUIT => unsafe {
@@ -3151,6 +3335,30 @@ impl AppWindow {
         }
     }
 
+    fn open_github_page(&self) {
+        let url = to_wide(GITHUB_PAGE_URL);
+        unsafe {
+            let result = ShellExecuteW(
+                Some(self.hwnd),
+                w!("open"),
+                PCWSTR(url.as_ptr()),
+                PCWSTR::null(),
+                PCWSTR::null(),
+                SW_SHOW,
+            );
+            if result.0 as isize <= 32 {
+                let title = to_wide(self.strings.status_issue);
+                let body = to_wide(self.strings.open_github_failed);
+                let _ = MessageBoxW(
+                    Some(self.hwnd),
+                    PCWSTR(body.as_ptr()),
+                    PCWSTR(title.as_ptr()),
+                    MB_OK | MB_ICONWARNING,
+                );
+            }
+        }
+    }
+
     fn toggle_pause(&mut self) {
         self.paused = !self.paused;
         self.update_pause_button_text();
@@ -3524,6 +3732,7 @@ impl AppWindow {
                     } else if child == self.controls.title_label
                         || child == self.controls.targets_label
                         || child == self.controls.settings_label
+                        || child == self.controls.tooltip
                     {
                         TEXT_COLOR
                     } else {
@@ -3569,6 +3778,12 @@ impl AppWindow {
         }
 
         let draw = unsafe { &*(lparam.0 as *const DRAWITEMSTRUCT) };
+        if draw.CtlID == ID_OPEN_GITHUB as u32 {
+            return self.draw_github_button(draw);
+        }
+        if draw.CtlID == ID_GITHUB_TOOLTIP as u32 {
+            return self.draw_github_tooltip(draw);
+        }
         if draw.CtlID != ID_TARGETS as u32 {
             return false;
         }
@@ -3687,6 +3902,63 @@ impl AppWindow {
         true
     }
 
+    fn draw_github_tooltip(&self, draw: &DRAWITEMSTRUCT) -> bool {
+        unsafe {
+            let _ = FillRect(draw.hDC, &draw.rcItem, self.theme.panel_brush.handle());
+            let _ = FrameRect(draw.hDC, &draw.rcItem, self.theme.border_brush.handle());
+        }
+
+        let text_rect = RECT {
+            left: draw.rcItem.left + GITHUB_TOOLTIP_X_PADDING,
+            top: draw.rcItem.top,
+            right: draw.rcItem.right - GITHUB_TOOLTIP_X_PADDING,
+            bottom: draw.rcItem.bottom,
+        };
+        draw_text_line(
+            draw.hDC,
+            self.theme.font.handle(),
+            GITHUB_PAGE_URL,
+            text_rect,
+            TEXT_COLOR,
+            DT_LEFT | DT_SINGLELINE | DT_VCENTER | DT_END_ELLIPSIS | DT_NOPREFIX,
+        );
+
+        true
+    }
+
+    fn draw_github_button(&self, draw: &DRAWITEMSTRUCT) -> bool {
+        let pressed = draw.itemState.0 & ODS_SELECTED.0 != 0;
+        let disabled = draw.itemState.0 & ODS_DISABLED.0 != 0;
+        unsafe {
+            let _ = FillRect(draw.hDC, &draw.rcItem, self.theme.page_brush.handle());
+        }
+
+        let offset = if pressed { 1 } else { 0 };
+        let text_rect = RECT {
+            left: draw.rcItem.left + offset,
+            top: draw.rcItem.top + offset,
+            right: draw.rcItem.right + offset,
+            bottom: draw.rcItem.bottom + offset,
+        };
+        let text_color = if disabled {
+            DISABLED_TEXT_COLOR
+        } else if self.github_link_hot {
+            LINK_HOVER_COLOR
+        } else {
+            LINK_COLOR
+        };
+        draw_text_line(
+            draw.hDC,
+            self.theme.font.handle(),
+            GITHUB_LINK_TEXT,
+            text_rect,
+            text_color,
+            DT_LEFT | DT_SINGLELINE | DT_VCENTER | DT_END_ELLIPSIS | DT_NOPREFIX,
+        );
+
+        true
+    }
+
     fn paint(&self, hwnd: HWND) {
         let paint = unsafe { PaintSession::begin(hwnd) };
         for rect in [
@@ -3707,6 +3979,27 @@ impl AppWindow {
                 let _ = FillRect(paint.hdc(), &rect, self.theme.panel_brush.handle());
                 let _ = FrameRect(paint.hdc(), &rect, self.theme.border_brush.handle());
             }
+        }
+        self.draw_github_icon(paint.hdc());
+    }
+
+    fn draw_github_icon(&self, hdc: HDC) {
+        if self.github_icon.0.is_null() {
+            return;
+        }
+
+        unsafe {
+            let _ = DrawIconEx(
+                hdc,
+                GITHUB_ICON_X,
+                GITHUB_ICON_Y,
+                self.github_icon,
+                GITHUB_ICON_SIZE,
+                GITHUB_ICON_SIZE,
+                0,
+                None,
+                DI_NORMAL,
+            );
         }
     }
 
@@ -4575,6 +4868,9 @@ unsafe extern "system" fn window_proc(
                 return LRESULT(1);
             }
             WM_DRAWITEM if app.draw_item(lparam) => {
+                return LRESULT(1);
+            }
+            WM_SETCURSOR if app.set_github_link_cursor(HWND(wparam.0 as *mut c_void)) => {
                 return LRESULT(1);
             }
             WM_SHOWWINDOW => {

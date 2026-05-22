@@ -4,7 +4,7 @@
   <h1>UnfocusMute</h1>
 
   <p><strong>선택한 게임이나 앱이 백그라운드로 전환되면 자동으로 음소거하는 가볍고 포터블한 Windows 트레이 앱입니다.<br>
-UnfocusMute가 직접 음소거한 세션만 복원하며, 네트워크 연결 없이 완전히 로컬에서 동작합니다.</strong></p>
+UnfocusMute가 직접 음소거한 세션만 복원하며, 백그라운드 네트워크 연결 없이 완전히 로컬에서 동작합니다.</strong></p>
 
   <p>
     한국어 · <a href="../README.md">English</a> · <a href="README_ja.md">日本語</a> · <a href="README_zh-CN.md">简体中文</a> · <a href="README_es.md">Español</a> · <a href="README_fr.md">Français</a> · <a href="README_pt.md">Português</a> · <a href="README_hi.md">हिन्दी</a> · <a href="README_ar.md">العربية</a>
@@ -16,7 +16,7 @@ UnfocusMute가 직접 음소거한 세션만 복원하며, 네트워크 연결 �
     <a href="../LICENSE"><img src="https://img.shields.io/badge/license-Apache--2.0-blue?style=flat-square" alt="Apache-2.0 license"></a>
   </p>
 
-  <p>완전한 로컬 실행 &nbsp;·&nbsp; 네트워크 연결 없음 &nbsp;·&nbsp; 로그 파일 없음 &nbsp;·&nbsp; 관리자 권한 불필요</p>
+  <p>완전한 로컬 실행 &nbsp;·&nbsp; 백그라운드 네트워크 연결 없음 &nbsp;·&nbsp; 로그 파일 없음 &nbsp;·&nbsp; 관리자 권한 불필요</p>
 
   <p>
     <a href="https://github.com/ilsd7/UnfocusMute/releases/latest/download/UnfocusMute-windows-x64.zip">다운로드</a>
@@ -54,6 +54,7 @@ Rust 네이티브 앱으로 빌드되어 별도 런타임 없이 바로 실행�
 - `.exe` 단위 등록, 현재 실행 중인 인스턴스용 개별 PID 등록, `세부 PID 보기` 지원
 - 등록 앱별 메모와 대상별 실시간 음소거 상태 표시, 앱별 `감시 일시 중지` 및 `감시 재개`
 - 트레이 상주, 트레이 상태 요약, 전체 일시 중지, 설정 폴더 열기, 중복 실행 방지
+- 왼쪽 아래의 작은 GitHub 아이콘으로 기본 브라우저에서 프로젝트 페이지 열기, 호버 시 프로젝트 URL 표시
 - 첫 실행 시 언어 선택, 이후 앱 안에서 English/한국어/日本語/简体中文/Español/Français/Português/हिन्दी/العربية 즉시 전환
 - 설정은 `%APPDATA%\UnfocusMute\config.json`에 로컬 저장
 
@@ -90,7 +91,8 @@ UnfocusMute는 Windows가 제공하는 프로세스 이름, 전면 창 정보, C
 4. `프로세스 검색` 목록을 열거나 검색어를 입력한 뒤 항목을 선택하고 `선택 추가`를 누릅니다.
 5. 특정 PID만 등록하려면 `세부 PID 보기`를 눌러 개별 항목을 선택합니다. PID 등록은 현재 실행 중인 인스턴스에만 유효하므로, 앱을 다시 실행해 PID가 바뀌면 다시 선택해야 합니다.
 6. 등록된 앱을 마우스 오른쪽 버튼으로 클릭하면 메모를 편집하거나 해당 앱의 `감시 일시 중지`를 설정할 수 있습니다.
-7. 창을 닫아도 앱은 트레이에 남아 계속 동작합니다. 완전히 종료하려면 `종료`를 누르세요.
+7. 왼쪽 아래의 작은 `GitHub` 아이콘을 누르면 기본 브라우저에서 GitHub 프로젝트 페이지가 열립니다. 아이콘에 마우스를 올리면 프로젝트 URL이 표시됩니다.
+8. 창을 닫아도 앱은 트레이에 남아 계속 동작합니다. 완전히 종료하려면 `종료`를 누르세요.
 
 ## 등록 앱 메모 활용하기
 
@@ -118,14 +120,14 @@ UnfocusMute는 Windows가 제공하는 프로세스 이름, 전면 창 정보, C
 
 ## 보안 및 개인정보
 
-UnfocusMute는 완전한 로컬 앱입니다. 모든 동작이 현재 PC 안에서만 이루어지며, 인터넷 연결이 없어도 정상 작동합니다.
+UnfocusMute는 완전한 로컬 앱입니다. 모든 동작이 현재 PC 안에서만 이루어지며, 인터넷 연결이 없어도 정상 작동합니다. GitHub 아이콘은 사용자가 직접 누를 때만 기본 브라우저로 프로젝트 페이지를 엽니다.
 
 **저장하는 것:** 등록한 프로세스 이름, 선택적으로 등록한 PID, 작성한 메모, 선택한 언어, 창 위치, 시작 옵션.
 이 데이터는 `%APPDATA%\UnfocusMute\config.json`에만 저장되며, 외부로 전송되지 않습니다.
 
 **저장하지 않는 것:** 앱 로그 파일을 생성하지 않습니다. 세션 간 동작 기록은 어디에도 남지 않습니다.
 
-**하지 않는 것:** 네트워크 요청, 텔레메트리, 크래시 리포팅, 원격 로깅, 데이터 수집을 하지 않습니다. 관리자 권한도 요구하지 않습니다.
+**하지 않는 것:** 자동 네트워크 요청, 텔레메트리, 크래시 리포팅, 원격 로깅, 데이터 수집을 하지 않습니다. 관리자 권한도 요구하지 않습니다.
 
 오디오 세션 감지와 음소거 제어는 Windows CoreAudio API만 사용하며, 게임 프로세스에 코드를 주입하거나 메모리를 읽지 않습니다.
 

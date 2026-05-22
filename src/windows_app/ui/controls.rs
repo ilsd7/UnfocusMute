@@ -27,13 +27,15 @@ pub(super) struct Controls {
     pub(super) language_label: HWND,
     pub(super) language_button: HWND,
     pub(super) open_config_button: HWND,
+    pub(super) github_button: HWND,
+    pub(super) tooltip: HWND,
     pub(super) pause_button: HWND,
     pub(super) hide_button: HWND,
     pub(super) quit_button: HWND,
 }
 
 impl Controls {
-    pub(super) fn all(self) -> [HWND; 28] {
+    pub(super) fn all(self) -> [HWND; 30] {
         [
             self.title_label,
             self.subtitle_label,
@@ -60,6 +62,8 @@ impl Controls {
             self.language_label,
             self.language_button,
             self.open_config_button,
+            self.github_button,
+            self.tooltip,
             self.pause_button,
             self.hide_button,
             self.quit_button,

@@ -3,7 +3,7 @@
 
   <h1>UnfocusMute</h1>
 
-  <p><strong>App leve e portátil para a bandeja do Windows que silencia automaticamente jogos e apps selecionados quando vão para segundo plano.<br>Restaura apenas as sessões que o UnfocusMute silenciou diretamente e funciona totalmente local, sem conexão de rede.</strong></p>
+  <p><strong>App leve e portátil para a bandeja do Windows que silencia automaticamente jogos e apps selecionados quando vão para segundo plano.<br>Restaura apenas as sessões que o UnfocusMute silenciou diretamente e funciona totalmente local, sem conexões de rede em segundo plano.</strong></p>
 
   <p>
     <a href="README_ko.md">한국어</a> · <a href="../README.md">English</a> · <a href="README_ja.md">日本語</a> · <a href="README_zh-CN.md">简体中文</a> · <a href="README_es.md">Español</a> · <a href="README_fr.md">Français</a> · Português · <a href="README_hi.md">हिन्दी</a> · <a href="README_ar.md">العربية</a>
@@ -15,7 +15,7 @@
     <a href="../LICENSE"><img src="https://img.shields.io/badge/license-Apache--2.0-blue?style=flat-square" alt="Apache-2.0 license"></a>
   </p>
 
-  <p>Funcionamento totalmente local &nbsp;·&nbsp; Sem conexões de rede &nbsp;·&nbsp; Sem arquivos de log &nbsp;·&nbsp; Não requer permissões de administrador</p>
+  <p>Funcionamento totalmente local &nbsp;·&nbsp; Sem conexões de rede em segundo plano &nbsp;·&nbsp; Sem arquivos de log &nbsp;·&nbsp; Não requer permissões de administrador</p>
 
   <p>
     <a href="https://github.com/ilsd7/UnfocusMute/releases/latest/download/UnfocusMute-windows-x64.zip">Baixar</a>
@@ -53,6 +53,7 @@ O mudo e a restauração se aplicam apenas às sessões que o UnfocusMute altero
 - Suporta alvos por `.exe`, alvos por PID da instância atual e `Mostrar PIDs`.
 - Notas por app, estado de mudo em tempo real por alvo, `Pausar monitoramento` e `Retomar monitoramento` por app.
 - Execução na bandeja, resumo de status na bandeja, pausa global, acesso à pasta de configuração e proteção contra instâncias duplicadas.
+- Pequeno ícone do GitHub no canto inferior esquerdo para abrir a página do projeto no navegador padrão. Ao passar o cursor, ele mostra a URL do projeto.
 - Escolha de idioma no primeiro uso e troca imediata dentro do app entre English/한국어/日本語/简体中文/Español/Français/Português/हिन्दी/العربية.
 - Configurações salvas localmente em `%APPDATA%\UnfocusMute\config.json`.
 
@@ -89,7 +90,8 @@ Assim, se houver várias instâncias do mesmo `.exe` em execução ao mesmo temp
 4. Abra a lista `Pesquisar processo` ou digite uma busca, escolha um item e clique em `Adicionar seleção`.
 5. Se precisar registrar apenas um PID específico, clique em `Mostrar PIDs` e escolha a entrada individual. Alvos por PID valem só para a instância em execução; se o app reiniciar com outro PID, selecione novamente.
 6. Clique com o botão direito em um app registrado para editar sua nota ou usar `Pausar monitoramento`.
-7. Ao fechar a janela, o app continua rodando na bandeja e monitorando. Use `Sair` para encerrar completamente.
+7. Clique no pequeno ícone `GitHub` no canto inferior esquerdo para abrir a página do projeto no navegador padrão. Ao passar o cursor, ele mostra a URL do projeto.
+8. Ao fechar a janela, o app continua rodando na bandeja e monitorando. Use `Sair` para encerrar completamente.
 
 ## Usar notas em apps registrados
 
@@ -117,14 +119,14 @@ Se você não souber qual nome registrar, confira no Gerenciador de Tarefas o ex
 
 ## Segurança e privacidade
 
-UnfocusMute é um app totalmente local. Tudo acontece dentro do seu PC, e ele funciona normalmente mesmo sem conexão com a internet.
+UnfocusMute é um app totalmente local. Tudo acontece dentro do seu PC, e ele funciona normalmente mesmo sem conexão com a internet. O ícone do GitHub só abre o navegador padrão quando você clica nele.
 
 **O que ele salva:** Nomes de processos registrados, PIDs opcionais, notas que você escrever, idioma escolhido, posição da janela e opções de inicialização.
 Esses dados ficam apenas em `%APPDATA%\UnfocusMute\config.json` e não são enviados para fora.
 
 **O que ele não salva:** O app não cria arquivos de log. Nenhum histórico de atividade é mantido entre sessões.
 
-**O que ele não faz:** Não faz solicitações de rede, não usa telemetria, não envia relatórios de falha, não faz logs remotos e não coleta dados. Ele também não exige permissões de administrador.
+**O que ele não faz:** Não faz solicitações de rede automáticas, não usa telemetria, não envia relatórios de falha, não faz logs remotos e não coleta dados. Ele também não exige permissões de administrador.
 
 A detecção de sessões de áudio e o controle de mudo usam apenas as APIs CoreAudio do Windows, e o UnfocusMute não injeta código em processos de jogos nem lê a memória deles.
 
