@@ -331,13 +331,14 @@ try {
     if (Test-Path "docs" -PathType Container) {
         $DocFiles = @(
             Get-ChildItem "docs" -File -Filter "README_*.md" |
+                Where-Object { $_.Name -ne "README_ko.md" } |
                 Sort-Object Name
         )
     }
     $DocsStage = Join-Path $Stage "docs"
     New-Item -ItemType Directory -Force -Path $DocsStage | Out-Null
 
-    $ReadmeKo = [System.IO.File]::ReadAllText((Join-Path $RepoRoot "README.md"), [System.Text.Encoding]::UTF8)
+    $ReadmeKo = [System.IO.File]::ReadAllText((Join-Path $RepoRoot "docs\README_ko.md"), [System.Text.Encoding]::UTF8)
     $ReadmeKo = Convert-ReadmeForPackage $ReadmeKo
     [System.IO.File]::WriteAllText((Join-Path $DocsStage "README_ko.txt"), $ReadmeKo, $Utf8NoBom)
 

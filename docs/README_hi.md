@@ -3,10 +3,10 @@
 
   <h1>UnfocusMute</h1>
 
-  <p><strong>चुने हुए गेम और ऐप्स का फ़ोकस हटने पर उन्हें म्यूट करने वाला हल्का, पोर्टेबल और पूरी तरह local Windows tray app।<br>यह सिर्फ उसी audio को restore करता है जिसे इसने mute किया था — कोई network नहीं, कोई logs नहीं।</strong></p>
+  <p><strong>चुने हुए गेम या ऐप के background में जाते ही उन्हें अपने आप mute करने वाला हल्का और portable Windows tray app।<br>यह सिर्फ वही sessions restore करता है जिन्हें UnfocusMute ने खुद mute किया था, और network connection के बिना पूरी तरह local काम करता है।</strong></p>
 
   <p>
-    <a href="../README.md">한국어</a> · <a href="README_en.md">English</a> · <a href="README_ja.md">日本語</a> · <a href="README_zh-CN.md">简体中文</a> · <a href="README_es.md">Español</a> · <a href="README_fr.md">Français</a> · <a href="README_pt.md">Português</a> · हिन्दी · <a href="README_ar.md">العربية</a>
+    <a href="README_ko.md">한국어</a> · <a href="../README.md">English</a> · <a href="README_ja.md">日本語</a> · <a href="README_zh-CN.md">简体中文</a> · <a href="README_es.md">Español</a> · <a href="README_fr.md">Français</a> · <a href="README_pt.md">Português</a> · हिन्दी · <a href="README_ar.md">العربية</a>
   </p>
 
   <p>
@@ -27,9 +27,9 @@
 
 ---
 
-UnfocusMute Windows tray के लिए एक छोटा और हल्का app है। चुना हुआ game या app background में जाते ही यह सिर्फ उसी app की आवाज अपने आप mute करता है। यह सिर्फ games तक सीमित नहीं है: browsers, messengers, launchers, media players और दूसरे apps भी register किए जा सकते हैं, अगर वे Windows audio session के रूप में दिखते हों।
+UnfocusMute Windows tray के लिए एक छोटा और हल्का app है। चुना हुआ game या app background में जाते ही यह उस app के audio session को अपने आप mute करता है। यह सिर्फ games तक सीमित नहीं है: browsers, messengers, launchers, media players और दूसरे apps भी register किए जा सकते हैं, अगर वे Windows audio session के रूप में दिखते हों।
 
-Rust native app के रूप में build होने के कारण यह अलग runtime के बिना सीधे चलता है। Release builds छोटे executable को प्राथमिकता देने के लिए configured हैं।
+Rust native app के रूप में build होने के कारण यह अलग runtime के बिना सीधे चलता है। Executable लगभग 500 KB का है।
 
 <p align="center">
   <img src="../assets/screenshot_hi.png" alt="UnfocusMute ऐप विंडो">
@@ -49,7 +49,7 @@ Mute और restore, दोनों सिर्फ उन sessions पर ल�
 ## मुख्य सुविधाएं
 
 - Registered apps background में होने पर audio session अपने आप mute करता है और foreground में लौटने पर restore करता है।
-- Running app list से target जोड़ें या `game.exe` जैसा नाम manually लिखें।
+- Running app list से target register करें या `game.exe` जैसा नाम manually लिखें।
 - `.exe` targets, current-instance PID targets और `PID विवरण दिखाएं` support करता है।
 - App-wise notes, target-wise live mute state, app-wise `निगरानी रोकें` और `निगरानी फिर शुरू करें`।
 - Tray में चलना, tray status summary, global pause, config folder खोलना और duplicate instance protection।
@@ -75,14 +75,16 @@ Windows 10/11 पर ZIP package डाउनलोड करके extract क�
 
 UnfocusMute Windows से मिलने वाले process names, foreground window information और CoreAudio sessions के आधार पर काम करता है। अगर किसी app ने अभी audio session नहीं बनाया है, या driver, permission setting या security tool session access को सीमित करता है, तो list दिखना या mute control कुछ हद तक सीमित हो सकता है।
 
-PID register करते समय एक behavior ध्यान में रखें। Windows audio session PID और foreground window PID के लिए हमेशा एक ही value नहीं देता। इसे संभालने के लिए UnfocusMute registered PID के `.exe` name और अभी foreground में मौजूद window के `.exe` name के match होने पर उस app को foreground में लौटा हुआ मानता है। इसलिए एक ही `.exe` के कई instances चल रहे हों, तो किसी खास PID को हमेशा पूरी तरह अलग नहीं किया जा सकता, और दूसरे instance के foreground में होने पर भी आवाज restore हो सकती है।
+**PID register करते समय behavior:** Windows audio session PID और foreground window PID के लिए हमेशा एक ही value नहीं देता। इसे संभालने के लिए UnfocusMute registered PID के `.exe` name और अभी foreground में मौजूद window के `.exe` name के match होने पर उस app को foreground में लौटा हुआ मानता है।
 
-UnfocusMute games में code inject नहीं करता, game memory नहीं पढ़ता, input hook नहीं करता और game files modify नहीं करता। यह सिर्फ Windows process/foreground window information और CoreAudio session mute controls इस्तेमाल करता है, इसलिए ज्यादातर anti-cheat systems में समस्या नहीं होनी चाहिए, लेकिन हर anti-cheat के साथ compatibility की guarantee नहीं दी जा सकती।
+इसलिए एक ही `.exe` के कई instances साथ में चल रहे हों, तो किसी खास PID को हमेशा पूरी तरह अलग नहीं किया जा सकता। ऐसे में दूसरे instance के foreground में होने पर भी आवाज restore हो सकती है।
+
+**Anti-cheat compatibility:** UnfocusMute games में code inject नहीं करता, game memory नहीं पढ़ता, input hook नहीं करता और game files modify नहीं करता। यह सिर्फ Windows process/foreground window information और CoreAudio session mute controls इस्तेमाल करता है, इसलिए ज्यादातर anti-cheat systems में समस्या नहीं होनी चाहिए, लेकिन हर anti-cheat के साथ compatibility की guarantee नहीं दी जा सकती।
 
 ## उपयोग
 
 1. UnfocusMute चलाएं।
-2. पहली बार खुलने वाली भाषा स्क्रीन में भाषा चुनें। Default चयन English है।
+2. पहली बार खुलने वाली भाषा स्क्रीन में भाषा चुनें। Default English है।
 3. वह game या app शुरू करें जिसे background में जाने पर mute करना है।
 4. `प्रक्रिया खोजें` list खोलें या search term लिखें, item चुनें और `चयनित जोड़ें` दबाएं।
 5. अगर सिर्फ किसी खास PID को register करना है, तो `PID विवरण दिखाएं` दबाकर अलग entry चुनें। PID target सिर्फ अभी चल रहे instance पर लागू होता है; app restart होकर PID बदल जाए तो उसे फिर से चुनें।
@@ -91,26 +93,24 @@ UnfocusMute games में code inject नहीं करता, game memory �
 
 ## पंजीकृत ऐप्स में नोट इस्तेमाल करें
 
-अगर प्रक्रिया नाम देखकर ऐप पहचानना मुश्किल हो, तो पंजीकृत ऐप पर right-click करें और `नोट संपादित करें` चुनें। नोट पंजीकृत ऐप सूची में प्रक्रिया नाम के साथ दिखाई देता है और लक्ष्य पहचान को प्रभावित नहीं करता।
+अगर प्रक्रिया नाम देखकर ऐप पहचानना मुश्किल हो, तो पंजीकृत ऐप पर right-click करें और `नोट संपादित करें` चुनें। नोट पंजीकृत ऐप सूची में प्रक्रिया नाम के ऊपर दिखाई देता है और लक्ष्य पहचान को प्रभावित नहीं करता।
 
 यह तब काम आता है जब एक ही game launcher कई प्रक्रियाएं खोलता हो, या executable name देखकर उसका उपयोग साफ न समझ आए।
 
 - `htgame.exe - NTE`
-- `chrome.exe (PID 18432) - music playback profile`
 - `game.exe (PID 21976) - test server client`
-- `launcher.exe - असली game शुरू होने से पहले वाला launcher`
 
 नोट बाकी settings के साथ local रूप से `%APPDATA%\UnfocusMute\config.json` में save होते हैं।
 
-## गेम का executable नाम कैसे देखें
+## Executable नाम कैसे देखें
 
 अगर register करने वाला नाम साफ न हो, तो Task Manager में `.exe` पर खत्म होने वाला executable name देखें।
 
-1. पहले game शुरू करें।
+1. पहले वह app शुरू करें जिसे register करना है।
 2. `Alt`+`Tab` या `Windows`+`Tab` से game screen छोड़कर Windows पर लौटें।
 3. Task Manager खोलने के लिए `Ctrl`+`Shift`+`Esc` दबाएं।
-4. Process list को `CPU` के अनुसार sort करके अभी शुरू किया हुआ game ढूंढें।
-5. Game item पर right-click करें और `Properties` खोलें।
+4. Process list को `CPU` के अनुसार sort करके अभी शुरू किया हुआ app ढूंढें।
+5. उस item पर right-click करें और `Properties` खोलें।
 6. `game.exe` जैसा `.exe` पर खत्म होने वाला executable name देखें और उसे UnfocusMute में add करें।
 
 ---
@@ -119,11 +119,12 @@ UnfocusMute games में code inject नहीं करता, game memory �
 
 UnfocusMute पूरी तरह local app है। सब कुछ आपके इसी PC के अंदर होता है, और internet connection न होने पर भी यह सामान्य रूप से काम करता है।
 
-**यह क्या save करता है** — Registered process names, optional PIDs, UI language, window position और startup options। यह data सिर्फ `%APPDATA%\UnfocusMute\config.json` में save होता है और बाहर कहीं नहीं भेजा जाता।
+**यह क्या save करता है:** Registered process names, optional PIDs, आपके लिखे notes, चुनी हुई language, window position और startup options।
+यह data सिर्फ `%APPDATA%\UnfocusMute\config.json` में save होता है और बाहर कहीं नहीं भेजा जाता।
 
-**यह क्या save नहीं करता** — App log files नहीं बनाता। Sessions के बीच behavior history कहीं भी नहीं रखी जाती।
+**यह क्या save नहीं करता:** App log files नहीं बनाता। Sessions के बीच behavior history कहीं भी नहीं रखी जाती।
 
-**यह क्या नहीं करता** — Network requests, telemetry, crash reporting या remote logging नहीं है। Administrator rights की भी जरूरत नहीं होती।
+**यह क्या नहीं करता:** Network requests नहीं करता, telemetry इस्तेमाल नहीं करता, crash reports नहीं भेजता, remote logging नहीं करता और data collect नहीं करता। Administrator rights की भी जरूरत नहीं होती।
 
 Audio session detection और mute control सिर्फ Windows CoreAudio APIs इस्तेमाल करते हैं, और UnfocusMute game processes में code inject नहीं करता या उनकी memory नहीं पढ़ता।
 
@@ -131,13 +132,15 @@ Audio session detection और mute control सिर्फ Windows CoreAudio AP
 
 ## Release files verify करें
 
-Security के लिए users ऐसी स्थिति से बचाव कर सकें जहाँ कोई developer repository में published code से अलग files maliciously distribute करे, या account compromise जैसी घटना के कारण release files tamper हो जाएँ। इसके लिए ऐसा procedure चाहिए जिससे users सीधे verify कर सकें कि GitHub Releases पर upload की गई files public source code से match करने वाली official builds हैं।
+यह मानकर न चलें कि GitHub Releases पर upload की गई files हमेशा repository में published source code से match करती हैं।
 
-Security और transparency के लिए UnfocusMute ऐसा verification method देता है जिससे users सीधे confirm कर सकते हैं कि GitHub Releases पर upload की गई distribution files इस repository के source code से match करने वाली official builds हैं।
+अगर release permissions का misuse हो या account compromise हो जाए, तो अलग code से बनी files या modified files release में upload हो सकती हैं।
 
-Release ZIP file और SHA-256 checksum file GitHub के automated build system, GitHub Actions, से बनते हैं, और दोनों files origin proof करने वाली attestations के साथ दी जाती हैं।
+Transparency के लिए UnfocusMute ऐसा तरीका देता है जिससे users verify कर सकें कि GitHub Releases पर upload की गई files इसी repository के corresponding tag source code से GitHub Actions द्वारा generated official build artifacts हैं।
 
-नीचे दिए गए commands से verify किया जा सकता है कि GitHub Releases से download किया गया ZIP file इस repository की official build के समान है।
+Release ZIP file और SHA-256 checksum file GitHub Actions से automatically बनते हैं, और हर file build origin verify करने वाली attestation के साथ दी जाती है।
+
+नीचे दिए गए commands से check किया जा सकता है कि download किया गया ZIP file इस repository की official build से generated है।
 
 ```powershell
 gh attestation verify .\UnfocusMute-windows-x64.zip -R ilsd7/UnfocusMute

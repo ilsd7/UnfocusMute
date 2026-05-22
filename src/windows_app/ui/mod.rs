@@ -1387,8 +1387,8 @@ impl AppWindow {
         self.refresh_target_status_width();
         unsafe {
             app_title_with_version_into(self.strings, &mut self.display_text_buffer);
-            set_text(self.hwnd, &self.display_text_buffer);
             set_text(self.controls.title_label, &self.display_text_buffer);
+            set_text(self.hwnd, self.strings.app_title);
             set_text(self.controls.subtitle_label, self.strings.app_subtitle);
             set_text(self.controls.targets_label, "");
             set_text(self.controls.add_label, "");
@@ -3494,17 +3494,9 @@ impl AppWindow {
     }
 
     fn current_status_summary_text(&self) -> String {
-        let mut detail = String::new();
-        let status = status_text_and_detail_into(
-            self.strings,
-            self.issues.visible().map(|issue| self.issue_text(issue)),
-            self.paused,
-            self.config.targets.len(),
-            self.muted_by_app.len(),
-            &mut detail,
-        );
+        let status = status_text(self.strings, self.paused, self.issues.visible().is_some());
         let mut summary = String::new();
-        status_summary_text_into(status, &detail, &mut summary);
+        status_summary_text_into(status, "", &mut summary);
         summary
     }
 
@@ -3966,7 +3958,7 @@ fn status_detail_text_into(
 fn tray_tip_text_into(strings: &Strings, status: &str, detail: &str, output: &mut String) {
     output.clear();
     output.reserve(strings.app_title.len() + APP_VERSION.len() + status.len() + detail.len() + 8);
-    app_title_with_version_into(strings, output);
+    output.push_str(strings.app_title);
     output.push_str(" - ");
     output.push_str(status);
     if !detail.is_empty() {
@@ -4046,10 +4038,7 @@ mod status_text_tests {
             &mut tip,
         );
 
-        assert_eq!(
-            tip,
-            format!("UnfocusMute v{APP_VERSION} - Monitoring | Apps 2 · Muted 1")
-        );
+        assert_eq!(tip, "UnfocusMute - Monitoring | Apps 2 · Muted 1");
     }
 
     #[test]
