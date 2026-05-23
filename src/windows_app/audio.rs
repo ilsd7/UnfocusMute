@@ -642,53 +642,92 @@ fn apply_plan_to_session(
     };
     let Some(volume) = session.volume() else {
         result.had_failures = true;
-        if managed {
+        if managed_session {
             result.keep_active_session(session, key);
+            set_target_states_for_session(result, target_matches, target_identity, true, true);
+        } else if has_managed_target {
             set_target_states_for_session(result, target_matches, target_identity, true, true);
         }
         return;
     };
-    let mute = match session_muted(&volume) {
-        Ok(muted) => {
-            if desired_mute == muted {
-                if managed {
-                    if desired_mute {
-                        result.keep_active_session(session, key);
-                    }
-                    set_target_states_for_session(
-                        result,
-                        target_matches,
-                        target_identity,
-                        desired_mute,
-                        allow_unmuted_target_update,
-                    );
-                }
-                return;
+    let muted = match session_muted(&volume) {
+        Ok(muted) => muted,
+        Err(_) => {
+            result.had_failures = true;
+            if managed_session {
+                result.keep_active_session(session, key);
+                set_target_states_for_session(result, target_matches, target_identity, true, true);
+            } else if has_managed_target {
+                clear_untrusted_persisted_target_state(result, target_matches, target_identity);
             }
-            desired_mute
+            return;
         }
-        Err(_) => desired_mute,
     };
 
-    if unsafe { volume.SetMute(mute, std::ptr::null()) }.is_err() {
-        result.had_failures = true;
-        if managed {
-            result.keep_active_session(session, key);
-            set_target_states_for_session(result, target_matches, target_identity, true, true);
+    if desired_mute == muted {
+        if managed_session {
+            if desired_mute {
+                result.keep_active_session(session, key);
+            }
+            set_target_states_for_session(
+                result,
+                target_matches,
+                target_identity,
+                desired_mute,
+                allow_unmuted_target_update,
+            );
+        } else if untrusted_persisted_target_only(managed_session, has_managed_target) {
+            clear_untrusted_persisted_target_state(result, target_matches, target_identity);
         }
         return;
     }
 
-    if mute {
+    if untrusted_persisted_unmute(desired_mute, managed_session, has_managed_target) {
+        clear_untrusted_persisted_target_state(result, target_matches, target_identity);
+        return;
+    }
+
+    if unsafe { volume.SetMute(desired_mute, std::ptr::null()) }.is_err() {
+        result.had_failures = true;
+        if managed_session {
+            result.keep_active_session(session, key);
+            set_target_states_for_session(result, target_matches, target_identity, true, true);
+        } else if has_managed_target {
+            clear_untrusted_persisted_target_state(result, target_matches, target_identity);
+        }
+        return;
+    }
+
+    if desired_mute {
         result.keep_active_session(session, key);
     }
     set_target_states_for_session(
         result,
         target_matches,
         target_identity,
-        mute,
+        desired_mute,
         allow_unmuted_target_update,
     );
+}
+
+fn untrusted_persisted_target_only(managed_session: bool, has_managed_target: bool) -> bool {
+    has_managed_target && !managed_session
+}
+
+fn untrusted_persisted_unmute(
+    desired_mute: bool,
+    managed_session: bool,
+    has_managed_target: bool,
+) -> bool {
+    !desired_mute && untrusted_persisted_target_only(managed_session, has_managed_target)
+}
+
+fn clear_untrusted_persisted_target_state(
+    result: &mut PlanApplyResult,
+    target_matches: TargetIdentityMatches<'_>,
+    fallback_identity: Option<TargetMuteIdentity<'_>>,
+) {
+    set_target_states_for_session(result, target_matches, fallback_identity, false, true);
 }
 
 fn target_identity_for_session<'a>(
@@ -1315,6 +1354,41 @@ mod tests {
             }),
             false,
             true,
+        );
+
+        assert_eq!(
+            result.target_updates,
+            vec![TargetMuteStateUpdate {
+                process_name: "game.exe".to_owned(),
+                pid: None,
+                muted: false,
+            }]
+        );
+    }
+
+    #[test]
+    fn persisted_target_without_exact_session_is_not_trusted_for_unmute() {
+        assert!(untrusted_persisted_unmute(false, false, true));
+        assert!(!untrusted_persisted_unmute(false, true, true));
+        assert!(!untrusted_persisted_unmute(true, false, true));
+        assert!(!untrusted_persisted_unmute(false, false, false));
+    }
+
+    #[test]
+    fn untrusted_persisted_target_state_is_cleared_by_identity() {
+        let mut target = crate::config::TargetProcess::new("game.exe").unwrap();
+        target.managed_muted = true;
+        let targets = [target];
+        let lookup = ManagedTargetLookup::new(&targets);
+        let mut result = PlanApplyResult::new(0);
+
+        clear_untrusted_persisted_target_state(
+            &mut result,
+            lookup.matching_sessions("game.exe", 20),
+            Some(TargetMuteIdentity {
+                process_name: "game.exe",
+                pid: None,
+            }),
         );
 
         assert_eq!(

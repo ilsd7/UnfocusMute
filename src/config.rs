@@ -430,6 +430,77 @@ impl AppConfig {
     }
 }
 
+pub(crate) fn merge_pending_config_changes(
+    base: &AppConfig,
+    local: &AppConfig,
+    disk: &mut AppConfig,
+) {
+    if local.version != base.version {
+        disk.version = local.version;
+    }
+    if local.language != base.language {
+        disk.language = local.language;
+    }
+    if local.window_position != base.window_position {
+        disk.window_position = local.window_position;
+    }
+    if local.polling_interval_ms != base.polling_interval_ms {
+        disk.polling_interval_ms = local.polling_interval_ms;
+    }
+    if local.launch_on_startup != base.launch_on_startup {
+        disk.launch_on_startup = local.launch_on_startup;
+    }
+    if local.start_minimized != base.start_minimized {
+        disk.start_minimized = local.start_minimized;
+    }
+    if local.restore_muted_on_exit != base.restore_muted_on_exit {
+        disk.restore_muted_on_exit = local.restore_muted_on_exit;
+    }
+
+    merge_pending_target_changes(&base.targets, &local.targets, &mut disk.targets);
+}
+
+fn merge_pending_target_changes(
+    base: &[TargetProcess],
+    local: &[TargetProcess],
+    disk: &mut Vec<TargetProcess>,
+) {
+    for target in base {
+        if target_index_by_key(local, &target.name, target.pid).is_none() {
+            remove_target_by_key(disk, &target.name, target.pid);
+        }
+    }
+
+    for target in local {
+        let base_target =
+            target_index_by_key(base, &target.name, target.pid).map(|index| &base[index]);
+        if base_target != Some(target) {
+            upsert_target(disk, target.clone());
+        }
+    }
+}
+
+fn target_index_by_key(targets: &[TargetProcess], name: &str, pid: Option<u32>) -> Option<usize> {
+    targets
+        .binary_search_by(|target| compare_target_key(target, name, pid))
+        .ok()
+}
+
+fn remove_target_by_key(targets: &mut Vec<TargetProcess>, name: &str, pid: Option<u32>) -> bool {
+    let Some(index) = target_index_by_key(targets, name, pid) else {
+        return false;
+    };
+    targets.remove(index);
+    true
+}
+
+fn upsert_target(targets: &mut Vec<TargetProcess>, target: TargetProcess) {
+    match targets.binary_search_by(|existing| compare_targets(existing, &target)) {
+        Ok(index) => targets[index] = target,
+        Err(index) => targets.insert(index, target),
+    }
+}
+
 fn compare_targets(left: &TargetProcess, right: &TargetProcess) -> Ordering {
     compare_target_key(left, &right.name, right.pid)
 }
@@ -2040,6 +2111,44 @@ mod tests {
             .filter(|entry| entry.file_name().to_string_lossy().ends_with(".tmp"))
             .count();
         assert_eq!(temp_files, 1);
+    }
+
+    #[test]
+    fn merge_pending_config_changes_preserves_external_target_additions() {
+        let mut base = AppConfig::default();
+        assert!(base.add_target("game.exe"));
+
+        let mut local = base.clone();
+        assert!(local.set_target_managed_muted_at(0, true));
+
+        let mut disk = base.clone();
+        assert!(disk.add_target("chat.exe"));
+
+        merge_pending_config_changes(&base, &local, &mut disk);
+
+        assert_eq!(disk.targets.len(), 2);
+        assert_eq!(disk.targets[0].name, "chat.exe");
+        assert_eq!(disk.targets[1].name, "game.exe");
+        assert!(disk.targets[1].managed_muted);
+    }
+
+    #[test]
+    fn merge_pending_config_changes_keeps_local_target_removals() {
+        let mut base = AppConfig::default();
+        assert!(base.add_target("chat.exe"));
+        assert!(base.add_target("game.exe"));
+
+        let mut local = base.clone();
+        assert!(local.remove_target_at(1));
+
+        let mut disk = base.clone();
+        assert!(disk.add_target("music.exe"));
+
+        merge_pending_config_changes(&base, &local, &mut disk);
+
+        assert!(target_index_by_key(&disk.targets, "chat.exe", None).is_some());
+        assert!(target_index_by_key(&disk.targets, "game.exe", None).is_none());
+        assert!(target_index_by_key(&disk.targets, "music.exe", None).is_some());
     }
 
     #[test]

@@ -1,6 +1,7 @@
 use crate::config::{
-    AppConfig, AppConfigLoad, ConfigFileStamp, TargetProcess, WindowPosition, config_reload_needed,
-    current_config_stamp, is_normalized_process_name, is_supported_normalized_target_process_name,
+    AppConfig, AppConfigLoad, ConfigFileStamp, TargetProcess, WindowPosition, config_dir,
+    config_reload_needed, current_config_stamp, is_normalized_process_name,
+    is_supported_normalized_target_process_name, merge_pending_config_changes,
     normalize_manual_process_name, normalize_manual_process_name_cow,
 };
 use crate::engine::{AudioSessionKey, TargetMatcher};
@@ -12,6 +13,8 @@ use std::collections::HashSet;
 use std::ffi::c_void;
 use std::io::ErrorKind;
 use std::mem::size_of;
+use std::os::windows::ffi::OsStrExt;
+use std::path::Path;
 use std::sync::atomic::{AtomicBool, AtomicIsize, Ordering};
 use std::time::Instant;
 use windows::Win32::Foundation::{
@@ -168,6 +171,7 @@ const LB_ITEMFROMPOINT_MESSAGE: u32 = 0x01A9;
 const LB_ITEMFROMPOINT_OUTSIDE_MASK: isize = 0x0001_0000;
 const LB_GETITEMRECT_MESSAGE: u32 = 0x0198;
 const LB_ERR: isize = -1;
+const SINGLE_INSTANCE_MUTEX_PREFIX: &str = "Local\\UnfocusMute.SingleInstance.";
 pub fn run() -> Result<()> {
     let _com = unsafe { ComApartment::initialize()? };
     unsafe { run_window() }
@@ -399,7 +403,10 @@ impl Drop for PaintSession {
 }
 
 unsafe fn acquire_single_instance() -> Result<Option<SingleInstance>> {
-    let handle = unsafe { CreateMutexW(None, false, MUTEX_NAME).context("create app mutex")? };
+    let mutex_name = single_instance_mutex_name();
+    let handle = unsafe {
+        CreateMutexW(None, false, PCWSTR(mutex_name.as_ptr())).context("create app mutex")?
+    };
     let instance = SingleInstance(handle);
     if unsafe { GetLastError() } == ERROR_ALREADY_EXISTS {
         unsafe {
@@ -409,6 +416,48 @@ unsafe fn acquire_single_instance() -> Result<Option<SingleInstance>> {
     }
 
     Ok(Some(instance))
+}
+
+fn single_instance_mutex_name() -> Vec<u16> {
+    let mut name = String::from(SINGLE_INSTANCE_MUTEX_PREFIX);
+    let scope = config_dir()
+        .map(|path| hash_path_for_mutex_scope(&path))
+        .unwrap_or_else(|_| hash_text_for_mutex_scope("default"));
+    push_hex_u64(&mut name, scope);
+    to_wide(&name)
+}
+
+fn hash_path_for_mutex_scope(path: &Path) -> u64 {
+    let mut hash = fnv_offset_basis();
+    for code_unit in path.as_os_str().encode_wide() {
+        hash = fnv1a_update(hash, &code_unit.to_ne_bytes());
+    }
+    hash
+}
+
+fn hash_text_for_mutex_scope(text: &str) -> u64 {
+    fnv1a_update(fnv_offset_basis(), text.as_bytes())
+}
+
+fn fnv_offset_basis() -> u64 {
+    0xcbf2_9ce4_8422_2325
+}
+
+fn fnv1a_update(mut hash: u64, bytes: &[u8]) -> u64 {
+    const FNV_PRIME: u64 = 0x0000_0100_0000_01b3;
+    for byte in bytes {
+        hash ^= u64::from(*byte);
+        hash = hash.wrapping_mul(FNV_PRIME);
+    }
+    hash
+}
+
+fn push_hex_u64(output: &mut String, value: u64) {
+    const HEX: &[u8; 16] = b"0123456789abcdef";
+    for shift in (0..16).rev() {
+        let nibble = ((value >> (shift * 4)) & 0x0f) as usize;
+        output.push(HEX[nibble] as char);
+    }
 }
 
 struct ForegroundEventHook {
@@ -500,6 +549,7 @@ struct AppWindow {
     hwnd: HWND,
     controls: Controls,
     config: AppConfig,
+    persisted_config: AppConfig,
     target_matcher: TargetMatcher,
     strings: &'static Strings,
     audio: Option<AudioController>,
@@ -555,10 +605,12 @@ impl AppWindow {
         let strings = config.language.strings();
         let managed_mute_fast_retry_remaining =
             initial_managed_mute_fast_retry_count(&config.targets);
+        let persisted_config = config.clone();
         Ok(Self {
             hwnd: HWND::default(),
             controls: Controls::default(),
             target_matcher: TargetMatcher::new(&config.targets),
+            persisted_config,
             config,
             strings,
             audio: None,
@@ -2060,6 +2112,7 @@ impl AppWindow {
                     self.last_status = None;
                 }
                 let target_matcher_changed = self.apply_external_config(config);
+                self.persisted_config = self.config.clone();
                 ConfigReloadResult::changed(target_matcher_changed)
             }
             Err(error) if error.kind() == ErrorKind::NotFound => {
@@ -2259,6 +2312,8 @@ impl AppWindow {
 
     fn save_config(&mut self) -> bool {
         let current_stamp = current_config_stamp();
+        self.merge_external_config_before_save(current_stamp);
+        let current_stamp = current_config_stamp();
         let can_trust_existing_file = current_stamp.is_some_and(|stamp| {
             Some(stamp) == self.config_stamp && stamp.has_content_fingerprint()
         }) && !self.issues.contains(StatusIssue::ConfigLoadFailed);
@@ -2270,6 +2325,7 @@ impl AppWindow {
         match result {
             Ok(()) => {
                 self.config_stamp = current_config_stamp();
+                self.persisted_config = self.config.clone();
                 self.next_config_check = Instant::now() + CONFIG_RELOAD_CHECK_INTERVAL;
                 self.window_position_dirty = false;
                 self.clear_config_issues();
@@ -2279,6 +2335,76 @@ impl AppWindow {
                 self.set_issue(StatusIssue::ConfigSaveFailed);
                 false
             }
+        }
+    }
+
+    fn merge_external_config_before_save(&mut self, current_stamp: Option<ConfigFileStamp>) {
+        if self.issues.contains(StatusIssue::ConfigLoadFailed)
+            || !config_reload_needed(current_stamp, self.config_stamp, false)
+        {
+            return;
+        }
+
+        let Ok(mut disk_config) = AppConfig::load_existing() else {
+            return;
+        };
+        let previous_config = self.config.clone();
+        merge_pending_config_changes(&self.persisted_config, &self.config, &mut disk_config);
+        if disk_config == self.config {
+            self.config_stamp = current_stamp;
+            return;
+        }
+
+        self.config = disk_config;
+        self.config_stamp = current_stamp;
+        self.refresh_after_external_save_merge(&previous_config);
+    }
+
+    fn refresh_after_external_save_merge(&mut self, previous_config: &AppConfig) {
+        let language_changed = previous_config.language != self.config.language;
+        let target_list_changed = previous_config.targets != self.config.targets;
+        let target_matcher_changed =
+            target_matcher_inputs_changed(&previous_config.targets, &self.config.targets);
+        let interval_changed =
+            previous_config.polling_interval_ms != self.config.polling_interval_ms;
+        let startup_changed = previous_config.launch_on_startup != self.config.launch_on_startup;
+        let previous_launch_on_startup = previous_config.launch_on_startup;
+        let should_start_fast_retry = self
+            .config
+            .targets
+            .iter()
+            .any(|target| target.managed_muted)
+            && !previous_config
+                .targets
+                .iter()
+                .any(|target| target.managed_muted);
+
+        if startup_changed {
+            if apply_external_startup_config(&mut self.config, previous_launch_on_startup) {
+                self.clear_issue(StatusIssue::StartupUpdateFailed);
+            } else {
+                self.set_issue(StatusIssue::StartupUpdateFailed);
+            }
+        }
+
+        if target_matcher_changed {
+            self.refresh_targets();
+        } else if target_list_changed {
+            self.refresh_target_list();
+        }
+        if should_start_fast_retry {
+            self.start_managed_mute_fast_retry();
+        }
+        if interval_changed {
+            self.reset_polling_timer();
+            self.last_status = None;
+        } else if target_matcher_changed || should_start_fast_retry {
+            self.sync_audio_fallback_timer();
+        }
+        if language_changed {
+            self.refresh_text();
+        } else {
+            self.update_status();
         }
     }
 

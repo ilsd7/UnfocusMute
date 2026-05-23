@@ -20,11 +20,11 @@ use windows::Win32::UI::Controls::CB_SETMINVISIBLE;
 use windows::Win32::UI::WindowsAndMessaging::{
     CB_GETCURSEL, CB_SETCURSEL, CBN_SELCHANGE, CBN_SELENDOK, CBS_DROPDOWNLIST, CREATESTRUCTW,
     CreateWindowExW, DefWindowProcW, DestroyWindow, DispatchMessageW, GWLP_USERDATA,
-    GetWindowLongPtrW, HICON, IDC_ARROW, IsDialogMessageW, LoadCursorW, MSG, RegisterClassW,
-    SW_SHOW, SendMessageW, SetForegroundWindow, SetWindowLongPtrW, ShowWindow, TranslateMessage,
-    WINDOW_EX_STYLE, WINDOW_STYLE, WM_CLOSE, WM_COMMAND, WM_CREATE, WM_CTLCOLORSTATIC, WM_NCCREATE,
-    WM_NCDESTROY, WM_SETFONT, WNDCLASSW, WS_CAPTION, WS_CHILD, WS_EX_CLIENTEDGE, WS_OVERLAPPED,
-    WS_SYSMENU, WS_TABSTOP, WS_VISIBLE,
+    GetWindowLongPtrW, HICON, IDC_ARROW, IsDialogMessageW, LoadCursorW, MSG, PostQuitMessage,
+    RegisterClassW, SW_SHOW, SendMessageW, SetForegroundWindow, SetWindowLongPtrW, ShowWindow,
+    TranslateMessage, WINDOW_EX_STYLE, WINDOW_STYLE, WM_CLOSE, WM_COMMAND, WM_CREATE,
+    WM_CTLCOLORSTATIC, WM_NCCREATE, WM_NCDESTROY, WM_SETFONT, WNDCLASSW, WS_CAPTION, WS_CHILD,
+    WS_EX_CLIENTEDGE, WS_OVERLAPPED, WS_SYSMENU, WS_TABSTOP, WS_VISIBLE,
 };
 use windows::core::{PCWSTR, w};
 
@@ -349,8 +349,14 @@ pub(super) unsafe fn prompt_initial_language(
     }
 
     let mut msg = MSG::default();
-    while !state.done && unsafe { get_message(&mut msg)? } {
+    while !state.done {
         unsafe {
+            if !get_message(&mut msg)? {
+                let quit_code = msg.wParam.0 as i32;
+                let _ = DestroyWindow(hwnd);
+                PostQuitMessage(quit_code);
+                break;
+            }
             if IsDialogMessageW(hwnd, &msg).as_bool() {
                 continue;
             }

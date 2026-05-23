@@ -7,7 +7,6 @@ pub(super) const CLASS_NAME: PCWSTR = w!("UnfocusMuteWindow");
 pub(super) const LANGUAGE_PROMPT_CLASS_NAME: PCWSTR = w!("UnfocusMuteLanguagePrompt");
 pub(super) const SETTINGS_WINDOW_CLASS_NAME: PCWSTR = w!("UnfocusMuteSettingsWindow");
 pub(super) const TARGET_NOTE_PROMPT_CLASS_NAME: PCWSTR = w!("UnfocusMuteTargetNotePrompt");
-pub(super) const MUTEX_NAME: PCWSTR = w!("Local\\UnfocusMute.SingleInstance");
 pub(super) const AUDIO_FALLBACK_TIMER_ID: usize = 1;
 pub(super) const CONFIG_RELOAD_TIMER_ID: usize = 2;
 pub(super) const TRAY_ID: u32 = 1;

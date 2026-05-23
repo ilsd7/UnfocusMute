@@ -32,7 +32,7 @@ use windows::Win32::UI::WindowsAndMessaging::{
     CREATESTRUCTW, CreateWindowExW, DI_NORMAL, DefWindowProcW, DestroyWindow, DispatchMessageW,
     DrawIconEx, GWLP_USERDATA, GetWindowLongPtrW, GetWindowRect, HICON, IDC_ARROW, IDC_HAND,
     IsDialogMessageW, LoadCursorW, MB_ICONWARNING, MB_OK, MSG, MessageBoxW, MoveWindow,
-    RegisterClassW, SW_HIDE, SW_SHOW, SW_SHOWNOACTIVATE, SendMessageW, SetCursor,
+    PostQuitMessage, RegisterClassW, SW_HIDE, SW_SHOW, SW_SHOWNOACTIVATE, SendMessageW, SetCursor,
     SetForegroundWindow, SetWindowLongPtrW, ShowWindow, TranslateMessage, WINDOW_EX_STYLE,
     WINDOW_STYLE, WM_CLOSE, WM_COMMAND, WM_CREATE, WM_CTLCOLORSTATIC, WM_DRAWITEM, WM_NCCREATE,
     WM_NCDESTROY, WM_PAINT, WM_SETCURSOR, WM_SETFONT, WNDCLASSW, WS_CAPTION, WS_CHILD,
@@ -879,7 +879,13 @@ where
         let _ = SetForegroundWindow(hwnd);
 
         let mut msg = MSG::default();
-        while !state.done && get_message(&mut msg)? {
+        while !state.done {
+            if !get_message(&mut msg)? {
+                let quit_code = msg.wParam.0 as i32;
+                let _ = DestroyWindow(hwnd);
+                PostQuitMessage(quit_code);
+                break;
+            }
             if !IsDialogMessageW(hwnd, &msg).as_bool() {
                 let _ = TranslateMessage(&msg);
                 DispatchMessageW(&msg);
