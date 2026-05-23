@@ -474,9 +474,39 @@ fn merge_pending_target_changes(
     for target in local {
         let base_target =
             target_index_by_key(base, &target.name, target.pid).map(|index| &base[index]);
-        if base_target != Some(target) {
-            upsert_target(disk, target.clone());
+        match base_target {
+            None => upsert_target(disk, target.clone()),
+            Some(base_target) if target_differs_ignoring_managed_muted(base_target, target) => {
+                upsert_target(disk, target.clone());
+            }
+            Some(base_target) if base_target.managed_muted != target.managed_muted => {
+                set_target_managed_muted_by_key(
+                    disk,
+                    &target.name,
+                    target.pid,
+                    target.managed_muted,
+                );
+            }
+            Some(_) => {}
         }
+    }
+}
+
+fn target_differs_ignoring_managed_muted(left: &TargetProcess, right: &TargetProcess) -> bool {
+    left.name != right.name
+        || left.pid != right.pid
+        || left.note != right.note
+        || left.enabled != right.enabled
+}
+
+fn set_target_managed_muted_by_key(
+    targets: &mut [TargetProcess],
+    name: &str,
+    pid: Option<u32>,
+    managed_muted: bool,
+) {
+    if let Some(index) = target_index_by_key(targets, name, pid) {
+        targets[index].managed_muted = managed_muted;
     }
 }
 
@@ -2130,6 +2160,44 @@ mod tests {
         assert_eq!(disk.targets[0].name, "chat.exe");
         assert_eq!(disk.targets[1].name, "game.exe");
         assert!(disk.targets[1].managed_muted);
+    }
+
+    #[test]
+    fn merge_pending_config_changes_keeps_external_target_removal_for_runtime_mute() {
+        let mut base = AppConfig::default();
+        assert!(base.add_target("game.exe"));
+
+        let mut local = base.clone();
+        assert!(local.set_target_managed_muted_at(0, true));
+
+        let mut disk = AppConfig::default();
+        assert!(disk.add_target("chat.exe"));
+
+        merge_pending_config_changes(&base, &local, &mut disk);
+
+        assert!(target_index_by_key(&disk.targets, "chat.exe", None).is_some());
+        assert!(target_index_by_key(&disk.targets, "game.exe", None).is_none());
+    }
+
+    #[test]
+    fn merge_pending_config_changes_keeps_external_target_edits_for_runtime_mute() {
+        let mut base = AppConfig::default();
+        assert!(base.add_target("game.exe"));
+        assert!(base.set_target_note_at(0, Some("base".to_owned())));
+
+        let mut local = base.clone();
+        assert!(local.set_target_managed_muted_at(0, true));
+
+        let mut disk = base.clone();
+        assert!(disk.set_target_note_at(0, Some("external".to_owned())));
+        assert!(disk.set_target_enabled_at(0, false));
+
+        merge_pending_config_changes(&base, &local, &mut disk);
+
+        assert_eq!(disk.targets.len(), 1);
+        assert_eq!(disk.targets[0].note.as_deref(), Some("external"));
+        assert!(!disk.targets[0].enabled);
+        assert!(disk.targets[0].managed_muted);
     }
 
     #[test]
