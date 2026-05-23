@@ -294,9 +294,7 @@ function Remove-PackageOutputs {
     }
 
     $OutputPaths = @(
-        (Join-Path $DistPath $PackageName),
-        (Join-Path $DistPath "$PackageName.zip"),
-        (Join-Path $DistPath "$PackageName.zip.sha256")
+        (Join-Path $DistPath $PackageName)
     )
     foreach ($OutputPath in $OutputPaths) {
         if (Test-Path $OutputPath) {
