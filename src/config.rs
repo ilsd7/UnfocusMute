@@ -384,23 +384,18 @@ impl AppConfig {
     }
 
     fn merge_duplicate_targets(&mut self) {
-        let mut merged = Vec::with_capacity(self.targets.len());
-        for target in self.targets.drain(..) {
-            let Some(previous) = merged.last_mut() else {
-                merged.push(target);
-                continue;
-            };
+        self.targets.dedup_by(|target, previous| {
             if previous.name == target.name && previous.pid == target.pid {
                 previous.enabled |= target.enabled;
                 previous.managed_muted |= target.managed_muted;
                 if previous.note.is_none() {
-                    previous.note = target.note;
+                    previous.note = target.note.take();
                 }
+                true
             } else {
-                merged.push(target);
+                false
             }
-        }
-        self.targets = merged;
+        });
     }
 }
 
@@ -764,7 +759,7 @@ pub(crate) fn is_supported_target_process_name(input: &str) -> bool {
 pub(crate) fn is_supported_normalized_target_process_name(input: &str) -> bool {
     input
         .strip_suffix(".exe")
-        .is_some_and(|name| !windows_reserved_device_name(name))
+        .is_some_and(|name| !name.is_empty() && !windows_reserved_device_name(name))
 }
 
 fn windows_reserved_device_name(name: &str) -> bool {
@@ -783,7 +778,7 @@ fn windows_reserved_device_name(name: &str) -> bool {
 
 fn is_supported_utf16_target_process_name(input: &[u16]) -> bool {
     strip_ascii_exe_suffix_utf16(input)
-        .is_some_and(|name| !windows_reserved_device_name_utf16(name))
+        .is_some_and(|name| !name.is_empty() && !windows_reserved_device_name_utf16(name))
 }
 
 fn strip_ascii_exe_suffix_utf16(input: &[u16]) -> Option<&[u16]> {
@@ -1191,6 +1186,10 @@ mod tests {
             None
         );
         assert_eq!(
+            normalize_supported_process_name_utf16(&wide_null_terminated(".EXE")),
+            None
+        );
+        assert_eq!(
             normalize_supported_process_name_utf16(&wide_null_terminated("NUL.EXE")),
             None
         );
@@ -1269,6 +1268,7 @@ mod tests {
     fn supported_target_names_must_be_normalized_exe_files() {
         assert!(is_supported_target_process_name("game.exe"));
         assert!(!is_supported_target_process_name("Game.EXE"));
+        assert!(!is_supported_target_process_name(".exe"));
         assert!(!is_supported_target_process_name("system"));
         assert!(!is_supported_target_process_name("game.exe."));
     }

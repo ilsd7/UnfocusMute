@@ -2,6 +2,7 @@ use crate::config::TargetProcess;
 use crate::engine::{AudioSessionKey, MutePlanner, TargetMatchKind, TargetMatcher};
 use crate::windows_app::error::{Context, Result, message_error};
 use crate::windows_app::process;
+use std::cmp::Ordering as CmpOrdering;
 use std::collections::HashSet;
 use std::sync::{
     Arc,
@@ -18,6 +19,7 @@ use windows::core::{Interface, PCWSTR, PWSTR, implement};
 use windows_core::BOOL;
 
 const LINEAR_MANAGED_SESSION_LIMIT: usize = 8;
+const LINEAR_MANAGED_TARGET_PID_LIMIT: usize = 8;
 
 pub struct AudioController {
     enumerator: IMMDeviceEnumerator,
@@ -289,18 +291,20 @@ impl PlanApplyResult {
     }
 
     fn set_target_state(&mut self, identity: TargetMuteIdentity<'_>, muted: bool) {
-        if let Some(update) = self.target_updates.iter_mut().find(|update| {
-            update.process_name == identity.process_name && update.pid == identity.pid
-        }) {
-            update.muted |= muted;
-            return;
+        match self
+            .target_updates
+            .binary_search_by(|update| compare_target_update_identity(update, identity))
+        {
+            Ok(index) => self.target_updates[index].muted |= muted,
+            Err(index) => self.target_updates.insert(
+                index,
+                TargetMuteStateUpdate {
+                    process_name: identity.process_name.to_owned(),
+                    pid: identity.pid,
+                    muted,
+                },
+            ),
         }
-
-        self.target_updates.push(TargetMuteStateUpdate {
-            process_name: identity.process_name.to_owned(),
-            pid: identity.pid,
-            muted,
-        });
     }
 }
 
@@ -311,42 +315,172 @@ struct TargetMuteIdentity<'a> {
 }
 
 struct ManagedTargetLookup<'a> {
-    targets: &'a [TargetProcess],
+    identities: Vec<TargetMuteIdentity<'a>>,
+    pid_lookup: ManagedTargetPidLookup,
 }
 
 impl<'a> ManagedTargetLookup<'a> {
     fn new(targets: &'a [TargetProcess]) -> Self {
-        Self { targets }
+        let mut identities = Vec::new();
+        let mut pids = Vec::new();
+        let mut has_process_name_target = false;
+
+        for target in targets.iter().filter(|target| target.managed_muted) {
+            identities.push(TargetMuteIdentity {
+                process_name: target.name.as_str(),
+                pid: target.pid,
+            });
+            if let Some(pid) = target.pid {
+                if !has_process_name_target {
+                    pids.push(pid);
+                }
+            } else {
+                has_process_name_target = true;
+                pids.clear();
+            }
+        }
+
+        Self {
+            identities,
+            pid_lookup: ManagedTargetPidLookup::new(has_process_name_target, pids),
+        }
     }
 
     fn may_include_pid(&self, pid: u32) -> bool {
-        self.managed_targets()
-            .any(|target| target.pid.is_none_or(|target_pid| target_pid == pid))
+        self.pid_lookup.may_include_pid(pid)
     }
 
+    #[cfg(test)]
     fn has_match(&self, process_name: &str, pid: u32) -> bool {
-        self.matching_sessions(process_name, pid).next().is_some()
+        self.matching_sessions(process_name, pid).has_match()
     }
 
     fn matching_sessions<'b>(
         &'b self,
         process_name: &'b str,
         pid: u32,
-    ) -> impl Iterator<Item = TargetMuteIdentity<'a>> + 'b {
-        self.managed_targets()
-            .filter(move |target| {
-                target.name.as_str() == process_name
-                    && target.pid.is_none_or(|target_pid| target_pid == pid)
-            })
-            .map(|target| TargetMuteIdentity {
-                process_name: target.name.as_str(),
-                pid: target.pid,
-            })
+    ) -> TargetIdentityMatches<'a> {
+        TargetIdentityMatches {
+            process_target: self.find_identity(process_name, None),
+            pid_target: self.find_identity(process_name, Some(pid)),
+        }
     }
 
-    fn managed_targets(&self) -> impl Iterator<Item = &'a TargetProcess> + '_ {
-        self.targets.iter().filter(|target| target.managed_muted)
+    fn find_identity(
+        &self,
+        process_name: &str,
+        pid: Option<u32>,
+    ) -> Option<TargetMuteIdentity<'a>> {
+        match self.identities.as_slice() {
+            [] => None,
+            [identity] => {
+                (identity.process_name == process_name && identity.pid == pid).then_some(*identity)
+            }
+            identities => identities
+                .binary_search_by(|identity| {
+                    compare_target_identity_key(*identity, process_name, pid)
+                })
+                .ok()
+                .map(|index| identities[index]),
+        }
     }
+}
+
+enum ManagedTargetPidLookup {
+    Any,
+    Empty,
+    One(u32),
+    Two(u32, u32),
+    Few {
+        pids: [u32; LINEAR_MANAGED_TARGET_PID_LIMIT],
+        len: usize,
+    },
+    Many {
+        pids: Vec<u32>,
+    },
+}
+
+impl ManagedTargetPidLookup {
+    fn new(any_process_name_target: bool, mut pids: Vec<u32>) -> Self {
+        if any_process_name_target {
+            return Self::Any;
+        }
+        if pids.is_empty() {
+            return Self::Empty;
+        }
+
+        if pids.len() > 1 {
+            pids.sort_unstable();
+            pids.dedup();
+        }
+
+        match pids.len() {
+            0 => Self::Empty,
+            1 => Self::One(pids[0]),
+            2 => Self::Two(pids[0], pids[1]),
+            len if len <= LINEAR_MANAGED_TARGET_PID_LIMIT => {
+                let mut inline = [0; LINEAR_MANAGED_TARGET_PID_LIMIT];
+                inline[..len].copy_from_slice(&pids);
+                Self::Few { pids: inline, len }
+            }
+            _ => Self::Many { pids },
+        }
+    }
+
+    fn may_include_pid(&self, pid: u32) -> bool {
+        match self {
+            Self::Any => true,
+            Self::Empty => false,
+            Self::One(target_pid) => *target_pid == pid,
+            Self::Two(first, second) => *first == pid || *second == pid,
+            Self::Few { pids, len } => pids[..*len].binary_search(&pid).is_ok(),
+            Self::Many { pids } => pids.binary_search(&pid).is_ok(),
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+struct TargetIdentityMatches<'a> {
+    process_target: Option<TargetMuteIdentity<'a>>,
+    pid_target: Option<TargetMuteIdentity<'a>>,
+}
+
+impl TargetIdentityMatches<'_> {
+    fn has_match(self) -> bool {
+        self.process_target.is_some() || self.pid_target.is_some()
+    }
+}
+
+impl<'a> Iterator for TargetIdentityMatches<'a> {
+    type Item = TargetMuteIdentity<'a>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        self.process_target
+            .take()
+            .or_else(|| self.pid_target.take())
+    }
+}
+
+fn compare_target_identity_key(
+    identity: TargetMuteIdentity<'_>,
+    process_name: &str,
+    pid: Option<u32>,
+) -> CmpOrdering {
+    identity
+        .process_name
+        .cmp(process_name)
+        .then_with(|| identity.pid.cmp(&pid))
+}
+
+fn compare_target_update_identity(
+    update: &TargetMuteStateUpdate,
+    identity: TargetMuteIdentity<'_>,
+) -> CmpOrdering {
+    update
+        .process_name
+        .as_str()
+        .cmp(identity.process_name)
+        .then_with(|| update.pid.cmp(&identity.pid))
 }
 
 enum ManagedSessionLookup<'a> {
@@ -470,7 +604,8 @@ fn apply_plan_to_session(
     result: &mut PlanApplyResult,
 ) {
     let match_kind = planner.match_kind(session.process_name, session.pid);
-    let has_managed_target = target_lookup.has_match(session.process_name, session.pid);
+    let target_matches = target_lookup.matching_sessions(session.process_name, session.pid);
+    let has_managed_target = target_matches.has_match();
     let target_identity =
         target_identity_for_session(match_kind, session.process_name, session.pid);
     let mut key = None;
@@ -499,15 +634,7 @@ fn apply_plan_to_session(
         result.had_failures = true;
         if managed {
             result.keep_active_session(session, key);
-            set_target_states_for_session(
-                result,
-                target_lookup,
-                session.process_name,
-                session.pid,
-                target_identity,
-                true,
-                true,
-            );
+            set_target_states_for_session(result, target_matches, target_identity, true, true);
         }
         return;
     };
@@ -520,9 +647,7 @@ fn apply_plan_to_session(
                     }
                     set_target_states_for_session(
                         result,
-                        target_lookup,
-                        session.process_name,
-                        session.pid,
+                        target_matches,
                         target_identity,
                         desired_mute,
                         allow_unmuted_target_update,
@@ -539,15 +664,7 @@ fn apply_plan_to_session(
         result.had_failures = true;
         if managed {
             result.keep_active_session(session, key);
-            set_target_states_for_session(
-                result,
-                target_lookup,
-                session.process_name,
-                session.pid,
-                target_identity,
-                true,
-                true,
-            );
+            set_target_states_for_session(result, target_matches, target_identity, true, true);
         }
         return;
     }
@@ -557,9 +674,7 @@ fn apply_plan_to_session(
     }
     set_target_states_for_session(
         result,
-        target_lookup,
-        session.process_name,
-        session.pid,
+        target_matches,
         target_identity,
         mute,
         allow_unmuted_target_update,
@@ -586,9 +701,7 @@ fn target_identity_for_session<'a>(
 
 fn set_target_states_for_session(
     result: &mut PlanApplyResult,
-    target_lookup: &ManagedTargetLookup<'_>,
-    process_name: &str,
-    pid: u32,
+    target_matches: TargetIdentityMatches<'_>,
     fallback_identity: Option<TargetMuteIdentity<'_>>,
     muted: bool,
     allow_unmuted_update: bool,
@@ -598,7 +711,7 @@ fn set_target_states_for_session(
     }
 
     let mut updated_persisted_target = false;
-    for identity in target_lookup.matching_sessions(process_name, pid) {
+    for identity in target_matches {
         result.set_target_state(identity, muted);
         updated_persisted_target = true;
     }
@@ -967,6 +1080,34 @@ mod tests {
     }
 
     #[test]
+    fn managed_target_lookup_prefilters_pid_targets() {
+        let mut managed = crate::config::TargetProcess::for_pid("game.exe", 42).unwrap();
+        managed.managed_muted = true;
+        let mut inactive = crate::config::TargetProcess::for_pid("chat.exe", 7).unwrap();
+        inactive.managed_muted = false;
+        let targets = [inactive, managed];
+        let lookup = ManagedTargetLookup::new(&targets);
+
+        assert!(lookup.may_include_pid(42));
+        assert!(!lookup.may_include_pid(7));
+        assert!(lookup.has_match("game.exe", 42));
+        assert!(!lookup.has_match("other.exe", 42));
+    }
+
+    #[test]
+    fn managed_process_name_targets_require_process_names_for_all_pids() {
+        let mut target = crate::config::TargetProcess::new("game.exe").unwrap();
+        target.managed_muted = true;
+        let targets = [target];
+        let lookup = ManagedTargetLookup::new(&targets);
+
+        assert!(lookup.may_include_pid(42));
+        assert!(lookup.may_include_pid(7));
+        assert!(lookup.has_match("game.exe", 42));
+        assert!(!lookup.has_match("chat.exe", 42));
+    }
+
+    #[test]
     fn managed_target_lookup_returns_all_matching_persisted_targets() {
         let mut process_target = crate::config::TargetProcess::new("game.exe").unwrap();
         process_target.managed_muted = true;
@@ -1022,6 +1163,49 @@ mod tests {
     }
 
     #[test]
+    fn target_mute_updates_stay_sorted_for_binary_lookup() {
+        let mut result = PlanApplyResult::new(0);
+
+        result.set_target_state(
+            TargetMuteIdentity {
+                process_name: "game.exe",
+                pid: None,
+            },
+            false,
+        );
+        result.set_target_state(
+            TargetMuteIdentity {
+                process_name: "chat.exe",
+                pid: Some(7),
+            },
+            true,
+        );
+        result.set_target_state(
+            TargetMuteIdentity {
+                process_name: "game.exe",
+                pid: None,
+            },
+            true,
+        );
+
+        assert_eq!(
+            result.target_updates,
+            vec![
+                TargetMuteStateUpdate {
+                    process_name: "chat.exe".to_owned(),
+                    pid: Some(7),
+                    muted: true,
+                },
+                TargetMuteStateUpdate {
+                    process_name: "game.exe".to_owned(),
+                    pid: None,
+                    muted: true,
+                },
+            ]
+        );
+    }
+
+    #[test]
     fn non_foreground_same_name_session_does_not_clear_persisted_target_mute() {
         let mut target = crate::config::TargetProcess::new("game.exe").unwrap();
         target.managed_muted = true;
@@ -1031,9 +1215,7 @@ mod tests {
 
         set_target_states_for_session(
             &mut result,
-            &lookup,
-            "game.exe",
-            10,
+            lookup.matching_sessions("game.exe", 10),
             Some(TargetMuteIdentity {
                 process_name: "game.exe",
                 pid: None,
@@ -1055,9 +1237,7 @@ mod tests {
 
         set_target_states_for_session(
             &mut result,
-            &lookup,
-            "game.exe",
-            20,
+            lookup.matching_sessions("game.exe", 20),
             Some(TargetMuteIdentity {
                 process_name: "game.exe",
                 pid: None,
