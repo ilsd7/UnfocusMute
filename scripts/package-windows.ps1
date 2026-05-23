@@ -350,18 +350,19 @@ try {
             [System.IO.File]::WriteAllText((Join-Path $DocsStage $DocTextName), $Readme, $Utf8NoBom)
         }
     }
+    $ExpectedExeEntry = "$PackageName/$ExeFileName"
     $RequiredEntries = @(
-        $ExeFileName,
-        "LICENSE",
-        "THIRD_PARTY_NOTICES.md",
-        "docs/README_ko.txt"
+        $ExpectedExeEntry,
+        "$PackageName/LICENSE",
+        "$PackageName/THIRD_PARTY_NOTICES.md",
+        "$PackageName/docs/README_ko.txt"
     )
     if ($DocFiles.Count -gt 0) {
-        $RequiredEntries += $DocFiles | ForEach-Object { "docs/$([System.IO.Path]::ChangeExtension($_.Name, '.txt'))" }
+        $RequiredEntries += $DocFiles | ForEach-Object { "$PackageName/docs/$([System.IO.Path]::ChangeExtension($_.Name, '.txt'))" }
     }
 
-    Compress-Archive -Path (Join-Path $Stage "*") -DestinationPath $TempZip -CompressionLevel Optimal
-    Assert-PackageZip $TempZip $ExeFileName $RequiredEntries
+    Compress-Archive -Path $Stage -DestinationPath $TempZip -CompressionLevel Optimal
+    Assert-PackageZip $TempZip $ExpectedExeEntry $RequiredEntries
     Write-ZipChecksum $TempZip $TempChecksum $ZipFileName
     Assert-ZipChecksum $TempZip $TempChecksum $ZipFileName
 
