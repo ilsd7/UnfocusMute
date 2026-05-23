@@ -50,10 +50,10 @@ O mudo e a restauração se aplicam apenas às sessões que o UnfocusMute altero
 
 - Silencia automaticamente apps registrados enquanto estão em segundo plano e restaura o áudio quando voltam ao primeiro plano.
 - Registra alvos pela lista de apps em execução ou digitando um nome como `game.exe`.
-- Suporta alvos por `.exe`, alvos por PID da instância atual e `Mostrar PIDs`.
-- Notas por app, estado de mudo em tempo real por alvo, `Pausar monitoramento` e `Retomar monitoramento` por app.
+- Suporta alvos por `.exe`, alvos por PID da instância atual e `Ver PID`.
+- Notas por app, estado de mudo em tempo real por alvo, `Pausar` e `Retomar` por app.
 - Execução na bandeja, resumo de status na bandeja, pausa global, acesso à pasta de configuração e proteção contra instâncias duplicadas.
-- Pequeno ícone do GitHub no canto inferior esquerdo para abrir a página do projeto no navegador padrão. Ao passar o cursor, ele mostra a URL do projeto.
+- O botão de configurações no canto inferior esquerdo reúne opções de comportamento, idioma, pasta de configuração, GitHub e versão.
 - Escolha de idioma no primeiro uso e troca imediata dentro do app entre English/한국어/日本語/简体中文/Español/Français/Português/हिन्दी/العربية.
 - Configurações salvas localmente em `%APPDATA%\UnfocusMute\config.json`.
 
@@ -88,9 +88,9 @@ Assim, se houver várias instâncias do mesmo `.exe` em execução ao mesmo temp
 2. Escolha o idioma na tela de primeiro uso. O padrão é inglês.
 3. Inicie o jogo ou app que você quer silenciar quando estiver em segundo plano.
 4. Abra a lista `Pesquisar processo` ou digite uma busca, escolha um item e clique em `Adicionar seleção`.
-5. Se precisar registrar apenas um PID específico, clique em `Mostrar PIDs` e escolha a entrada individual. Alvos por PID valem só para a instância em execução; se o app reiniciar com outro PID, selecione novamente.
-6. Clique com o botão direito em um app registrado para editar sua nota ou usar `Pausar monitoramento`.
-7. Clique no pequeno ícone `GitHub` no canto inferior esquerdo para abrir a página do projeto no navegador padrão. Ao passar o cursor, ele mostra a URL do projeto.
+5. Se precisar registrar apenas um PID específico, clique em `Ver PID` e escolha a entrada individual. Alvos por PID valem só para a instância em execução; se o app reiniciar com outro PID, selecione novamente.
+6. Clique com o botão direito em um app registrado para editar sua nota ou usar `Pausar`.
+7. Abra `Configurações` no canto inferior esquerdo para alterar opções de comportamento.
 8. Ao fechar a janela, o app continua rodando na bandeja e monitorando. Use `Sair` para encerrar completamente.
 
 ## Usar notas em apps registrados
@@ -119,7 +119,9 @@ Se você não souber qual nome registrar, confira no Gerenciador de Tarefas o ex
 
 ## Segurança e privacidade
 
-UnfocusMute é um app totalmente local. Tudo acontece dentro do seu PC, e ele funciona normalmente mesmo sem conexão com a internet. O ícone do GitHub só abre o navegador padrão quando você clica nele.
+UnfocusMute é um app totalmente local. Tudo acontece dentro do seu PC, e ele funciona normalmente mesmo sem conexão com a internet.
+
+Como exceção, quando você clica no botão do GitHub em Configurações, a página do GitHub deste projeto é aberta no navegador padrão.
 
 **O que ele salva:** Nomes de processos registrados, PIDs opcionais, notas que você escrever, idioma escolhido, posição da janela e opções de inicialização.
 Esses dados ficam apenas em `%APPDATA%\UnfocusMute\config.json` e não são enviados para fora.

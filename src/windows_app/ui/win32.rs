@@ -1,4 +1,5 @@
 use super::ConfigFileStamp;
+use super::theme::{logical_px, px};
 use crate::config::cached_config_file_path;
 use crate::windows_app::error::{Context, Result, message_error};
 use std::borrow::Cow;
@@ -16,9 +17,9 @@ use windows::Win32::UI::WindowsAndMessaging::{
     BM_GETCHECK, BM_SETCHECK, BS_AUTOCHECKBOX, BS_DEFPUSHBUTTON, BS_MULTILINE, BS_PUSHBUTTON,
     CB_ADDSTRING, CB_INITSTORAGE, CB_SETEDITSEL, CreateWindowExW, GetMessageW, GetSystemMetrics,
     GetWindowTextLengthW, GetWindowTextW, HICON, HMENU, IDI_APPLICATION, IMAGE_ICON, LB_ADDSTRING,
-    LB_INITSTORAGE, LR_DEFAULTCOLOR, LR_SHARED, LoadIconW, LoadImageW, MSG, SM_CXICON, SM_CXSMICON,
-    SM_CYICON, SM_CYSMICON, SendMessageW, SetWindowTextW, UnregisterClassW, WINDOW_EX_STYLE,
-    WINDOW_STYLE, WS_CHILD, WS_CLIPSIBLINGS, WS_TABSTOP, WS_VISIBLE,
+    LB_INITSTORAGE, LR_DEFAULTCOLOR, LR_SHARED, LoadIconW, LoadImageW, MSG, MoveWindow, SM_CXICON,
+    SM_CXSMICON, SM_CYICON, SM_CYSMICON, SendMessageW, SetWindowTextW, UnregisterClassW,
+    WINDOW_EX_STYLE, WINDOW_STYLE, WS_CHILD, WS_CLIPSIBLINGS, WS_TABSTOP, WS_VISIBLE,
 };
 use windows::core::{PCWSTR, w};
 
@@ -166,32 +167,6 @@ pub(super) unsafe fn create_primary_button(
 }
 
 #[allow(clippy::too_many_arguments)]
-pub(super) unsafe fn create_checkbox(
-    parent: HWND,
-    instance: HINSTANCE,
-    text: &str,
-    x: i32,
-    y: i32,
-    width: i32,
-    height: i32,
-    id: i32,
-) -> Result<HWND> {
-    unsafe {
-        create_checkbox_with_style(
-            parent,
-            instance,
-            text,
-            x,
-            y,
-            width,
-            height,
-            id,
-            WINDOW_STYLE(0),
-        )
-    }
-}
-
-#[allow(clippy::too_many_arguments)]
 pub(super) unsafe fn create_multiline_checkbox(
     parent: HWND,
     instance: HINSTANCE,
@@ -302,10 +277,10 @@ unsafe fn create_control_with_wide_text(
             class,
             PCWSTR(text.as_ptr()),
             style | WS_CLIPSIBLINGS,
-            x,
-            y,
-            width,
-            height,
+            px(x),
+            px(y),
+            px(width),
+            px(height),
             Some(parent),
             Some(HMENU(id as isize as *mut c_void)),
             Some(instance),
@@ -379,10 +354,21 @@ unsafe fn measure_wide_text_width(
     let _selected = unsafe { SelectedGdiObject::select(dc.handle(), font) };
     let mut size = SIZE::default();
     if unsafe { GetTextExtentPoint32W(dc.handle(), wide, &mut size).as_bool() } {
-        size.cx
+        logical_px(size.cx)
     } else {
         fallback_width
     }
+}
+
+pub(super) unsafe fn move_window(
+    hwnd: HWND,
+    x: i32,
+    y: i32,
+    width: i32,
+    height: i32,
+    repaint: bool,
+) -> bool {
+    unsafe { MoveWindow(hwnd, px(x), px(y), px(width), px(height), repaint).is_ok() }
 }
 
 pub(super) unsafe fn window_text_into(hwnd: HWND, output: &mut String) {
@@ -567,10 +553,18 @@ pub(super) unsafe fn load_tray_icon(instance: HINSTANCE) -> HICON {
 }
 
 pub(super) unsafe fn load_github_icon(instance: HINSTANCE, size: i32) -> HICON {
+    unsafe { load_resource_icon(instance, 2, size) }
+}
+
+pub(super) unsafe fn load_settings_icon(instance: HINSTANCE, size: i32) -> HICON {
+    unsafe { load_resource_icon(instance, 3, size) }
+}
+
+unsafe fn load_resource_icon(instance: HINSTANCE, id: u16, size: i32) -> HICON {
     unsafe {
         LoadImageW(
             Some(instance),
-            int_resource(2),
+            int_resource(id),
             IMAGE_ICON,
             size,
             size,

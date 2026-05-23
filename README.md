@@ -50,10 +50,10 @@ Mute and restore actions apply only to sessions UnfocusMute changed itself. Sess
 
 - Automatically mutes registered apps while they are in the background and restores them when they return to the foreground.
 - Register targets from the running app list or by typing a name such as `game.exe`.
-- Supports `.exe` targets, current-instance PID targets, and `Show PIDs`.
-- Per-app notes, per-target live mute state, per-app `Pause monitoring`, and `Resume monitoring`.
+- Supports `.exe` targets, current-instance PID targets, and `PID view`.
+- Per-app notes, per-target live mute state, per-app `Pause`, and `Resume`.
 - Tray resident behavior, tray status summaries, global pause, config folder access, and single-instance protection.
-- Small GitHub icon opens the project page in your default browser when clicked. Hovering over it shows the project URL.
+- The lower-left settings button collects behavior options, language, config-folder access, GitHub, and version info.
 - Choose a language on first run, then switch in-app between English/한국어/日本語/简体中文/Español/Français/Português/हिन्दी/العربية.
 - Settings are stored locally at `%APPDATA%\UnfocusMute\config.json`.
 
@@ -88,9 +88,9 @@ If several instances of the same `.exe` are running at the same time, a specific
 2. Choose a language on the first-run language screen. The default is English.
 3. Start the game or app you want to mute when it is in the background.
 4. Open the `Search process` list or type a search term, choose an item, and click `Add selected`.
-5. If you need to register only one specific PID, click `Show PIDs` and choose the individual entry. PID targets apply only to the currently running instance, so choose it again if the app restarts and receives a different PID.
-6. Right-click a registered app to edit its note or use `Pause monitoring`.
-7. Click the small `GitHub` icon in the lower-left corner to open the GitHub project page in your default browser. Hovering over it shows the project URL.
+5. If you need to register only one specific PID, click `PID view` and choose the individual entry. PID targets apply only to the currently running instance, so choose it again if the app restarts and receives a different PID.
+6. Right-click a registered app to edit its note or use `Pause`.
+7. Open `Settings` from the lower-left corner to change behavior options.
 8. Closing the window leaves the app running in the tray. Click `Quit` to exit completely.
 
 ## Using Notes for Registered Apps
@@ -119,7 +119,9 @@ If you are not sure what to register, check the `.exe` name in Task Manager.
 
 ## Security and Privacy
 
-UnfocusMute is a fully local app. Everything happens on your current PC, and it works normally without an internet connection. The GitHub icon opens your default browser only when you click it.
+UnfocusMute is a fully local app. Everything happens on your current PC, and it works normally without an internet connection.
+
+As an exception, when you click the GitHub button in Settings, this project's GitHub page opens in your default browser.
 
 **What it stores:** Registered process names, optional PIDs, notes you write, selected language, window position, and startup options.
 This data is stored only in `%APPDATA%\UnfocusMute\config.json` and is not sent anywhere.

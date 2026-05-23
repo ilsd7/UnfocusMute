@@ -50,10 +50,10 @@ La mise en sourdine et la restauration ne s’appliquent qu’aux sessions qu’
 
 - Met automatiquement en sourdine les applications enregistrées lorsqu’elles sont en arrière-plan et réactive l’audio à leur retour au premier plan.
 - Enregistrement depuis la liste des applications en cours ou en saisissant un nom comme `game.exe`.
-- Prend en charge les cibles par `.exe`, les cibles par PID de l’instance en cours et `Afficher les PID`.
-- Notes par application, état de sourdine en direct par cible, `Mettre la surveillance en pause` et `Reprendre la surveillance` par application.
+- Prend en charge les cibles par `.exe`, les cibles par PID de l’instance en cours et `Vue PID`.
+- Notes par application, état de sourdine en direct par cible, `Pause` et `Reprendre` par application.
 - Présence dans la zone de notification, résumé d’état dans la zone de notification, pause globale, accès au dossier de configuration et protection contre les instances multiples.
-- Petite icône GitHub en bas à gauche pour ouvrir la page du projet dans le navigateur par défaut. Le survol affiche l’URL du projet.
+- Le bouton Réglages en bas à gauche regroupe comportement, langue, dossier de configuration, GitHub et version.
 - Choix de la langue au premier démarrage, puis changement immédiat dans l’application entre English/한국어/日本語/简体中文/Español/Français/Português/हिन्दी/العربية.
 - Les réglages sont stockés localement dans `%APPDATA%\UnfocusMute\config.json`.
 
@@ -88,9 +88,9 @@ Si plusieurs instances du même `.exe` sont ouvertes en même temps, un PID pré
 2. Choisissez la langue au premier démarrage. La valeur par défaut est l’anglais.
 3. Lancez le jeu ou l’application à mettre en sourdine lorsqu’il passe en arrière-plan.
 4. Ouvrez la liste `Rechercher un processus` ou saisissez un terme de recherche, choisissez un élément, puis cliquez sur `Ajouter la sélection`.
-5. Si vous devez enregistrer seulement un PID précis, cliquez sur `Afficher les PID` et choisissez l’entrée concernée. Une cible par PID ne vaut que pour l’instance actuellement ouverte ; si l’application redémarre avec un autre PID, sélectionnez-la à nouveau.
-6. Faites un clic droit sur une application enregistrée pour modifier sa note ou utiliser `Mettre la surveillance en pause`.
-7. Cliquez sur la petite icône `GitHub` en bas à gauche pour ouvrir la page du projet dans le navigateur par défaut. Le survol affiche l’URL du projet.
+5. Si vous devez enregistrer seulement un PID précis, cliquez sur `Vue PID` et choisissez l’entrée concernée. Une cible par PID ne vaut que pour l’instance actuellement ouverte ; si l’application redémarre avec un autre PID, sélectionnez-la à nouveau.
+6. Faites un clic droit sur une application enregistrée pour modifier sa note ou utiliser `Pause`.
+7. Ouvrez `Réglages` en bas à gauche pour modifier le comportement.
 8. Fermer la fenêtre laisse l’application dans la zone de notification, où elle continue de surveiller les cibles. Cliquez sur `Quitter` pour l’arrêter complètement.
 
 ## Utiliser les notes des applications enregistrées
@@ -119,7 +119,9 @@ Si vous ne savez pas quel nom enregistrer, vérifiez dans le Gestionnaire des t�
 
 ## Sécurité et confidentialité
 
-UnfocusMute est une application entièrement locale. Tout se passe sur votre PC, et l’application fonctionne normalement même sans connexion internet. L’icône GitHub ouvre votre navigateur par défaut uniquement lorsque vous cliquez dessus.
+UnfocusMute est une application entièrement locale. Tout se passe sur votre PC, et l’application fonctionne normalement même sans connexion internet.
+
+Par exception, lorsque vous cliquez sur le bouton GitHub dans Réglages, la page GitHub du projet s’ouvre dans votre navigateur par défaut.
 
 **Ce qui est stocké :** Les noms de processus enregistrés, les PID facultatifs, les notes que vous écrivez, la langue choisie, la position de la fenêtre et les options de démarrage.
 Ces données sont stockées uniquement dans `%APPDATA%\UnfocusMute\config.json` et ne sont envoyées nulle part.

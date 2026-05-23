@@ -1,7 +1,7 @@
 use crate::config::{
-    AppConfig, AppConfigLoad, TargetProcess, WindowPosition, cached_config_file_path,
-    is_normalized_process_name, is_supported_normalized_target_process_name,
-    normalize_manual_process_name, normalize_manual_process_name_cow,
+    AppConfig, AppConfigLoad, TargetProcess, WindowPosition, is_normalized_process_name,
+    is_supported_normalized_target_process_name, normalize_manual_process_name,
+    normalize_manual_process_name_cow,
 };
 use crate::engine::{AudioSessionKey, TargetMatcher};
 use crate::i18n::{Language, Strings};
@@ -11,7 +11,6 @@ use crate::windows_app::process::{self, ProcessInfo};
 use crate::windows_app::startup;
 use std::collections::HashSet;
 use std::ffi::c_void;
-use std::fs;
 use std::io::ErrorKind;
 use std::mem::size_of;
 use std::sync::atomic::{AtomicBool, AtomicIsize, Ordering};
@@ -36,8 +35,8 @@ use windows::Win32::UI::Controls::{
 };
 use windows::Win32::UI::Input::KeyboardAndMouse::{EnableWindow, SetFocus, VK_RETURN};
 use windows::Win32::UI::Shell::{
-    NIF_ICON, NIF_MESSAGE, NIF_TIP, NIM_ADD, NIM_DELETE, NIM_MODIFY, NOTIFYICONDATAW,
-    Shell_NotifyIconW, ShellExecuteW,
+    DefSubclassProc, NIF_ICON, NIF_MESSAGE, NIF_TIP, NIM_ADD, NIM_DELETE, NIM_MODIFY,
+    NOTIFYICONDATAW, RemoveWindowSubclass, SetWindowSubclass, Shell_NotifyIconW,
 };
 use windows::Win32::UI::WindowsAndMessaging::{
     AppendMenuW, BS_OWNERDRAW, CB_GETCURSEL, CB_RESETCONTENT, CB_SETCURSEL, CB_SHOWDROPDOWN,
@@ -48,19 +47,19 @@ use windows::Win32::UI::WindowsAndMessaging::{
     GetWindowRect, HICON, HMENU, ICON_BIG, ICON_SMALL, IDC_ARROW, IDC_HAND, IsDialogMessageW,
     IsWindowVisible, KillTimer, LB_GETCURSEL, LB_RESETCONTENT, LB_SETCURSEL, LBN_DBLCLK,
     LBN_SELCHANGE, LBS_HASSTRINGS, LBS_NOINTEGRALHEIGHT, LBS_NOTIFY, LBS_OWNERDRAWFIXED,
-    LoadCursorW, MB_ICONINFORMATION, MB_ICONWARNING, MB_OK, MF_CHECKED, MF_GRAYED, MF_SEPARATOR,
-    MF_STRING, MSG, MessageBoxW, MoveWindow, PostMessageW, PostQuitMessage, RegisterClassW,
-    RegisterWindowMessageW, SM_CXSCREEN, SM_CXVIRTUALSCREEN, SM_CXVSCROLL, SM_CYSCREEN,
-    SM_CYVIRTUALSCREEN, SM_XVIRTUALSCREEN, SM_YVIRTUALSCREEN, SPI_GETWORKAREA, SW_HIDE, SW_RESTORE,
-    SW_SHOW, SYSTEM_PARAMETERS_INFO_UPDATE_FLAGS, SendMessageW, SetCursor, SetForegroundWindow,
-    SetTimer, SetWindowLongPtrW, ShowWindow, SystemParametersInfoW, TPM_NONOTIFY, TPM_RETURNCMD,
+    LoadCursorW, MB_ICONINFORMATION, MB_ICONWARNING, MB_OK, MF_GRAYED, MF_SEPARATOR, MF_STRING,
+    MSG, MessageBoxW, PostMessageW, PostQuitMessage, RegisterClassW, RegisterWindowMessageW,
+    SM_CXSCREEN, SM_CXVIRTUALSCREEN, SM_CXVSCROLL, SM_CYSCREEN, SM_CYVIRTUALSCREEN,
+    SM_XVIRTUALSCREEN, SM_YVIRTUALSCREEN, SPI_GETWORKAREA, SW_HIDE, SW_RESTORE, SW_SHOW,
+    SYSTEM_PARAMETERS_INFO_UPDATE_FLAGS, SendMessageW, SetCursor, SetForegroundWindow, SetTimer,
+    SetWindowLongPtrW, ShowWindow, SystemParametersInfoW, TPM_NONOTIFY, TPM_RETURNCMD,
     TPM_RIGHTBUTTON, TRACK_POPUP_MENU_FLAGS, TrackPopupMenu, TranslateMessage, WINDOW_EX_STYLE,
     WINDOW_STYLE, WINEVENT_OUTOFCONTEXT, WM_CLOSE, WM_COMMAND, WM_CONTEXTMENU, WM_CREATE,
-    WM_CTLCOLOREDIT, WM_CTLCOLORLISTBOX, WM_CTLCOLORSTATIC, WM_DESTROY, WM_DRAWITEM, WM_KEYDOWN,
-    WM_LBUTTONDBLCLK, WM_LBUTTONDOWN, WM_MEASUREITEM, WM_MOVE, WM_NCCREATE, WM_NCDESTROY, WM_PAINT,
-    WM_RBUTTONUP, WM_SETCURSOR, WM_SETFONT, WM_SETICON, WM_SETREDRAW, WM_SHOWWINDOW, WM_TIMER,
-    WNDCLASSW, WS_BORDER, WS_CAPTION, WS_CHILD, WS_CLIPCHILDREN, WS_MINIMIZEBOX, WS_OVERLAPPED,
-    WS_SYSMENU, WS_TABSTOP, WS_VISIBLE, WS_VSCROLL,
+    WM_CTLCOLOREDIT, WM_CTLCOLORLISTBOX, WM_CTLCOLORSTATIC, WM_DESTROY, WM_DRAWITEM,
+    WM_EXITSIZEMOVE, WM_KEYDOWN, WM_LBUTTONDBLCLK, WM_LBUTTONDOWN, WM_MEASUREITEM, WM_MOVE,
+    WM_NCCREATE, WM_NCDESTROY, WM_PAINT, WM_RBUTTONUP, WM_SETCURSOR, WM_SETFONT, WM_SETICON,
+    WM_SETREDRAW, WM_SHOWWINDOW, WM_TIMER, WNDCLASSW, WS_BORDER, WS_CAPTION, WS_CHILD,
+    WS_CLIPCHILDREN, WS_MINIMIZEBOX, WS_OVERLAPPED, WS_SYSMENU, WS_TABSTOP, WS_VISIBLE, WS_VSCROLL,
 };
 use windows::core::{PCWSTR, w};
 
@@ -68,6 +67,7 @@ mod constants;
 mod controls;
 mod language_prompt;
 mod process_choice;
+mod settings_window;
 mod target_note_prompt;
 mod theme;
 mod win32;
@@ -76,15 +76,16 @@ use constants::*;
 use controls::Controls;
 use language_prompt::prompt_initial_language;
 use process_choice::{ProcessChoice, search_terms};
+use settings_window::{SettingsPreferences, prompt_settings};
 use target_note_prompt::prompt_target_note;
-use theme::{AppTheme, OwnedBrush, UiFont};
+use theme::{AppTheme, OwnedBrush, UiFont, px};
 use win32::{
     WindowClassRegistration, add_combo_item_with_buffer, add_list_item_with_buffer,
-    copy_wide_fixed, create_button, create_checkbox, create_control, create_multiline_checkbox,
-    create_primary_button, current_config_stamp, get_message, hiword, is_checked, load_app_icon,
-    load_github_icon, load_tray_icon, loword, measure_text_width, path_to_wide,
-    reserve_combo_items, reserve_list_items, set_checkbox, set_combo_edit_caret, set_text,
-    storage_bytes_hint, to_wide, window_text_into, write_wide_buffer,
+    copy_wide_fixed, create_button, create_control, create_primary_button, current_config_stamp,
+    get_message, hiword, load_app_icon, load_github_icon, load_settings_icon, load_tray_icon,
+    loword, measure_text_width, move_window, reserve_combo_items, reserve_list_items,
+    set_combo_edit_caret, set_text, storage_bytes_hint, to_wide, window_text_into,
+    write_wide_buffer,
 };
 
 static FOREGROUND_EVENT_HWND: AtomicIsize = AtomicIsize::new(0);
@@ -103,17 +104,11 @@ const HEADER_FULL_WIDTH: i32 = HEADER_CONTENT_RIGHT - HEADER_LEFT_X;
 const HEADER_TITLE_Y: i32 = 24;
 const HEADER_SUBTITLE_Y: i32 = 56;
 const HEADER_DETAIL_Y: i32 = 82;
-const RESTORE_CHECK_TEXT_PADDING: i32 = 28;
-const RESTORE_CHECK_HEIGHT: i32 = 26;
-const RESTORE_CHECK_TALL_HEIGHT: i32 = 44;
 const TARGET_PANEL_TOP: i32 = 112;
 const TARGET_PANEL_BOTTOM: i32 = 432;
 const TARGET_LIST_Y: i32 = TARGET_PANEL_TOP + 4;
 const TARGET_LIST_X: i32 = 44 - LEFT_EDGE_TRIM + 2;
-const TARGET_LIST_HEIGHT: i32 = 270;
-const REMOVE_BUTTON_Y: i32 = 392;
-const RESTORE_CHECK_Y: i32 = 682;
-const RESTORE_CHECK_TALL_Y: i32 = 672;
+const TARGET_LIST_HEIGHT: i32 = TARGET_PANEL_BOTTOM - TARGET_LIST_Y - 8;
 const TARGET_ROW_HEIGHT: i32 = 36;
 const PROCESS_PICKER_HINT_Y: i32 = 452;
 const PROCESS_PICKER_COMBO_Y: i32 = 480;
@@ -125,30 +120,20 @@ const MANUAL_PROCESS_EDIT_Y: i32 = MANUAL_PROCESS_ROW_Y + 4;
 const MANUAL_PROCESS_EDIT_WIDTH: i32 = 240;
 const MANUAL_PROCESS_LABEL_WIDTH: i32 = 260;
 const MANUAL_PROCESS_LABEL_GAP: i32 = 20;
-const SETTINGS_PANEL_TOP: i32 = 596;
-const SETTINGS_PANEL_BOTTOM: i32 = 730;
-const SETTINGS_LANGUAGE_BUTTON_Y: i32 = 618;
-const SETTINGS_LANGUAGE_BUTTON_HEIGHT: i32 = 30;
-const START_MINIMIZED_CHECK_Y: i32 = 618;
-const LAUNCH_STARTUP_CHECK_Y: i32 = 652;
-const OPEN_CONFIG_BUTTON_Y: i32 = 678;
-const FOOTER_BUTTON_Y: i32 = 754;
+const FOOTER_BUTTON_Y: i32 = 610;
 const GITHUB_PAGE_URL: &str = "https://github.com/ilsd7/UnfocusMute";
-const GITHUB_LINK_TEXT: &str = "GitHub";
-const GITHUB_ICON_X: i32 = HEADER_LEFT_X;
-const GITHUB_LINK_Y: i32 = FOOTER_BUTTON_Y + 6;
-const GITHUB_LINK_HEIGHT: i32 = 18;
-const GITHUB_ICON_SIZE: i32 = 16;
-const GITHUB_ICON_TEXT_GAP: i32 = 6;
-const GITHUB_ICON_Y: i32 = GITHUB_LINK_Y + (GITHUB_LINK_HEIGHT - GITHUB_ICON_SIZE) / 2;
-const GITHUB_LINK_X: i32 = GITHUB_ICON_X + GITHUB_ICON_SIZE + GITHUB_ICON_TEXT_GAP;
-const GITHUB_LINK_HIT_TOP: i32 = 1;
-const GITHUB_LINK_HIT_BOTTOM: i32 = 15;
-const GITHUB_TOOLTIP_HEIGHT: i32 = 24;
-const GITHUB_TOOLTIP_X_PADDING: i32 = 8;
-const GITHUB_TOOLTIP_Y_GAP: i32 = 6;
+const SETTINGS_ICON_SIZE: i32 = 16;
+const SETTINGS_BUTTON_X: i32 = HEADER_LEFT_X;
+const SETTINGS_BUTTON_Y: i32 = FOOTER_BUTTON_Y + 9;
+const SETTINGS_BUTTON_HEIGHT: i32 = 18;
+const SETTINGS_BUTTON_TEXT_GAP: i32 = 6;
+const SETTINGS_BUTTON_ICON_Y: i32 =
+    SETTINGS_BUTTON_Y + (SETTINGS_BUTTON_HEIGHT - SETTINGS_ICON_SIZE) / 2;
+const TARGET_LIST_SUBCLASS_ID: usize = 1;
 const LB_ITEMFROMPOINT_MESSAGE: u32 = 0x01A9;
 const LB_ITEMFROMPOINT_OUTSIDE_MASK: isize = 0x0001_0000;
+const LB_GETITEMRECT_MESSAGE: u32 = 0x0198;
+const LB_ERR: isize = -1;
 const PID_DISPLAY_DECORATION_UTF16_UNITS: usize = " (PID )".len();
 const DRAW_TEXT_STACK_BUFFER_LEN: usize = 256;
 const APP_VERSION: &str = env!("CARGO_PKG_VERSION");
@@ -189,7 +174,8 @@ unsafe fn run_window() -> Result<()> {
     let instance = HINSTANCE(module.0);
     let icon = unsafe { load_app_icon(instance) };
     let tray_icon = unsafe { load_tray_icon(instance) };
-    let github_icon = unsafe { load_github_icon(instance, GITHUB_ICON_SIZE) };
+    let github_icon = unsafe { load_github_icon(instance, px(SETTINGS_ICON_SIZE)) };
+    let settings_icon = unsafe { load_settings_icon(instance, px(SETTINGS_ICON_SIZE)) };
     let cursor = unsafe { LoadCursorW(None, IDC_ARROW).context("load cursor")? };
     let background = OwnedBrush::solid(PAGE_COLOR);
 
@@ -257,6 +243,8 @@ unsafe fn run_window() -> Result<()> {
     let forced_minimized = std::env::args_os().any(|arg| arg == "--minimized");
     let start_hidden = should_start_hidden(first_run, forced_minimized, config.start_minimized);
     let WindowPosition { x, y } = initial_window_position(&config);
+    let window_width = px(WINDOW_WIDTH);
+    let window_height = px(WINDOW_HEIGHT);
 
     let title = to_wide(config.language.strings().app_title);
     let taskbar_created_message = unsafe { RegisterWindowMessageW(w!("TaskbarCreated")) };
@@ -265,6 +253,7 @@ unsafe fn run_window() -> Result<()> {
         icon,
         tray_icon,
         github_icon,
+        settings_icon,
         taskbar_created_message,
         initial_issues,
     )?);
@@ -277,8 +266,8 @@ unsafe fn run_window() -> Result<()> {
             MAIN_WINDOW_STYLE,
             x,
             y,
-            WINDOW_WIDTH,
-            WINDOW_HEIGHT,
+            window_width,
+            window_height,
             None,
             None,
             Some(instance),
@@ -586,12 +575,14 @@ fn should_start_hidden(first_run: bool, forced_minimized: bool, start_minimized:
 fn initial_window_position(config: &AppConfig) -> WindowPosition {
     config
         .window_position
-        .filter(|position| window_position_is_visible(*position, WINDOW_WIDTH, WINDOW_HEIGHT))
+        .filter(|position| {
+            window_position_is_visible(*position, px(WINDOW_WIDTH), px(WINDOW_HEIGHT))
+        })
         .unwrap_or_else(centered_window_position)
 }
 
 fn centered_window_position() -> WindowPosition {
-    centered_position(WINDOW_WIDTH, WINDOW_HEIGHT)
+    centered_position(px(WINDOW_WIDTH), px(WINDOW_HEIGHT))
 }
 
 fn centered_position(width: i32, height: i32) -> WindowPosition {
@@ -612,10 +603,11 @@ fn window_position_is_visible(position: WindowPosition, width: i32, height: i32)
     let screen = virtual_screen_rect();
     let right = position.x.saturating_add(width);
     let bottom = position.y.saturating_add(height);
-    right > screen.left.saturating_add(MIN_VISIBLE_EDGE)
-        && position.x < screen.right.saturating_sub(MIN_VISIBLE_EDGE)
-        && bottom > screen.top.saturating_add(MIN_VISIBLE_EDGE)
-        && position.y < screen.bottom.saturating_sub(MIN_VISIBLE_EDGE)
+    let min_visible_edge = px(MIN_VISIBLE_EDGE);
+    right > screen.left.saturating_add(min_visible_edge)
+        && position.x < screen.right.saturating_sub(min_visible_edge)
+        && bottom > screen.top.saturating_add(min_visible_edge)
+        && position.y < screen.bottom.saturating_sub(min_visible_edge)
 }
 
 fn primary_work_area_rect() -> RECT {
@@ -696,7 +688,8 @@ struct AppWindow {
     display_text_buffer: String,
     wide_text_buffer: Vec<u16>,
     github_icon: HICON,
-    github_link_hot: bool,
+    settings_icon: HICON,
+    settings_button_hot: bool,
     foreground_process_name_cache: Option<(u32, Option<String>)>,
     processes_loaded: bool,
     last_process_refresh: Instant,
@@ -714,6 +707,7 @@ struct AppWindow {
     target_status_width: i32,
     config_stamp: Option<ConfigFileStamp>,
     next_config_check: Instant,
+    window_position_dirty: bool,
     theme: AppTheme,
     font_applied: bool,
     icon: HICON,
@@ -789,13 +783,12 @@ impl IssueState {
     }
 }
 
-const STATUS_ISSUE_PRIORITY_ORDER: [StatusIssue; 8] = [
+const STATUS_ISSUE_PRIORITY_ORDER: [StatusIssue; 7] = [
     StatusIssue::ConfigSaveFailed,
     StatusIssue::ConfigLoadFailed,
     StatusIssue::StartupUpdateFailed,
     StatusIssue::TimerSetupFailed,
     StatusIssue::TrayIconUnavailable,
-    StatusIssue::OpenConfigFailed,
     StatusIssue::AudioUnavailable,
     StatusIssue::AudioUpdateFailed,
 ];
@@ -810,7 +803,6 @@ enum StatusIssue {
     StartupUpdateFailed,
     TimerSetupFailed,
     TrayIconUnavailable,
-    OpenConfigFailed,
 }
 
 impl StatusIssue {
@@ -870,26 +862,6 @@ mod issue_state_tests {
         assert!(issues.contains(StatusIssue::ConfigLoadFailed));
         assert_eq!(issues.visible(), Some(StatusIssue::ConfigLoadFailed));
     }
-
-    #[test]
-    fn timer_setup_issue_is_prioritized_before_open_config() {
-        let mut issues = IssueState::default();
-
-        issues.set(StatusIssue::OpenConfigFailed);
-        issues.set(StatusIssue::TimerSetupFailed);
-
-        assert_eq!(issues.visible(), Some(StatusIssue::TimerSetupFailed));
-    }
-
-    #[test]
-    fn tray_icon_issue_is_prioritized_before_open_config() {
-        let mut issues = IssueState::default();
-
-        issues.set(StatusIssue::OpenConfigFailed);
-        issues.set(StatusIssue::TrayIconUnavailable);
-
-        assert_eq!(issues.visible(), Some(StatusIssue::TrayIconUnavailable));
-    }
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -902,7 +874,6 @@ struct StatusSnapshot {
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 struct ActionButtonState {
-    remove: bool,
     add_selected: bool,
     add_manual: bool,
 }
@@ -930,6 +901,7 @@ impl AppWindow {
         icon: HICON,
         tray_icon: HICON,
         github_icon: HICON,
+        settings_icon: HICON,
         taskbar_created_message: u32,
         initial_issues: IssueState,
     ) -> Result<Self> {
@@ -953,7 +925,8 @@ impl AppWindow {
             display_text_buffer: String::new(),
             wide_text_buffer: Vec::new(),
             github_icon,
-            github_link_hot: false,
+            settings_icon,
+            settings_button_hot: false,
             foreground_process_name_cache: None,
             processes_loaded: false,
             last_process_refresh: Instant::now(),
@@ -971,6 +944,7 @@ impl AppWindow {
             target_status_width: 0,
             config_stamp: current_config_stamp(),
             next_config_check: Instant::now() + CONFIG_RELOAD_CHECK_INTERVAL,
+            window_position_dirty: false,
             theme: AppTheme::new(language),
             font_applied: false,
             icon,
@@ -1000,7 +974,6 @@ impl AppWindow {
             self.create_controls()?;
         }
         self.apply_process_filter();
-        self.refresh_checkboxes();
         self.refresh_text();
         self.reset_timers();
         self.tick();
@@ -1108,19 +1081,6 @@ impl AppWindow {
                 ID_TARGETS,
             )?
         };
-        self.controls.remove_button = unsafe {
-            create_button(
-                self.hwnd,
-                instance,
-                "",
-                590 - LEFT_EDGE_TRIM,
-                REMOVE_BUTTON_Y,
-                102,
-                32,
-                ID_REMOVE,
-            )?
-        };
-
         self.controls.add_label = unsafe {
             create_control(
                 self.hwnd,
@@ -1272,128 +1232,21 @@ impl AppWindow {
             )?
         };
 
-        self.controls.settings_label = unsafe {
-            create_control(
-                self.hwnd,
-                instance,
-                w!("STATIC"),
-                "",
-                child | SS_ENDELLIPSIS_STYLE,
-                WINDOW_EX_STYLE(0),
-                44 - LEFT_EDGE_TRIM,
-                SETTINGS_PANEL_TOP + 8,
-                180,
-                24,
-                0,
-            )?
-        };
-        self.controls.start_minimized_check = unsafe {
-            create_checkbox(
-                self.hwnd,
-                instance,
-                "",
-                44 - LEFT_EDGE_TRIM,
-                START_MINIMIZED_CHECK_Y,
-                360,
-                26,
-                ID_START_MINIMIZED,
-            )?
-        };
-        self.controls.launch_startup_check = unsafe {
-            create_checkbox(
-                self.hwnd,
-                instance,
-                "",
-                44 - LEFT_EDGE_TRIM,
-                LAUNCH_STARTUP_CHECK_Y,
-                500,
-                26,
-                ID_LAUNCH_STARTUP,
-            )?
-        };
-        self.controls.restore_exit_check = unsafe {
-            create_multiline_checkbox(
-                self.hwnd,
-                instance,
-                "",
-                44 - LEFT_EDGE_TRIM,
-                RESTORE_CHECK_Y,
-                500,
-                26,
-                ID_RESTORE_EXIT,
-            )?
-        };
-        self.controls.language_label = unsafe {
-            create_control(
-                self.hwnd,
-                instance,
-                w!("STATIC"),
-                "",
-                child | SS_RIGHT_STYLE | SS_CENTERIMAGE_STYLE | SS_ENDELLIPSIS_STYLE,
-                WINDOW_EX_STYLE(0),
-                542 - LEFT_EDGE_TRIM,
-                SETTINGS_LANGUAGE_BUTTON_Y,
-                42,
-                SETTINGS_LANGUAGE_BUTTON_HEIGHT,
-                0,
-            )?
-        };
-        self.controls.language_button = unsafe {
-            create_button(
-                self.hwnd,
-                instance,
-                "",
-                584 - LEFT_EDGE_TRIM,
-                SETTINGS_LANGUAGE_BUTTON_Y,
-                120,
-                SETTINGS_LANGUAGE_BUTTON_HEIGHT,
-                ID_LANGUAGE,
-            )?
-        };
-        self.controls.open_config_button = unsafe {
-            create_button(
-                self.hwnd,
-                instance,
-                "",
-                540 - LEFT_EDGE_TRIM,
-                OPEN_CONFIG_BUTTON_Y,
-                164,
-                32,
-                ID_OPEN_CONFIG,
-            )?
-        };
-        let github_link_width = self.github_link_width();
-        self.controls.github_button = unsafe {
+        self.controls.settings_button = unsafe {
             create_control(
                 self.hwnd,
                 instance,
                 w!("BUTTON"),
-                GITHUB_LINK_TEXT,
+                "",
                 tab_child | WINDOW_STYLE(BS_OWNERDRAW as u32),
                 WINDOW_EX_STYLE(0),
-                GITHUB_LINK_X,
-                GITHUB_LINK_Y,
-                github_link_width,
-                GITHUB_LINK_HEIGHT,
-                ID_OPEN_GITHUB,
+                SETTINGS_BUTTON_X,
+                SETTINGS_BUTTON_Y,
+                self.settings_button_width(),
+                SETTINGS_BUTTON_HEIGHT,
+                ID_SETTINGS,
             )?
         };
-        self.controls.tooltip = unsafe {
-            create_control(
-                self.hwnd,
-                instance,
-                w!("STATIC"),
-                GITHUB_PAGE_URL,
-                WS_CHILD | SS_OWNERDRAW_STYLE,
-                WINDOW_EX_STYLE(0),
-                0,
-                0,
-                0,
-                0,
-                ID_GITHUB_TOOLTIP,
-            )?
-        };
-
         self.controls.pause_button = unsafe {
             create_button(
                 self.hwnd,
@@ -1438,6 +1291,16 @@ impl AppWindow {
                 Some(WPARAM(12)),
                 None,
             );
+            if !SetWindowSubclass(
+                self.controls.target_list,
+                Some(target_list_subclass_proc),
+                TARGET_LIST_SUBCLASS_ID,
+                self as *mut AppWindow as usize,
+            )
+            .as_bool()
+            {
+                return Err(message_error("install target list click handler"));
+            }
         }
         Ok(())
     }
@@ -1461,37 +1324,16 @@ impl AppWindow {
             set_text(self.controls.subtitle_label, self.strings.app_subtitle);
             set_text(self.controls.targets_label, "");
             set_text(self.controls.add_label, "");
-            set_text(self.controls.settings_label, "");
+            set_text(self.controls.settings_button, self.strings.settings_title);
             set_text(self.controls.running_label, "");
             set_text(self.controls.manual_label, self.strings.manual_process);
             set_text(self.controls.add_selected_button, self.strings.add_selected);
             set_text(self.controls.add_manual_button, self.strings.add_manual);
-            set_text(self.controls.remove_button, self.strings.remove_selected);
             set_text(self.controls.refresh_button, self.strings.refresh);
-            set_text(
-                self.controls.start_minimized_check,
-                self.strings.start_minimized,
-            );
-            set_text(
-                self.controls.launch_startup_check,
-                self.strings.launch_on_startup,
-            );
-            set_text(
-                self.controls.restore_exit_check,
-                self.strings.restore_on_exit,
-            );
-            set_text(self.controls.language_label, self.strings.language);
-            set_text(
-                self.controls.language_button,
-                language_button_text(self.config.language),
-            );
             self.update_pause_button_text();
             set_text(self.controls.hide_button, self.strings.hide);
             set_text(self.controls.quit_button, self.strings.quit);
-            set_text(self.controls.open_config_button, self.strings.open_config);
-            set_text(self.controls.github_button, GITHUB_LINK_TEXT);
-            set_text(self.controls.tooltip, GITHUB_PAGE_URL);
-            self.layout_github_link();
+            self.layout_settings_button();
 
             let cue_banner_buffer = &mut self.wide_text_buffer;
             write_wide_buffer(self.strings.manual_placeholder, cue_banner_buffer);
@@ -1511,7 +1353,6 @@ impl AppWindow {
             let _ = ShowWindow(self.controls.add_label, SW_HIDE);
             let _ = ShowWindow(self.controls.running_label, SW_HIDE);
             let _ = ShowWindow(self.controls.targets_label, SW_HIDE);
-            let _ = ShowWindow(self.controls.settings_label, SW_HIDE);
         }
         self.refresh_target_list();
         self.refresh_process_details_ui();
@@ -1519,39 +1360,34 @@ impl AppWindow {
         self.update_status();
     }
 
-    fn layout_github_link(&self) {
-        if self.controls.github_button.0.is_null() {
+    fn layout_settings_button(&self) {
+        if self.controls.settings_button.0.is_null() {
             return;
         }
 
         unsafe {
-            let _ = MoveWindow(
-                self.controls.github_button,
-                GITHUB_LINK_X,
-                GITHUB_LINK_Y,
-                self.github_link_width(),
-                GITHUB_LINK_HEIGHT,
+            let _ = move_window(
+                self.controls.settings_button,
+                SETTINGS_BUTTON_X,
+                SETTINGS_BUTTON_Y,
+                self.settings_button_width(),
+                SETTINGS_BUTTON_HEIGHT,
                 true,
             );
         }
     }
 
-    fn github_link_width(&self) -> i32 {
-        self.text_width(GITHUB_LINK_TEXT).max(1)
+    fn settings_button_width(&self) -> i32 {
+        SETTINGS_ICON_SIZE + SETTINGS_BUTTON_TEXT_GAP + self.text_width(self.strings.settings_title)
     }
 
-    fn set_github_link_cursor(&mut self, child: HWND) -> bool {
-        if child != self.controls.github_button {
-            self.set_github_link_hot(false);
+    fn set_settings_button_cursor(&mut self, child: HWND) -> bool {
+        if child != self.controls.settings_button {
+            self.set_settings_button_hot(false);
             return false;
         }
 
-        if !self.cursor_is_on_github_link_text() {
-            self.set_github_link_hot(false);
-            return false;
-        }
-
-        self.set_github_link_hot(true);
+        self.set_settings_button_hot(true);
         let Ok(cursor) = (unsafe { LoadCursorW(None, IDC_HAND) }) else {
             return false;
         };
@@ -1561,73 +1397,98 @@ impl AppWindow {
         true
     }
 
-    fn cursor_is_on_github_link_text(&self) -> bool {
-        let mut point = POINT::default();
-        if unsafe { GetCursorPos(&mut point) }.is_err()
-            || !unsafe { ScreenToClient(self.controls.github_button, &mut point).as_bool() }
-        {
-            return false;
-        }
-
-        let rect = self.github_link_hit_rect();
-        point.x >= rect.left && point.x < rect.right && point.y >= rect.top && point.y < rect.bottom
-    }
-
-    fn github_link_hit_rect(&self) -> RECT {
-        RECT {
-            left: 0,
-            top: GITHUB_LINK_HIT_TOP,
-            right: self.github_link_width(),
-            bottom: GITHUB_LINK_HIT_BOTTOM,
-        }
-    }
-
-    fn set_github_link_hot(&mut self, hot: bool) {
-        if self.github_link_hot == hot {
+    fn set_settings_button_hot(&mut self, hot: bool) {
+        if self.settings_button_hot == hot {
             return;
         }
-        self.github_link_hot = hot;
-
+        self.settings_button_hot = hot;
         unsafe {
             let _ = RedrawWindow(
-                Some(self.controls.github_button),
+                Some(self.controls.settings_button),
                 None,
                 None,
                 RDW_INVALIDATE | RDW_UPDATENOW,
             );
         }
-        if hot {
-            self.show_github_tooltip();
-        } else {
-            self.hide_github_tooltip();
-        }
     }
 
-    fn show_github_tooltip(&self) {
-        if self.controls.tooltip.0.is_null() || self.controls.github_button.0.is_null() {
+    fn open_settings_window(&mut self) {
+        let Ok(module) = (unsafe { GetModuleHandleW(None) }) else {
+            return;
+        };
+        let hwnd = self.hwnd;
+        let icon = self.icon;
+        let github_icon = self.github_icon;
+        let language = self.config.language;
+        let initial = SettingsPreferences {
+            language,
+            start_minimized: self.config.start_minimized,
+            launch_on_startup: self.config.launch_on_startup,
+            restore_on_exit: self.config.restore_muted_on_exit,
+        };
+        let result = unsafe {
+            prompt_settings(
+                hwnd,
+                HINSTANCE(module.0),
+                icon,
+                github_icon,
+                language,
+                initial,
+                |language| self.apply_settings_language(language),
+            )
+        };
+        let Ok(Some(preferences)) = result else {
+            return;
+        };
+        self.apply_settings_preferences(preferences);
+    }
+
+    fn apply_settings_language(&mut self, language: Language) {
+        self.reload_config_if_changed();
+        if self.config.language == language {
             return;
         }
-
-        let (x, y, width, height) = self.github_tooltip_rect();
-        unsafe {
-            let _ = MoveWindow(self.controls.tooltip, x, y, width, height, true);
-            let _ = ShowWindow(self.controls.tooltip, SW_SHOW);
-        }
+        self.config.language = language;
+        self.save_config();
+        self.refresh_text();
     }
 
-    fn hide_github_tooltip(&self) {
-        unsafe {
-            let _ = ShowWindow(self.controls.tooltip, SW_HIDE);
-        }
-    }
+    fn apply_settings_preferences(&mut self, preferences: SettingsPreferences) {
+        self.reload_config_if_changed();
+        let mut changed = false;
+        let language_changed = self.config.language != preferences.language;
 
-    fn github_tooltip_rect(&self) -> (i32, i32, i32, i32) {
-        let width = (self.text_width(GITHUB_PAGE_URL) + GITHUB_TOOLTIP_X_PADDING * 2)
-            .min(WINDOW_WIDTH - 16);
-        let max_x = (WINDOW_WIDTH - width - 8).max(8);
-        let x = GITHUB_LINK_X.clamp(8, max_x);
-        let y = (GITHUB_LINK_Y - GITHUB_TOOLTIP_HEIGHT - GITHUB_TOOLTIP_Y_GAP).max(0);
-        (x, y, width, GITHUB_TOOLTIP_HEIGHT)
+        if self.config.start_minimized != preferences.start_minimized {
+            self.config.start_minimized = preferences.start_minimized;
+            changed = true;
+        }
+        if self.config.launch_on_startup != preferences.launch_on_startup {
+            if startup::set_launch_on_startup(preferences.launch_on_startup).is_ok() {
+                self.config.launch_on_startup = preferences.launch_on_startup;
+                self.clear_issue(StatusIssue::StartupUpdateFailed);
+                changed = true;
+            } else {
+                self.set_issue(StatusIssue::StartupUpdateFailed);
+            }
+        }
+        if self.config.restore_muted_on_exit != preferences.restore_on_exit {
+            self.config.restore_muted_on_exit = preferences.restore_on_exit;
+            changed = true;
+        }
+        if language_changed {
+            self.config.language = preferences.language;
+            changed = true;
+        }
+
+        if !changed {
+            return;
+        }
+        self.save_config();
+        if language_changed {
+            self.refresh_text();
+        } else {
+            self.update_status();
+        }
     }
 
     fn refresh_target_status_width(&mut self) {
@@ -1636,23 +1497,6 @@ impl AppWindow {
             .max(self.text_width(self.strings.target_muted))
             .max(self.text_width(self.strings.target_excluded))
             .clamp(58, 100);
-    }
-
-    fn refresh_checkboxes(&self) {
-        unsafe {
-            set_checkbox(
-                self.controls.start_minimized_check,
-                self.config.start_minimized,
-            );
-            set_checkbox(
-                self.controls.launch_startup_check,
-                self.config.launch_on_startup,
-            );
-            set_checkbox(
-                self.controls.restore_exit_check,
-                self.config.restore_muted_on_exit,
-            );
-        }
     }
 
     fn refresh_process_details_ui(&self) {
@@ -1710,10 +1554,10 @@ impl AppWindow {
 
     fn redraw_process_picker(&self) {
         let rect = RECT {
-            left: 0,
-            top: PROCESS_PICKER_HINT_Y - 8,
-            right: WINDOW_WIDTH,
-            bottom: MANUAL_PROCESS_ROW_Y + PROCESS_PICKER_BUTTON_HEIGHT + 12,
+            left: px(0),
+            top: px(PROCESS_PICKER_HINT_Y - 8),
+            right: px(WINDOW_WIDTH),
+            bottom: px(MANUAL_PROCESS_ROW_Y + PROCESS_PICKER_BUTTON_HEIGHT + 12),
         };
         unsafe {
             let _ = RedrawWindow(
@@ -1727,7 +1571,6 @@ impl AppWindow {
 
     fn layout_localized_controls_with_pid_help(&self, reserve_pid_help: bool) {
         let content_left = 36 - LEFT_EDGE_TRIM;
-        let panel_left = 44 - LEFT_EDGE_TRIM;
         let content_right = WINDOW_WIDTH - 36;
         let gap = 12;
         let combo_y = PROCESS_PICKER_COMBO_Y;
@@ -1735,18 +1578,6 @@ impl AppWindow {
         let manual_button_y = MANUAL_PROCESS_ROW_Y;
         let manual_edit_y = MANUAL_PROCESS_EDIT_Y;
         let manual_label_y = MANUAL_PROCESS_ROW_Y;
-
-        let remove_width = self.button_width(self.strings.remove_selected, 92, 170);
-        let _ = unsafe {
-            MoveWindow(
-                self.controls.remove_button,
-                content_right - remove_width - 6,
-                REMOVE_BUTTON_Y,
-                remove_width,
-                32,
-                true,
-            )
-        };
 
         let add_selected_width = self.button_width(self.strings.add_selected, 90, 124);
         let refresh_width = self.button_width(self.strings.refresh, 116, 162);
@@ -1779,7 +1610,7 @@ impl AppWindow {
             (content_right, 0, 0)
         };
         let _ = unsafe {
-            MoveWindow(
+            move_window(
                 self.controls.running_hint,
                 content_left,
                 PROCESS_PICKER_HINT_Y,
@@ -1789,7 +1620,7 @@ impl AppWindow {
             )
         };
         let _ = unsafe {
-            MoveWindow(
+            move_window(
                 self.controls.running_combo,
                 content_left,
                 combo_y,
@@ -1799,7 +1630,7 @@ impl AppWindow {
             )
         };
         let _ = unsafe {
-            MoveWindow(
+            move_window(
                 self.controls.add_selected_button,
                 add_selected_x,
                 button_y,
@@ -1809,7 +1640,7 @@ impl AppWindow {
             )
         };
         let _ = unsafe {
-            MoveWindow(
+            move_window(
                 self.controls.refresh_button,
                 refresh_x,
                 button_y,
@@ -1819,7 +1650,7 @@ impl AppWindow {
             )
         };
         let _ = unsafe {
-            MoveWindow(
+            move_window(
                 self.controls.toggle_process_details_button,
                 details_x,
                 button_y,
@@ -1829,7 +1660,7 @@ impl AppWindow {
             )
         };
         let _ = unsafe {
-            MoveWindow(
+            move_window(
                 self.controls.pid_details_help_button,
                 help_x,
                 button_y,
@@ -1849,7 +1680,7 @@ impl AppWindow {
         let manual_label_x =
             (manual_edit_x - manual_label_width - MANUAL_PROCESS_LABEL_GAP).max(content_left);
         let _ = unsafe {
-            MoveWindow(
+            move_window(
                 self.controls.manual_label,
                 manual_label_x,
                 manual_label_y,
@@ -1859,7 +1690,7 @@ impl AppWindow {
             )
         };
         let _ = unsafe {
-            MoveWindow(
+            move_window(
                 self.controls.manual_edit,
                 manual_edit_x,
                 manual_edit_y,
@@ -1869,7 +1700,7 @@ impl AppWindow {
             )
         };
         let _ = unsafe {
-            MoveWindow(
+            move_window(
                 self.controls.add_manual_button,
                 add_manual_x,
                 manual_button_y,
@@ -1879,79 +1710,6 @@ impl AppWindow {
             )
         };
 
-        let language_width =
-            self.button_width(language_button_text(self.config.language), 112, 160);
-        let language_x = content_right - language_width;
-        let language_label_width = self.label_width(self.strings.language, 72, 128);
-        let language_label_x = language_x - language_label_width - 8;
-        let _ = unsafe {
-            MoveWindow(
-                self.controls.language_label,
-                language_label_x,
-                SETTINGS_LANGUAGE_BUTTON_Y,
-                language_label_width,
-                SETTINGS_LANGUAGE_BUTTON_HEIGHT,
-                true,
-            )
-        };
-        let _ = unsafe {
-            MoveWindow(
-                self.controls.language_button,
-                language_x,
-                SETTINGS_LANGUAGE_BUTTON_Y,
-                language_width,
-                SETTINGS_LANGUAGE_BUTTON_HEIGHT,
-                true,
-            )
-        };
-
-        let open_config_width = self.button_width(self.strings.open_config, 150, 230);
-        let open_config_x = content_right - open_config_width;
-        let right_column_left = language_label_x.min(open_config_x);
-        let settings_checkbox_width = right_column_left - panel_left - gap;
-        let restore_width = settings_checkbox_width;
-        let (restore_y, restore_height) =
-            restore_checkbox_layout(self.text_width(self.strings.restore_on_exit), restore_width);
-        let _ = unsafe {
-            MoveWindow(
-                self.controls.start_minimized_check,
-                panel_left,
-                START_MINIMIZED_CHECK_Y,
-                settings_checkbox_width,
-                26,
-                true,
-            )
-        };
-        let _ = unsafe {
-            MoveWindow(
-                self.controls.launch_startup_check,
-                panel_left,
-                LAUNCH_STARTUP_CHECK_Y,
-                settings_checkbox_width,
-                26,
-                true,
-            )
-        };
-        let _ = unsafe {
-            MoveWindow(
-                self.controls.restore_exit_check,
-                panel_left,
-                restore_y,
-                restore_width,
-                restore_height,
-                true,
-            )
-        };
-        let _ = unsafe {
-            MoveWindow(
-                self.controls.open_config_button,
-                open_config_x,
-                OPEN_CONFIG_BUTTON_Y,
-                open_config_width,
-                32,
-                true,
-            )
-        };
         self.layout_footer_buttons(content_right);
     }
 
@@ -1964,7 +1722,7 @@ impl AppWindow {
         let quit_x = content_right - total_width;
 
         let _ = unsafe {
-            MoveWindow(
+            move_window(
                 self.controls.quit_button,
                 quit_x,
                 FOOTER_BUTTON_Y,
@@ -1975,7 +1733,7 @@ impl AppWindow {
         };
         let pause_x = quit_x + quit_width + gap;
         let _ = unsafe {
-            MoveWindow(
+            move_window(
                 self.controls.pause_button,
                 pause_x,
                 FOOTER_BUTTON_Y,
@@ -1986,7 +1744,7 @@ impl AppWindow {
         };
         let hide_x = pause_x + pause_width + gap;
         let _ = unsafe {
-            MoveWindow(
+            move_window(
                 self.controls.hide_button,
                 hide_x,
                 FOOTER_BUTTON_Y,
@@ -1999,7 +1757,7 @@ impl AppWindow {
 
     fn layout_header(&self, issue_visible: bool) {
         let _ = unsafe {
-            MoveWindow(
+            move_window(
                 self.controls.title_label,
                 HEADER_LEFT_X,
                 HEADER_TITLE_Y,
@@ -2009,7 +1767,7 @@ impl AppWindow {
             )
         };
         let _ = unsafe {
-            MoveWindow(
+            move_window(
                 self.controls.status,
                 HEADER_RIGHT_X,
                 HEADER_TITLE_Y,
@@ -2020,7 +1778,7 @@ impl AppWindow {
         };
 
         let _ = unsafe {
-            MoveWindow(
+            move_window(
                 self.controls.subtitle_label,
                 HEADER_LEFT_X,
                 HEADER_SUBTITLE_Y,
@@ -2035,7 +1793,7 @@ impl AppWindow {
             (HEADER_RIGHT_X, HEADER_RIGHT_WIDTH)
         };
         let _ = unsafe {
-            MoveWindow(
+            move_window(
                 self.controls.status_detail,
                 detail_x,
                 HEADER_DETAIL_Y,
@@ -2048,10 +1806,10 @@ impl AppWindow {
 
     fn redraw_header(&self) {
         let rect = RECT {
-            left: 0,
-            top: 0,
-            right: WINDOW_WIDTH,
-            bottom: TARGET_PANEL_TOP,
+            left: px(0),
+            top: px(0),
+            right: px(WINDOW_WIDTH),
+            bottom: px(TARGET_PANEL_TOP),
         };
         unsafe {
             let _ = RedrawWindow(
@@ -2065,10 +1823,6 @@ impl AppWindow {
 
     fn button_width(&self, text: &str, min_width: i32, max_width: i32) -> i32 {
         (self.text_width(text) + 44).clamp(min_width, max_width)
-    }
-
-    fn label_width(&self, text: &str, min_width: i32, max_width: i32) -> i32 {
-        (self.text_width(text) + 8).clamp(min_width, max_width)
     }
 
     fn text_width(&self, text: &str) -> i32 {
@@ -2523,7 +2277,6 @@ impl AppWindow {
             StatusIssue::StartupUpdateFailed => self.strings.startup_update_failed,
             StatusIssue::TimerSetupFailed => self.strings.timer_setup_failed,
             StatusIssue::TrayIconUnavailable => self.strings.tray_icon_unavailable,
-            StatusIssue::OpenConfigFailed => self.strings.open_config_failed,
         }
     }
 
@@ -2569,9 +2322,6 @@ impl AppWindow {
         let target_list_changed = self.config.targets != config.targets;
         let target_matcher_changed =
             target_matcher_inputs_changed(&self.config.targets, &config.targets);
-        let checkboxes_changed = self.config.start_minimized != config.start_minimized
-            || self.config.launch_on_startup != config.launch_on_startup
-            || self.config.restore_muted_on_exit != config.restore_muted_on_exit;
         let interval_changed = self.config.polling_interval_ms != config.polling_interval_ms;
         let startup_changed = self.config.launch_on_startup != config.launch_on_startup;
         let previous_launch_on_startup = self.config.launch_on_startup;
@@ -2596,9 +2346,6 @@ impl AppWindow {
             self.last_status = None;
         } else if target_matcher_changed {
             self.sync_audio_fallback_timer();
-        }
-        if checkboxes_changed {
-            self.refresh_checkboxes();
         }
         if language_changed {
             self.refresh_text();
@@ -2740,6 +2487,7 @@ impl AppWindow {
             Ok(()) => {
                 self.config_stamp = current_config_stamp();
                 self.next_config_check = Instant::now() + CONFIG_RELOAD_CHECK_INTERVAL;
+                self.window_position_dirty = false;
                 self.clear_config_issues();
                 true
             }
@@ -2773,14 +2521,13 @@ impl AppWindow {
     }
 
     fn command(&mut self, id: i32, notification: u16) {
-        if id != ID_TARGETS && id != ID_REMOVE {
+        if id != ID_TARGETS {
             self.clear_target_selection();
         }
 
         match id {
             ID_ADD_SELECTED => self.add_selected_process(),
             ID_ADD_MANUAL => self.add_manual_target(),
-            ID_REMOVE => self.remove_selected_target(),
             ID_REFRESH => self.refresh_processes(),
             ID_TOGGLE_PROCESS_DETAILS => self.toggle_process_details(),
             ID_PID_DETAILS_HELP => self.show_pid_details_help(),
@@ -2795,17 +2542,13 @@ impl AppWindow {
             }
             ID_RUNNING if notification == CBN_CLOSEUP as u16 => self.focus_main_window(),
             ID_MANUAL if notification == EN_CHANGE as u16 => self.update_manual_process_text(),
-            ID_OPEN_CONFIG => self.open_config_folder(),
-            ID_OPEN_GITHUB => self.open_github_page(),
+            ID_SETTINGS => self.open_settings_window(),
             ID_PAUSE => self.toggle_pause(),
             ID_HIDE => self.hide_to_tray(),
             ID_QUIT => unsafe {
+                self.save_window_position();
                 let _ = DestroyWindow(self.hwnd);
             },
-            ID_START_MINIMIZED => self.update_bool_setting(id),
-            ID_LAUNCH_STARTUP => self.update_bool_setting(id),
-            ID_RESTORE_EXIT => self.update_bool_setting(id),
-            ID_LANGUAGE => self.choose_language_menu(),
             ID_TARGETS if notification == LBN_SELCHANGE as u16 => self.update_action_buttons(),
             ID_TARGETS if notification == LBN_DBLCLK as u16 => self.edit_selected_target_note(),
             _ => {}
@@ -3023,17 +2766,6 @@ impl AppWindow {
         }
     }
 
-    fn remove_selected_target(&mut self) {
-        self.reload_config_if_changed();
-        let index = unsafe { SendMessageW(self.controls.target_list, LB_GETCURSEL, None, None).0 };
-        if index < 0 {
-            return;
-        }
-        if self.config.remove_target_at(index as usize) {
-            self.finish_target_change();
-        }
-    }
-
     fn edit_selected_target_note(&mut self) {
         self.reload_config_if_changed();
         let index = unsafe { SendMessageW(self.controls.target_list, LB_GETCURSEL, None, None).0 };
@@ -3080,6 +2812,36 @@ impl AppWindow {
         }
     }
 
+    fn remove_target_by_identity(&mut self, name: &str, pid: Option<u32>) {
+        self.reload_config_if_changed();
+        let Some(index) = target_index_by_identity(&self.config.targets, name, pid) else {
+            return;
+        };
+        if self.config.remove_target_at(index) {
+            self.finish_target_change();
+        }
+    }
+
+    fn edit_target_note_by_identity(&mut self, name: &str, pid: Option<u32>) {
+        self.reload_config_if_changed();
+        let Some(index) = target_index_by_identity(&self.config.targets, name, pid) else {
+            return;
+        };
+        self.edit_target_note_at(index);
+    }
+
+    fn toggle_target_enabled_by_identity(&mut self, name: &str, pid: Option<u32>) {
+        self.reload_config_if_changed();
+        let Some(index) = target_index_by_identity(&self.config.targets, name, pid) else {
+            return;
+        };
+        let enabled = match self.config.targets.get(index) {
+            Some(target) => target.enabled,
+            None => return,
+        };
+        self.set_target_enabled_at(index, !enabled);
+    }
+
     fn target_context_menu(&mut self, wparam: WPARAM, lparam: LPARAM) -> bool {
         if HWND(wparam.0 as *mut c_void) != self.controls.target_list {
             return false;
@@ -3089,18 +2851,22 @@ impl AppWindow {
             return true;
         };
         self.select_target_index(index);
+        let Some(target) = self.config.targets.get(index) else {
+            return true;
+        };
+        let target_name = target.name.clone();
+        let target_pid = target.pid;
         let Some(command) = (unsafe { self.pick_target_context_menu(index, lparam) }) else {
             return true;
         };
         match command {
             ID_TARGET_CONTEXT_TOGGLE_ENABLED => {
-                let enabled = match self.config.targets.get(index) {
-                    Some(target) => target.enabled,
-                    None => true,
-                };
-                self.set_target_enabled_at(index, !enabled);
+                self.toggle_target_enabled_by_identity(&target_name, target_pid);
             }
-            ID_TARGET_CONTEXT_EDIT_NOTE => self.edit_target_note_at(index),
+            ID_TARGET_CONTEXT_EDIT_NOTE => {
+                self.edit_target_note_by_identity(&target_name, target_pid)
+            }
+            ID_REMOVE => self.remove_target_by_identity(&target_name, target_pid),
             _ => {}
         }
         true
@@ -3133,6 +2899,17 @@ impl AppWindow {
                 menu.handle(),
                 MF_STRING,
                 ID_TARGET_CONTEXT_EDIT_NOTE as usize,
+                PCWSTR(text_buffer.as_ptr()),
+            );
+            let _ = AppendMenuW(menu.handle(), MF_SEPARATOR, 0, PCWSTR::null());
+        }
+
+        write_wide_buffer(self.strings.remove_selected, text_buffer);
+        unsafe {
+            let _ = AppendMenuW(
+                menu.handle(),
+                MF_STRING,
+                ID_REMOVE as usize,
                 PCWSTR(text_buffer.as_ptr()),
             );
         }
@@ -3187,6 +2964,10 @@ impl AppWindow {
             return selected_list_index(self.controls.target_list);
         }
 
+        self.target_index_from_list_client_point(point)
+    }
+
+    fn target_index_from_list_client_point(&self, point: POINT) -> Option<usize> {
         let point_value = ((point.y as u16 as isize) << 16) | (point.x as u16 as isize);
         let result = unsafe {
             SendMessageW(
@@ -3201,7 +2982,26 @@ impl AppWindow {
         }
 
         let index = (result.0 as u32 & 0xffff) as usize;
-        (index < self.config.targets.len()).then_some(index)
+        if index >= self.config.targets.len() {
+            return None;
+        }
+
+        let mut item_rect = RECT::default();
+        let result = unsafe {
+            SendMessageW(
+                self.controls.target_list,
+                LB_GETITEMRECT_MESSAGE,
+                Some(WPARAM(index)),
+                Some(LPARAM(
+                    (&mut item_rect as *mut RECT).cast::<c_void>() as isize
+                )),
+            )
+        };
+        if result.0 == LB_ERR || !point_is_in_rect(point, item_rect) {
+            return None;
+        }
+
+        Some(index)
     }
 
     fn select_target_index(&mut self, index: usize) {
@@ -3233,14 +3033,11 @@ impl AppWindow {
     }
 
     fn update_action_buttons(&mut self) {
-        let has_selected_target =
-            unsafe { SendMessageW(self.controls.target_list, LB_GETCURSEL, None, None).0 >= 0 };
         let can_add_selected = self
             .selected_process_choice()
             .is_some_and(|choice| self.can_add_process_choice(choice));
         let can_add_manual = self.can_submit_manual_target();
         let state = ActionButtonState {
-            remove: has_selected_target,
             add_selected: can_add_selected,
             add_manual: can_add_manual,
         };
@@ -3249,7 +3046,6 @@ impl AppWindow {
         }
 
         unsafe {
-            let _ = EnableWindow(self.controls.remove_button, state.remove);
             let _ = EnableWindow(self.controls.add_selected_button, state.add_selected);
             let _ = EnableWindow(self.controls.add_manual_button, state.add_manual);
         }
@@ -3304,61 +3100,6 @@ impl AppWindow {
         self.tick();
     }
 
-    fn open_config_folder(&mut self) {
-        let Ok(config_path) = cached_config_file_path() else {
-            self.set_issue(StatusIssue::OpenConfigFailed);
-            return;
-        };
-        let Some(path) = config_path.parent() else {
-            self.set_issue(StatusIssue::OpenConfigFailed);
-            return;
-        };
-        if fs::create_dir_all(path).is_err() {
-            self.set_issue(StatusIssue::OpenConfigFailed);
-            return;
-        }
-        let path = path_to_wide(path);
-        unsafe {
-            let result = ShellExecuteW(
-                Some(self.hwnd),
-                w!("open"),
-                PCWSTR(path.as_ptr()),
-                PCWSTR::null(),
-                PCWSTR::null(),
-                SW_SHOW,
-            );
-            if result.0 as isize <= 32 {
-                self.set_issue(StatusIssue::OpenConfigFailed);
-            } else {
-                self.clear_issue(StatusIssue::OpenConfigFailed);
-            }
-        }
-    }
-
-    fn open_github_page(&self) {
-        let url = to_wide(GITHUB_PAGE_URL);
-        unsafe {
-            let result = ShellExecuteW(
-                Some(self.hwnd),
-                w!("open"),
-                PCWSTR(url.as_ptr()),
-                PCWSTR::null(),
-                PCWSTR::null(),
-                SW_SHOW,
-            );
-            if result.0 as isize <= 32 {
-                let title = to_wide(self.strings.status_issue);
-                let body = to_wide(self.strings.open_github_failed);
-                let _ = MessageBoxW(
-                    Some(self.hwnd),
-                    PCWSTR(body.as_ptr()),
-                    PCWSTR(title.as_ptr()),
-                    MB_OK | MB_ICONWARNING,
-                );
-            }
-        }
-    }
-
     fn toggle_pause(&mut self) {
         self.paused = !self.paused;
         self.update_pause_button_text();
@@ -3388,114 +3129,6 @@ impl AppWindow {
         }
     }
 
-    fn update_bool_setting(&mut self, id: i32) {
-        let checked = match id {
-            ID_START_MINIMIZED => unsafe { is_checked(self.controls.start_minimized_check) },
-            ID_LAUNCH_STARTUP => unsafe { is_checked(self.controls.launch_startup_check) },
-            ID_RESTORE_EXIT => unsafe { is_checked(self.controls.restore_exit_check) },
-            _ => return,
-        };
-        self.reload_config_if_changed();
-
-        match id {
-            ID_START_MINIMIZED => {
-                if self.config.start_minimized == checked {
-                    return;
-                }
-                self.config.start_minimized = checked;
-            }
-            ID_LAUNCH_STARTUP => {
-                if self.config.launch_on_startup == checked {
-                    return;
-                }
-                if startup::set_launch_on_startup(checked).is_ok() {
-                    self.config.launch_on_startup = checked;
-                    self.clear_issue(StatusIssue::StartupUpdateFailed);
-                } else {
-                    unsafe {
-                        set_checkbox(
-                            self.controls.launch_startup_check,
-                            self.config.launch_on_startup,
-                        );
-                    }
-                    self.set_issue(StatusIssue::StartupUpdateFailed);
-                    return;
-                }
-            }
-            ID_RESTORE_EXIT => {
-                if self.config.restore_muted_on_exit == checked {
-                    return;
-                }
-                self.config.restore_muted_on_exit = checked;
-            }
-            _ => {}
-        }
-        self.save_config();
-    }
-
-    fn choose_language_menu(&mut self) {
-        let Some(language) = (unsafe { self.pick_language_from_menu() }) else {
-            return;
-        };
-        self.set_language(language);
-    }
-
-    unsafe fn pick_language_from_menu(&mut self) -> Option<Language> {
-        let menu = (unsafe { PopupMenu::create() })?;
-        let text_buffer = &mut self.wide_text_buffer;
-        let current_language = self.config.language;
-        for (index, language) in Language::ALL.iter().enumerate() {
-            write_wide_buffer(language.native_name(), text_buffer);
-            let flags = if *language == current_language {
-                MF_STRING | MF_CHECKED
-            } else {
-                MF_STRING
-            };
-            unsafe {
-                let _ = AppendMenuW(
-                    menu.handle(),
-                    flags,
-                    (ID_LANGUAGE_MENU_BASE + index as i32) as usize,
-                    PCWSTR(text_buffer.as_ptr()),
-                );
-            }
-        }
-
-        let mut rect = RECT::default();
-        let selected = if unsafe { GetWindowRect(self.controls.language_button, &mut rect) }.is_ok()
-        {
-            let flags =
-                TRACK_POPUP_MENU_FLAGS(TPM_RIGHTBUTTON.0 | TPM_RETURNCMD.0 | TPM_NONOTIFY.0);
-            unsafe {
-                let _ = SetForegroundWindow(self.hwnd);
-                TrackPopupMenu(
-                    menu.handle(),
-                    flags,
-                    rect.left,
-                    rect.bottom,
-                    None,
-                    self.hwnd,
-                    None,
-                )
-                .0
-            }
-        } else {
-            0
-        };
-
-        language_from_menu_id(selected)
-    }
-
-    fn set_language(&mut self, language: Language) {
-        self.reload_config_if_changed();
-        if self.config.language == language {
-            return;
-        }
-        self.config.language = language;
-        self.save_config();
-        self.refresh_text();
-    }
-
     fn remember_window_position(&mut self) -> bool {
         let mut rect = RECT::default();
         if unsafe { GetWindowRect(self.hwnd, &mut rect) }.is_ok() {
@@ -3514,6 +3147,7 @@ impl AppWindow {
             }
             if self.config.window_position != Some(position) {
                 self.config.window_position = Some(position);
+                self.window_position_dirty = true;
                 return true;
             }
         }
@@ -3522,8 +3156,8 @@ impl AppWindow {
 
     fn save_window_position(&mut self) {
         self.reload_config_if_changed();
-        let position_changed = self.remember_window_position();
-        if position_changed || self.issues.contains(StatusIssue::ConfigLoadFailed) {
+        self.remember_window_position();
+        if self.window_position_dirty || self.issues.contains(StatusIssue::ConfigLoadFailed) {
             self.save_config();
         }
     }
@@ -3669,13 +3303,6 @@ impl AppWindow {
                 ID_PAUSE as usize,
                 PCWSTR(text_buffer.as_ptr()),
             );
-            write_wide_buffer(self.strings.open_config, text_buffer);
-            let _ = AppendMenuW(
-                menu.handle(),
-                MF_STRING,
-                ID_OPEN_CONFIG as usize,
-                PCWSTR(text_buffer.as_ptr()),
-            );
             let _ = AppendMenuW(menu.handle(), MF_SEPARATOR, 0, PCWSTR::null());
             write_wide_buffer(self.strings.quit, text_buffer);
             let _ = AppendMenuW(
@@ -3731,8 +3358,6 @@ impl AppWindow {
                         }
                     } else if child == self.controls.title_label
                         || child == self.controls.targets_label
-                        || child == self.controls.settings_label
-                        || child == self.controls.tooltip
                     {
                         TEXT_COLOR
                     } else {
@@ -3768,7 +3393,7 @@ impl AppWindow {
             return false;
         }
 
-        measure.itemHeight = TARGET_ROW_HEIGHT as u32;
+        measure.itemHeight = px(TARGET_ROW_HEIGHT) as u32;
         true
     }
 
@@ -3778,11 +3403,8 @@ impl AppWindow {
         }
 
         let draw = unsafe { &*(lparam.0 as *const DRAWITEMSTRUCT) };
-        if draw.CtlID == ID_OPEN_GITHUB as u32 {
-            return self.draw_github_button(draw);
-        }
-        if draw.CtlID == ID_GITHUB_TOOLTIP as u32 {
-            return self.draw_github_tooltip(draw);
+        if draw.CtlID == ID_SETTINGS as u32 {
+            return self.draw_settings_button(draw);
         }
         if draw.CtlID != ID_TARGETS as u32 {
             return false;
@@ -3826,19 +3448,19 @@ impl AppWindow {
 
         let status_width = self.target_status_width;
         let status_rect = RECT {
-            left: draw.rcItem.right - status_width - 12,
-            top: draw.rcItem.top + 1,
-            right: draw.rcItem.right - 12,
-            bottom: draw.rcItem.bottom - 1,
+            left: draw.rcItem.right - px(status_width) - px(12),
+            top: draw.rcItem.top + px(1),
+            right: draw.rcItem.right - px(12),
+            bottom: draw.rcItem.bottom - px(1),
         };
-        let text_right = status_rect.left - 14;
+        let text_right = status_rect.left - px(14);
 
         if note.is_empty() {
             let identity_rect = RECT {
-                left: draw.rcItem.left + 12,
-                top: draw.rcItem.top + 1,
+                left: draw.rcItem.left + px(12),
+                top: draw.rcItem.top + px(1),
                 right: text_right,
-                bottom: draw.rcItem.bottom - 1,
+                bottom: draw.rcItem.bottom - px(1),
             };
             draw_target_identity_line(
                 draw.hDC,
@@ -3850,10 +3472,10 @@ impl AppWindow {
             );
         } else {
             let note_rect = RECT {
-                left: draw.rcItem.left + 12,
-                top: draw.rcItem.top + 3,
+                left: draw.rcItem.left + px(12),
+                top: draw.rcItem.top + px(3),
                 right: text_right,
-                bottom: draw.rcItem.top + 20,
+                bottom: draw.rcItem.top + px(20),
             };
             draw_text_line(
                 draw.hDC,
@@ -3865,10 +3487,10 @@ impl AppWindow {
             );
 
             let identity_rect = RECT {
-                left: draw.rcItem.left + 12,
-                top: draw.rcItem.top + 19,
+                left: draw.rcItem.left + px(12),
+                top: draw.rcItem.top + px(19),
                 right: text_right,
-                bottom: draw.rcItem.bottom - 2,
+                bottom: draw.rcItem.bottom - px(2),
             };
             draw_target_identity_line(
                 draw.hDC,
@@ -3890,9 +3512,9 @@ impl AppWindow {
         );
 
         let separator = RECT {
-            left: draw.rcItem.left + 12,
-            top: draw.rcItem.bottom - 1,
-            right: draw.rcItem.right - 12,
+            left: draw.rcItem.left + px(12),
+            top: draw.rcItem.bottom - px(1),
+            right: draw.rcItem.right - px(12),
             bottom: draw.rcItem.bottom,
         };
         unsafe {
@@ -3902,55 +3524,47 @@ impl AppWindow {
         true
     }
 
-    fn draw_github_tooltip(&self, draw: &DRAWITEMSTRUCT) -> bool {
-        unsafe {
-            let _ = FillRect(draw.hDC, &draw.rcItem, self.theme.panel_brush.handle());
-            let _ = FrameRect(draw.hDC, &draw.rcItem, self.theme.border_brush.handle());
-        }
-
-        let text_rect = RECT {
-            left: draw.rcItem.left + GITHUB_TOOLTIP_X_PADDING,
-            top: draw.rcItem.top,
-            right: draw.rcItem.right - GITHUB_TOOLTIP_X_PADDING,
-            bottom: draw.rcItem.bottom,
-        };
-        draw_text_line(
-            draw.hDC,
-            self.theme.font.handle(),
-            GITHUB_PAGE_URL,
-            text_rect,
-            TEXT_COLOR,
-            DT_LEFT | DT_SINGLELINE | DT_VCENTER | DT_END_ELLIPSIS | DT_NOPREFIX,
-        );
-
-        true
-    }
-
-    fn draw_github_button(&self, draw: &DRAWITEMSTRUCT) -> bool {
+    fn draw_settings_button(&self, draw: &DRAWITEMSTRUCT) -> bool {
         let pressed = draw.itemState.0 & ODS_SELECTED.0 != 0;
         let disabled = draw.itemState.0 & ODS_DISABLED.0 != 0;
         unsafe {
             let _ = FillRect(draw.hDC, &draw.rcItem, self.theme.page_brush.handle());
         }
 
-        let offset = if pressed { 1 } else { 0 };
+        let offset = if pressed { px(1) } else { 0 };
+        if !self.settings_icon.0.is_null() {
+            unsafe {
+                let _ = DrawIconEx(
+                    draw.hDC,
+                    draw.rcItem.left + offset,
+                    px(SETTINGS_BUTTON_ICON_Y - SETTINGS_BUTTON_Y) + draw.rcItem.top + offset,
+                    self.settings_icon,
+                    px(SETTINGS_ICON_SIZE),
+                    px(SETTINGS_ICON_SIZE),
+                    0,
+                    None,
+                    DI_NORMAL,
+                );
+            }
+        }
+
         let text_rect = RECT {
-            left: draw.rcItem.left + offset,
+            left: draw.rcItem.left + px(SETTINGS_ICON_SIZE + SETTINGS_BUTTON_TEXT_GAP) + offset,
             top: draw.rcItem.top + offset,
             right: draw.rcItem.right + offset,
             bottom: draw.rcItem.bottom + offset,
         };
         let text_color = if disabled {
             DISABLED_TEXT_COLOR
-        } else if self.github_link_hot {
-            LINK_HOVER_COLOR
+        } else if self.settings_button_hot {
+            SUBTLE_TEXT_COLOR
         } else {
-            LINK_COLOR
+            TEXT_COLOR
         };
         draw_text_line(
             draw.hDC,
             self.theme.font.handle(),
-            GITHUB_LINK_TEXT,
+            self.strings.settings_title,
             text_rect,
             text_color,
             DT_LEFT | DT_SINGLELINE | DT_VCENTER | DT_END_ELLIPSIS | DT_NOPREFIX,
@@ -3961,45 +3575,15 @@ impl AppWindow {
 
     fn paint(&self, hwnd: HWND) {
         let paint = unsafe { PaintSession::begin(hwnd) };
-        for rect in [
-            RECT {
-                left: 24 - LEFT_EDGE_TRIM,
-                top: TARGET_PANEL_TOP,
-                right: WINDOW_WIDTH - 24,
-                bottom: TARGET_PANEL_BOTTOM,
-            },
-            RECT {
-                left: 24 - LEFT_EDGE_TRIM,
-                top: SETTINGS_PANEL_TOP,
-                right: WINDOW_WIDTH - 24,
-                bottom: SETTINGS_PANEL_BOTTOM,
-            },
-        ] {
-            unsafe {
-                let _ = FillRect(paint.hdc(), &rect, self.theme.panel_brush.handle());
-                let _ = FrameRect(paint.hdc(), &rect, self.theme.border_brush.handle());
-            }
-        }
-        self.draw_github_icon(paint.hdc());
-    }
-
-    fn draw_github_icon(&self, hdc: HDC) {
-        if self.github_icon.0.is_null() {
-            return;
-        }
-
+        let target_rect = RECT {
+            left: px(24 - LEFT_EDGE_TRIM),
+            top: px(TARGET_PANEL_TOP),
+            right: px(WINDOW_WIDTH - 24),
+            bottom: px(TARGET_PANEL_BOTTOM),
+        };
         unsafe {
-            let _ = DrawIconEx(
-                hdc,
-                GITHUB_ICON_X,
-                GITHUB_ICON_Y,
-                self.github_icon,
-                GITHUB_ICON_SIZE,
-                GITHUB_ICON_SIZE,
-                0,
-                None,
-                DI_NORMAL,
-            );
+            let _ = FillRect(paint.hdc(), &target_rect, self.theme.panel_brush.handle());
+            let _ = FrameRect(paint.hdc(), &target_rect, self.theme.border_brush.handle());
         }
     }
 
@@ -4018,7 +3602,6 @@ impl AppWindow {
                 self.controls.title_label,
                 self.controls.status,
                 self.controls.targets_label,
-                self.controls.settings_label,
             ] {
                 if hwnd != HWND::default() {
                     SendMessageW(
@@ -4348,9 +3931,9 @@ mod status_text_tests {
     fn status_summary_combines_status_and_detail_for_tray_menu() {
         let mut summary = String::new();
 
-        status_summary_text_into("감시 중", "등록 2 · 음소거 1", &mut summary);
+        status_summary_text_into("모니터링 중", "등록 2 · 음소거 1", &mut summary);
 
-        assert_eq!(summary, "감시 중 - 등록 2 · 음소거 1");
+        assert_eq!(summary, "모니터링 중 - 등록 2 · 음소거 1");
     }
 
     #[test]
@@ -4360,49 +3943,6 @@ mod status_text_tests {
         assert_eq!(status_text(strings, true, true), strings.status_issue);
         assert_eq!(status_text(strings, true, false), strings.status_paused);
         assert_eq!(status_text(strings, false, false), strings.status_running);
-    }
-}
-
-fn language_button_text(language: Language) -> &'static str {
-    language.native_name()
-}
-
-fn language_from_menu_id(id: i32) -> Option<Language> {
-    let index = id.checked_sub(ID_LANGUAGE_MENU_BASE)?;
-    let index = usize::try_from(index).ok()?;
-    Language::ALL.get(index).copied()
-}
-
-#[cfg(test)]
-mod language_menu_tests {
-    use super::*;
-
-    #[test]
-    fn language_menu_id_maps_first_language() {
-        assert_eq!(
-            language_from_menu_id(ID_LANGUAGE_MENU_BASE),
-            Some(Language::ALL[0])
-        );
-    }
-
-    #[test]
-    fn language_menu_id_maps_last_language() {
-        let last_index = Language::ALL.len() as i32 - 1;
-
-        assert_eq!(
-            language_from_menu_id(ID_LANGUAGE_MENU_BASE + last_index),
-            Language::ALL.last().copied()
-        );
-    }
-
-    #[test]
-    fn language_menu_id_rejects_cancel_and_out_of_range_ids() {
-        assert_eq!(language_from_menu_id(0), None);
-        assert_eq!(language_from_menu_id(ID_LANGUAGE_MENU_BASE - 1), None);
-        assert_eq!(
-            language_from_menu_id(ID_LANGUAGE_MENU_BASE + Language::ALL.len() as i32),
-            None
-        );
     }
 }
 
@@ -4474,14 +4014,6 @@ mod foreground_cache_tests {
     }
 }
 
-fn restore_checkbox_layout(text_width: i32, control_width: i32) -> (i32, i32) {
-    if text_width + RESTORE_CHECK_TEXT_PADDING > control_width {
-        (RESTORE_CHECK_TALL_Y, RESTORE_CHECK_TALL_HEIGHT)
-    } else {
-        (RESTORE_CHECK_Y, RESTORE_CHECK_HEIGHT)
-    }
-}
-
 fn should_hide_to_tray(tray_added: bool) -> bool {
     tray_added
 }
@@ -4525,22 +4057,6 @@ fn target_matches_session_key(target: &TargetProcess, key: &AudioSessionKey) -> 
 #[cfg(test)]
 mod layout_tests {
     use super::*;
-
-    #[test]
-    fn restore_checkbox_uses_single_line_layout_when_text_fits() {
-        assert_eq!(
-            restore_checkbox_layout(100, 100 + RESTORE_CHECK_TEXT_PADDING),
-            (RESTORE_CHECK_Y, RESTORE_CHECK_HEIGHT)
-        );
-    }
-
-    #[test]
-    fn restore_checkbox_uses_tall_layout_when_text_wraps() {
-        assert_eq!(
-            restore_checkbox_layout(100, 100 + RESTORE_CHECK_TEXT_PADDING - 1),
-            (RESTORE_CHECK_TALL_Y, RESTORE_CHECK_TALL_HEIGHT)
-        );
-    }
 
     #[test]
     fn window_hides_only_when_tray_icon_is_available() {
@@ -4666,6 +4182,10 @@ fn selected_list_index(hwnd: HWND) -> Option<usize> {
     (index >= 0).then_some(index as usize)
 }
 
+fn point_is_in_rect(point: POINT, rect: RECT) -> bool {
+    point.x >= rect.left && point.x < rect.right && point.y >= rect.top && point.y < rect.bottom
+}
+
 fn signed_loword(value: isize) -> i32 {
     (value as u32 & 0xffff) as u16 as i16 as i32
 }
@@ -4674,9 +4194,57 @@ fn signed_hiword(value: isize) -> i32 {
     ((value as u32 >> 16) & 0xffff) as u16 as i16 as i32
 }
 
+unsafe extern "system" fn target_list_subclass_proc(
+    hwnd: HWND,
+    message: u32,
+    wparam: WPARAM,
+    lparam: LPARAM,
+    subclass_id: usize,
+    ref_data: usize,
+) -> LRESULT {
+    if message == WM_NCDESTROY {
+        unsafe {
+            let _ = RemoveWindowSubclass(hwnd, Some(target_list_subclass_proc), subclass_id);
+            return DefSubclassProc(hwnd, message, wparam, lparam);
+        }
+    }
+
+    if message == WM_LBUTTONDOWN {
+        let app = unsafe { (ref_data as *mut AppWindow).as_mut() };
+        if let Some(app) = app {
+            let point = POINT {
+                x: signed_loword(lparam.0),
+                y: signed_hiword(lparam.0),
+            };
+            if app.target_index_from_list_client_point(point).is_none() {
+                let result = unsafe { DefSubclassProc(hwnd, message, wparam, lparam) };
+                app.clear_target_selection();
+                return result;
+            }
+        }
+    }
+
+    unsafe { DefSubclassProc(hwnd, message, wparam, lparam) }
+}
+
 #[cfg(test)]
 mod target_list_tests {
     use super::*;
+
+    #[test]
+    fn point_inside_rect_uses_right_and_bottom_as_exclusive_edges() {
+        let rect = RECT {
+            left: 10,
+            top: 20,
+            right: 30,
+            bottom: 40,
+        };
+
+        assert!(point_is_in_rect(POINT { x: 10, y: 20 }, rect));
+        assert!(point_is_in_rect(POINT { x: 29, y: 39 }, rect));
+        assert!(!point_is_in_rect(POINT { x: 30, y: 20 }, rect));
+        assert!(!point_is_in_rect(POINT { x: 10, y: 40 }, rect));
+    }
 
     #[test]
     fn target_display_storage_hint_counts_one_nul_for_plain_target() {
@@ -4870,7 +4438,7 @@ unsafe extern "system" fn window_proc(
             WM_DRAWITEM if app.draw_item(lparam) => {
                 return LRESULT(1);
             }
-            WM_SETCURSOR if app.set_github_link_cursor(HWND(wparam.0 as *mut c_void)) => {
+            WM_SETCURSOR if app.set_settings_button_cursor(HWND(wparam.0 as *mut c_void)) => {
                 return LRESULT(1);
             }
             WM_SHOWWINDOW => {
@@ -4888,6 +4456,10 @@ unsafe extern "system" fn window_proc(
             }
             WM_MOVE => {
                 app.remember_window_position();
+                return LRESULT(0);
+            }
+            WM_EXITSIZEMOVE => {
+                app.save_window_position();
                 return LRESULT(0);
             }
             WM_CLOSE => {

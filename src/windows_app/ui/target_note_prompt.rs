@@ -3,10 +3,10 @@ use super::constants::{
     ID_TARGET_NOTE_CANCEL, ID_TARGET_NOTE_CLEAR, ID_TARGET_NOTE_EDIT, ID_TARGET_NOTE_SAVE,
     PAGE_COLOR, SS_ENDELLIPSIS_STYLE, TARGET_NOTE_PROMPT_CLASS_NAME, TEXT_COLOR,
 };
-use super::theme::{OwnedBrush, UiFont, ui_font_point_size};
+use super::theme::{OwnedBrush, UiFont, px, ui_font_point_size};
 use super::win32::{
     WindowClassRegistration, create_button, create_control, create_primary_button, get_message,
-    hiword, loword, measure_text_width, to_wide, window_text_into,
+    hiword, loword, measure_text_width, move_window, to_wide, window_text_into,
 };
 use crate::config::{MAX_TARGET_NOTE_CHARS, normalize_target_note};
 use crate::i18n::{Language, Strings};
@@ -18,7 +18,7 @@ use windows::Win32::UI::Input::KeyboardAndMouse::{EnableWindow, IsWindowEnabled,
 use windows::Win32::UI::WindowsAndMessaging::{
     CREATESTRUCTW, CreateWindowExW, DefWindowProcW, DestroyWindow, DispatchMessageW,
     ES_AUTOHSCROLL, GWLP_USERDATA, GetWindowLongPtrW, HICON, IDC_ARROW, IsDialogMessageW,
-    LoadCursorW, MSG, MoveWindow, RegisterClassW, SW_SHOW, SendMessageW, SetForegroundWindow,
+    LoadCursorW, MSG, RegisterClassW, SW_SHOW, SendMessageW, SetForegroundWindow,
     SetWindowLongPtrW, ShowWindow, TranslateMessage, WINDOW_EX_STYLE, WINDOW_STYLE, WM_CLOSE,
     WM_COMMAND, WM_CREATE, WM_CTLCOLORSTATIC, WM_NCCREATE, WM_NCDESTROY, WM_SETFONT, WNDCLASSW,
     WS_CAPTION, WS_CHILD, WS_EX_CLIENTEDGE, WS_OVERLAPPED, WS_SYSMENU, WS_TABSTOP, WS_VISIBLE,
@@ -230,11 +230,11 @@ impl<'a> TargetNotePrompt<'a> {
         let y = 146;
 
         unsafe {
-            let _ = MoveWindow(self.cancel_button, x, y, cancel_width, 34, true);
+            let _ = move_window(self.cancel_button, x, y, cancel_width, 34, true);
             x += cancel_width + gap;
-            let _ = MoveWindow(self.clear_button, x, y, clear_width, 34, true);
+            let _ = move_window(self.clear_button, x, y, clear_width, 34, true);
             x += clear_width + gap;
-            let _ = MoveWindow(self.save_button, x, y, save_width, 34, true);
+            let _ = move_window(self.save_button, x, y, save_width, 34, true);
         }
     }
 
@@ -295,7 +295,9 @@ pub(super) unsafe fn prompt_target_note(
     ));
     let state_ptr = state.as_mut() as *mut TargetNotePrompt<'_>;
     let title = to_wide(language.strings().target_note_window_title);
-    let position = centered_position(TARGET_NOTE_WIDTH, TARGET_NOTE_HEIGHT);
+    let width = px(TARGET_NOTE_WIDTH);
+    let height = px(TARGET_NOTE_HEIGHT);
+    let position = centered_position(width, height);
     let hwnd = unsafe {
         CreateWindowExW(
             WINDOW_EX_STYLE(0),
@@ -304,8 +306,8 @@ pub(super) unsafe fn prompt_target_note(
             TARGET_NOTE_WINDOW_STYLE,
             position.x,
             position.y,
-            TARGET_NOTE_WIDTH,
-            TARGET_NOTE_HEIGHT,
+            width,
+            height,
             Some(parent),
             None,
             Some(instance),

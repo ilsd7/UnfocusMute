@@ -3,11 +3,11 @@ use super::constants::{
     ID_LANGUAGE_PROMPT_COMBO, ID_LANGUAGE_PROMPT_OK, ID_LANGUAGE_PROMPT_STARTUP,
     LANGUAGE_PROMPT_CLASS_NAME, PAGE_COLOR, SS_ENDELLIPSIS_STYLE, TEXT_COLOR,
 };
-use super::theme::{OwnedBrush, UiFont, ui_font_point_size};
+use super::theme::{OwnedBrush, UiFont, px, ui_font_point_size};
 use super::win32::{
     WindowClassRegistration, add_combo_item_with_buffer, create_control, create_multiline_checkbox,
     create_primary_button, get_message, hiword, is_checked, loword, measure_text_width,
-    reserve_combo_items, set_checkbox, set_text, storage_bytes_hint, to_wide,
+    move_window, reserve_combo_items, set_checkbox, set_text, storage_bytes_hint, to_wide,
     utf16_code_unit_count,
 };
 use crate::i18n::Language;
@@ -20,11 +20,11 @@ use windows::Win32::UI::Controls::CB_SETMINVISIBLE;
 use windows::Win32::UI::WindowsAndMessaging::{
     CB_GETCURSEL, CB_SETCURSEL, CBN_SELCHANGE, CBN_SELENDOK, CBS_DROPDOWNLIST, CREATESTRUCTW,
     CreateWindowExW, DefWindowProcW, DestroyWindow, DispatchMessageW, GWLP_USERDATA,
-    GetWindowLongPtrW, HICON, IDC_ARROW, IsDialogMessageW, LoadCursorW, MSG, MoveWindow,
-    RegisterClassW, SW_SHOW, SendMessageW, SetForegroundWindow, SetWindowLongPtrW, ShowWindow,
-    TranslateMessage, WINDOW_EX_STYLE, WINDOW_STYLE, WM_CLOSE, WM_COMMAND, WM_CREATE,
-    WM_CTLCOLORSTATIC, WM_NCCREATE, WM_NCDESTROY, WM_SETFONT, WNDCLASSW, WS_CAPTION, WS_CHILD,
-    WS_EX_CLIENTEDGE, WS_OVERLAPPED, WS_SYSMENU, WS_TABSTOP, WS_VISIBLE,
+    GetWindowLongPtrW, HICON, IDC_ARROW, IsDialogMessageW, LoadCursorW, MSG, RegisterClassW,
+    SW_SHOW, SendMessageW, SetForegroundWindow, SetWindowLongPtrW, ShowWindow, TranslateMessage,
+    WINDOW_EX_STYLE, WINDOW_STYLE, WM_CLOSE, WM_COMMAND, WM_CREATE, WM_CTLCOLORSTATIC, WM_NCCREATE,
+    WM_NCDESTROY, WM_SETFONT, WNDCLASSW, WS_CAPTION, WS_CHILD, WS_EX_CLIENTEDGE, WS_OVERLAPPED,
+    WS_SYSMENU, WS_TABSTOP, WS_VISIBLE,
 };
 use windows::core::{PCWSTR, w};
 
@@ -237,7 +237,7 @@ impl LanguagePrompt {
         let start_x = LANGUAGE_PROMPT_WIDTH - LANGUAGE_PROMPT_MARGIN - start_width;
         let start_y = LANGUAGE_PROMPT_STARTUP_Y + startup_height + LANGUAGE_PROMPT_BUTTON_TOP_GAP;
         unsafe {
-            let _ = MoveWindow(
+            let _ = move_window(
                 self.launch_on_startup_check,
                 LANGUAGE_PROMPT_MARGIN,
                 LANGUAGE_PROMPT_STARTUP_Y,
@@ -245,7 +245,7 @@ impl LanguagePrompt {
                 startup_height,
                 true,
             );
-            let _ = MoveWindow(
+            let _ = move_window(
                 self.start_button,
                 start_x,
                 start_y,
@@ -322,7 +322,9 @@ pub(super) unsafe fn prompt_initial_language(
     let mut state = Box::new(LanguagePrompt::new(current, launch_on_startup));
     let state_ptr = state.as_mut() as *mut LanguagePrompt;
     let title = to_wide(current.strings().first_run_window_title);
-    let position = centered_position(LANGUAGE_PROMPT_WIDTH, LANGUAGE_PROMPT_HEIGHT);
+    let width = px(LANGUAGE_PROMPT_WIDTH);
+    let height = px(LANGUAGE_PROMPT_HEIGHT);
+    let position = centered_position(width, height);
     let hwnd = unsafe {
         CreateWindowExW(
             WINDOW_EX_STYLE(0),
@@ -331,8 +333,8 @@ pub(super) unsafe fn prompt_initial_language(
             LANGUAGE_PROMPT_WINDOW_STYLE,
             position.x,
             position.y,
-            LANGUAGE_PROMPT_WIDTH,
-            LANGUAGE_PROMPT_HEIGHT,
+            width,
+            height,
             None,
             None,
             Some(instance),

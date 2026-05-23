@@ -49,11 +49,11 @@ Mute और restore, दोनों सिर्फ उन sessions पर ल�
 ## मुख्य सुविधाएं
 
 - Registered apps background में होने पर audio session अपने आप mute करता है और foreground में लौटने पर restore करता है।
-- Running app list से target register करें या `game.exe` जैसा नाम manually लिखें।
-- `.exe` targets, current-instance PID targets और `PID विवरण दिखाएं` support करता है।
-- App-wise notes, target-wise live mute state, app-wise `निगरानी रोकें` और `निगरानी फिर शुरू करें`।
+- Running app list से target register करें या `game.exe` जैसा नाम सीधे लिखें।
+- `.exe` targets, current-instance PID targets और `PID दृश्य` support करता है।
+- App-wise notes, target-wise live mute state, app-wise `रोकें` और `फिर शुरू करें`।
 - Tray में चलना, tray status summary, global pause, config folder खोलना और duplicate instance protection।
-- नीचे बाएं छोटा GitHub icon, जिससे default browser में project page खुलता है। Hover करने पर project URL दिखता है।
+- नीचे बाएं settings button में behavior options, language, config folder, GitHub और version info मिलते हैं।
 - पहली बार language चुनें, फिर app के अंदर English/한국어/日本語/简体中文/Español/Français/Português/हिन्दी/العربية तुरंत बदलें।
 - Settings local रूप से `%APPDATA%\UnfocusMute\config.json` में save होती हैं।
 
@@ -88,9 +88,9 @@ UnfocusMute Windows से मिलने वाले process names, foregroun
 2. पहली बार खुलने वाली भाषा स्क्रीन में भाषा चुनें। Default English है।
 3. वह game या app शुरू करें जिसे background में जाने पर mute करना है।
 4. `प्रक्रिया खोजें` list खोलें या search term लिखें, item चुनें और `चयनित जोड़ें` दबाएं।
-5. अगर सिर्फ किसी खास PID को register करना है, तो `PID विवरण दिखाएं` दबाकर अलग entry चुनें। PID target सिर्फ अभी चल रहे instance पर लागू होता है; app restart होकर PID बदल जाए तो उसे फिर से चुनें।
-6. पंजीकृत ऐप पर right-click करके उसका नोट संपादित किया जा सकता है या `निगरानी रोकें` इस्तेमाल किया जा सकता है।
-7. नीचे बाएं छोटा `GitHub` icon दबाने पर default browser में GitHub project page खुलता है। Hover करने पर project URL दिखता है।
+5. अगर सिर्फ किसी खास PID को register करना है, तो `PID दृश्य` दबाकर अलग entry चुनें। PID target सिर्फ अभी चल रहे instance पर लागू होता है; app restart होकर PID बदल जाए तो उसे फिर से चुनें।
+6. पंजीकृत ऐप पर right-click करके उसका नोट संपादित किया जा सकता है या `रोकें` इस्तेमाल किया जा सकता है।
+7. नीचे बाएं `सेटिंग्स` खोलकर behavior options बदलें।
 8. विंडो बंद करने पर ऐप tray में रहकर निगरानी जारी रखता है। पूरी तरह बंद करने के लिए `बंद करें` दबाएं।
 
 ## पंजीकृत ऐप्स में नोट इस्तेमाल करें
@@ -119,7 +119,9 @@ UnfocusMute Windows से मिलने वाले process names, foregroun
 
 ## सुरक्षा और प्राइवेसी
 
-UnfocusMute पूरी तरह local app है। सब कुछ आपके इसी PC के अंदर होता है, और internet connection न होने पर भी यह सामान्य रूप से काम करता है। GitHub icon सिर्फ आपके दबाने पर default browser में project page खोलता है।
+UnfocusMute पूरी तरह local app है। सब कुछ आपके इसी PC के अंदर होता है, और internet connection न होने पर भी यह सामान्य रूप से काम करता है।
+
+एक अपवाद के तौर पर, जब आप Settings में GitHub button दबाते हैं, तो इस project का GitHub page आपके default browser में खुलता है।
 
 **यह क्या save करता है:** Registered process names, optional PIDs, आपके लिखे notes, चुनी हुई language, window position और startup options।
 यह data सिर्फ `%APPDATA%\UnfocusMute\config.json` में save होता है और बाहर कहीं नहीं भेजा जाता।
