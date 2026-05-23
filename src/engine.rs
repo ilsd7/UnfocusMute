@@ -312,6 +312,7 @@ impl<'a> MutePlanner<'a> {
         )
     }
 
+    #[cfg(test)]
     pub(crate) fn plan_identity_with_match(
         &self,
         match_kind: Option<TargetMatchKind>,
@@ -344,6 +345,16 @@ impl<'a> MutePlanner<'a> {
         };
 
         (should_mute || managed).then_some(should_mute)
+    }
+
+    pub(crate) fn can_clear_managed_target_state(
+        &self,
+        match_kind: Option<TargetMatchKind>,
+        session_pid: u32,
+    ) -> bool {
+        // A process-name target can leave stale sessions from an old PID.
+        // Only the current foreground PID proves that its persisted restore state is cleared.
+        match_kind.is_none() || self.foreground_pid == Some(session_pid)
     }
 }
 
@@ -497,6 +508,30 @@ mod tests {
             planner.desired_mute_with_match(None, "game.exe", 10, true),
             Some(false)
         );
+    }
+
+    #[test]
+    fn target_state_is_not_cleared_by_non_foreground_same_name_session() {
+        let matcher = TargetMatcher::new(&[TargetProcess::new("game.exe").unwrap()]);
+        let planner = MutePlanner::new(&matcher, Some(20), Some("game.exe"));
+
+        assert!(!planner.can_clear_managed_target_state(Some(TargetMatchKind::ProcessName), 10,));
+    }
+
+    #[test]
+    fn target_state_is_cleared_by_foreground_session() {
+        let matcher = TargetMatcher::new(&[TargetProcess::new("game.exe").unwrap()]);
+        let planner = MutePlanner::new(&matcher, Some(20), Some("game.exe"));
+
+        assert!(planner.can_clear_managed_target_state(Some(TargetMatchKind::ProcessName), 20,));
+    }
+
+    #[test]
+    fn restore_mode_can_clear_target_state_without_foreground() {
+        let matcher = TargetMatcher::new(&[]);
+        let planner = MutePlanner::new(&matcher, None, None);
+
+        assert!(planner.can_clear_managed_target_state(None, 20));
     }
 
     #[test]

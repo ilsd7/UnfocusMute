@@ -123,7 +123,7 @@ UnfocusMute पूरी तरह local app है। सब कुछ आप�
 
 एक अपवाद के तौर पर, जब आप Settings में GitHub button दबाते हैं, तो इस project का GitHub page आपके default browser में खुलता है।
 
-**यह क्या save करता है:** Registered process names, optional PIDs, आपके लिखे notes, चुनी हुई language, window position और startup options।
+**यह क्या save करता है:** Registered process names, optional PIDs, आपके लिखे notes, चुनी हुई language, window position, startup options और registered targets की mute-restore state।
 यह data सिर्फ `%APPDATA%\UnfocusMute\config.json` में save होता है और बाहर कहीं नहीं भेजा जाता।
 
 **यह क्या save नहीं करता:** App log files नहीं बनाता। Sessions के बीच behavior history कहीं भी नहीं रखी जाती।

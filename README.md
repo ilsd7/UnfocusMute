@@ -123,7 +123,7 @@ UnfocusMute is a fully local app. Everything happens on your current PC, and it 
 
 As an exception, when you click the GitHub button in Settings, this project's GitHub page opens in your default browser.
 
-**What it stores:** Registered process names, optional PIDs, notes you write, selected language, window position, and startup options.
+**What it stores:** Registered process names, optional PIDs, notes you write, selected language, window position, startup options, and UnfocusMute's mute-restore state for registered targets.
 This data is stored only in `%APPDATA%\UnfocusMute\config.json` and is not sent anywhere.
 
 **What it does not store:** It does not create app log files. No behavior history is retained between sessions.

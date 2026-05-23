@@ -18,7 +18,7 @@ use windows::Win32::Storage::FileSystem::{
 #[cfg(windows)]
 use windows::core::PCWSTR;
 
-const CONFIG_VERSION: u32 = 3;
+const CONFIG_VERSION: u32 = 4;
 const LEGACY_DEFAULT_POLLING_INTERVAL_MS: u64 = 350;
 const EVENT_FALLBACK_DEFAULT_POLLING_INTERVAL_MS: u64 = 5_000;
 const DEFAULT_POLLING_INTERVAL_MS: u64 = 3_000;
@@ -35,6 +35,8 @@ pub struct TargetProcess {
     pub note: Option<String>,
     #[serde(default = "target_enabled_default", skip_serializing_if = "is_true")]
     pub enabled: bool,
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub managed_muted: bool,
 }
 
 impl TargetProcess {
@@ -49,6 +51,7 @@ impl TargetProcess {
             pid: None,
             note: None,
             enabled: true,
+            managed_muted: false,
         })
     }
 
@@ -66,6 +69,7 @@ impl TargetProcess {
             pid: Some(pid),
             note: None,
             enabled: true,
+            managed_muted: false,
         })
     }
 
@@ -94,6 +98,10 @@ const fn target_enabled_default() -> bool {
 
 fn is_true(value: &bool) -> bool {
     *value
+}
+
+fn is_false(value: &bool) -> bool {
+    !*value
 }
 
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -220,6 +228,7 @@ impl AppConfig {
             pid: None,
             note: None,
             enabled: true,
+            managed_muted: false,
         })
     }
 
@@ -233,6 +242,7 @@ impl AppConfig {
             pid: Some(pid),
             note: None,
             enabled: true,
+            managed_muted: false,
         })
     }
 
@@ -304,6 +314,21 @@ impl AppConfig {
         true
     }
 
+    pub(crate) fn set_target_managed_muted_at(
+        &mut self,
+        index: usize,
+        managed_muted: bool,
+    ) -> bool {
+        let Some(target) = self.targets.get_mut(index) else {
+            return false;
+        };
+        if target.managed_muted == managed_muted {
+            return false;
+        }
+        target.managed_muted = managed_muted;
+        true
+    }
+
     pub(crate) fn contains_normalized_target(&self, name: &str, pid: Option<u32>) -> bool {
         debug_assert!(is_normalized_process_name(name));
         match self.targets.as_slice() {
@@ -367,6 +392,7 @@ impl AppConfig {
             };
             if previous.name == target.name && previous.pid == target.pid {
                 previous.enabled |= target.enabled;
+                previous.managed_muted |= target.managed_muted;
                 if previous.note.is_none() {
                     previous.note = target.note;
                 }
@@ -1399,10 +1425,23 @@ mod tests {
 
         let enabled = serde_json::to_string(&target).unwrap();
         assert!(!enabled.contains("enabled"));
+        assert!(!enabled.contains("managed_muted"));
 
         target.enabled = false;
         let disabled = serde_json::to_string(&target).unwrap();
         assert!(disabled.contains(r#""enabled":false"#));
+
+        target.managed_muted = true;
+        let managed_muted = serde_json::to_string(&target).unwrap();
+        assert!(managed_muted.contains(r#""managed_muted":true"#));
+    }
+
+    #[test]
+    fn legacy_target_without_managed_mute_defaults_to_not_managed() {
+        let config: AppConfig =
+            serde_json::from_str(r#"{"targets":[{"name":"game.exe"}]}"#).unwrap();
+
+        assert!(!config.targets[0].managed_muted);
     }
 
     #[test]
@@ -1414,12 +1453,14 @@ mod tests {
                     pid: None,
                     note: None,
                     enabled: true,
+                    managed_muted: false,
                 },
                 TargetProcess {
                     name: "game.exe".to_owned(),
                     pid: None,
                     note: None,
                     enabled: true,
+                    managed_muted: true,
                 },
             ],
             ..AppConfig::default()
@@ -1429,6 +1470,7 @@ mod tests {
 
         assert_eq!(config.targets.len(), 1);
         assert_eq!(config.targets[0].name, "game.exe");
+        assert!(config.targets[0].managed_muted);
     }
 
     #[test]
@@ -1439,6 +1481,7 @@ mod tests {
                 pid: Some(0),
                 note: None,
                 enabled: true,
+                managed_muted: false,
             }],
             ..AppConfig::default()
         };
@@ -1456,6 +1499,7 @@ mod tests {
                 pid: None,
                 note: None,
                 enabled: true,
+                managed_muted: false,
             }],
             ..AppConfig::default()
         };
@@ -1473,6 +1517,7 @@ mod tests {
                 pid: None,
                 note: None,
                 enabled: true,
+                managed_muted: false,
             }],
             ..AppConfig::default()
         };
@@ -1491,12 +1536,14 @@ mod tests {
                     pid: None,
                     note: Some("primary".to_owned()),
                     enabled: false,
+                    managed_muted: true,
                 },
                 TargetProcess {
                     name: "game.exe".to_owned(),
                     pid: None,
                     note: Some("duplicate".to_owned()),
                     enabled: true,
+                    managed_muted: false,
                 },
             ],
             ..AppConfig::default()
@@ -1507,6 +1554,7 @@ mod tests {
         assert_eq!(config.targets.len(), 1);
         assert_eq!(config.targets[0].name, "game.exe");
         assert!(config.targets[0].enabled);
+        assert!(config.targets[0].managed_muted);
         assert_eq!(config.targets[0].note.as_deref(), Some("primary"));
     }
 
@@ -1519,12 +1567,14 @@ mod tests {
                     pid: Some(42),
                     note: None,
                     enabled: true,
+                    managed_muted: false,
                 },
                 TargetProcess {
                     name: "GAME.EXE".to_owned(),
                     pid: Some(42),
                     note: Some("main".to_owned()),
                     enabled: true,
+                    managed_muted: true,
                 },
             ],
             ..AppConfig::default()
@@ -1535,6 +1585,7 @@ mod tests {
         assert_eq!(config.targets.len(), 1);
         assert_eq!(config.targets[0].name, "game.exe");
         assert_eq!(config.targets[0].pid, Some(42));
+        assert!(config.targets[0].managed_muted);
         assert_eq!(config.targets[0].note.as_deref(), Some("main"));
     }
 

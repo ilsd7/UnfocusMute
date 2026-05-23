@@ -123,7 +123,7 @@ UnfocusMute est une application entièrement locale. Tout se passe sur votre PC,
 
 Par exception, lorsque vous cliquez sur le bouton GitHub dans Réglages, la page GitHub du projet s’ouvre dans votre navigateur par défaut.
 
-**Ce qui est stocké :** Les noms de processus enregistrés, les PID facultatifs, les notes que vous écrivez, la langue choisie, la position de la fenêtre et les options de démarrage.
+**Ce qui est stocké :** Les noms de processus enregistrés, les PID facultatifs, les notes que vous écrivez, la langue choisie, la position de la fenêtre, les options de démarrage et l'état de restauration du mode muet pour les cibles enregistrées.
 Ces données sont stockées uniquement dans `%APPDATA%\UnfocusMute\config.json` et ne sont envoyées nulle part.
 
 **Ce qui n’est pas stocké :** L’application ne crée pas de fichier journal. Aucun historique d’activité n’est conservé entre les sessions.

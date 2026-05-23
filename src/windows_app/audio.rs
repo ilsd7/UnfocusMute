@@ -1,4 +1,5 @@
-use crate::engine::{AudioSessionKey, MutePlanner, TargetMatcher};
+use crate::config::TargetProcess;
+use crate::engine::{AudioSessionKey, MutePlanner, TargetMatchKind, TargetMatcher};
 use crate::windows_app::error::{Context, Result, message_error};
 use crate::windows_app::process;
 use std::collections::HashSet;
@@ -31,6 +32,14 @@ pub struct MuteApplyResult {
 
 pub struct PlannedMuteApplyResult {
     pub had_failures: bool,
+    pub target_updates: Vec<TargetMuteStateUpdate>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct TargetMuteStateUpdate {
+    pub process_name: String,
+    pub pid: Option<u32>,
+    pub muted: bool,
 }
 
 impl AudioController {
@@ -109,6 +118,7 @@ impl AudioController {
         foreground_pid: Option<u32>,
         foreground_process_name: Option<&str>,
         managed_muted_sessions: &mut HashSet<AudioSessionKey>,
+        targets: &[TargetProcess],
     ) -> Result<PlannedMuteApplyResult> {
         let planner = MutePlanner::new_with_normalized_foreground(
             matcher,
@@ -118,6 +128,7 @@ impl AudioController {
         let mut apply_result = PlanApplyResult::new(managed_muted_sessions.len());
         {
             let lookup = ManagedSessionLookup::new(managed_muted_sessions);
+            let target_lookup = ManagedTargetLookup::new(targets);
             let needs_all_session_process_names = matcher.needs_all_session_process_names();
             self.visit_sessions_matching(
                 needs_all_session_process_names,
@@ -125,6 +136,7 @@ impl AudioController {
                     needs_all_session_process_names
                         || matcher.has_pid_target(pid)
                         || lookup.may_include_pid(pid)
+                        || target_lookup.may_include_pid(pid)
                 },
                 |visit| match visit {
                     SessionVisit::Resolved(session) => {
@@ -133,6 +145,7 @@ impl AudioController {
                             &planner,
                             managed_muted_sessions,
                             &lookup,
+                            &target_lookup,
                             &mut apply_result,
                         );
                     }
@@ -156,6 +169,7 @@ impl AudioController {
 
         Ok(PlannedMuteApplyResult {
             had_failures: apply_result.had_failures,
+            target_updates: apply_result.target_updates,
         })
     }
 
@@ -238,6 +252,7 @@ fn session_muted(volume: &ISimpleAudioVolume) -> windows::core::Result<bool> {
 
 struct PlanApplyResult {
     active_managed_sessions: Vec<AudioSessionKey>,
+    target_updates: Vec<TargetMuteStateUpdate>,
     had_failures: bool,
 }
 
@@ -245,6 +260,7 @@ impl PlanApplyResult {
     fn new(managed_session_count: usize) -> Self {
         Self {
             active_managed_sessions: Vec::with_capacity(managed_session_count),
+            target_updates: Vec::new(),
             had_failures: false,
         }
     }
@@ -270,6 +286,66 @@ impl PlanApplyResult {
             }
             self.active_managed_sessions.push(key.clone());
         }
+    }
+
+    fn set_target_state(&mut self, identity: TargetMuteIdentity<'_>, muted: bool) {
+        if let Some(update) = self.target_updates.iter_mut().find(|update| {
+            update.process_name == identity.process_name && update.pid == identity.pid
+        }) {
+            update.muted |= muted;
+            return;
+        }
+
+        self.target_updates.push(TargetMuteStateUpdate {
+            process_name: identity.process_name.to_owned(),
+            pid: identity.pid,
+            muted,
+        });
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+struct TargetMuteIdentity<'a> {
+    process_name: &'a str,
+    pid: Option<u32>,
+}
+
+struct ManagedTargetLookup<'a> {
+    targets: &'a [TargetProcess],
+}
+
+impl<'a> ManagedTargetLookup<'a> {
+    fn new(targets: &'a [TargetProcess]) -> Self {
+        Self { targets }
+    }
+
+    fn may_include_pid(&self, pid: u32) -> bool {
+        self.managed_targets()
+            .any(|target| target.pid.is_none_or(|target_pid| target_pid == pid))
+    }
+
+    fn has_match(&self, process_name: &str, pid: u32) -> bool {
+        self.matching_sessions(process_name, pid).next().is_some()
+    }
+
+    fn matching_sessions<'b>(
+        &'b self,
+        process_name: &'b str,
+        pid: u32,
+    ) -> impl Iterator<Item = TargetMuteIdentity<'a>> + 'b {
+        self.managed_targets()
+            .filter(move |target| {
+                target.name.as_str() == process_name
+                    && target.pid.is_none_or(|target_pid| target_pid == pid)
+            })
+            .map(|target| TargetMuteIdentity {
+                process_name: target.name.as_str(),
+                pid: target.pid,
+            })
+    }
+
+    fn managed_targets(&self) -> impl Iterator<Item = &'a TargetProcess> + '_ {
+        self.targets.iter().filter(|target| target.managed_muted)
     }
 }
 
@@ -390,11 +466,15 @@ fn apply_plan_to_session(
     planner: &MutePlanner<'_>,
     managed_muted_sessions: &HashSet<AudioSessionKey>,
     lookup: &ManagedSessionLookup<'_>,
+    target_lookup: &ManagedTargetLookup<'_>,
     result: &mut PlanApplyResult,
 ) {
     let match_kind = planner.match_kind(session.process_name, session.pid);
+    let has_managed_target = target_lookup.has_match(session.process_name, session.pid);
+    let target_identity =
+        target_identity_for_session(match_kind, session.process_name, session.pid);
     let mut key = None;
-    let managed = if lookup.may_include(session.pid, session.process_name) {
+    let managed_session = if lookup.may_include(session.pid, session.process_name) {
         let session_key = session.key();
         let managed = managed_muted_sessions.contains(&session_key);
         key = Some(session_key);
@@ -402,62 +482,129 @@ fn apply_plan_to_session(
     } else {
         false
     };
+    let managed = managed_session || has_managed_target;
+    let allow_unmuted_target_update =
+        planner.can_clear_managed_target_state(match_kind, session.pid);
 
     if match_kind.is_none() && !managed {
         return;
     }
 
+    let Some(desired_mute) =
+        planner.desired_mute_with_match(match_kind, session.process_name, session.pid, managed)
+    else {
+        return;
+    };
     let Some(volume) = session.volume() else {
-        if planner
-            .desired_mute_with_match(match_kind, session.process_name, session.pid, managed)
-            .is_some()
-        {
-            result.had_failures = true;
-        }
+        result.had_failures = true;
         if managed {
             result.keep_active_session(session, key);
+            set_target_states_for_session(
+                result,
+                target_lookup,
+                session.process_name,
+                session.pid,
+                target_identity,
+                true,
+                true,
+            );
         }
         return;
     };
     let mute = match session_muted(&volume) {
         Ok(muted) => {
-            let Some(mute) = planner.plan_identity_with_match(
-                match_kind,
-                session.process_name,
-                session.pid,
-                managed,
-                muted,
-            ) else {
+            if desired_mute == muted {
                 if managed {
-                    result.keep_active_session(session, key);
+                    if desired_mute {
+                        result.keep_active_session(session, key);
+                    }
+                    set_target_states_for_session(
+                        result,
+                        target_lookup,
+                        session.process_name,
+                        session.pid,
+                        target_identity,
+                        desired_mute,
+                        allow_unmuted_target_update,
+                    );
                 }
                 return;
-            };
-            mute
+            }
+            desired_mute
         }
-        Err(_) => {
-            let Some(mute) = planner.desired_mute_with_match(
-                match_kind,
-                session.process_name,
-                session.pid,
-                managed,
-            ) else {
-                return;
-            };
-            mute
-        }
+        Err(_) => desired_mute,
     };
 
     if unsafe { volume.SetMute(mute, std::ptr::null()) }.is_err() {
         result.had_failures = true;
         if managed {
             result.keep_active_session(session, key);
+            set_target_states_for_session(
+                result,
+                target_lookup,
+                session.process_name,
+                session.pid,
+                target_identity,
+                true,
+                true,
+            );
         }
         return;
     }
 
     if mute {
         result.keep_active_session(session, key);
+    }
+    set_target_states_for_session(
+        result,
+        target_lookup,
+        session.process_name,
+        session.pid,
+        target_identity,
+        mute,
+        allow_unmuted_target_update,
+    );
+}
+
+fn target_identity_for_session<'a>(
+    match_kind: Option<TargetMatchKind>,
+    process_name: &'a str,
+    pid: u32,
+) -> Option<TargetMuteIdentity<'a>> {
+    match match_kind {
+        Some(TargetMatchKind::ProcessName) => Some(TargetMuteIdentity {
+            process_name,
+            pid: None,
+        }),
+        Some(TargetMatchKind::Pid) => Some(TargetMuteIdentity {
+            process_name,
+            pid: Some(pid),
+        }),
+        None => None,
+    }
+}
+
+fn set_target_states_for_session(
+    result: &mut PlanApplyResult,
+    target_lookup: &ManagedTargetLookup<'_>,
+    process_name: &str,
+    pid: u32,
+    fallback_identity: Option<TargetMuteIdentity<'_>>,
+    muted: bool,
+    allow_unmuted_update: bool,
+) {
+    if !muted && !allow_unmuted_update {
+        return;
+    }
+
+    let mut updated_persisted_target = false;
+    for identity in target_lookup.matching_sessions(process_name, pid) {
+        result.set_target_state(identity, muted);
+        updated_persisted_target = true;
+    }
+
+    if !updated_persisted_target && let Some(identity) = fallback_identity {
+        result.set_target_state(identity, muted);
     }
 }
 
@@ -805,6 +952,128 @@ mod tests {
         assert!(lookup.may_include(7, "game.exe"));
         assert!(!lookup.may_include(7, "other.exe"));
         assert!(!lookup.may_include(8, "game.exe"));
+    }
+
+    #[test]
+    fn managed_target_lookup_keeps_persisted_targets_even_when_disabled() {
+        let mut target = crate::config::TargetProcess::new("game.exe").unwrap();
+        target.enabled = false;
+        target.managed_muted = true;
+        let targets = [target];
+        let lookup = ManagedTargetLookup::new(&targets);
+
+        assert!(lookup.may_include_pid(42));
+        assert!(lookup.has_match("game.exe", 42));
+    }
+
+    #[test]
+    fn managed_target_lookup_returns_all_matching_persisted_targets() {
+        let mut process_target = crate::config::TargetProcess::new("game.exe").unwrap();
+        process_target.managed_muted = true;
+        let mut pid_target = crate::config::TargetProcess::for_pid("game.exe", 42).unwrap();
+        pid_target.managed_muted = true;
+        let targets = [process_target, pid_target];
+        let lookup = ManagedTargetLookup::new(&targets);
+
+        let matches = lookup.matching_sessions("game.exe", 42).collect::<Vec<_>>();
+
+        assert_eq!(
+            matches,
+            vec![
+                TargetMuteIdentity {
+                    process_name: "game.exe",
+                    pid: None,
+                },
+                TargetMuteIdentity {
+                    process_name: "game.exe",
+                    pid: Some(42),
+                },
+            ]
+        );
+    }
+
+    #[test]
+    fn target_mute_updates_prefer_muted_when_sessions_disagree() {
+        let mut result = PlanApplyResult::new(0);
+
+        result.set_target_state(
+            TargetMuteIdentity {
+                process_name: "game.exe",
+                pid: None,
+            },
+            false,
+        );
+        result.set_target_state(
+            TargetMuteIdentity {
+                process_name: "game.exe",
+                pid: None,
+            },
+            true,
+        );
+
+        assert_eq!(
+            result.target_updates,
+            vec![TargetMuteStateUpdate {
+                process_name: "game.exe".to_owned(),
+                pid: None,
+                muted: true,
+            }]
+        );
+    }
+
+    #[test]
+    fn non_foreground_same_name_session_does_not_clear_persisted_target_mute() {
+        let mut target = crate::config::TargetProcess::new("game.exe").unwrap();
+        target.managed_muted = true;
+        let targets = [target];
+        let lookup = ManagedTargetLookup::new(&targets);
+        let mut result = PlanApplyResult::new(0);
+
+        set_target_states_for_session(
+            &mut result,
+            &lookup,
+            "game.exe",
+            10,
+            Some(TargetMuteIdentity {
+                process_name: "game.exe",
+                pid: None,
+            }),
+            false,
+            false,
+        );
+
+        assert!(result.target_updates.is_empty());
+    }
+
+    #[test]
+    fn foreground_session_can_clear_persisted_target_mute() {
+        let mut target = crate::config::TargetProcess::new("game.exe").unwrap();
+        target.managed_muted = true;
+        let targets = [target];
+        let lookup = ManagedTargetLookup::new(&targets);
+        let mut result = PlanApplyResult::new(0);
+
+        set_target_states_for_session(
+            &mut result,
+            &lookup,
+            "game.exe",
+            20,
+            Some(TargetMuteIdentity {
+                process_name: "game.exe",
+                pid: None,
+            }),
+            false,
+            true,
+        );
+
+        assert_eq!(
+            result.target_updates,
+            vec![TargetMuteStateUpdate {
+                process_name: "game.exe".to_owned(),
+                pid: None,
+                muted: false,
+            }]
+        );
     }
 
     #[test]

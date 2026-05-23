@@ -123,7 +123,7 @@ UnfocusMute é um app totalmente local. Tudo acontece dentro do seu PC, e ele fu
 
 Como exceção, quando você clica no botão do GitHub em Configurações, a página do GitHub deste projeto é aberta no navegador padrão.
 
-**O que ele salva:** Nomes de processos registrados, PIDs opcionais, notas que você escrever, idioma escolhido, posição da janela e opções de inicialização.
+**O que ele salva:** Nomes de processos registrados, PIDs opcionais, notas que você escrever, idioma escolhido, posição da janela, opções de inicialização e o estado de restauração de mudo dos alvos registrados.
 Esses dados ficam apenas em `%APPDATA%\UnfocusMute\config.json` e não são enviados para fora.
 
 **O que ele não salva:** O app não cria arquivos de log. Nenhum histórico de atividade é mantido entre sessões.
