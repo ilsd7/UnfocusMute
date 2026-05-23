@@ -1,7 +1,9 @@
 use crate::config::normalize_supported_process_name_utf16;
 use std::collections::HashMap;
 use std::mem::size_of;
-use windows::Win32::Foundation::{CloseHandle, ERROR_INSUFFICIENT_BUFFER, HANDLE, HWND};
+use windows::Win32::Foundation::{
+    CloseHandle, ERROR_INSUFFICIENT_BUFFER, ERROR_NO_MORE_FILES, HANDLE, HWND,
+};
 use windows::Win32::System::Diagnostics::ToolHelp::{
     CreateToolhelp32Snapshot, PROCESSENTRY32W, Process32FirstW, Process32NextW, TH32CS_SNAPPROCESS,
 };
@@ -331,13 +333,19 @@ fn visit_process_snapshot_entries(mut visit: impl FnMut(&PROCESSENTRY32W) -> boo
                 break;
             }
 
-            if Process32NextW(snapshot.raw(), &mut entry).is_err() {
-                break;
+            match Process32NextW(snapshot.raw(), &mut entry) {
+                Ok(()) => continue,
+                Err(error) if process_snapshot_finished(error.code()) => break,
+                Err(_) => return false,
             }
         }
 
         true
     }
+}
+
+fn process_snapshot_finished(error_code: HRESULT) -> bool {
+    error_code == HRESULT::from_win32(ERROR_NO_MORE_FILES.0)
 }
 
 pub fn process_name(pid: u32) -> Option<String> {
@@ -582,6 +590,16 @@ mod tests {
                 }
             ]
         );
+    }
+
+    #[test]
+    fn process_snapshot_next_only_treats_no_more_files_as_finished() {
+        assert!(process_snapshot_finished(HRESULT::from_win32(
+            ERROR_NO_MORE_FILES.0
+        )));
+        assert!(!process_snapshot_finished(HRESULT::from_win32(
+            ERROR_INSUFFICIENT_BUFFER.0
+        )));
     }
 
     #[test]
