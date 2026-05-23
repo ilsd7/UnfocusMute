@@ -7,7 +7,7 @@ use std::cmp::Ordering;
 use std::env;
 use std::ffi::OsString;
 use std::fs;
-use std::io;
+use std::io::{self, Read};
 use std::path::{Path, PathBuf};
 use std::sync::OnceLock;
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -129,6 +129,27 @@ pub struct AppConfigLoad {
     pub recovered_invalid_config: bool,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) struct ConfigFileStamp {
+    pub(crate) modified: SystemTime,
+    pub(crate) len: u64,
+    fingerprint: Option<u64>,
+}
+
+impl ConfigFileStamp {
+    pub(crate) fn has_content_fingerprint(self) -> bool {
+        self.fingerprint.is_some()
+    }
+}
+
+pub(crate) fn config_reload_needed(
+    current: Option<ConfigFileStamp>,
+    cached: Option<ConfigFileStamp>,
+    previous_load_failed: bool,
+) -> bool {
+    previous_load_failed || current != cached
+}
+
 impl Default for AppConfig {
     fn default() -> Self {
         Self {
@@ -189,8 +210,11 @@ impl AppConfig {
             backup_invalid_existing_config(path)?;
         }
 
+        let mut config = self.clone();
+        config.sanitize();
+
         let (mut temp_file, temp_path) = create_temp_config_file(path)?;
-        if let Err(error) = serde_json::to_writer_pretty(&mut temp_file, self) {
+        if let Err(error) = serde_json::to_writer_pretty(&mut temp_file, &config) {
             let _ = fs::remove_file(&temp_path);
             return Err(io::Error::other(error));
         }
@@ -418,13 +442,17 @@ fn load_or_default_from_path(path: &Path) -> io::Result<AppConfigLoad> {
         }
         Err(error) => return Err(error),
     };
-    if let Ok(mut config) = parse_config_file(file) {
-        config.sanitize();
-        return Ok(AppConfigLoad {
-            config,
-            first_run: false,
-            recovered_invalid_config: false,
-        });
+    match parse_config_file(file) {
+        Ok(mut config) => {
+            config.sanitize();
+            return Ok(AppConfigLoad {
+                config,
+                first_run: false,
+                recovered_invalid_config: false,
+            });
+        }
+        Err(error) if error.kind() == io::ErrorKind::InvalidData => {}
+        Err(error) => return Err(error),
     }
 
     let config = AppConfig::default();
@@ -437,17 +465,21 @@ fn load_or_default_from_path(path: &Path) -> io::Result<AppConfigLoad> {
     })
 }
 
-fn parse_config_file(file: fs::File) -> io::Result<AppConfig> {
-    serde_json::from_reader::<_, AppConfig>(file).map_err(io::Error::other)
+fn parse_config_file(mut file: fs::File) -> io::Result<AppConfig> {
+    let mut input = String::new();
+    file.read_to_string(&mut input)?;
+    serde_json::from_str(&input).map_err(|error| io::Error::new(io::ErrorKind::InvalidData, error))
 }
 
 fn backup_invalid_existing_config(path: &Path) -> io::Result<()> {
     match fs::File::open(path) {
-        Ok(file) => {
-            if parse_config_file(file).is_err() {
+        Ok(file) => match parse_config_file(file) {
+            Ok(_) => {}
+            Err(error) if error.kind() == io::ErrorKind::InvalidData => {
                 backup_invalid_config(path)?;
             }
-        }
+            Err(error) => return Err(error),
+        },
         Err(error) if error.kind() == io::ErrorKind::NotFound => {}
         Err(error) => return Err(error),
     }
@@ -990,6 +1022,39 @@ pub(crate) fn cached_config_file_path() -> io::Result<&'static Path> {
         .ok_or_else(|| io::Error::other("config path cache unavailable"))
 }
 
+pub(crate) fn current_config_stamp() -> Option<ConfigFileStamp> {
+    config_file_stamp(cached_config_file_path().ok()?)
+}
+
+fn config_file_stamp(path: &Path) -> Option<ConfigFileStamp> {
+    let metadata = fs::metadata(path).ok()?;
+    Some(ConfigFileStamp {
+        modified: metadata.modified().ok()?,
+        len: metadata.len(),
+        fingerprint: config_file_fingerprint(path).ok(),
+    })
+}
+
+fn config_file_fingerprint(path: &Path) -> io::Result<u64> {
+    const FNV_OFFSET_BASIS: u64 = 0xcbf2_9ce4_8422_2325;
+    const FNV_PRIME: u64 = 0x0000_0100_0000_01b3;
+
+    let mut file = fs::File::open(path)?;
+    let mut buffer = [0u8; 8192];
+    let mut hash = FNV_OFFSET_BASIS;
+
+    loop {
+        let len = file.read(&mut buffer)?;
+        if len == 0 {
+            return Ok(hash);
+        }
+        for byte in &buffer[..len] {
+            hash ^= u64::from(*byte);
+            hash = hash.wrapping_mul(FNV_PRIME);
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1033,6 +1098,19 @@ mod tests {
 
     fn os_string(value: &str) -> OsString {
         OsString::from(value)
+    }
+
+    fn invalid_backup_count(path: &Path) -> usize {
+        fs::read_dir(path)
+            .unwrap()
+            .filter_map(Result::ok)
+            .filter(|entry| {
+                entry
+                    .file_name()
+                    .to_string_lossy()
+                    .starts_with("config.invalid-")
+            })
+            .count()
     }
 
     #[test]
@@ -1290,6 +1368,34 @@ mod tests {
     fn rejects_nul_anywhere_in_process_name_input() {
         assert_eq!(normalize_process_name("bad\0/path/game.exe"), None);
         assert_eq!(normalize_process_name("bad\0\\game.exe"), None);
+    }
+
+    #[test]
+    fn config_file_stamp_fingerprints_same_length_content_changes() {
+        let dir = TestDir::new();
+        let path = dir.path().join("config.json");
+
+        fs::write(&path, "alpha").unwrap();
+        let first = config_file_stamp(&path).unwrap();
+        fs::write(&path, "bravo").unwrap();
+        let second = config_file_stamp(&path).unwrap();
+
+        assert_eq!(first.len, second.len);
+        assert!(first.has_content_fingerprint());
+        assert!(second.has_content_fingerprint());
+        assert_ne!(first.fingerprint, second.fingerprint);
+    }
+
+    #[test]
+    fn config_reload_retries_after_previous_load_failure_even_when_stamp_matches() {
+        let dir = TestDir::new();
+        let path = dir.path().join("config.json");
+        fs::write(&path, "{}").unwrap();
+        let stamp = config_file_stamp(&path);
+
+        assert!(!config_reload_needed(stamp, stamp, false));
+        assert!(config_reload_needed(stamp, stamp, true));
+        assert!(config_reload_needed(None, stamp, false));
     }
 
     fn wide_null_terminated(text: &str) -> Vec<u16> {
@@ -1590,6 +1696,50 @@ mod tests {
     }
 
     #[test]
+    fn save_writes_sanitized_config_snapshot() {
+        let dir = TestDir::new();
+        let path = dir.path().join("config.json");
+        let config = AppConfig {
+            version: 0,
+            polling_interval_ms: 1,
+            targets: vec![
+                TargetProcess {
+                    name: "Game.EXE".to_owned(),
+                    pid: None,
+                    note: Some("  primary\twindow  ".to_owned()),
+                    enabled: true,
+                    managed_muted: false,
+                },
+                TargetProcess {
+                    name: "game.exe".to_owned(),
+                    pid: None,
+                    note: None,
+                    enabled: true,
+                    managed_muted: true,
+                },
+                TargetProcess {
+                    name: "system".to_owned(),
+                    pid: None,
+                    note: None,
+                    enabled: true,
+                    managed_muted: false,
+                },
+            ],
+            ..AppConfig::default()
+        };
+
+        config.save_to_path(&path, false).unwrap();
+        let saved = parse_config_file(fs::File::open(path).unwrap()).unwrap();
+
+        assert_eq!(saved.version, CONFIG_VERSION);
+        assert_eq!(saved.polling_interval_ms, MIN_POLLING_INTERVAL_MS);
+        assert_eq!(saved.targets.len(), 1);
+        assert_eq!(saved.targets[0].name, "game.exe");
+        assert_eq!(saved.targets[0].note.as_deref(), Some("primary window"));
+        assert!(saved.targets[0].managed_muted);
+    }
+
+    #[test]
     fn default_startup_preferences_match_release_defaults() {
         let config = AppConfig::default();
 
@@ -1729,6 +1879,26 @@ mod tests {
             fs::read_to_string(backups[0].path()).unwrap(),
             "{not valid json"
         );
+    }
+
+    #[test]
+    fn load_read_errors_are_not_recovered_as_invalid_config() {
+        let dir = TestDir::new();
+        let config_path = dir.path().join("config.json");
+        fs::create_dir(&config_path).unwrap();
+
+        assert!(load_or_default_from_path(&config_path).is_err());
+        assert_eq!(invalid_backup_count(dir.path()), 0);
+    }
+
+    #[test]
+    fn existing_config_read_errors_are_not_backed_up_as_invalid() {
+        let dir = TestDir::new();
+        let config_path = dir.path().join("config.json");
+        fs::create_dir(&config_path).unwrap();
+
+        assert!(backup_invalid_existing_config(&config_path).is_err());
+        assert_eq!(invalid_backup_count(dir.path()), 0);
     }
 
     #[test]

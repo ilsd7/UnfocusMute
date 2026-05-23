@@ -1,7 +1,7 @@
 use crate::config::{
-    AppConfig, AppConfigLoad, TargetProcess, WindowPosition, is_normalized_process_name,
-    is_supported_normalized_target_process_name, normalize_manual_process_name,
-    normalize_manual_process_name_cow,
+    AppConfig, AppConfigLoad, ConfigFileStamp, TargetProcess, WindowPosition, config_reload_needed,
+    current_config_stamp, is_normalized_process_name, is_supported_normalized_target_process_name,
+    normalize_manual_process_name, normalize_manual_process_name_cow,
 };
 use crate::engine::{AudioSessionKey, TargetMatcher};
 use crate::i18n::{Language, Strings};
@@ -15,7 +15,7 @@ use std::ffi::c_void;
 use std::io::ErrorKind;
 use std::mem::size_of;
 use std::sync::atomic::{AtomicBool, AtomicIsize, Ordering};
-use std::time::{Instant, SystemTime};
+use std::time::Instant;
 use windows::Win32::Foundation::{
     CloseHandle, ERROR_ALREADY_EXISTS, GetLastError, HANDLE, HINSTANCE, HWND, LPARAM, LRESULT,
     POINT, RECT, WPARAM,
@@ -82,11 +82,10 @@ use target_note_prompt::prompt_target_note;
 use theme::{AppTheme, OwnedBrush, UiFont, px};
 use win32::{
     WindowClassRegistration, add_combo_item_with_buffer, add_list_item_with_buffer,
-    copy_wide_fixed, create_button, create_control, create_primary_button, current_config_stamp,
-    get_message, hiword, load_app_icon, load_github_icon, load_settings_icon, load_tray_icon,
-    loword, measure_text_width, move_window, reserve_combo_items, reserve_list_items,
-    set_combo_edit_caret, set_text, storage_bytes_hint, to_wide, window_text_into,
-    write_wide_buffer,
+    copy_wide_fixed, create_button, create_control, create_primary_button, get_message, hiword,
+    load_app_icon, load_github_icon, load_settings_icon, load_tray_icon, loword,
+    measure_text_width, move_window, reserve_combo_items, reserve_list_items, set_combo_edit_caret,
+    set_text, storage_bytes_hint, to_wide, window_text_into, write_wide_buffer,
 };
 
 static FOREGROUND_EVENT_HWND: AtomicIsize = AtomicIsize::new(0);
@@ -718,12 +717,6 @@ struct AppWindow {
     icon: HICON,
     tray_icon: HICON,
     taskbar_created_message: u32,
-}
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-struct ConfigFileStamp {
-    modified: SystemTime,
-    len: u64,
 }
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
@@ -2400,7 +2393,11 @@ impl AppWindow {
 
     fn reload_config_if_changed(&mut self) -> ConfigReloadResult {
         let stamp = current_config_stamp();
-        if stamp == self.config_stamp {
+        if !config_reload_needed(
+            stamp,
+            self.config_stamp,
+            self.issues.contains(StatusIssue::ConfigLoadFailed),
+        ) {
             return ConfigReloadResult::UNCHANGED;
         }
 
@@ -2616,8 +2613,9 @@ impl AppWindow {
 
     fn save_config(&mut self) -> bool {
         let current_stamp = current_config_stamp();
-        let can_trust_existing_file = current_stamp == self.config_stamp
-            && !self.issues.contains(StatusIssue::ConfigLoadFailed);
+        let can_trust_existing_file = current_stamp.is_some_and(|stamp| {
+            Some(stamp) == self.config_stamp && stamp.has_content_fingerprint()
+        }) && !self.issues.contains(StatusIssue::ConfigLoadFailed);
         let result = if can_trust_existing_file {
             self.config.save_trusting_existing_file()
         } else {

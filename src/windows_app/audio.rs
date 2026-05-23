@@ -339,6 +339,12 @@ impl<'a> ManagedTargetLookup<'a> {
                 pids.clear();
             }
         }
+        if identities.len() > 1 {
+            identities.sort_unstable_by(|left, right| {
+                compare_target_identity_key(*left, right.process_name, right.pid)
+            });
+            identities.dedup();
+        }
 
         Self {
             identities,
@@ -1114,6 +1120,34 @@ mod tests {
         let mut pid_target = crate::config::TargetProcess::for_pid("game.exe", 42).unwrap();
         pid_target.managed_muted = true;
         let targets = [process_target, pid_target];
+        let lookup = ManagedTargetLookup::new(&targets);
+
+        let matches = lookup.matching_sessions("game.exe", 42).collect::<Vec<_>>();
+
+        assert_eq!(
+            matches,
+            vec![
+                TargetMuteIdentity {
+                    process_name: "game.exe",
+                    pid: None,
+                },
+                TargetMuteIdentity {
+                    process_name: "game.exe",
+                    pid: Some(42),
+                },
+            ]
+        );
+    }
+
+    #[test]
+    fn managed_target_lookup_sorts_and_deduplicates_persisted_targets() {
+        let mut process_target = crate::config::TargetProcess::new("game.exe").unwrap();
+        process_target.managed_muted = true;
+        let mut duplicate_process_target = process_target.clone();
+        duplicate_process_target.enabled = false;
+        let mut pid_target = crate::config::TargetProcess::for_pid("game.exe", 42).unwrap();
+        pid_target.managed_muted = true;
+        let targets = [pid_target, duplicate_process_target, process_target];
         let lookup = ManagedTargetLookup::new(&targets);
 
         let matches = lookup.matching_sessions("game.exe", 42).collect::<Vec<_>>();

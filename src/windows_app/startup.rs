@@ -1,9 +1,7 @@
 use crate::windows_app::error::{Context, Result, message_error};
 use std::env;
-use std::mem::size_of;
 use std::os::windows::ffi::OsStrExt;
 use std::path::Path;
-use std::slice;
 use windows::Win32::Foundation::{ERROR_FILE_NOT_FOUND, ERROR_SUCCESS};
 use windows::Win32::System::Registry::{
     HKEY, HKEY_CURRENT_USER, KEY_QUERY_VALUE, KEY_SET_VALUE, REG_OPEN_CREATE_OPTIONS, REG_SZ,
@@ -22,14 +20,12 @@ pub fn set_launch_on_startup(enabled: bool) -> Result<()> {
         let key = create_run_key()?;
         let exe = env::current_exe().context("resolve current executable")?;
         let wide = startup_command(&exe);
-        let bytes = unsafe {
-            slice::from_raw_parts(wide.as_ptr().cast::<u8>(), wide.len() * size_of::<u16>())
-        };
-        if startup_value_matches(key.raw(), bytes) {
+        let bytes = wide_command_bytes(&wide);
+        if startup_value_matches(key.raw(), &bytes) {
             return Ok(());
         }
         let result =
-            unsafe { RegSetValueExW(key.raw(), w!("UnfocusMute"), None, REG_SZ, Some(bytes)) };
+            unsafe { RegSetValueExW(key.raw(), w!("UnfocusMute"), None, REG_SZ, Some(&bytes)) };
         if result == ERROR_SUCCESS {
             return Ok(());
         }
@@ -182,6 +178,14 @@ fn startup_command(exe: &Path) -> Vec<u16> {
     command
 }
 
+fn wide_command_bytes(command: &[u16]) -> Vec<u8> {
+    let mut bytes = Vec::with_capacity(std::mem::size_of_val(command));
+    for code_unit in command {
+        bytes.extend_from_slice(&code_unit.to_ne_bytes());
+    }
+    bytes
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -196,6 +200,16 @@ mod tests {
             r#""C:\Program Files\UnfocusMute\UnfocusMute.exe" --minimized"#
         );
         assert_eq!(command.last(), Some(&0));
+    }
+
+    #[test]
+    fn startup_command_bytes_match_utf16_memory_layout_without_unsafe_cast() {
+        let command = startup_command(Path::new(r"C:\Tools\UnfocusMute\UnfocusMute.exe"));
+        let bytes = wide_command_bytes(&command);
+
+        assert_eq!(bytes.len(), command.len() * 2);
+        assert_eq!(&bytes[..2], &u16::from(b'"').to_ne_bytes());
+        assert_eq!(&bytes[bytes.len() - 2..], &[0, 0]);
     }
 
     #[test]

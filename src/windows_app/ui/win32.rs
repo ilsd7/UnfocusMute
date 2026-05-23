@@ -1,10 +1,7 @@
-use super::ConfigFileStamp;
 use super::theme::{logical_px, px};
-use crate::config::cached_config_file_path;
 use crate::windows_app::error::{Context, Result, message_error};
 use std::borrow::Cow;
 use std::ffi::c_void;
-use std::fs;
 use std::os::windows::ffi::OsStrExt;
 use std::path::Path;
 use windows::Win32::Foundation::{HINSTANCE, HWND, LPARAM, SIZE, WPARAM};
@@ -623,14 +620,6 @@ pub(super) fn copy_wide_fixed(text: &str, destination: &mut [u16]) {
 
 fn is_high_surrogate(ch: u16) -> bool {
     (0xd800..=0xdbff).contains(&ch)
-}
-
-pub(super) fn current_config_stamp() -> Option<ConfigFileStamp> {
-    let metadata = fs::metadata(cached_config_file_path().ok()?).ok()?;
-    Some(ConfigFileStamp {
-        modified: metadata.modified().ok()?,
-        len: metadata.len(),
-    })
 }
 
 pub(super) fn to_wide(text: &str) -> Vec<u16> {
