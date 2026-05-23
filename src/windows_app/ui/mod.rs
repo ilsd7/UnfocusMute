@@ -197,7 +197,8 @@ impl Drop for ComApartment {
 }
 
 unsafe fn run_window() -> Result<()> {
-    let Some(_single_instance) = (unsafe { acquire_single_instance()? }) else {
+    let instance_scope = single_instance_scope();
+    let Some(_single_instance) = (unsafe { acquire_single_instance(instance_scope)? }) else {
         return Ok(());
     };
 
@@ -213,6 +214,8 @@ unsafe fn run_window() -> Result<()> {
     let settings_icon = unsafe { load_settings_icon(instance, px(SETTINGS_ICON_SIZE)) };
     let cursor = unsafe { LoadCursorW(None, IDC_ARROW).context("load cursor")? };
     let background = OwnedBrush::solid(PAGE_COLOR);
+    let class_name_wide = main_window_class_name(instance_scope);
+    let class_name = PCWSTR(class_name_wide.as_ptr());
 
     let class = WNDCLASSW {
         style: Default::default(),
@@ -224,10 +227,10 @@ unsafe fn run_window() -> Result<()> {
         hCursor: cursor,
         hbrBackground: background.handle(),
         lpszMenuName: PCWSTR::null(),
-        lpszClassName: CLASS_NAME,
+        lpszClassName: class_name,
     };
     let _class_registration = (unsafe { RegisterClassW(&class) } != 0)
-        .then(|| WindowClassRegistration::new(CLASS_NAME, instance));
+        .then(|| WindowClassRegistration::new(class_name, instance));
 
     let (config_load, mut initial_issues, can_sync_startup) =
         match AppConfig::load_or_default_with_status() {
@@ -296,7 +299,7 @@ unsafe fn run_window() -> Result<()> {
     let hwnd = unsafe {
         CreateWindowExW(
             WINDOW_EX_STYLE(0),
-            CLASS_NAME,
+            class_name,
             PCWSTR(title.as_ptr()),
             MAIN_WINDOW_STYLE,
             x,
@@ -402,15 +405,15 @@ impl Drop for PaintSession {
     }
 }
 
-unsafe fn acquire_single_instance() -> Result<Option<SingleInstance>> {
-    let mutex_name = single_instance_mutex_name();
+unsafe fn acquire_single_instance(scope: u64) -> Result<Option<SingleInstance>> {
+    let mutex_name = single_instance_mutex_name(scope);
     let handle = unsafe {
         CreateMutexW(None, false, PCWSTR(mutex_name.as_ptr())).context("create app mutex")?
     };
     let instance = SingleInstance(handle);
     if unsafe { GetLastError() } == ERROR_ALREADY_EXISTS {
         unsafe {
-            bring_existing_window_to_front();
+            bring_existing_window_to_front(scope);
         }
         return Ok(None);
     }
@@ -418,11 +421,20 @@ unsafe fn acquire_single_instance() -> Result<Option<SingleInstance>> {
     Ok(Some(instance))
 }
 
-fn single_instance_mutex_name() -> Vec<u16> {
-    let mut name = String::from(SINGLE_INSTANCE_MUTEX_PREFIX);
-    let scope = config_dir()
+fn single_instance_scope() -> u64 {
+    config_dir()
         .map(|path| hash_path_for_mutex_scope(&path))
-        .unwrap_or_else(|_| hash_text_for_mutex_scope("default"));
+        .unwrap_or_else(|_| hash_text_for_mutex_scope("default"))
+}
+
+fn single_instance_mutex_name(scope: u64) -> Vec<u16> {
+    let mut name = String::from(SINGLE_INSTANCE_MUTEX_PREFIX);
+    push_hex_u64(&mut name, scope);
+    to_wide(&name)
+}
+
+fn main_window_class_name(scope: u64) -> Vec<u16> {
+    let mut name = String::from(MAIN_WINDOW_CLASS_NAME_PREFIX);
     push_hex_u64(&mut name, scope);
     to_wide(&name)
 }
@@ -532,8 +544,9 @@ unsafe extern "system" fn foreground_event_proc(
     }
 }
 
-unsafe fn bring_existing_window_to_front() {
-    if let Ok(hwnd) = unsafe { FindWindowW(CLASS_NAME, PCWSTR::null()) } {
+unsafe fn bring_existing_window_to_front(scope: u64) {
+    let class_name = main_window_class_name(scope);
+    if let Ok(hwnd) = unsafe { FindWindowW(PCWSTR(class_name.as_ptr()), PCWSTR::null()) } {
         show_main_window(hwnd);
     }
 }
@@ -3742,5 +3755,24 @@ mod target_list_tests {
         assert!(point_is_in_rect(POINT { x: 29, y: 39 }, rect));
         assert!(!point_is_in_rect(POINT { x: 30, y: 20 }, rect));
         assert!(!point_is_in_rect(POINT { x: 10, y: 40 }, rect));
+    }
+
+    #[test]
+    fn single_instance_window_class_uses_same_scope_as_mutex() {
+        let scope = 0x0123_4567_89ab_cdef;
+
+        assert_eq!(
+            wide_to_string(&single_instance_mutex_name(scope)),
+            "Local\\UnfocusMute.SingleInstance.0123456789abcdef"
+        );
+        assert_eq!(
+            wide_to_string(&main_window_class_name(scope)),
+            "UnfocusMuteWindow.0123456789abcdef"
+        );
+    }
+
+    fn wide_to_string(value: &[u16]) -> String {
+        assert_eq!(value.last(), Some(&0));
+        String::from_utf16(&value[..value.len() - 1]).unwrap()
     }
 }

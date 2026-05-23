@@ -76,7 +76,9 @@ fn windows_resource_version() -> String {
     let core_version = version.split(['-', '+']).next().unwrap_or("0.0.0");
     let mut parts = [0u16; 4];
     for (index, part) in core_version.split('.').take(parts.len()).enumerate() {
-        parts[index] = part.parse::<u16>().unwrap_or(0);
+        parts[index] = part.parse::<u16>().unwrap_or_else(|error| {
+            panic!("package version component {part:?} must fit in Windows resource u16: {error}")
+        });
     }
 
     format!("{}.{}.{}.{}", parts[0], parts[1], parts[2], parts[3])

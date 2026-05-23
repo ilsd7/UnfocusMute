@@ -3,7 +3,7 @@ use windows::Win32::Foundation::COLORREF;
 use windows::Win32::UI::WindowsAndMessaging::{WINDOW_STYLE, WM_APP};
 use windows::core::{PCWSTR, w};
 
-pub(super) const CLASS_NAME: PCWSTR = w!("UnfocusMuteWindow");
+pub(super) const MAIN_WINDOW_CLASS_NAME_PREFIX: &str = "UnfocusMuteWindow.";
 pub(super) const LANGUAGE_PROMPT_CLASS_NAME: PCWSTR = w!("UnfocusMuteLanguagePrompt");
 pub(super) const SETTINGS_WINDOW_CLASS_NAME: PCWSTR = w!("UnfocusMuteSettingsWindow");
 pub(super) const TARGET_NOTE_PROMPT_CLASS_NAME: PCWSTR = w!("UnfocusMuteTargetNotePrompt");

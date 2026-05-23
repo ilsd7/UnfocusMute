@@ -349,7 +349,10 @@ pub(super) unsafe fn prompt_initial_language(
     }
 
     let mut msg = MSG::default();
-    while !state.done {
+    loop {
+        if state.done {
+            break;
+        }
         unsafe {
             if !get_message(&mut msg)? {
                 let quit_code = msg.wParam.0 as i32;

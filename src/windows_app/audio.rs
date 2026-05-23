@@ -99,6 +99,10 @@ impl AudioController {
                     SessionVisit::UnresolvedPid(pid) => {
                         insert_session_keys_for_pid(&mut failed_sessions, session_keys, pid);
                     }
+                    SessionVisit::Unreadable => {
+                        failed_sessions
+                            .get_or_insert_with(|| session_keys.iter().cloned().collect());
+                    }
                 },
             )?;
             failed_sessions
@@ -131,6 +135,7 @@ impl AudioController {
             let lookup = ManagedSessionLookup::new(managed_muted_sessions);
             let target_lookup = ManagedTargetLookup::new(targets);
             let needs_all_session_process_names = matcher.needs_all_session_process_names();
+            let mut preserve_existing_managed_sessions = false;
             self.visit_sessions_matching(
                 needs_all_session_process_names,
                 |pid| {
@@ -162,8 +167,15 @@ impl AudioController {
                             apply_result.had_failures = true;
                         }
                     }
+                    SessionVisit::Unreadable => {
+                        apply_result.had_failures = true;
+                        preserve_existing_managed_sessions = true;
+                    }
                 },
             )?;
+            if preserve_existing_managed_sessions {
+                apply_result.keep_active_sessions(managed_muted_sessions);
+            }
         }
         managed_muted_sessions.clear();
         managed_muted_sessions.extend(apply_result.active_managed_sessions);
@@ -192,16 +204,24 @@ impl AudioController {
                     .GetSessionEnumerator()
                     .context("get audio session enumerator")?;
                 let count = enumerator.GetCount().context("get audio session count")?;
-                let session_count = audio_session_snapshot_count(count)?;
-                let mut readable_sessions = 0;
+                let count = audio_session_snapshot_count(count)?;
 
                 for index in 0..count {
-                    let control = enumerator.GetSession(index).context("get audio session")?;
-                    let control2 = control
-                        .cast::<IAudioSessionControl2>()
-                        .context("query audio session control2")?;
-                    let pid = session_process_id(&control2).context("get audio session pid")?;
-                    readable_sessions += 1;
+                    let Ok(control) = enumerator.GetSession(index as i32) else {
+                        visit(SessionVisit::Unreadable);
+                        continue;
+                    };
+                    let Ok(control2) = control.cast::<IAudioSessionControl2>() else {
+                        visit(SessionVisit::Unreadable);
+                        continue;
+                    };
+                    let pid = match session_process_id(&control2) {
+                        Ok(pid) => pid,
+                        Err(_) => {
+                            visit(SessionVisit::Unreadable);
+                            continue;
+                        }
+                    };
                     let Some(pid) = pid else {
                         continue;
                     };
@@ -219,9 +239,6 @@ impl AudioController {
                         process_name,
                     }));
                 }
-                if !audio_session_snapshot_complete(session_count, readable_sessions) {
-                    return Err(message_error("audio session snapshot incomplete"));
-                }
             }
 
             Ok(())
@@ -238,6 +255,7 @@ struct AudioSessionControl<'a> {
 enum SessionVisit<'a> {
     Resolved(AudioSessionControl<'a>),
     UnresolvedPid(u32),
+    Unreadable,
 }
 
 impl AudioSessionControl<'_> {
@@ -292,6 +310,15 @@ impl PlanApplyResult {
             }
             self.active_managed_sessions.push(key.clone());
         }
+    }
+
+    fn keep_active_sessions(&mut self, session_keys: &HashSet<AudioSessionKey>) {
+        if self.active_managed_sessions.capacity() == 0 {
+            self.active_managed_sessions
+                .reserve(session_keys.len().max(LINEAR_MANAGED_SESSION_LIMIT));
+        }
+        self.active_managed_sessions
+            .extend(session_keys.iter().cloned());
     }
 
     fn set_target_state(&mut self, identity: TargetMuteIdentity<'_>, muted: bool) {
@@ -1007,10 +1034,6 @@ fn audio_session_snapshot_count(count: i32) -> Result<usize> {
     usize::try_from(count).map_err(|_| message_error("audio session count unavailable"))
 }
 
-fn audio_session_snapshot_complete(session_count: usize, item_count: usize) -> bool {
-    session_count == item_count
-}
-
 unsafe fn endpoint_id(device: &IMMDevice) -> Option<String> {
     let value = unsafe { device.GetId().ok()? };
     unsafe { co_task_mem_string(value) }
@@ -1493,17 +1516,5 @@ mod tests {
     #[test]
     fn audio_session_snapshot_count_rejects_negative_counts() {
         assert!(audio_session_snapshot_count(-1).is_err());
-    }
-
-    #[test]
-    fn audio_session_snapshot_is_complete_when_every_item_is_readable() {
-        assert!(audio_session_snapshot_complete(0, 0));
-        assert!(audio_session_snapshot_complete(3, 3));
-    }
-
-    #[test]
-    fn audio_session_snapshot_is_incomplete_when_items_are_skipped() {
-        assert!(!audio_session_snapshot_complete(3, 0));
-        assert!(!audio_session_snapshot_complete(3, 2));
     }
 }

@@ -322,7 +322,10 @@ pub(super) unsafe fn prompt_target_note(
         let _ = SetForegroundWindow(hwnd);
 
         let mut msg = MSG::default();
-        while !state.done {
+        loop {
+            if state.done {
+                break;
+            }
             if !get_message(&mut msg)? {
                 let quit_code = msg.wParam.0 as i32;
                 let _ = DestroyWindow(hwnd);
