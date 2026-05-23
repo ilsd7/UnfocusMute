@@ -7,7 +7,7 @@ use std::cmp::Ordering;
 use std::env;
 use std::ffi::OsString;
 use std::fs;
-use std::io::{self, Read};
+use std::io::{self, BufReader, BufWriter, Read, Write};
 use std::path::{Path, PathBuf};
 use std::sync::OnceLock;
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -24,6 +24,7 @@ const EVENT_FALLBACK_DEFAULT_POLLING_INTERVAL_MS: u64 = 5_000;
 const DEFAULT_POLLING_INTERVAL_MS: u64 = 3_000;
 const MIN_POLLING_INTERVAL_MS: u64 = 100;
 const MAX_POLLING_INTERVAL_MS: u64 = 10_000;
+const MAX_CONFIG_FILE_BYTES: u64 = 1_048_576;
 pub(crate) const MAX_TARGET_NOTE_CHARS: usize = 120;
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -214,9 +215,15 @@ impl AppConfig {
         config.sanitize();
 
         let (mut temp_file, temp_path) = create_temp_config_file(path)?;
-        if let Err(error) = serde_json::to_writer_pretty(&mut temp_file, &config) {
+        let write_result = {
+            let mut writer = BufWriter::new(&mut temp_file);
+            serde_json::to_writer_pretty(&mut writer, &config)
+                .map_err(io::Error::other)
+                .and_then(|()| writer.flush())
+        };
+        if let Err(error) = write_result {
             discard_open_file(temp_file, &temp_path);
-            return Err(io::Error::other(error));
+            return Err(error);
         }
         if let Err(error) = temp_file.sync_all() {
             discard_open_file(temp_file, &temp_path);
@@ -465,10 +472,22 @@ fn load_or_default_from_path(path: &Path) -> io::Result<AppConfigLoad> {
     })
 }
 
-fn parse_config_file(mut file: fs::File) -> io::Result<AppConfig> {
-    let mut input = String::new();
-    file.read_to_string(&mut input)?;
-    serde_json::from_str(&input).map_err(|error| io::Error::new(io::ErrorKind::InvalidData, error))
+fn parse_config_file(file: fs::File) -> io::Result<AppConfig> {
+    reject_oversized_config_file(&file)?;
+    serde_json::from_reader(BufReader::new(file))
+        .map_err(|error| io::Error::new(io::ErrorKind::InvalidData, error))
+}
+
+fn reject_oversized_config_file(file: &fs::File) -> io::Result<()> {
+    let len = file.metadata()?.len();
+    if len <= MAX_CONFIG_FILE_BYTES {
+        return Ok(());
+    }
+
+    Err(io::Error::new(
+        io::ErrorKind::InvalidData,
+        "config file is too large",
+    ))
 }
 
 fn backup_invalid_existing_config(path: &Path) -> io::Result<()> {
@@ -496,8 +515,17 @@ fn replace_file(temp_path: &Path, destination: &Path) -> io::Result<()> {
 
     if result.is_err() {
         let _ = fs::remove_file(temp_path);
+    } else {
+        sync_parent_dir_best_effort(destination);
     }
     result
+}
+
+fn sync_parent_dir_best_effort(_path: &Path) {
+    #[cfg(not(windows))]
+    if let Some(parent) = _path.parent() {
+        let _ = fs::File::open(parent).and_then(|directory| directory.sync_all());
+    }
 }
 
 fn discard_open_file(file: fs::File, path: &Path) {
@@ -581,7 +609,6 @@ fn backup_invalid_config(path: &Path) -> io::Result<PathBuf> {
 
 fn backup_invalid_config_with_timestamp(path: &Path, timestamp: u64) -> io::Result<PathBuf> {
     let parent = path.parent().unwrap_or_else(|| Path::new("."));
-    let mut source = fs::File::open(path)?;
     for index in 0..100 {
         let file_name = if index == 0 {
             format!("config.invalid-{timestamp}.json")
@@ -589,31 +616,48 @@ fn backup_invalid_config_with_timestamp(path: &Path, timestamp: u64) -> io::Resu
             format!("config.invalid-{timestamp}-{index}.json")
         };
         let backup_path = parent.join(file_name);
-        let mut backup = match fs::OpenOptions::new()
-            .write(true)
-            .create_new(true)
-            .open(&backup_path)
-        {
-            Ok(backup) => backup,
+        match backup_invalid_config_to_path(path, &backup_path) {
+            Ok(()) => {
+                sync_parent_dir_best_effort(&backup_path);
+                return Ok(backup_path);
+            }
             Err(error) if error.kind() == io::ErrorKind::AlreadyExists => continue,
             Err(error) => return Err(error),
-        };
-
-        if let Err(error) = io::copy(&mut source, &mut backup) {
-            discard_open_file(backup, &backup_path);
-            return Err(error);
         }
-        if let Err(error) = backup.sync_all() {
-            discard_open_file(backup, &backup_path);
-            return Err(error);
-        }
-        return Ok(backup_path);
     }
 
     Err(io::Error::new(
         io::ErrorKind::AlreadyExists,
         "could not create a unique invalid config backup path",
     ))
+}
+
+fn backup_invalid_config_to_path(source_path: &Path, backup_path: &Path) -> io::Result<()> {
+    let source_len = fs::metadata(source_path)?.len();
+    if source_len > MAX_CONFIG_FILE_BYTES {
+        match fs::hard_link(source_path, backup_path) {
+            Ok(()) => return Ok(()),
+            Err(error) if error.kind() == io::ErrorKind::AlreadyExists => return Err(error),
+            Err(_) => {}
+        }
+    }
+
+    let mut source = fs::File::open(source_path)?;
+    let mut backup = fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(backup_path)?;
+
+    if let Err(error) = io::copy(&mut source, &mut backup) {
+        discard_open_file(backup, backup_path);
+        return Err(error);
+    }
+    if let Err(error) = backup.sync_all() {
+        discard_open_file(backup, backup_path);
+        return Err(error);
+    }
+
+    Ok(())
 }
 
 struct ProcessNameCandidate<'a> {
@@ -1033,10 +1077,13 @@ pub(crate) fn current_config_stamp() -> Option<ConfigFileStamp> {
 
 fn config_file_stamp(path: &Path) -> Option<ConfigFileStamp> {
     let metadata = fs::metadata(path).ok()?;
+    let len = metadata.len();
     Some(ConfigFileStamp {
         modified: metadata.modified().ok()?,
-        len: metadata.len(),
-        fingerprint: config_file_fingerprint(path).ok(),
+        len,
+        fingerprint: (len <= MAX_CONFIG_FILE_BYTES)
+            .then(|| config_file_fingerprint(path).ok())
+            .flatten(),
     })
 }
 
@@ -1389,6 +1436,33 @@ mod tests {
         assert!(first.has_content_fingerprint());
         assert!(second.has_content_fingerprint());
         assert_ne!(first.fingerprint, second.fingerprint);
+    }
+
+    #[test]
+    fn oversized_config_files_are_rejected_before_json_parsing() {
+        let dir = TestDir::new();
+        let path = dir.path().join("config.json");
+        let file = fs::File::create(&path).unwrap();
+        file.set_len(MAX_CONFIG_FILE_BYTES + 1).unwrap();
+        drop(file);
+
+        let error = parse_config_file(fs::File::open(&path).unwrap()).unwrap_err();
+
+        assert_eq!(error.kind(), io::ErrorKind::InvalidData);
+    }
+
+    #[test]
+    fn oversized_config_files_skip_content_fingerprints() {
+        let dir = TestDir::new();
+        let path = dir.path().join("config.json");
+        let file = fs::File::create(&path).unwrap();
+        file.set_len(MAX_CONFIG_FILE_BYTES + 1).unwrap();
+        drop(file);
+
+        let stamp = config_file_stamp(&path).unwrap();
+
+        assert_eq!(stamp.len, MAX_CONFIG_FILE_BYTES + 1);
+        assert!(!stamp.has_content_fingerprint());
     }
 
     #[test]
