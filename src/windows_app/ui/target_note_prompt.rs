@@ -1,4 +1,3 @@
-use super::centered_position;
 use super::constants::{
     ID_TARGET_NOTE_CANCEL, ID_TARGET_NOTE_CLEAR, ID_TARGET_NOTE_EDIT, ID_TARGET_NOTE_SAVE,
     PAGE_COLOR, SS_ENDELLIPSIS_STYLE, TARGET_NOTE_PROMPT_CLASS_NAME, TEXT_COLOR,
@@ -8,6 +7,7 @@ use super::win32::{
     WindowClassRegistration, create_button, create_control, create_primary_button, get_message,
     hiword, loword, measure_text_width, move_window, to_wide, window_text_into,
 };
+use super::window_position::centered_position;
 use crate::config::{MAX_TARGET_NOTE_CHARS, normalize_target_note};
 use crate::i18n::{Language, Strings};
 use crate::windows_app::error::{Context, Result};

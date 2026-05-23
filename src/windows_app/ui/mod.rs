@@ -8,8 +8,6 @@ use crate::i18n::{Language, Strings};
 use crate::windows_app::audio::{AudioController, TargetMuteStateUpdate};
 use crate::windows_app::error::{Context, Result, message_error};
 use crate::windows_app::process::{self, ProcessInfo};
-use crate::windows_app::startup;
-use std::cmp::Ordering as CmpOrdering;
 use std::collections::HashSet;
 use std::ffi::c_void;
 use std::io::ErrorKind;
@@ -21,10 +19,10 @@ use windows::Win32::Foundation::{
     POINT, RECT, WPARAM,
 };
 use windows::Win32::Graphics::Gdi::{
-    BeginPaint, DRAW_TEXT_FORMAT, DT_END_ELLIPSIS, DT_LEFT, DT_NOPREFIX, DT_RIGHT, DT_SINGLELINE,
-    DT_VCENTER, DrawTextW, EndPaint, FillRect, FrameRect, HDC, HGDIOBJ, OPAQUE, PAINTSTRUCT,
-    RDW_ALLCHILDREN, RDW_ERASE, RDW_INVALIDATE, RDW_UPDATENOW, RedrawWindow, ScreenToClient,
-    SelectObject, SetBkColor, SetBkMode, SetTextColor, TRANSPARENT,
+    BeginPaint, DT_END_ELLIPSIS, DT_LEFT, DT_NOPREFIX, DT_RIGHT, DT_SINGLELINE, DT_VCENTER,
+    EndPaint, FillRect, FrameRect, HDC, OPAQUE, PAINTSTRUCT, RDW_ALLCHILDREN, RDW_ERASE,
+    RDW_INVALIDATE, RDW_UPDATENOW, RedrawWindow, ScreenToClient, SetBkColor, SetBkMode,
+    SetTextColor, TRANSPARENT,
 };
 use windows::Win32::System::Com::{COINIT_APARTMENTTHREADED, CoInitializeEx, CoUninitialize};
 use windows::Win32::System::LibraryLoader::GetModuleHandleW;
@@ -50,34 +48,69 @@ use windows::Win32::UI::WindowsAndMessaging::{
     LBN_SELCHANGE, LBS_HASSTRINGS, LBS_NOINTEGRALHEIGHT, LBS_NOTIFY, LBS_OWNERDRAWFIXED,
     LoadCursorW, MB_ICONINFORMATION, MB_ICONWARNING, MB_OK, MF_GRAYED, MF_SEPARATOR, MF_STRING,
     MSG, MessageBoxW, PostMessageW, PostQuitMessage, RegisterClassW, RegisterWindowMessageW,
-    SM_CXSCREEN, SM_CXVIRTUALSCREEN, SM_CXVSCROLL, SM_CYSCREEN, SM_CYVIRTUALSCREEN,
-    SM_XVIRTUALSCREEN, SM_YVIRTUALSCREEN, SPI_GETWORKAREA, SW_HIDE, SW_RESTORE, SW_SHOW,
-    SYSTEM_PARAMETERS_INFO_UPDATE_FLAGS, SendMessageW, SetCursor, SetForegroundWindow, SetTimer,
-    SetWindowLongPtrW, ShowWindow, SystemParametersInfoW, TPM_NONOTIFY, TPM_RETURNCMD,
-    TPM_RIGHTBUTTON, TRACK_POPUP_MENU_FLAGS, TrackPopupMenu, TranslateMessage, WINDOW_EX_STYLE,
-    WINDOW_STYLE, WINEVENT_OUTOFCONTEXT, WM_CLOSE, WM_COMMAND, WM_CONTEXTMENU, WM_CREATE,
-    WM_CTLCOLOREDIT, WM_CTLCOLORLISTBOX, WM_CTLCOLORSTATIC, WM_DESTROY, WM_DRAWITEM,
-    WM_EXITSIZEMOVE, WM_KEYDOWN, WM_LBUTTONDBLCLK, WM_LBUTTONDOWN, WM_MEASUREITEM, WM_MOVE,
-    WM_NCCREATE, WM_NCDESTROY, WM_PAINT, WM_RBUTTONUP, WM_SETCURSOR, WM_SETFONT, WM_SETICON,
-    WM_SETREDRAW, WM_SHOWWINDOW, WM_TIMER, WNDCLASSW, WS_BORDER, WS_CAPTION, WS_CHILD,
-    WS_CLIPCHILDREN, WS_MINIMIZEBOX, WS_OVERLAPPED, WS_SYSMENU, WS_TABSTOP, WS_VISIBLE, WS_VSCROLL,
+    SM_CXVSCROLL, SW_HIDE, SW_RESTORE, SW_SHOW, SendMessageW, SetCursor, SetForegroundWindow,
+    SetTimer, SetWindowLongPtrW, ShowWindow, TPM_NONOTIFY, TPM_RETURNCMD, TPM_RIGHTBUTTON,
+    TRACK_POPUP_MENU_FLAGS, TrackPopupMenu, TranslateMessage, WINDOW_EX_STYLE, WINDOW_STYLE,
+    WINEVENT_OUTOFCONTEXT, WM_CLOSE, WM_COMMAND, WM_CONTEXTMENU, WM_CREATE, WM_CTLCOLOREDIT,
+    WM_CTLCOLORLISTBOX, WM_CTLCOLORSTATIC, WM_DESTROY, WM_DRAWITEM, WM_EXITSIZEMOVE, WM_KEYDOWN,
+    WM_LBUTTONDBLCLK, WM_LBUTTONDOWN, WM_MEASUREITEM, WM_MOVE, WM_NCCREATE, WM_NCDESTROY, WM_PAINT,
+    WM_RBUTTONUP, WM_SETCURSOR, WM_SETFONT, WM_SETICON, WM_SETREDRAW, WM_SHOWWINDOW, WM_TIMER,
+    WNDCLASSW, WS_BORDER, WS_CAPTION, WS_CHILD, WS_CLIPCHILDREN, WS_MINIMIZEBOX, WS_OVERLAPPED,
+    WS_SYSMENU, WS_TABSTOP, WS_VISIBLE, WS_VSCROLL,
 };
 use windows::core::{PCWSTR, w};
 
 mod constants;
 mod controls;
+mod drawing;
 mod language_prompt;
+mod managed_mute;
 mod process_choice;
+mod runtime_logic;
 mod settings_window;
+mod startup_sync;
+mod state;
+mod status_text;
+mod target_model;
 mod target_note_prompt;
 mod theme;
 mod win32;
+mod window_position;
 
 use constants::*;
 use controls::Controls;
+use drawing::{draw_target_identity_line, draw_text_line};
 use language_prompt::prompt_initial_language;
+use managed_mute::{
+    ManagedMuteLookup, managed_mute_count, matching_session_keys_for_target,
+    target_has_managed_mute, target_matches_session_key, target_status_text,
+};
 use process_choice::{ProcessChoice, search_terms};
+use runtime_logic::{
+    MANAGED_MUTE_FOREGROUND_RETRY_TICKS, audio_fallback_timer_matches_desired,
+    cached_foreground_process_name, desired_audio_fallback_timer_interval_ms,
+    foreground_process_cache_needs_refresh, initial_managed_mute_fast_retry_count,
+    initial_process_refresh_attempt, process_refresh_is_stale, replace_text_if_changed,
+    should_hide_to_tray, should_release_idle_audio_while_paused,
+    should_retry_tray_icon_before_hide,
+};
 use settings_window::{SettingsPreferences, prompt_settings};
+use startup_sync::{
+    StartupSyncResult, apply_external_startup_config, apply_startup_preference,
+    should_save_startup_config, should_sync_startup_setting, sync_startup_setting,
+};
+use state::{
+    ActionButtonState, ConfigReloadResult, IssueState, ProcessRefreshResult, StatusIssue,
+    StatusSnapshot,
+};
+use status_text::{
+    app_title_with_version_into, status_summary_text_into, status_text,
+    status_text_and_detail_into, tray_tip_text_into,
+};
+use target_model::{
+    grouped_process_choice_count, target_display_name_into, target_display_storage_bytes_hint,
+    target_index_by_identity, target_matcher_inputs_changed,
+};
 use target_note_prompt::prompt_target_note;
 use theme::{AppTheme, OwnedBrush, UiFont, px};
 use win32::{
@@ -85,13 +118,12 @@ use win32::{
     copy_wide_fixed, create_button, create_control, create_primary_button, get_message, hiword,
     load_app_icon, load_github_icon, load_settings_icon, load_tray_icon, loword,
     measure_text_width, move_window, reserve_combo_items, reserve_list_items, set_combo_edit_caret,
-    set_text, storage_bytes_hint, to_wide, window_text_into, write_wide_buffer,
+    set_text, to_wide, window_text_into, write_wide_buffer,
 };
+use window_position::{initial_window_position, should_start_hidden, window_position_is_visible};
 
 static FOREGROUND_EVENT_HWND: AtomicIsize = AtomicIsize::new(0);
 static FOREGROUND_EVENT_PENDING: AtomicBool = AtomicBool::new(false);
-const MANAGED_MUTE_FOREGROUND_RETRY_INTERVAL_MS: u32 = 100;
-const MANAGED_MUTE_FOREGROUND_RETRY_TICKS: u8 = 20;
 const MAIN_WINDOW_STYLE: WINDOW_STYLE = WINDOW_STYLE(
     WS_OVERLAPPED.0 | WS_CAPTION.0 | WS_SYSMENU.0 | WS_MINIMIZEBOX.0 | WS_CLIPCHILDREN.0,
 );
@@ -136,10 +168,6 @@ const LB_ITEMFROMPOINT_MESSAGE: u32 = 0x01A9;
 const LB_ITEMFROMPOINT_OUTSIDE_MASK: isize = 0x0001_0000;
 const LB_GETITEMRECT_MESSAGE: u32 = 0x0198;
 const LB_ERR: isize = -1;
-const PID_DISPLAY_DECORATION_UTF16_UNITS: usize = " (PID )".len();
-const DRAW_TEXT_STACK_BUFFER_LEN: usize = 256;
-const LINEAR_MANAGED_MUTE_LOOKUP_LIMIT: usize = 8;
-const APP_VERSION: &str = env!("CARGO_PKG_VERSION");
 pub fn run() -> Result<()> {
     let _com = unsafe { ComApartment::initialize()? };
     unsafe { run_window() }
@@ -468,211 +496,6 @@ fn show_main_window(hwnd: HWND) {
     }
 }
 
-#[derive(Default)]
-struct StartupSyncResult {
-    issues: IssueState,
-    config_changed: bool,
-}
-
-fn sync_startup_setting(config: &mut AppConfig) -> StartupSyncResult {
-    apply_startup_sync_result(
-        config,
-        startup::set_launch_on_startup(config.launch_on_startup).is_err(),
-    )
-}
-
-fn apply_startup_sync_result(config: &mut AppConfig, update_failed: bool) -> StartupSyncResult {
-    let mut issues = IssueState::default();
-    let mut config_changed = false;
-
-    if update_failed {
-        issues.set(StatusIssue::StartupUpdateFailed);
-        if config.launch_on_startup {
-            config.launch_on_startup = false;
-            config_changed = true;
-        }
-    }
-
-    StartupSyncResult {
-        issues,
-        config_changed,
-    }
-}
-
-fn should_save_startup_config(
-    accepted_initial_preferences: bool,
-    startup_config_changed: bool,
-) -> bool {
-    accepted_initial_preferences || startup_config_changed
-}
-
-fn should_sync_startup_setting(first_run: bool, accepted_initial_preferences: bool) -> bool {
-    !first_run || accepted_initial_preferences
-}
-
-#[cfg(test)]
-mod startup_sync_tests {
-    use super::*;
-
-    #[test]
-    fn enabling_failure_disables_config_and_reports_issue() {
-        let mut config = AppConfig {
-            launch_on_startup: true,
-            ..AppConfig::default()
-        };
-
-        let result = apply_startup_sync_result(&mut config, true);
-
-        assert!(!config.launch_on_startup);
-        assert!(result.config_changed);
-        assert!(result.issues.contains(StatusIssue::StartupUpdateFailed));
-    }
-
-    #[test]
-    fn disabling_failure_reports_issue_without_reenabling_config() {
-        let mut config = AppConfig {
-            launch_on_startup: false,
-            ..AppConfig::default()
-        };
-
-        let result = apply_startup_sync_result(&mut config, true);
-
-        assert!(!config.launch_on_startup);
-        assert!(!result.config_changed);
-        assert!(result.issues.contains(StatusIssue::StartupUpdateFailed));
-    }
-
-    #[test]
-    fn successful_sync_preserves_startup_config() {
-        let mut config = AppConfig {
-            launch_on_startup: true,
-            ..AppConfig::default()
-        };
-
-        let result = apply_startup_sync_result(&mut config, false);
-
-        assert!(config.launch_on_startup);
-        assert!(!result.config_changed);
-        assert!(!result.issues.contains(StatusIssue::StartupUpdateFailed));
-    }
-
-    #[test]
-    fn initial_config_is_saved_only_after_accept_or_sync_change() {
-        assert!(!should_save_startup_config(false, false));
-        assert!(should_save_startup_config(true, false));
-        assert!(should_save_startup_config(false, true));
-    }
-
-    #[test]
-    fn startup_sync_waits_for_first_run_acceptance() {
-        assert!(!should_sync_startup_setting(true, false));
-        assert!(should_sync_startup_setting(true, true));
-        assert!(should_sync_startup_setting(false, false));
-    }
-}
-
-fn should_start_hidden(first_run: bool, forced_minimized: bool, start_minimized: bool) -> bool {
-    !first_run && (forced_minimized || start_minimized)
-}
-
-fn initial_window_position(config: &AppConfig) -> WindowPosition {
-    config
-        .window_position
-        .filter(|position| {
-            window_position_is_visible(*position, px(WINDOW_WIDTH), px(WINDOW_HEIGHT))
-        })
-        .unwrap_or_else(centered_window_position)
-}
-
-fn centered_window_position() -> WindowPosition {
-    centered_position(px(WINDOW_WIDTH), px(WINDOW_HEIGHT))
-}
-
-fn centered_position(width: i32, height: i32) -> WindowPosition {
-    let screen = primary_work_area_rect();
-    WindowPosition {
-        x: screen.left + ((screen.right - screen.left - width) / 2).max(0),
-        y: screen.top + ((screen.bottom - screen.top - height) / 2).max(0),
-    }
-}
-
-fn window_position_is_visible(position: WindowPosition, width: i32, height: i32) -> bool {
-    const MIN_VISIBLE_EDGE: i32 = 80;
-
-    if width <= 0 || height <= 0 {
-        return false;
-    }
-
-    let screen = virtual_screen_rect();
-    let right = position.x.saturating_add(width);
-    let bottom = position.y.saturating_add(height);
-    let min_visible_edge = px(MIN_VISIBLE_EDGE);
-    right > screen.left.saturating_add(min_visible_edge)
-        && position.x < screen.right.saturating_sub(min_visible_edge)
-        && bottom > screen.top.saturating_add(min_visible_edge)
-        && position.y < screen.bottom.saturating_sub(min_visible_edge)
-}
-
-fn primary_work_area_rect() -> RECT {
-    let mut rect = RECT::default();
-    if unsafe {
-        SystemParametersInfoW(
-            SPI_GETWORKAREA,
-            0,
-            Some((&mut rect as *mut RECT).cast()),
-            SYSTEM_PARAMETERS_INFO_UPDATE_FLAGS(0),
-        )
-    }
-    .is_ok()
-        && rect.right > rect.left
-        && rect.bottom > rect.top
-    {
-        return rect;
-    }
-
-    RECT {
-        left: 0,
-        top: 0,
-        right: unsafe { GetSystemMetrics(SM_CXSCREEN) },
-        bottom: unsafe { GetSystemMetrics(SM_CYSCREEN) },
-    }
-}
-
-fn virtual_screen_rect() -> RECT {
-    let left = unsafe { GetSystemMetrics(SM_XVIRTUALSCREEN) };
-    let top = unsafe { GetSystemMetrics(SM_YVIRTUALSCREEN) };
-    let width = unsafe { GetSystemMetrics(SM_CXVIRTUALSCREEN) };
-    let height = unsafe { GetSystemMetrics(SM_CYVIRTUALSCREEN) };
-    if width > 0 && height > 0 {
-        return RECT {
-            left,
-            top,
-            right: left.saturating_add(width),
-            bottom: top.saturating_add(height),
-        };
-    }
-
-    RECT {
-        left: 0,
-        top: 0,
-        right: unsafe { GetSystemMetrics(SM_CXSCREEN) },
-        bottom: unsafe { GetSystemMetrics(SM_CYSCREEN) },
-    }
-}
-
-#[cfg(test)]
-mod window_position_tests {
-    use super::*;
-
-    #[test]
-    fn zero_sized_windows_are_not_visible_positions() {
-        let position = WindowPosition { x: 10, y: 10 };
-
-        assert!(!window_position_is_visible(position, 0, WINDOW_HEIGHT));
-        assert!(!window_position_is_visible(position, WINDOW_WIDTH, 0));
-    }
-}
-
 struct AppWindow {
     hwnd: HWND,
     controls: Controls,
@@ -716,196 +539,6 @@ struct AppWindow {
     icon: HICON,
     tray_icon: HICON,
     taskbar_created_message: u32,
-}
-
-#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
-struct IssueState {
-    flags: u8,
-    visible: Option<StatusIssue>,
-}
-
-impl IssueState {
-    fn set(&mut self, issue: StatusIssue) -> bool {
-        let bit = issue.bit();
-        if self.flags & bit != 0 {
-            return false;
-        }
-
-        let old_visible = self.visible;
-        self.flags |= bit;
-        self.refresh_visible();
-        old_visible != self.visible
-    }
-
-    fn clear(&mut self, issue: StatusIssue) -> bool {
-        self.clear_mask(issue.bit())
-    }
-
-    fn clear_mask(&mut self, mask: u8) -> bool {
-        if self.flags & mask == 0 {
-            return false;
-        }
-
-        let old_visible = self.visible;
-        self.flags &= !mask;
-        self.refresh_visible();
-        old_visible != self.visible
-    }
-
-    fn merge(&mut self, issues: Self) -> bool {
-        let flags = self.flags | issues.flags;
-        if flags == self.flags {
-            return false;
-        }
-
-        let old_visible = self.visible;
-        self.flags = flags;
-        self.refresh_visible();
-        old_visible != self.visible
-    }
-
-    fn contains(self, issue: StatusIssue) -> bool {
-        self.flags & issue.bit() != 0
-    }
-
-    fn visible(self) -> Option<StatusIssue> {
-        self.visible
-    }
-
-    fn refresh_visible(&mut self) {
-        self.visible = STATUS_ISSUE_PRIORITY_ORDER
-            .iter()
-            .copied()
-            .find(|issue| self.flags & issue.bit() != 0);
-    }
-}
-
-const STATUS_ISSUE_PRIORITY_ORDER: [StatusIssue; 8] = [
-    StatusIssue::ConfigSaveFailed,
-    StatusIssue::ConfigLoadFailed,
-    StatusIssue::StartupUpdateFailed,
-    StatusIssue::TimerSetupFailed,
-    StatusIssue::TrayIconUnavailable,
-    StatusIssue::AudioUnavailable,
-    StatusIssue::AudioUpdateFailed,
-    StatusIssue::ProcessRefreshFailed,
-];
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-#[repr(u8)]
-enum StatusIssue {
-    AudioUnavailable,
-    AudioUpdateFailed,
-    ConfigLoadFailed,
-    ConfigSaveFailed,
-    StartupUpdateFailed,
-    TimerSetupFailed,
-    TrayIconUnavailable,
-    ProcessRefreshFailed,
-}
-
-impl StatusIssue {
-    fn bit(self) -> u8 {
-        1 << self as u8
-    }
-}
-
-#[cfg(test)]
-mod issue_state_tests {
-    use super::*;
-
-    #[test]
-    fn clearing_visible_issue_reveals_hidden_issue() {
-        let mut issues = IssueState::default();
-
-        issues.set(StatusIssue::AudioUnavailable);
-        issues.set(StatusIssue::ConfigSaveFailed);
-        assert_eq!(issues.visible(), Some(StatusIssue::ConfigSaveFailed));
-
-        issues.clear(StatusIssue::ConfigSaveFailed);
-        assert_eq!(issues.visible(), Some(StatusIssue::AudioUnavailable));
-    }
-
-    #[test]
-    fn lower_priority_issue_does_not_hide_visible_critical_issue() {
-        let mut issues = IssueState::default();
-
-        issues.set(StatusIssue::ConfigSaveFailed);
-        issues.set(StatusIssue::AudioUnavailable);
-        issues.set(StatusIssue::ProcessRefreshFailed);
-
-        assert_eq!(issues.visible(), Some(StatusIssue::ConfigSaveFailed));
-    }
-
-    #[test]
-    fn contains_reports_hidden_issues() {
-        let mut issues = IssueState::default();
-
-        issues.set(StatusIssue::AudioUnavailable);
-        issues.set(StatusIssue::ConfigLoadFailed);
-
-        assert!(issues.contains(StatusIssue::AudioUnavailable));
-        assert!(issues.contains(StatusIssue::ConfigLoadFailed));
-        assert!(!issues.contains(StatusIssue::ConfigSaveFailed));
-    }
-
-    #[test]
-    fn merging_issues_preserves_priority_order() {
-        let mut issues = IssueState::default();
-        let mut incoming = IssueState::default();
-
-        issues.set(StatusIssue::AudioUnavailable);
-        incoming.set(StatusIssue::ConfigLoadFailed);
-
-        assert!(issues.merge(incoming));
-        assert!(issues.contains(StatusIssue::AudioUnavailable));
-        assert!(issues.contains(StatusIssue::ConfigLoadFailed));
-        assert_eq!(issues.visible(), Some(StatusIssue::ConfigLoadFailed));
-    }
-}
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-struct StatusSnapshot {
-    paused: bool,
-    issue: Option<StatusIssue>,
-    target_count: usize,
-    muted_count: usize,
-}
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-struct ActionButtonState {
-    add_selected: bool,
-    add_manual: bool,
-}
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-struct ConfigReloadResult {
-    target_matcher_changed: bool,
-}
-
-impl ConfigReloadResult {
-    const UNCHANGED: Self = Self {
-        target_matcher_changed: false,
-    };
-
-    const fn changed(target_matcher_changed: bool) -> Self {
-        Self {
-            target_matcher_changed,
-        }
-    }
-}
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-enum ProcessRefreshResult {
-    Refreshed,
-    Skipped,
-    Failed,
-}
-
-impl ProcessRefreshResult {
-    fn refreshed(self) -> bool {
-        self == Self::Refreshed
-    }
 }
 
 impl AppWindow {
@@ -1478,8 +1111,7 @@ impl AppWindow {
             changed = true;
         }
         if self.config.launch_on_startup != preferences.launch_on_startup {
-            if startup::set_launch_on_startup(preferences.launch_on_startup).is_ok() {
-                self.config.launch_on_startup = preferences.launch_on_startup;
+            if apply_startup_preference(&mut self.config, preferences.launch_on_startup) {
                 self.clear_issue(StatusIssue::StartupUpdateFailed);
                 changed = true;
             } else {
@@ -2459,10 +2091,9 @@ impl AppWindow {
                 .any(|target| target.managed_muted);
 
         if startup_changed {
-            if startup::set_launch_on_startup(config.launch_on_startup).is_ok() {
+            if apply_external_startup_config(&mut config, previous_launch_on_startup) {
                 self.clear_issue(StatusIssue::StartupUpdateFailed);
             } else {
-                config.launch_on_startup = previous_launch_on_startup;
                 self.set_issue(StatusIssue::StartupUpdateFailed);
             }
         }
@@ -3788,910 +3419,6 @@ impl AppWindow {
     }
 }
 
-fn draw_text_line(
-    hdc: HDC,
-    font: HGDIOBJ,
-    text: &str,
-    rect: RECT,
-    color: windows::Win32::Foundation::COLORREF,
-    format: DRAW_TEXT_FORMAT,
-) {
-    if text.is_empty() {
-        return;
-    }
-
-    let mut stack = [0u16; DRAW_TEXT_STACK_BUFFER_LEN];
-    if let Some(wide) = encode_draw_text_stack(text, &mut stack) {
-        draw_wide_text_line(hdc, font, wide, rect, color, format);
-        return;
-    }
-
-    let mut wide = text.encode_utf16().collect::<Vec<_>>();
-    draw_wide_text_line(hdc, font, &mut wide, rect, color, format);
-}
-
-fn draw_target_identity_line(
-    hdc: HDC,
-    font: HGDIOBJ,
-    target: &TargetProcess,
-    rect: RECT,
-    color: windows::Win32::Foundation::COLORREF,
-    format: DRAW_TEXT_FORMAT,
-) {
-    let mut stack = [0u16; DRAW_TEXT_STACK_BUFFER_LEN];
-    if let Some(wide) = encode_target_identity_stack(target, &mut stack) {
-        draw_wide_text_line(hdc, font, wide, rect, color, format);
-        return;
-    }
-
-    let mut wide = Vec::with_capacity(target_identity_utf16_units(target));
-    push_target_identity_wide(target, &mut wide);
-    draw_wide_text_line(hdc, font, &mut wide, rect, color, format);
-}
-
-fn encode_draw_text_stack<'a>(text: &str, buffer: &'a mut [u16]) -> Option<&'a mut [u16]> {
-    if text.is_ascii() {
-        let len = text.len();
-        if len > buffer.len() {
-            return None;
-        }
-        for (slot, byte) in buffer.iter_mut().zip(text.bytes()) {
-            *slot = u16::from(byte);
-        }
-        return Some(&mut buffer[..len]);
-    }
-
-    let mut len = 0;
-    for ch in text.encode_utf16() {
-        if len == buffer.len() {
-            return None;
-        }
-        buffer[len] = ch;
-        len += 1;
-    }
-    Some(&mut buffer[..len])
-}
-
-fn encode_target_identity_stack<'a>(
-    target: &TargetProcess,
-    buffer: &'a mut [u16],
-) -> Option<&'a mut [u16]> {
-    if target_identity_utf16_units(target) > buffer.len() {
-        return None;
-    }
-
-    let mut len = 0;
-    for ch in target.name.encode_utf16() {
-        buffer[len] = ch;
-        len += 1;
-    }
-    if let Some(pid) = target.pid {
-        for ch in " (PID ".encode_utf16() {
-            buffer[len] = ch;
-            len += 1;
-        }
-        write_decimal_u32_wide(pid, buffer, &mut len);
-        buffer[len] = ')' as u16;
-        len += 1;
-    }
-    Some(&mut buffer[..len])
-}
-
-fn push_target_identity_wide(target: &TargetProcess, output: &mut Vec<u16>) {
-    output.extend(target.name.encode_utf16());
-    if let Some(pid) = target.pid {
-        output.extend(" (PID ".encode_utf16());
-        push_decimal_u32_wide(pid, output);
-        output.push(')' as u16);
-    }
-}
-
-fn target_identity_utf16_units(target: &TargetProcess) -> usize {
-    let mut units = target.name.encode_utf16().count();
-    if let Some(pid) = target.pid {
-        units += PID_DISPLAY_DECORATION_UTF16_UNITS + decimal_digit_count(pid);
-    }
-    units
-}
-
-fn write_decimal_u32_wide(number: u32, output: &mut [u16], len: &mut usize) {
-    let mut digits = [0u16; 10];
-    let digit_count = decimal_digits_u32(number, &mut digits);
-    for digit in digits[..digit_count].iter().rev() {
-        output[*len] = *digit;
-        *len += 1;
-    }
-}
-
-fn push_decimal_u32_wide(number: u32, output: &mut Vec<u16>) {
-    let mut digits = [0u16; 10];
-    let digit_count = decimal_digits_u32(number, &mut digits);
-    output.extend(digits[..digit_count].iter().rev().copied());
-}
-
-fn decimal_digits_u32(mut number: u32, output: &mut [u16; 10]) -> usize {
-    let mut len = 0;
-    loop {
-        output[len] = u16::from(b'0' + (number % 10) as u8);
-        len += 1;
-        number /= 10;
-        if number == 0 {
-            return len;
-        }
-    }
-}
-
-fn draw_wide_text_line(
-    hdc: HDC,
-    font: HGDIOBJ,
-    wide: &mut [u16],
-    mut rect: RECT,
-    color: windows::Win32::Foundation::COLORREF,
-    format: DRAW_TEXT_FORMAT,
-) {
-    unsafe {
-        let previous_font = SelectObject(hdc, font);
-        let _ = SetBkMode(hdc, TRANSPARENT);
-        let _ = SetTextColor(hdc, color);
-        let _ = DrawTextW(hdc, wide, &mut rect, format);
-        if !previous_font.0.is_null() {
-            let _ = SelectObject(hdc, previous_font);
-        }
-    }
-}
-
-fn status_text(strings: &Strings, paused: bool, has_issue: bool) -> &'static str {
-    if has_issue {
-        strings.status_issue
-    } else if paused {
-        strings.status_paused
-    } else {
-        strings.status_running
-    }
-}
-
-fn status_text_and_detail_into(
-    strings: &Strings,
-    issue_text: Option<&str>,
-    paused: bool,
-    target_count: usize,
-    muted_count: usize,
-    output: &mut String,
-) -> &'static str {
-    let status = status_text(strings, paused, issue_text.is_some());
-    status_detail_text_into(strings, issue_text, target_count, muted_count, output);
-    status
-}
-
-fn status_detail_text_into(
-    strings: &Strings,
-    issue_text: Option<&str>,
-    target_count: usize,
-    muted_count: usize,
-    output: &mut String,
-) {
-    output.clear();
-    if let Some(issue_text) = issue_text {
-        output.push_str(issue_text);
-        return;
-    }
-
-    output.push_str(strings.target_count);
-    output.push(' ');
-    push_decimal_usize(output, target_count);
-    output.push_str(" · ");
-    output.push_str(strings.muted_count);
-    output.push(' ');
-    push_decimal_usize(output, muted_count);
-}
-
-fn tray_tip_text_into(strings: &Strings, status: &str, detail: &str, output: &mut String) {
-    output.clear();
-    output.reserve(strings.app_title.len() + APP_VERSION.len() + status.len() + detail.len() + 8);
-    output.push_str(strings.app_title);
-    output.push_str(" - ");
-    output.push_str(status);
-    if !detail.is_empty() {
-        output.push_str(" | ");
-        output.push_str(detail);
-    }
-}
-
-fn app_title_with_version_into(strings: &Strings, output: &mut String) {
-    output.clear();
-    output.push_str(strings.app_title);
-    output.push_str(" v");
-    output.push_str(APP_VERSION);
-}
-
-fn status_summary_text_into(status: &str, detail: &str, output: &mut String) {
-    output.clear();
-    output.reserve(status.len() + detail.len() + 3);
-    output.push_str(status);
-    if !detail.is_empty() {
-        output.push_str(" - ");
-        output.push_str(detail);
-    }
-}
-
-#[cfg(test)]
-mod status_text_tests {
-    use super::*;
-
-    #[test]
-    fn running_status_detail_includes_target_and_muted_counts() {
-        let strings = Language::Ko.strings();
-        let mut detail = String::new();
-
-        status_detail_text_into(strings, None, 12, 3, &mut detail);
-
-        assert_eq!(detail, "등록 12 · 음소거 3");
-    }
-
-    #[test]
-    fn issue_status_detail_prefers_issue_text() {
-        let strings = Language::En.strings();
-        let mut detail = String::new();
-
-        status_detail_text_into(strings, Some(strings.audio_unavailable), 12, 3, &mut detail);
-
-        assert_eq!(detail, "Could not access audio sessions");
-    }
-
-    #[test]
-    fn status_text_and_detail_share_issue_decision() {
-        let strings = Language::En.strings();
-        let mut detail = String::new();
-
-        let status = status_text_and_detail_into(
-            strings,
-            Some(strings.audio_unavailable),
-            true,
-            12,
-            3,
-            &mut detail,
-        );
-
-        assert_eq!(status, strings.status_issue);
-        assert_eq!(detail, "Audio device unavailable");
-    }
-
-    #[test]
-    fn tray_tip_combines_app_status_and_detail() {
-        let strings = Language::En.strings();
-        let mut tip = String::new();
-
-        tray_tip_text_into(
-            strings,
-            strings.status_running,
-            "Apps 2 · Muted 1",
-            &mut tip,
-        );
-
-        assert_eq!(tip, "UnfocusMute - Monitoring | Apps 2 · Muted 1");
-    }
-
-    #[test]
-    fn app_title_includes_package_version() {
-        let strings = Language::Ko.strings();
-        let mut title = String::new();
-
-        app_title_with_version_into(strings, &mut title);
-
-        assert_eq!(title, format!("UnfocusMute v{APP_VERSION}"));
-    }
-
-    #[test]
-    fn status_summary_combines_status_and_detail_for_tray_menu() {
-        let mut summary = String::new();
-
-        status_summary_text_into("모니터링 중", "등록 2 · 음소거 1", &mut summary);
-
-        assert_eq!(summary, "모니터링 중 - 등록 2 · 음소거 1");
-    }
-
-    #[test]
-    fn status_text_prioritizes_issue_over_pause() {
-        let strings = Language::En.strings();
-
-        assert_eq!(status_text(strings, true, true), strings.status_issue);
-        assert_eq!(status_text(strings, true, false), strings.status_paused);
-        assert_eq!(status_text(strings, false, false), strings.status_running);
-    }
-}
-
-fn cached_foreground_process_name(
-    cache: Option<&(u32, Option<String>)>,
-    foreground_pid: Option<u32>,
-) -> Option<&str> {
-    let pid = foreground_pid?;
-    let (cached_pid, name) = cache?;
-    (*cached_pid == pid).then_some(name.as_deref()).flatten()
-}
-
-fn foreground_process_cache_needs_refresh(cache: Option<&(u32, Option<String>)>, pid: u32) -> bool {
-    !matches!(cache, Some((cached_pid, Some(_))) if *cached_pid == pid)
-}
-
-fn initial_process_refresh_attempt() -> Instant {
-    Instant::now() - PROCESS_REFRESH_STALE_INTERVAL
-}
-
-fn process_refresh_is_stale(last_process_refresh_attempt: Instant) -> bool {
-    last_process_refresh_attempt.elapsed() >= PROCESS_REFRESH_STALE_INTERVAL
-}
-
-fn initial_managed_mute_fast_retry_count(targets: &[TargetProcess]) -> u8 {
-    if targets.iter().any(|target| target.managed_muted) {
-        MANAGED_MUTE_FOREGROUND_RETRY_TICKS
-    } else {
-        0
-    }
-}
-
-fn audio_fallback_timer_needed(
-    paused: bool,
-    target_matcher_empty: bool,
-    has_managed_mutes: bool,
-) -> bool {
-    has_managed_mutes || (!paused && !target_matcher_empty)
-}
-
-fn desired_audio_fallback_timer_interval_ms(
-    paused: bool,
-    target_matcher_empty: bool,
-    has_managed_mutes: bool,
-    managed_mute_fast_retry_remaining: u8,
-    polling_interval_ms: u64,
-) -> Option<u32> {
-    if !audio_fallback_timer_needed(paused, target_matcher_empty, has_managed_mutes) {
-        return None;
-    }
-    if has_managed_mutes && managed_mute_fast_retry_remaining > 0 {
-        return Some(MANAGED_MUTE_FOREGROUND_RETRY_INTERVAL_MS);
-    }
-    Some(polling_interval_ms as u32)
-}
-
-fn audio_fallback_timer_matches_desired(
-    desired_interval: Option<u32>,
-    active_interval: Option<u32>,
-) -> bool {
-    desired_interval == active_interval
-}
-
-fn replace_text_if_changed(current: &mut String, next: &mut String) -> bool {
-    if current == next {
-        next.clear();
-        false
-    } else {
-        std::mem::swap(current, next);
-        next.clear();
-        true
-    }
-}
-
-#[cfg(test)]
-mod text_update_tests {
-    use super::*;
-
-    #[test]
-    fn unchanged_text_is_cleared_from_scratch_buffer() {
-        let mut current = String::from("game.exe");
-        let mut next = String::from("game.exe");
-
-        assert!(!replace_text_if_changed(&mut current, &mut next));
-        assert_eq!(current, "game.exe");
-        assert!(next.is_empty());
-    }
-
-    #[test]
-    fn changed_text_replaces_current_and_clears_scratch_buffer() {
-        let mut current = String::from("game.exe");
-        let mut next = String::from("chat.exe");
-
-        assert!(replace_text_if_changed(&mut current, &mut next));
-        assert_eq!(current, "chat.exe");
-        assert!(next.is_empty());
-    }
-}
-
-#[cfg(test)]
-mod foreground_cache_tests {
-    use super::*;
-
-    #[test]
-    fn foreground_process_cache_reuses_successful_lookup() {
-        let cache = Some((42, Some("game.exe".to_owned())));
-
-        assert!(!foreground_process_cache_needs_refresh(cache.as_ref(), 42));
-    }
-
-    #[test]
-    fn foreground_process_cache_retries_failed_lookup() {
-        let cache = Some((42, None));
-
-        assert!(foreground_process_cache_needs_refresh(cache.as_ref(), 42));
-    }
-
-    #[test]
-    fn initial_process_refresh_is_due_immediately() {
-        assert!(process_refresh_is_stale(initial_process_refresh_attempt()));
-    }
-
-    #[test]
-    fn process_refresh_is_needed_after_stale_interval() {
-        assert!(process_refresh_is_stale(
-            Instant::now() - PROCESS_REFRESH_STALE_INTERVAL
-        ));
-    }
-
-    #[test]
-    fn process_refresh_is_throttled_after_recent_attempt() {
-        assert!(!process_refresh_is_stale(Instant::now()));
-    }
-
-    #[test]
-    fn process_refresh_result_only_reports_refreshed_for_successful_refresh() {
-        assert!(ProcessRefreshResult::Refreshed.refreshed());
-        assert!(!ProcessRefreshResult::Skipped.refreshed());
-        assert!(!ProcessRefreshResult::Failed.refreshed());
-    }
-
-    #[test]
-    fn managed_mute_fast_retry_starts_when_persisted_target_exists() {
-        let mut target = TargetProcess::new("game.exe").unwrap();
-        target.managed_muted = true;
-
-        assert_eq!(
-            initial_managed_mute_fast_retry_count(&[target]),
-            MANAGED_MUTE_FOREGROUND_RETRY_TICKS
-        );
-    }
-
-    #[test]
-    fn managed_mute_fast_retry_uses_short_audio_interval_only_temporarily() {
-        assert_eq!(
-            desired_audio_fallback_timer_interval_ms(true, true, true, 1, 3_000),
-            Some(MANAGED_MUTE_FOREGROUND_RETRY_INTERVAL_MS)
-        );
-        assert_eq!(
-            desired_audio_fallback_timer_interval_ms(true, true, true, 0, 3_000),
-            Some(3_000)
-        );
-        assert_eq!(
-            desired_audio_fallback_timer_interval_ms(false, false, false, 1, 3_000),
-            Some(3_000)
-        );
-        assert_eq!(
-            desired_audio_fallback_timer_interval_ms(true, true, false, 1, 3_000),
-            None
-        );
-    }
-
-    #[test]
-    fn audio_fallback_timer_is_ready_only_at_desired_interval() {
-        assert!(audio_fallback_timer_matches_desired(
-            Some(3_000),
-            Some(3_000)
-        ));
-        assert!(audio_fallback_timer_matches_desired(None, None));
-        assert!(!audio_fallback_timer_matches_desired(
-            Some(3_000),
-            Some(MANAGED_MUTE_FOREGROUND_RETRY_INTERVAL_MS)
-        ));
-        assert!(!audio_fallback_timer_matches_desired(Some(3_000), None));
-        assert!(!audio_fallback_timer_matches_desired(None, Some(3_000)));
-    }
-}
-
-fn should_hide_to_tray(tray_added: bool) -> bool {
-    tray_added
-}
-
-fn should_retry_tray_icon_before_hide(tray_added: bool) -> bool {
-    !tray_added
-}
-
-fn should_release_idle_audio_while_paused(paused: bool, has_managed_mutes: bool) -> bool {
-    paused && !has_managed_mutes
-}
-
-fn target_status_text(
-    target: &TargetProcess,
-    muted_by_app: bool,
-    strings: &Strings,
-) -> &'static str {
-    if !target.enabled {
-        strings.target_excluded
-    } else if muted_by_app {
-        strings.target_muted
-    } else {
-        strings.target_ready
-    }
-}
-
-fn target_has_managed_mute(
-    target: &TargetProcess,
-    muted_by_app: &HashSet<AudioSessionKey>,
-) -> bool {
-    ManagedMuteLookup::new(muted_by_app).target_has_managed_mute(target)
-}
-
-enum ManagedMuteLookup<'a> {
-    Empty,
-    One {
-        pid: u32,
-        process_name: &'a str,
-    },
-    Two {
-        first_pid: u32,
-        first_process_name: &'a str,
-        second_pid: u32,
-        second_process_name: &'a str,
-    },
-    Few {
-        identities: [(u32, &'a str); LINEAR_MANAGED_MUTE_LOOKUP_LIMIT],
-        len: usize,
-    },
-    Many {
-        process_names: Vec<&'a str>,
-        process_names_by_pid: Vec<(&'a str, u32)>,
-    },
-}
-
-impl<'a> ManagedMuteLookup<'a> {
-    fn new(muted_by_app: &'a HashSet<AudioSessionKey>) -> Self {
-        let mut keys = muted_by_app.iter();
-        let Some(first) = keys.next() else {
-            return Self::Empty;
-        };
-        let Some(second) = keys.next() else {
-            return Self::One {
-                pid: first.pid,
-                process_name: first.process_name.as_str(),
-            };
-        };
-        if muted_by_app.len() == 2 {
-            return Self::Two {
-                first_pid: first.pid,
-                first_process_name: first.process_name.as_str(),
-                second_pid: second.pid,
-                second_process_name: second.process_name.as_str(),
-            };
-        }
-
-        if muted_by_app.len() <= LINEAR_MANAGED_MUTE_LOOKUP_LIMIT {
-            let mut identities = [(0, ""); LINEAR_MANAGED_MUTE_LOOKUP_LIMIT];
-            identities[0] = (first.pid, first.process_name.as_str());
-            identities[1] = (second.pid, second.process_name.as_str());
-            let mut len = 2;
-            for key in keys {
-                identities[len] = (key.pid, key.process_name.as_str());
-                len += 1;
-            }
-            return Self::Few { identities, len };
-        }
-
-        let mut process_names = Vec::with_capacity(muted_by_app.len());
-        let mut process_names_by_pid = Vec::with_capacity(muted_by_app.len());
-        process_names.push(first.process_name.as_str());
-        process_names.push(second.process_name.as_str());
-        process_names_by_pid.push((first.process_name.as_str(), first.pid));
-        process_names_by_pid.push((second.process_name.as_str(), second.pid));
-        for key in keys {
-            let name = key.process_name.as_str();
-            process_names.push(name);
-            process_names_by_pid.push((name, key.pid));
-        }
-
-        process_names.sort_unstable();
-        process_names.dedup();
-        process_names_by_pid.sort_unstable_by(compare_managed_mute_pid_entry);
-        process_names_by_pid.dedup();
-
-        Self::Many {
-            process_names,
-            process_names_by_pid,
-        }
-    }
-
-    fn target_has_managed_mute(&self, target: &TargetProcess) -> bool {
-        if !target.enabled {
-            return false;
-        }
-        if target.managed_muted {
-            return true;
-        }
-
-        match target.pid {
-            Some(pid) => self.has_process_pid(target.name.as_str(), pid),
-            None => self.has_process_name(target.name.as_str()),
-        }
-    }
-
-    fn has_process_name(&self, name: &str) -> bool {
-        match self {
-            Self::Empty => false,
-            Self::One { process_name, .. } => *process_name == name,
-            Self::Two {
-                first_process_name,
-                second_process_name,
-                ..
-            } => *first_process_name == name || *second_process_name == name,
-            Self::Few { identities, len } => identities[..*len]
-                .iter()
-                .any(|(_, process_name)| *process_name == name),
-            Self::Many { process_names, .. } => process_names.binary_search(&name).is_ok(),
-        }
-    }
-
-    fn has_process_pid(&self, name: &str, pid: u32) -> bool {
-        match self {
-            Self::Empty => false,
-            Self::One {
-                pid: managed_pid,
-                process_name,
-            } => *managed_pid == pid && *process_name == name,
-            Self::Two {
-                first_pid,
-                first_process_name,
-                second_pid,
-                second_process_name,
-            } => {
-                (*first_pid == pid && *first_process_name == name)
-                    || (*second_pid == pid && *second_process_name == name)
-            }
-            Self::Few { identities, len } => identities[..*len]
-                .iter()
-                .any(|(managed_pid, process_name)| *managed_pid == pid && *process_name == name),
-            Self::Many {
-                process_names_by_pid,
-                ..
-            } => process_names_by_pid
-                .binary_search_by(|entry| compare_managed_mute_pid_key(*entry, name, pid))
-                .is_ok(),
-        }
-    }
-}
-
-fn compare_managed_mute_pid_entry(left: &(&str, u32), right: &(&str, u32)) -> CmpOrdering {
-    left.0.cmp(right.0).then_with(|| left.1.cmp(&right.1))
-}
-
-fn compare_managed_mute_pid_key(entry: (&str, u32), name: &str, pid: u32) -> CmpOrdering {
-    entry.0.cmp(name).then_with(|| entry.1.cmp(&pid))
-}
-
-fn target_matches_session_key(target: &TargetProcess, key: &AudioSessionKey) -> bool {
-    target.name.as_str() == key.process_name.as_str() && target.pid.is_none_or(|pid| pid == key.pid)
-}
-
-fn matching_session_keys_for_target(
-    target: &TargetProcess,
-    muted_by_app: &HashSet<AudioSessionKey>,
-) -> HashSet<AudioSessionKey> {
-    let mut matches = HashSet::new();
-    for key in muted_by_app {
-        if target_matches_session_key(target, key) {
-            matches.insert(key.clone());
-        }
-    }
-    matches
-}
-
-fn managed_mute_count(targets: &[TargetProcess], muted_by_app: &HashSet<AudioSessionKey>) -> usize {
-    let mute_lookup = ManagedMuteLookup::new(muted_by_app);
-    targets
-        .iter()
-        .filter(|target| mute_lookup.target_has_managed_mute(target))
-        .count()
-}
-
-#[cfg(test)]
-mod layout_tests {
-    use super::*;
-
-    #[test]
-    fn window_hides_only_when_tray_icon_is_available() {
-        assert!(should_hide_to_tray(true));
-        assert!(!should_hide_to_tray(false));
-    }
-
-    #[test]
-    fn missing_tray_icon_is_retried_before_hiding() {
-        assert!(should_retry_tray_icon_before_hide(false));
-        assert!(!should_retry_tray_icon_before_hide(true));
-    }
-
-    #[test]
-    fn paused_idle_audio_is_released_only_after_mutes_are_restored() {
-        assert!(should_release_idle_audio_while_paused(true, false));
-        assert!(!should_release_idle_audio_while_paused(true, true));
-        assert!(!should_release_idle_audio_while_paused(false, false));
-    }
-
-    #[test]
-    fn target_status_reports_muted_only_for_enabled_managed_target() {
-        let strings = Language::Ko.strings();
-        let mut target = TargetProcess::new("game.exe").unwrap();
-
-        assert_eq!(target_status_text(&target, false, strings), "대기 중");
-        assert_eq!(target_status_text(&target, true, strings), "음소거 중");
-
-        target.enabled = false;
-        assert_eq!(target_status_text(&target, true, strings), "일시 중지");
-    }
-
-    #[test]
-    fn exe_target_is_muted_when_any_matching_session_is_managed() {
-        let target = TargetProcess::new("game.exe").unwrap();
-        let muted_by_app = HashSet::from([
-            AudioSessionKey::new(10, "chat.exe", None).unwrap(),
-            AudioSessionKey::new(20, "game.exe", None).unwrap(),
-        ]);
-
-        assert!(target_has_managed_mute(&target, &muted_by_app));
-    }
-
-    #[test]
-    fn exe_target_is_muted_when_persisted_target_state_is_managed() {
-        let mut target = TargetProcess::new("game.exe").unwrap();
-        target.managed_muted = true;
-
-        assert!(target_has_managed_mute(&target, &HashSet::new()));
-    }
-
-    #[test]
-    fn managed_mute_count_counts_targets_not_sessions() {
-        let game = TargetProcess::new("game.exe").unwrap();
-        let chat = TargetProcess::new("chat.exe").unwrap();
-        let muted_by_app = HashSet::from([
-            AudioSessionKey::new(20, "game.exe", Some("a".to_owned())).unwrap(),
-            AudioSessionKey::new(20, "game.exe", Some("b".to_owned())).unwrap(),
-        ]);
-
-        assert_eq!(managed_mute_count(&[game, chat], &muted_by_app), 1);
-    }
-
-    #[test]
-    fn pid_target_is_muted_only_for_matching_pid() {
-        let target = TargetProcess::for_pid("game.exe", 20).unwrap();
-        let wrong_pid = HashSet::from([AudioSessionKey::new(21, "game.exe", None).unwrap()]);
-        let matching_pid = HashSet::from([AudioSessionKey::new(20, "game.exe", None).unwrap()]);
-
-        assert!(!target_has_managed_mute(&target, &wrong_pid));
-        assert!(target_has_managed_mute(&target, &matching_pid));
-    }
-
-    #[test]
-    fn managed_mute_lookup_reuses_indexed_session_state() {
-        let exe_target = TargetProcess::new("game.exe").unwrap();
-        let pid_target = TargetProcess::for_pid("chat.exe", 7).unwrap();
-        let wrong_pid_target = TargetProcess::for_pid("chat.exe", 8).unwrap();
-        let muted_by_app = HashSet::from([
-            AudioSessionKey::new(20, "game.exe", None).unwrap(),
-            AudioSessionKey::new(7, "chat.exe", None).unwrap(),
-        ]);
-        let lookup = ManagedMuteLookup::new(&muted_by_app);
-
-        assert!(lookup.target_has_managed_mute(&exe_target));
-        assert!(lookup.target_has_managed_mute(&pid_target));
-        assert!(!lookup.target_has_managed_mute(&wrong_pid_target));
-    }
-
-    #[test]
-    fn managed_mute_lookup_uses_many_lookup_after_inline_limit() {
-        let muted_by_app = (1..=LINEAR_MANAGED_MUTE_LOOKUP_LIMIT + 1)
-            .map(|pid| AudioSessionKey::new(pid as u32, format!("app{pid}.exe"), None).unwrap())
-            .collect::<HashSet<_>>();
-        let lookup = ManagedMuteLookup::new(&muted_by_app);
-        let matching_target = TargetProcess::for_pid("app3.exe", 3).unwrap();
-        let same_name_wrong_pid = TargetProcess::for_pid("app3.exe", 30).unwrap();
-
-        assert!(lookup.target_has_managed_mute(&matching_target));
-        assert!(!lookup.target_has_managed_mute(&same_name_wrong_pid));
-    }
-
-    #[test]
-    fn matching_session_keys_for_target_keeps_only_matching_sessions() {
-        let target = TargetProcess::new("game.exe").unwrap();
-        let matching_a = AudioSessionKey::new(20, "game.exe", Some("a".to_owned())).unwrap();
-        let matching_b = AudioSessionKey::new(21, "game.exe", Some("b".to_owned())).unwrap();
-        let ignored = AudioSessionKey::new(22, "chat.exe", None).unwrap();
-        let muted_by_app = HashSet::from([matching_a.clone(), matching_b.clone(), ignored]);
-
-        let matches = matching_session_keys_for_target(&target, &muted_by_app);
-
-        assert_eq!(matches.len(), 2);
-        assert!(matches.contains(&matching_a));
-        assert!(matches.contains(&matching_b));
-    }
-
-    #[test]
-    fn disabled_target_does_not_report_managed_mute() {
-        let mut target = TargetProcess::new("game.exe").unwrap();
-        target.enabled = false;
-        let muted_by_app = HashSet::from([AudioSessionKey::new(20, "game.exe", None).unwrap()]);
-
-        assert!(!target_has_managed_mute(&target, &muted_by_app));
-    }
-}
-
-fn target_display_name_into(target: &TargetProcess, strings: &Strings, output: &mut String) {
-    if target.enabled {
-        target.display_name_into(output);
-        return;
-    }
-
-    output.clear();
-    output.push_str(strings.target_paused_prefix);
-    output.push_str(&target.name);
-    if let Some(pid) = target.pid {
-        output.push_str(" (PID ");
-        push_decimal_usize(output, pid as usize);
-        output.push(')');
-    }
-    if let Some(note) = &target.note {
-        output.push_str(" - ");
-        output.push_str(note);
-    }
-}
-
-fn grouped_process_choice_count(processes: &[ProcessInfo]) -> usize {
-    let mut processes = processes.iter();
-    let Some(first) = processes.next() else {
-        return 0;
-    };
-
-    let mut count = 1;
-    let mut current_name = first.name.as_str();
-    for process in processes {
-        if process.name != current_name {
-            count += 1;
-            current_name = process.name.as_str();
-        }
-    }
-    count
-}
-
-fn target_matcher_inputs_changed(left: &[TargetProcess], right: &[TargetProcess]) -> bool {
-    left.len() != right.len()
-        || left.iter().zip(right).any(|(left, right)| {
-            left.name != right.name || left.pid != right.pid || left.enabled != right.enabled
-        })
-}
-
-fn target_index_by_identity(
-    targets: &[TargetProcess],
-    name: &str,
-    pid: Option<u32>,
-) -> Option<usize> {
-    targets
-        .binary_search_by(|target| {
-            target
-                .name
-                .as_str()
-                .cmp(name)
-                .then_with(|| target.pid.cmp(&pid))
-        })
-        .ok()
-}
-
-fn target_display_storage_bytes_hint(target: &TargetProcess, strings: &Strings) -> usize {
-    let mut bytes = storage_bytes_hint(&target.name);
-    if !target.enabled {
-        bytes += strings.target_paused_prefix.encode_utf16().count() * size_of::<u16>();
-    }
-    if let Some(pid) = target.pid {
-        bytes += (PID_DISPLAY_DECORATION_UTF16_UNITS + decimal_digit_count(pid)) * size_of::<u16>();
-    }
-    if let Some(note) = &target.note {
-        bytes += (" - ".len() + note.encode_utf16().count()) * size_of::<u16>();
-    }
-    bytes
-}
-
 fn selected_list_index(hwnd: HWND) -> Option<usize> {
     let index = unsafe { SendMessageW(hwnd, LB_GETCURSEL, None, None).0 };
     (index >= 0).then_some(index as usize)
@@ -4740,165 +3467,6 @@ unsafe extern "system" fn target_list_subclass_proc(
     }
 
     unsafe { DefSubclassProc(hwnd, message, wparam, lparam) }
-}
-
-#[cfg(test)]
-mod target_list_tests {
-    use super::*;
-
-    #[test]
-    fn point_inside_rect_uses_right_and_bottom_as_exclusive_edges() {
-        let rect = RECT {
-            left: 10,
-            top: 20,
-            right: 30,
-            bottom: 40,
-        };
-
-        assert!(point_is_in_rect(POINT { x: 10, y: 20 }, rect));
-        assert!(point_is_in_rect(POINT { x: 29, y: 39 }, rect));
-        assert!(!point_is_in_rect(POINT { x: 30, y: 20 }, rect));
-        assert!(!point_is_in_rect(POINT { x: 10, y: 40 }, rect));
-    }
-
-    #[test]
-    fn target_display_storage_hint_counts_one_nul_for_plain_target() {
-        let target = TargetProcess::new("abc.exe").unwrap();
-
-        assert_eq!(
-            target_display_storage_bytes_hint(&target, Language::En.strings()),
-            ("abc.exe".encode_utf16().count() + 1) * size_of::<u16>()
-        );
-    }
-
-    #[test]
-    fn target_display_storage_hint_counts_one_nul_for_pid_target() {
-        let target = TargetProcess::for_pid("abc.exe", 42).unwrap();
-        let mut display_name = String::new();
-        target.display_name_into(&mut display_name);
-
-        assert_eq!(
-            target_display_storage_bytes_hint(&target, Language::En.strings()),
-            (display_name.encode_utf16().count() + 1) * size_of::<u16>()
-        );
-    }
-
-    #[test]
-    fn target_display_storage_hint_counts_note_text() {
-        let mut target = TargetProcess::new("abc.exe").unwrap();
-        target.note = Some("게임".to_owned());
-        let mut display_name = String::new();
-        target.display_name_into(&mut display_name);
-
-        assert_eq!(
-            target_display_storage_bytes_hint(&target, Language::En.strings()),
-            (display_name.encode_utf16().count() + 1) * size_of::<u16>()
-        );
-    }
-
-    #[test]
-    fn target_display_storage_hint_counts_paused_prefix() {
-        let mut target = TargetProcess::new("abc.exe").unwrap();
-        target.enabled = false;
-        let strings = Language::Ko.strings();
-        let mut display_name = String::new();
-        target_display_name_into(&target, strings, &mut display_name);
-
-        assert_eq!(
-            target_display_storage_bytes_hint(&target, strings),
-            (display_name.encode_utf16().count() + 1) * size_of::<u16>()
-        );
-    }
-
-    #[test]
-    fn grouped_process_choice_count_counts_name_runs() {
-        let processes = [
-            ProcessInfo {
-                pid: 1,
-                name: "alpha.exe".to_owned(),
-            },
-            ProcessInfo {
-                pid: 2,
-                name: "alpha.exe".to_owned(),
-            },
-            ProcessInfo {
-                pid: 3,
-                name: "beta.exe".to_owned(),
-            },
-        ];
-
-        assert_eq!(grouped_process_choice_count(&[]), 0);
-        assert_eq!(grouped_process_choice_count(&processes), 2);
-    }
-
-    #[test]
-    fn target_matcher_inputs_ignore_note_only_changes() {
-        let mut left = TargetProcess::new("abc.exe").unwrap();
-        let mut right = left.clone();
-        left.note = Some("before".to_owned());
-        right.note = Some("after".to_owned());
-
-        assert!(!target_matcher_inputs_changed(&[left], &[right]));
-    }
-
-    #[test]
-    fn target_matcher_inputs_include_identity_and_enabled_changes() {
-        let base = TargetProcess::new("abc.exe").unwrap();
-        let mut renamed = base.clone();
-        renamed.name = "other.exe".to_owned();
-        let mut pid_target = base.clone();
-        pid_target.pid = Some(42);
-        let mut disabled = base.clone();
-        disabled.enabled = false;
-
-        assert!(target_matcher_inputs_changed(
-            std::slice::from_ref(&base),
-            &[renamed]
-        ));
-        assert!(target_matcher_inputs_changed(
-            std::slice::from_ref(&base),
-            &[pid_target]
-        ));
-        assert!(target_matcher_inputs_changed(&[base], &[disabled]));
-    }
-
-    #[test]
-    fn target_index_by_identity_uses_sorted_target_identity() {
-        let targets = [
-            TargetProcess::new("alpha.exe").unwrap(),
-            TargetProcess::for_pid("beta.exe", 10).unwrap(),
-            TargetProcess::new("gamma.exe").unwrap(),
-        ];
-
-        assert_eq!(
-            target_index_by_identity(&targets, "beta.exe", Some(10)),
-            Some(1)
-        );
-        assert_eq!(target_index_by_identity(&targets, "beta.exe", None), None);
-    }
-}
-
-fn decimal_digit_count(value: u32) -> usize {
-    if value == 0 {
-        return 1;
-    }
-    value.ilog10() as usize + 1
-}
-
-fn push_decimal_usize(output: &mut String, mut number: usize) {
-    let mut digits = [0u8; 20];
-    let mut len = 0;
-    loop {
-        digits[len] = b'0' + (number % 10) as u8;
-        len += 1;
-        number /= 10;
-        if number == 0 {
-            break;
-        }
-    }
-    for digit in digits[..len].iter().rev() {
-        output.push(*digit as char);
-    }
 }
 
 fn restore_mute_set(audio: &AudioController, muted_by_app: &mut HashSet<AudioSessionKey>) -> bool {
@@ -5029,4 +3597,24 @@ unsafe extern "system" fn window_proc(
     }
 
     unsafe { DefWindowProcW(hwnd, message, wparam, lparam) }
+}
+
+#[cfg(test)]
+mod target_list_tests {
+    use super::*;
+
+    #[test]
+    fn point_inside_rect_uses_right_and_bottom_as_exclusive_edges() {
+        let rect = RECT {
+            left: 10,
+            top: 20,
+            right: 30,
+            bottom: 40,
+        };
+
+        assert!(point_is_in_rect(POINT { x: 10, y: 20 }, rect));
+        assert!(point_is_in_rect(POINT { x: 29, y: 39 }, rect));
+        assert!(!point_is_in_rect(POINT { x: 30, y: 20 }, rect));
+        assert!(!point_is_in_rect(POINT { x: 10, y: 40 }, rect));
+    }
 }

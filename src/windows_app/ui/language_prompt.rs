@@ -1,4 +1,3 @@
-use super::centered_position;
 use super::constants::{
     ID_LANGUAGE_PROMPT_COMBO, ID_LANGUAGE_PROMPT_OK, ID_LANGUAGE_PROMPT_STARTUP,
     LANGUAGE_PROMPT_CLASS_NAME, PAGE_COLOR, SS_ENDELLIPSIS_STYLE, TEXT_COLOR,
@@ -10,6 +9,7 @@ use super::win32::{
     move_window, reserve_combo_items, set_checkbox, set_text, storage_bytes_hint, to_wide,
     utf16_code_unit_count,
 };
+use super::window_position::centered_position;
 use crate::i18n::Language;
 use crate::windows_app::error::{Context, Result};
 use std::ffi::c_void;

@@ -24,7 +24,7 @@ const EVENT_FALLBACK_DEFAULT_POLLING_INTERVAL_MS: u64 = 5_000;
 const DEFAULT_POLLING_INTERVAL_MS: u64 = 3_000;
 const MIN_POLLING_INTERVAL_MS: u64 = 100;
 const MAX_POLLING_INTERVAL_MS: u64 = 10_000;
-const MAX_CONFIG_FILE_BYTES: u64 = 1_048_576;
+const MAX_CONFIG_FILE_BYTES: u64 = 64 * 1024;
 pub(crate) const MAX_TARGET_NOTE_CHARS: usize = 120;
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -515,17 +515,8 @@ fn replace_file(temp_path: &Path, destination: &Path) -> io::Result<()> {
 
     if result.is_err() {
         let _ = fs::remove_file(temp_path);
-    } else {
-        sync_parent_dir_best_effort(destination);
     }
     result
-}
-
-fn sync_parent_dir_best_effort(_path: &Path) {
-    #[cfg(not(windows))]
-    if let Some(parent) = _path.parent() {
-        let _ = fs::File::open(parent).and_then(|directory| directory.sync_all());
-    }
 }
 
 fn discard_open_file(file: fs::File, path: &Path) {
@@ -609,6 +600,7 @@ fn backup_invalid_config(path: &Path) -> io::Result<PathBuf> {
 
 fn backup_invalid_config_with_timestamp(path: &Path, timestamp: u64) -> io::Result<PathBuf> {
     let parent = path.parent().unwrap_or_else(|| Path::new("."));
+    let mut source = fs::File::open(path)?;
     for index in 0..100 {
         let file_name = if index == 0 {
             format!("config.invalid-{timestamp}.json")
@@ -616,48 +608,31 @@ fn backup_invalid_config_with_timestamp(path: &Path, timestamp: u64) -> io::Resu
             format!("config.invalid-{timestamp}-{index}.json")
         };
         let backup_path = parent.join(file_name);
-        match backup_invalid_config_to_path(path, &backup_path) {
-            Ok(()) => {
-                sync_parent_dir_best_effort(&backup_path);
-                return Ok(backup_path);
-            }
+        let mut backup = match fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&backup_path)
+        {
+            Ok(backup) => backup,
             Err(error) if error.kind() == io::ErrorKind::AlreadyExists => continue,
             Err(error) => return Err(error),
+        };
+
+        if let Err(error) = io::copy(&mut source, &mut backup) {
+            discard_open_file(backup, &backup_path);
+            return Err(error);
         }
+        if let Err(error) = backup.sync_all() {
+            discard_open_file(backup, &backup_path);
+            return Err(error);
+        }
+        return Ok(backup_path);
     }
 
     Err(io::Error::new(
         io::ErrorKind::AlreadyExists,
         "could not create a unique invalid config backup path",
     ))
-}
-
-fn backup_invalid_config_to_path(source_path: &Path, backup_path: &Path) -> io::Result<()> {
-    let source_len = fs::metadata(source_path)?.len();
-    if source_len > MAX_CONFIG_FILE_BYTES {
-        match fs::hard_link(source_path, backup_path) {
-            Ok(()) => return Ok(()),
-            Err(error) if error.kind() == io::ErrorKind::AlreadyExists => return Err(error),
-            Err(_) => {}
-        }
-    }
-
-    let mut source = fs::File::open(source_path)?;
-    let mut backup = fs::OpenOptions::new()
-        .write(true)
-        .create_new(true)
-        .open(backup_path)?;
-
-    if let Err(error) = io::copy(&mut source, &mut backup) {
-        discard_open_file(backup, backup_path);
-        return Err(error);
-    }
-    if let Err(error) = backup.sync_all() {
-        discard_open_file(backup, backup_path);
-        return Err(error);
-    }
-
-    Ok(())
 }
 
 struct ProcessNameCandidate<'a> {

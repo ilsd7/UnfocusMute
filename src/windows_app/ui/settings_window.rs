@@ -1,4 +1,3 @@
-use super::centered_position;
 use super::constants::{
     ID_SETTINGS_WINDOW_GITHUB, ID_SETTINGS_WINDOW_GITHUB_TOOLTIP, ID_SETTINGS_WINDOW_LANGUAGE,
     ID_SETTINGS_WINDOW_LAUNCH_STARTUP, ID_SETTINGS_WINDOW_OPEN_CONFIG,
@@ -12,6 +11,7 @@ use super::win32::{
     create_multiline_checkbox, get_message, hiword, is_checked, loword, measure_text_width,
     move_window, reserve_combo_items, set_checkbox, set_text, to_wide,
 };
+use super::window_position::centered_position;
 use crate::config::{WindowPosition, cached_config_file_path};
 use crate::i18n::{Language, Strings};
 use crate::windows_app::error::{Context, Result};
