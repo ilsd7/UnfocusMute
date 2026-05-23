@@ -1914,20 +1914,20 @@ impl AppWindow {
         }
     }
 
-    fn refresh_processes(&mut self) {
-        process::refresh_running_processes(&mut self.running_processes);
+    fn refresh_processes(&mut self) -> bool {
+        if !process::refresh_running_processes(&mut self.running_processes) {
+            return false;
+        }
         self.processes_loaded = true;
         self.last_process_refresh = Instant::now();
         self.rebuild_process_choices();
         self.apply_process_filter();
+        true
     }
 
     fn refresh_processes_if_stale(&mut self) -> bool {
-        if !self.processes_loaded
-            || self.last_process_refresh.elapsed() >= PROCESS_REFRESH_STALE_INTERVAL
-        {
-            self.refresh_processes();
-            true
+        if process_refresh_is_stale(self.processes_loaded, self.last_process_refresh) {
+            self.refresh_processes()
         } else {
             false
         }
@@ -2666,7 +2666,9 @@ impl AppWindow {
         match id {
             ID_ADD_SELECTED => self.add_selected_process(),
             ID_ADD_MANUAL => self.add_manual_target(),
-            ID_REFRESH => self.refresh_processes(),
+            ID_REFRESH => {
+                self.refresh_processes();
+            }
             ID_TOGGLE_PROCESS_DETAILS => self.toggle_process_details(),
             ID_PID_DETAILS_HELP => self.show_pid_details_help(),
             ID_RUNNING if notification == CBN_EDITCHANGE as u16 => self.search_running_processes(),
@@ -2835,11 +2837,7 @@ impl AppWindow {
     fn toggle_process_details(&mut self) {
         self.show_process_details = !self.show_process_details;
         self.focus_main_window();
-        if !self.processes_loaded
-            || self.last_process_refresh.elapsed() >= PROCESS_REFRESH_STALE_INTERVAL
-        {
-            self.refresh_processes();
-        } else {
+        if !self.refresh_processes_if_stale() {
             self.rebuild_process_choices();
             self.apply_process_filter();
         }
@@ -4100,6 +4098,10 @@ fn foreground_process_cache_needs_refresh(cache: Option<&(u32, Option<String>)>,
     !matches!(cache, Some((cached_pid, Some(_))) if *cached_pid == pid)
 }
 
+fn process_refresh_is_stale(processes_loaded: bool, last_process_refresh: Instant) -> bool {
+    !processes_loaded || last_process_refresh.elapsed() >= PROCESS_REFRESH_STALE_INTERVAL
+}
+
 fn initial_managed_mute_fast_retry_count(targets: &[TargetProcess]) -> u8 {
     if targets.iter().any(|target| target.managed_muted) {
         MANAGED_MUTE_FOREGROUND_RETRY_TICKS
@@ -4184,6 +4186,24 @@ mod foreground_cache_tests {
         let cache = Some((42, None));
 
         assert!(foreground_process_cache_needs_refresh(cache.as_ref(), 42));
+    }
+
+    #[test]
+    fn process_refresh_is_needed_until_loaded() {
+        assert!(process_refresh_is_stale(false, Instant::now()));
+    }
+
+    #[test]
+    fn process_refresh_is_needed_after_stale_interval() {
+        assert!(process_refresh_is_stale(
+            true,
+            Instant::now() - PROCESS_REFRESH_STALE_INTERVAL
+        ));
+    }
+
+    #[test]
+    fn process_refresh_is_skipped_while_recent() {
+        assert!(!process_refresh_is_stale(true, Instant::now()));
     }
 
     #[test]

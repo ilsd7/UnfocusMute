@@ -25,6 +25,7 @@ pub struct ProcessInfo {
 pub struct ProcessNameResolver {
     names: ProcessNameCache,
     snapshot_names: Option<HashMap<u32, String>>,
+    unresolved_pids: ProcessIdCache,
     prefer_snapshot: bool,
 }
 
@@ -41,29 +42,67 @@ impl ProcessNameResolver {
     }
 
     pub fn name(&mut self, pid: u32) -> Option<&str> {
+        self.name_with(pid, process_image_name, process_names_from_snapshot)
+    }
+
+    fn name_with(
+        &mut self,
+        pid: u32,
+        load_process_name: impl FnOnce(u32) -> Option<String>,
+        load_snapshot_names: impl FnOnce() -> HashMap<u32, String>,
+    ) -> Option<&str> {
+        if self.unresolved_pids.contains(pid) {
+            return None;
+        }
+
         if self.prefer_snapshot {
             {
-                let snapshot_names = self
-                    .snapshot_names
-                    .get_or_insert_with(process_names_from_snapshot);
+                let snapshot_names = self.snapshot_names.get_or_insert_with(load_snapshot_names);
                 if let Some(name) = snapshot_names.get(&pid) {
                     return Some(name);
                 }
             }
 
-            return self.names.get_or_insert_with(pid, process_image_name);
+            return match self.names.get_or_insert_with(pid, load_process_name) {
+                Some(name) => Some(name),
+                None => {
+                    self.unresolved_pids.insert(pid);
+                    None
+                }
+            };
         }
 
         if let Some(lookup) = self.names.lookup(pid) {
             return Some(self.names.get_at(lookup));
         }
-        let name = process_image_name(pid).or_else(|| {
-            let names = self
-                .snapshot_names
-                .get_or_insert_with(process_names_from_snapshot);
+        let name = load_process_name(pid).or_else(|| {
+            let names = self.snapshot_names.get_or_insert_with(load_snapshot_names);
             names.get(&pid).cloned()
-        })?;
-        Some(self.names.insert_absent(pid, name))
+        });
+        match name {
+            Some(name) => Some(self.names.insert_absent(pid, name)),
+            None => {
+                self.unresolved_pids.insert(pid);
+                None
+            }
+        }
+    }
+}
+
+#[derive(Default)]
+struct ProcessIdCache {
+    pids: Vec<u32>,
+}
+
+impl ProcessIdCache {
+    fn contains(&self, pid: u32) -> bool {
+        self.pids.binary_search(&pid).is_ok()
+    }
+
+    fn insert(&mut self, pid: u32) {
+        if let Err(index) = self.pids.binary_search(&pid) {
+            self.pids.insert(index, pid);
+        }
     }
 }
 
@@ -217,34 +256,48 @@ pub fn foreground_pid() -> Option<u32> {
     }
 }
 
-pub fn refresh_running_processes(processes: &mut Vec<ProcessInfo>) {
-    processes.clear();
-    if processes.capacity() < EXPECTED_PROCESS_COUNT {
-        processes.reserve(EXPECTED_PROCESS_COUNT);
+pub fn refresh_running_processes(processes: &mut Vec<ProcessInfo>) -> bool {
+    replace_running_processes(processes, collect_running_processes)
+}
+
+fn replace_running_processes(
+    processes: &mut Vec<ProcessInfo>,
+    collect: impl FnOnce(&mut Vec<ProcessInfo>) -> bool,
+) -> bool {
+    let mut next = Vec::with_capacity(processes.capacity().max(EXPECTED_PROCESS_COUNT));
+    if !collect(&mut next) {
+        return false;
     }
+    sort_running_processes(&mut next);
+    *processes = next;
+    true
+}
+
+fn collect_running_processes(processes: &mut Vec<ProcessInfo>) -> bool {
     visit_process_snapshot(|pid, name| {
         processes.push(ProcessInfo { pid, name });
         true
+    })
+}
+
+fn sort_running_processes(processes: &mut [ProcessInfo]) {
+    processes.sort_unstable_by(|left, right| {
+        left.name
+            .cmp(&right.name)
+            .then_with(|| left.pid.cmp(&right.pid))
     });
-    if processes.len() > 1 {
-        processes.sort_unstable_by(|left, right| {
-            left.name
-                .cmp(&right.name)
-                .then_with(|| left.pid.cmp(&right.pid))
-        });
-    }
 }
 
 fn process_names_from_snapshot() -> HashMap<u32, String> {
     let mut processes = HashMap::with_capacity(EXPECTED_PROCESS_COUNT);
-    visit_process_snapshot(|pid, name| {
+    let _ = visit_process_snapshot(|pid, name| {
         processes.insert(pid, name);
         true
     });
     processes
 }
 
-fn visit_process_snapshot(mut visit: impl FnMut(u32, String) -> bool) {
+fn visit_process_snapshot(mut visit: impl FnMut(u32, String) -> bool) -> bool {
     visit_process_snapshot_entries(|entry| {
         if entry.th32ProcessID == 0 {
             return true;
@@ -253,13 +306,13 @@ fn visit_process_snapshot(mut visit: impl FnMut(u32, String) -> bool) {
             return true;
         };
         visit(entry.th32ProcessID, name)
-    });
+    })
 }
 
-fn visit_process_snapshot_entries(mut visit: impl FnMut(&PROCESSENTRY32W) -> bool) {
+fn visit_process_snapshot_entries(mut visit: impl FnMut(&PROCESSENTRY32W) -> bool) -> bool {
     unsafe {
         let Ok(snapshot) = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0) else {
-            return;
+            return false;
         };
         let snapshot = OwnedHandle(snapshot);
 
@@ -269,17 +322,21 @@ fn visit_process_snapshot_entries(mut visit: impl FnMut(&PROCESSENTRY32W) -> boo
             ..Default::default()
         };
 
-        if Process32FirstW(snapshot.raw(), &mut entry).is_ok() {
-            loop {
-                if !visit(&entry) {
-                    break;
-                }
+        if Process32FirstW(snapshot.raw(), &mut entry).is_err() {
+            return false;
+        }
 
-                if Process32NextW(snapshot.raw(), &mut entry).is_err() {
-                    break;
-                }
+        loop {
+            if !visit(&entry) {
+                break;
+            }
+
+            if Process32NextW(snapshot.raw(), &mut entry).is_err() {
+                break;
             }
         }
+
+        true
     }
 }
 
@@ -455,6 +512,193 @@ mod tests {
             Some("second.exe")
         );
         assert_eq!(attempts, 0);
+    }
+
+    #[test]
+    fn process_id_cache_keeps_sorted_unique_pids() {
+        let mut cache = ProcessIdCache::default();
+        for pid in [30, 10, 20, 10] {
+            cache.insert(pid);
+        }
+
+        assert_eq!(cache.pids, [10, 20, 30]);
+        assert!(cache.contains(20));
+        assert!(!cache.contains(40));
+    }
+
+    #[test]
+    fn failed_process_refresh_keeps_existing_processes() {
+        let mut processes = vec![ProcessInfo {
+            pid: 7,
+            name: "old.exe".to_owned(),
+        }];
+
+        assert!(!replace_running_processes(&mut processes, |_| false));
+        assert_eq!(
+            processes,
+            [ProcessInfo {
+                pid: 7,
+                name: "old.exe".to_owned()
+            }]
+        );
+    }
+
+    #[test]
+    fn successful_process_refresh_replaces_and_sorts_processes() {
+        let mut processes = vec![ProcessInfo {
+            pid: 7,
+            name: "old.exe".to_owned(),
+        }];
+
+        assert!(replace_running_processes(&mut processes, |next| {
+            next.push(ProcessInfo {
+                pid: 30,
+                name: "zeta.exe".to_owned(),
+            });
+            next.push(ProcessInfo {
+                pid: 20,
+                name: "alpha.exe".to_owned(),
+            });
+            next.push(ProcessInfo {
+                pid: 10,
+                name: "alpha.exe".to_owned(),
+            });
+            true
+        }));
+        assert_eq!(
+            processes,
+            [
+                ProcessInfo {
+                    pid: 10,
+                    name: "alpha.exe".to_owned()
+                },
+                ProcessInfo {
+                    pid: 20,
+                    name: "alpha.exe".to_owned()
+                },
+                ProcessInfo {
+                    pid: 30,
+                    name: "zeta.exe".to_owned()
+                }
+            ]
+        );
+    }
+
+    #[test]
+    fn process_name_resolver_caches_direct_first_lookup_failures() {
+        let mut resolver = ProcessNameResolver::new();
+        let mut image_attempts = 0;
+        let mut snapshot_attempts = 0;
+
+        assert_eq!(
+            resolver.name_with(
+                42,
+                |_| {
+                    image_attempts += 1;
+                    None
+                },
+                || {
+                    snapshot_attempts += 1;
+                    HashMap::new()
+                },
+            ),
+            None
+        );
+        assert_eq!(
+            resolver.name_with(
+                42,
+                |_| {
+                    image_attempts += 1;
+                    Some("late.exe".to_owned())
+                },
+                || {
+                    snapshot_attempts += 1;
+                    HashMap::from([(42, "snapshot.exe".to_owned())])
+                },
+            ),
+            None
+        );
+
+        assert_eq!(image_attempts, 1);
+        assert_eq!(snapshot_attempts, 1);
+    }
+
+    #[test]
+    fn process_name_resolver_caches_snapshot_first_lookup_failures() {
+        let mut resolver = ProcessNameResolver::snapshot_first();
+        let mut image_attempts = 0;
+        let mut snapshot_attempts = 0;
+
+        assert_eq!(
+            resolver.name_with(
+                42,
+                |_| {
+                    image_attempts += 1;
+                    None
+                },
+                || {
+                    snapshot_attempts += 1;
+                    HashMap::new()
+                },
+            ),
+            None
+        );
+        assert_eq!(
+            resolver.name_with(
+                42,
+                |_| {
+                    image_attempts += 1;
+                    Some("late.exe".to_owned())
+                },
+                || {
+                    snapshot_attempts += 1;
+                    HashMap::from([(42, "snapshot.exe".to_owned())])
+                },
+            ),
+            None
+        );
+
+        assert_eq!(image_attempts, 1);
+        assert_eq!(snapshot_attempts, 1);
+    }
+
+    #[test]
+    fn process_name_resolver_keeps_successful_snapshot_lookup_reusable() {
+        let mut resolver = ProcessNameResolver::snapshot_first();
+        let mut image_attempts = 0;
+        let mut snapshot_attempts = 0;
+
+        assert_eq!(
+            resolver.name_with(
+                42,
+                |_| {
+                    image_attempts += 1;
+                    None
+                },
+                || {
+                    snapshot_attempts += 1;
+                    HashMap::from([(42, "game.exe".to_owned())])
+                },
+            ),
+            Some("game.exe")
+        );
+        assert_eq!(
+            resolver.name_with(
+                42,
+                |_| {
+                    image_attempts += 1;
+                    None
+                },
+                || {
+                    snapshot_attempts += 1;
+                    HashMap::new()
+                },
+            ),
+            Some("game.exe")
+        );
+
+        assert_eq!(image_attempts, 0);
+        assert_eq!(snapshot_attempts, 1);
     }
 
     fn wide_null_terminated(text: &str) -> Vec<u16> {

@@ -215,11 +215,11 @@ impl AppConfig {
 
         let (mut temp_file, temp_path) = create_temp_config_file(path)?;
         if let Err(error) = serde_json::to_writer_pretty(&mut temp_file, &config) {
-            let _ = fs::remove_file(&temp_path);
+            discard_open_file(temp_file, &temp_path);
             return Err(io::Error::other(error));
         }
         if let Err(error) = temp_file.sync_all() {
-            let _ = fs::remove_file(&temp_path);
+            discard_open_file(temp_file, &temp_path);
             return Err(error);
         }
         drop(temp_file);
@@ -500,6 +500,11 @@ fn replace_file(temp_path: &Path, destination: &Path) -> io::Result<()> {
     result
 }
 
+fn discard_open_file(file: fs::File, path: &Path) {
+    drop(file);
+    let _ = fs::remove_file(path);
+}
+
 fn create_temp_config_file(destination: &Path) -> io::Result<(fs::File, PathBuf)> {
     let temp_path = destination.with_extension("json.tmp");
     match fs::OpenOptions::new()
@@ -595,11 +600,11 @@ fn backup_invalid_config_with_timestamp(path: &Path, timestamp: u64) -> io::Resu
         };
 
         if let Err(error) = io::copy(&mut source, &mut backup) {
-            let _ = fs::remove_file(&backup_path);
+            discard_open_file(backup, &backup_path);
             return Err(error);
         }
         if let Err(error) = backup.sync_all() {
-            let _ = fs::remove_file(&backup_path);
+            discard_open_file(backup, &backup_path);
             return Err(error);
         }
         return Ok(backup_path);
@@ -1827,6 +1832,21 @@ mod tests {
         replace_file(&temp_path, &destination).unwrap();
 
         assert_eq!(fs::read_to_string(&destination).unwrap(), "new");
+        assert!(!temp_path.exists());
+    }
+
+    #[test]
+    fn discard_open_file_closes_and_removes_file() {
+        let dir = TestDir::new();
+        let temp_path = dir.path().join("config.json.tmp");
+        let temp_file = fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&temp_path)
+            .unwrap();
+
+        discard_open_file(temp_file, &temp_path);
+
         assert!(!temp_path.exists());
     }
 
