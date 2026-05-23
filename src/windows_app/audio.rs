@@ -50,11 +50,10 @@ impl AudioController {
             let enumerator = device_enumerator()?;
             let managers = active_render_session_managers(&enumerator)?;
             let endpoint_notification = EndpointNotification::new(&enumerator).ok();
-            let endpoint_ids = if endpoint_notification.is_some() {
-                Vec::new()
-            } else {
-                active_render_endpoint_ids(&enumerator).unwrap_or_default()
-            };
+            let endpoint_ids =
+                endpoint_ids_for_change_detection(endpoint_notification.is_some(), || {
+                    active_render_endpoint_ids(&enumerator)
+                })?;
             Ok(Self {
                 enumerator,
                 managers,
@@ -193,15 +192,17 @@ impl AudioController {
                     .GetSessionEnumerator()
                     .context("get audio session enumerator")?;
                 let count = enumerator.GetCount().context("get audio session count")?;
+                let session_count = audio_session_snapshot_count(count)?;
+                let mut readable_sessions = 0;
 
                 for index in 0..count {
-                    let Ok(control) = enumerator.GetSession(index) else {
-                        continue;
-                    };
-                    let Ok(control2) = control.cast::<IAudioSessionControl2>() else {
-                        continue;
-                    };
-                    let Some(pid) = session_process_id(&control2) else {
+                    let control = enumerator.GetSession(index).context("get audio session")?;
+                    let control2 = control
+                        .cast::<IAudioSessionControl2>()
+                        .context("query audio session control2")?;
+                    let pid = session_process_id(&control2).context("get audio session pid")?;
+                    readable_sessions += 1;
+                    let Some(pid) = pid else {
                         continue;
                     };
                     if !include_pid(pid) {
@@ -217,6 +218,9 @@ impl AudioController {
                         pid,
                         process_name,
                     }));
+                }
+                if !audio_session_snapshot_complete(session_count, readable_sessions) {
+                    return Err(message_error("audio session snapshot incomplete"));
                 }
             }
 
@@ -861,13 +865,15 @@ impl IMMNotificationClient_Impl for EndpointNotificationClient_Impl {
     }
 }
 
-unsafe fn session_process_id(control: &IAudioSessionControl2) -> Option<u32> {
-    let pid = unsafe { control.GetProcessId().ok()? };
+unsafe fn session_process_id(
+    control: &IAudioSessionControl2,
+) -> windows::core::Result<Option<u32>> {
+    let pid = unsafe { control.GetProcessId()? };
     if pid == 0 {
-        return None;
+        return Ok(None);
     }
 
-    Some(pid)
+    Ok(Some(pid))
 }
 
 unsafe fn session_instance_id(control: &IAudioSessionControl2) -> Option<String> {
@@ -945,6 +951,25 @@ unsafe fn active_render_endpoint_ids(enumerator: &IMMDeviceEnumerator) -> Result
 
 fn endpoint_snapshot_complete(endpoint_count: u32, item_count: usize) -> bool {
     usize::try_from(endpoint_count).is_ok_and(|endpoint_count| endpoint_count == item_count)
+}
+
+fn endpoint_ids_for_change_detection(
+    endpoint_notification_available: bool,
+    load_endpoint_ids: impl FnOnce() -> Result<Vec<String>>,
+) -> Result<Vec<String>> {
+    if endpoint_notification_available {
+        Ok(Vec::new())
+    } else {
+        load_endpoint_ids()
+    }
+}
+
+fn audio_session_snapshot_count(count: i32) -> Result<usize> {
+    usize::try_from(count).map_err(|_| message_error("audio session count unavailable"))
+}
+
+fn audio_session_snapshot_complete(session_count: usize, item_count: usize) -> bool {
+    session_count == item_count
 }
 
 unsafe fn endpoint_id(device: &IMMDevice) -> Option<String> {
@@ -1355,5 +1380,56 @@ mod tests {
     #[test]
     fn endpoint_snapshot_is_incomplete_when_only_some_active_items_are_available() {
         assert!(!endpoint_snapshot_complete(3, 1));
+    }
+
+    #[test]
+    fn endpoint_ids_are_not_loaded_when_notifications_are_available() {
+        let mut loaded = false;
+
+        let endpoint_ids = endpoint_ids_for_change_detection(true, || {
+            loaded = true;
+            Err(message_error("endpoint ids unavailable"))
+        })
+        .unwrap();
+
+        assert!(endpoint_ids.is_empty());
+        assert!(!loaded);
+    }
+
+    #[test]
+    fn endpoint_ids_are_required_when_notifications_are_unavailable() {
+        let endpoint_ids =
+            endpoint_ids_for_change_detection(false, || Ok(vec!["endpoint-a".to_owned()])).unwrap();
+
+        assert_eq!(endpoint_ids, ["endpoint-a"]);
+        assert!(
+            endpoint_ids_for_change_detection(false, || Err(message_error(
+                "endpoint ids unavailable"
+            )))
+            .is_err()
+        );
+    }
+
+    #[test]
+    fn audio_session_snapshot_count_accepts_non_negative_counts() {
+        assert_eq!(audio_session_snapshot_count(0).unwrap(), 0);
+        assert_eq!(audio_session_snapshot_count(3).unwrap(), 3);
+    }
+
+    #[test]
+    fn audio_session_snapshot_count_rejects_negative_counts() {
+        assert!(audio_session_snapshot_count(-1).is_err());
+    }
+
+    #[test]
+    fn audio_session_snapshot_is_complete_when_every_item_is_readable() {
+        assert!(audio_session_snapshot_complete(0, 0));
+        assert!(audio_session_snapshot_complete(3, 3));
+    }
+
+    #[test]
+    fn audio_session_snapshot_is_incomplete_when_items_are_skipped() {
+        assert!(!audio_session_snapshot_complete(3, 0));
+        assert!(!audio_session_snapshot_complete(3, 2));
     }
 }

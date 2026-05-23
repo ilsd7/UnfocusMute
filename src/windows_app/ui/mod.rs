@@ -694,8 +694,7 @@ struct AppWindow {
     settings_icon: HICON,
     settings_button_hot: bool,
     foreground_process_name_cache: Option<(u32, Option<String>)>,
-    processes_loaded: bool,
-    last_process_refresh: Instant,
+    last_process_refresh_attempt: Instant,
     updating_process_combo: bool,
     muted_by_app: HashSet<AudioSessionKey>,
     last_target_muted: Vec<bool>,
@@ -781,7 +780,7 @@ impl IssueState {
     }
 }
 
-const STATUS_ISSUE_PRIORITY_ORDER: [StatusIssue; 7] = [
+const STATUS_ISSUE_PRIORITY_ORDER: [StatusIssue; 8] = [
     StatusIssue::ConfigSaveFailed,
     StatusIssue::ConfigLoadFailed,
     StatusIssue::StartupUpdateFailed,
@@ -789,6 +788,7 @@ const STATUS_ISSUE_PRIORITY_ORDER: [StatusIssue; 7] = [
     StatusIssue::TrayIconUnavailable,
     StatusIssue::AudioUnavailable,
     StatusIssue::AudioUpdateFailed,
+    StatusIssue::ProcessRefreshFailed,
 ];
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -801,6 +801,7 @@ enum StatusIssue {
     StartupUpdateFailed,
     TimerSetupFailed,
     TrayIconUnavailable,
+    ProcessRefreshFailed,
 }
 
 impl StatusIssue {
@@ -831,6 +832,7 @@ mod issue_state_tests {
 
         issues.set(StatusIssue::ConfigSaveFailed);
         issues.set(StatusIssue::AudioUnavailable);
+        issues.set(StatusIssue::ProcessRefreshFailed);
 
         assert_eq!(issues.visible(), Some(StatusIssue::ConfigSaveFailed));
     }
@@ -893,6 +895,19 @@ impl ConfigReloadResult {
     }
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum ProcessRefreshResult {
+    Refreshed,
+    Skipped,
+    Failed,
+}
+
+impl ProcessRefreshResult {
+    fn refreshed(self) -> bool {
+        self == Self::Refreshed
+    }
+}
+
 impl AppWindow {
     fn new(
         config: AppConfig,
@@ -928,8 +943,7 @@ impl AppWindow {
             settings_icon,
             settings_button_hot: false,
             foreground_process_name_cache: None,
-            processes_loaded: false,
-            last_process_refresh: Instant::now(),
+            last_process_refresh_attempt: initial_process_refresh_attempt(),
             updating_process_combo: false,
             muted_by_app: HashSet::new(),
             last_target_muted: Vec::new(),
@@ -1915,21 +1929,26 @@ impl AppWindow {
     }
 
     fn refresh_processes(&mut self) -> bool {
+        self.last_process_refresh_attempt = Instant::now();
         if !process::refresh_running_processes(&mut self.running_processes) {
+            self.set_issue(StatusIssue::ProcessRefreshFailed);
             return false;
         }
-        self.processes_loaded = true;
-        self.last_process_refresh = Instant::now();
+        self.clear_issue(StatusIssue::ProcessRefreshFailed);
         self.rebuild_process_choices();
         self.apply_process_filter();
         true
     }
 
-    fn refresh_processes_if_stale(&mut self) -> bool {
-        if process_refresh_is_stale(self.processes_loaded, self.last_process_refresh) {
-            self.refresh_processes()
+    fn refresh_processes_if_stale(&mut self) -> ProcessRefreshResult {
+        if !process_refresh_is_stale(self.last_process_refresh_attempt) {
+            return ProcessRefreshResult::Skipped;
+        }
+
+        if self.refresh_processes() {
+            ProcessRefreshResult::Refreshed
         } else {
-            false
+            ProcessRefreshResult::Failed
         }
     }
 
@@ -2379,6 +2398,7 @@ impl AppWindow {
             StatusIssue::StartupUpdateFailed => self.strings.startup_update_failed,
             StatusIssue::TimerSetupFailed => self.strings.timer_setup_failed,
             StatusIssue::TrayIconUnavailable => self.strings.tray_icon_unavailable,
+            StatusIssue::ProcessRefreshFailed => self.strings.process_refresh_failed,
         }
     }
 
@@ -2516,7 +2536,7 @@ impl AppWindow {
     fn reset_polling_timer(&mut self) {
         let desired_interval = self.desired_audio_fallback_timer_interval_ms();
         self.apply_audio_fallback_timer_interval(desired_interval);
-        self.update_timer_setup_issue(desired_interval.is_some());
+        self.update_timer_setup_issue(desired_interval);
     }
 
     fn retry_missing_timers(&mut self) {
@@ -2527,14 +2547,12 @@ impl AppWindow {
                 self.set_timer(CONFIG_RELOAD_TIMER_ID, CONFIG_RELOAD_TIMER_INTERVAL_MS);
             retried = true;
         }
-        if let Some(interval_ms) = desired_audio_interval
-            && self.audio_fallback_timer_interval_ms.is_none()
-        {
-            self.apply_audio_fallback_timer_interval(Some(interval_ms));
+        if desired_audio_interval != self.audio_fallback_timer_interval_ms {
+            self.apply_audio_fallback_timer_interval(desired_audio_interval);
             retried = true;
         }
         if retried {
-            self.update_timer_setup_issue(desired_audio_interval.is_some());
+            self.update_timer_setup_issue(desired_audio_interval);
         }
     }
 
@@ -2543,7 +2561,7 @@ impl AppWindow {
         if desired_interval != self.audio_fallback_timer_interval_ms {
             self.apply_audio_fallback_timer_interval(desired_interval);
         }
-        self.update_timer_setup_issue(desired_interval.is_some());
+        self.update_timer_setup_issue(desired_interval);
     }
 
     fn start_managed_mute_fast_retry(&mut self) {
@@ -2571,17 +2589,12 @@ impl AppWindow {
     fn apply_audio_fallback_timer_interval(&mut self, interval_ms: Option<u32>) {
         match interval_ms {
             Some(interval_ms) => {
-                self.audio_fallback_timer_interval_ms = self
-                    .restart_audio_fallback_timer(interval_ms)
-                    .then_some(interval_ms);
+                if self.set_timer(AUDIO_FALLBACK_TIMER_ID, interval_ms) {
+                    self.audio_fallback_timer_interval_ms = Some(interval_ms);
+                }
             }
             None => self.clear_audio_fallback_timer(),
         }
-    }
-
-    fn restart_audio_fallback_timer(&self, interval_ms: u32) -> bool {
-        self.clear_timer(AUDIO_FALLBACK_TIMER_ID);
-        self.set_timer(AUDIO_FALLBACK_TIMER_ID, interval_ms)
     }
 
     fn clear_audio_fallback_timer(&mut self) {
@@ -2601,9 +2614,11 @@ impl AppWindow {
         }
     }
 
-    fn update_timer_setup_issue(&mut self, audio_fallback_timer_needed: bool) {
-        let audio_fallback_timer_ready =
-            !audio_fallback_timer_needed || self.audio_fallback_timer_interval_ms.is_some();
+    fn update_timer_setup_issue(&mut self, desired_audio_interval: Option<u32>) {
+        let audio_fallback_timer_ready = audio_fallback_timer_matches_desired(
+            desired_audio_interval,
+            self.audio_fallback_timer_interval_ms,
+        );
         if self.config_reload_timer_ready && audio_fallback_timer_ready {
             self.clear_issue(StatusIssue::TimerSetupFailed);
         } else {
@@ -2756,7 +2771,7 @@ impl AppWindow {
         if self.process_query.trim().is_empty() {
             let had_whitespace_query = !self.process_query.is_empty();
             self.process_query.clear();
-            if !self.refresh_processes_if_stale()
+            if !self.refresh_processes_if_stale().refreshed()
                 && (had_whitespace_query || !self.process_filter_is_unfiltered())
             {
                 self.apply_process_filter();
@@ -2837,7 +2852,7 @@ impl AppWindow {
     fn toggle_process_details(&mut self) {
         self.show_process_details = !self.show_process_details;
         self.focus_main_window();
-        if !self.refresh_processes_if_stale() {
+        if !self.refresh_processes_if_stale().refreshed() {
             self.rebuild_process_choices();
             self.apply_process_filter();
         }
@@ -4098,8 +4113,12 @@ fn foreground_process_cache_needs_refresh(cache: Option<&(u32, Option<String>)>,
     !matches!(cache, Some((cached_pid, Some(_))) if *cached_pid == pid)
 }
 
-fn process_refresh_is_stale(processes_loaded: bool, last_process_refresh: Instant) -> bool {
-    !processes_loaded || last_process_refresh.elapsed() >= PROCESS_REFRESH_STALE_INTERVAL
+fn initial_process_refresh_attempt() -> Instant {
+    Instant::now() - PROCESS_REFRESH_STALE_INTERVAL
+}
+
+fn process_refresh_is_stale(last_process_refresh_attempt: Instant) -> bool {
+    last_process_refresh_attempt.elapsed() >= PROCESS_REFRESH_STALE_INTERVAL
 }
 
 fn initial_managed_mute_fast_retry_count(targets: &[TargetProcess]) -> u8 {
@@ -4132,6 +4151,13 @@ fn desired_audio_fallback_timer_interval_ms(
         return Some(MANAGED_MUTE_FOREGROUND_RETRY_INTERVAL_MS);
     }
     Some(polling_interval_ms as u32)
+}
+
+fn audio_fallback_timer_matches_desired(
+    desired_interval: Option<u32>,
+    active_interval: Option<u32>,
+) -> bool {
+    desired_interval == active_interval
 }
 
 fn replace_text_if_changed(current: &mut String, next: &mut String) -> bool {
@@ -4189,21 +4215,27 @@ mod foreground_cache_tests {
     }
 
     #[test]
-    fn process_refresh_is_needed_until_loaded() {
-        assert!(process_refresh_is_stale(false, Instant::now()));
+    fn initial_process_refresh_is_due_immediately() {
+        assert!(process_refresh_is_stale(initial_process_refresh_attempt()));
     }
 
     #[test]
     fn process_refresh_is_needed_after_stale_interval() {
         assert!(process_refresh_is_stale(
-            true,
             Instant::now() - PROCESS_REFRESH_STALE_INTERVAL
         ));
     }
 
     #[test]
-    fn process_refresh_is_skipped_while_recent() {
-        assert!(!process_refresh_is_stale(true, Instant::now()));
+    fn process_refresh_is_throttled_after_recent_attempt() {
+        assert!(!process_refresh_is_stale(Instant::now()));
+    }
+
+    #[test]
+    fn process_refresh_result_only_reports_refreshed_for_successful_refresh() {
+        assert!(ProcessRefreshResult::Refreshed.refreshed());
+        assert!(!ProcessRefreshResult::Skipped.refreshed());
+        assert!(!ProcessRefreshResult::Failed.refreshed());
     }
 
     #[test]
@@ -4235,6 +4267,21 @@ mod foreground_cache_tests {
             desired_audio_fallback_timer_interval_ms(true, true, false, 1, 3_000),
             None
         );
+    }
+
+    #[test]
+    fn audio_fallback_timer_is_ready_only_at_desired_interval() {
+        assert!(audio_fallback_timer_matches_desired(
+            Some(3_000),
+            Some(3_000)
+        ));
+        assert!(audio_fallback_timer_matches_desired(None, None));
+        assert!(!audio_fallback_timer_matches_desired(
+            Some(3_000),
+            Some(MANAGED_MUTE_FOREGROUND_RETRY_INTERVAL_MS)
+        ));
+        assert!(!audio_fallback_timer_matches_desired(Some(3_000), None));
+        assert!(!audio_fallback_timer_matches_desired(None, Some(3_000)));
     }
 }
 

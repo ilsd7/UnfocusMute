@@ -26,7 +26,7 @@ pub struct ProcessInfo {
 #[derive(Default)]
 pub struct ProcessNameResolver {
     names: ProcessNameCache,
-    snapshot_names: Option<HashMap<u32, String>>,
+    snapshot_names: SnapshotProcessNameCache,
     unresolved_pids: ProcessIdCache,
     prefer_snapshot: bool,
 }
@@ -51,7 +51,7 @@ impl ProcessNameResolver {
         &mut self,
         pid: u32,
         load_process_name: impl FnOnce(u32) -> Option<String>,
-        load_snapshot_names: impl FnOnce() -> HashMap<u32, String>,
+        load_snapshot_names: impl FnOnce() -> Option<HashMap<u32, String>>,
     ) -> Option<&str> {
         if self.unresolved_pids.contains(pid) {
             return None;
@@ -59,8 +59,8 @@ impl ProcessNameResolver {
 
         if self.prefer_snapshot {
             {
-                let snapshot_names = self.snapshot_names.get_or_insert_with(load_snapshot_names);
-                if let Some(name) = snapshot_names.get(&pid) {
+                let snapshot_names = self.snapshot_names.names(load_snapshot_names);
+                if let Some(name) = snapshot_names.and_then(|names| names.get(&pid)) {
                     return Some(name);
                 }
             }
@@ -78,8 +78,9 @@ impl ProcessNameResolver {
             return Some(self.names.get_at(lookup));
         }
         let name = load_process_name(pid).or_else(|| {
-            let names = self.snapshot_names.get_or_insert_with(load_snapshot_names);
-            names.get(&pid).cloned()
+            self.snapshot_names
+                .names(load_snapshot_names)
+                .and_then(|names| names.get(&pid).cloned())
         });
         match name {
             Some(name) => Some(self.names.insert_absent(pid, name)),
@@ -87,6 +88,33 @@ impl ProcessNameResolver {
                 self.unresolved_pids.insert(pid);
                 None
             }
+        }
+    }
+}
+
+#[derive(Default)]
+enum SnapshotProcessNameCache {
+    #[default]
+    Unloaded,
+    Unavailable,
+    Loaded(HashMap<u32, String>),
+}
+
+impl SnapshotProcessNameCache {
+    fn names(
+        &mut self,
+        load: impl FnOnce() -> Option<HashMap<u32, String>>,
+    ) -> Option<&HashMap<u32, String>> {
+        if matches!(self, Self::Unloaded) {
+            *self = match load() {
+                Some(names) => Self::Loaded(names),
+                None => Self::Unavailable,
+            };
+        }
+
+        match self {
+            Self::Loaded(names) => Some(names),
+            Self::Unloaded | Self::Unavailable => None,
         }
     }
 }
@@ -290,13 +318,16 @@ fn sort_running_processes(processes: &mut [ProcessInfo]) {
     });
 }
 
-fn process_names_from_snapshot() -> HashMap<u32, String> {
+fn process_names_from_snapshot() -> Option<HashMap<u32, String>> {
     let mut processes = HashMap::with_capacity(EXPECTED_PROCESS_COUNT);
-    let _ = visit_process_snapshot(|pid, name| {
+    if visit_process_snapshot(|pid, name| {
         processes.insert(pid, name);
         true
-    });
-    processes
+    }) {
+        Some(processes)
+    } else {
+        None
+    }
 }
 
 fn visit_process_snapshot(mut visit: impl FnMut(u32, String) -> bool) -> bool {
@@ -617,7 +648,7 @@ mod tests {
                 },
                 || {
                     snapshot_attempts += 1;
-                    HashMap::new()
+                    Some(HashMap::new())
                 },
             ),
             None
@@ -631,7 +662,7 @@ mod tests {
                 },
                 || {
                     snapshot_attempts += 1;
-                    HashMap::from([(42, "snapshot.exe".to_owned())])
+                    Some(HashMap::from([(42, "snapshot.exe".to_owned())]))
                 },
             ),
             None
@@ -656,7 +687,7 @@ mod tests {
                 },
                 || {
                     snapshot_attempts += 1;
-                    HashMap::new()
+                    Some(HashMap::new())
                 },
             ),
             None
@@ -670,13 +701,52 @@ mod tests {
                 },
                 || {
                     snapshot_attempts += 1;
-                    HashMap::from([(42, "snapshot.exe".to_owned())])
+                    Some(HashMap::from([(42, "snapshot.exe".to_owned())]))
                 },
             ),
             None
         );
 
         assert_eq!(image_attempts, 1);
+        assert_eq!(snapshot_attempts, 1);
+    }
+
+    #[test]
+    fn process_name_resolver_does_not_reuse_failed_snapshot_loads_as_partial_cache() {
+        let mut resolver = ProcessNameResolver::snapshot_first();
+        let mut image_attempts = 0;
+        let mut snapshot_attempts = 0;
+
+        assert_eq!(
+            resolver.name_with(
+                42,
+                |_| {
+                    image_attempts += 1;
+                    None
+                },
+                || {
+                    snapshot_attempts += 1;
+                    None
+                },
+            ),
+            None
+        );
+        assert_eq!(
+            resolver.name_with(
+                7,
+                |_| {
+                    image_attempts += 1;
+                    None
+                },
+                || {
+                    snapshot_attempts += 1;
+                    Some(HashMap::from([(7, "snapshot.exe".to_owned())]))
+                },
+            ),
+            None
+        );
+
+        assert_eq!(image_attempts, 2);
         assert_eq!(snapshot_attempts, 1);
     }
 
@@ -695,7 +765,7 @@ mod tests {
                 },
                 || {
                     snapshot_attempts += 1;
-                    HashMap::from([(42, "game.exe".to_owned())])
+                    Some(HashMap::from([(42, "game.exe".to_owned())]))
                 },
             ),
             Some("game.exe")
@@ -709,7 +779,7 @@ mod tests {
                 },
                 || {
                     snapshot_attempts += 1;
-                    HashMap::new()
+                    Some(HashMap::new())
                 },
             ),
             Some("game.exe")
