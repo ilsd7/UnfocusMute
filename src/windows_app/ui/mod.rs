@@ -99,8 +99,9 @@ use runtime_logic::{
 };
 use settings_window::{SettingsPreferences, prompt_settings};
 use startup_sync::{
-    StartupSyncResult, apply_external_startup_config, apply_startup_preference,
-    should_save_startup_config, should_sync_startup_setting, sync_startup_setting,
+    StartupSyncResult, apply_external_startup_config, apply_startup_command_preference,
+    apply_startup_preference, should_save_startup_config, should_sync_startup_setting,
+    sync_startup_setting,
 };
 use state::{
     ActionButtonState, ConfigReloadResult, IssueState, ProcessRefreshResult, StatusIssue,
@@ -1169,9 +1170,10 @@ impl AppWindow {
     fn apply_settings_preferences(&mut self, preferences: SettingsPreferences) {
         self.reload_config_if_changed();
         let mut changed = false;
+        let start_minimized_changed = self.config.start_minimized != preferences.start_minimized;
         let language_changed = self.config.language != preferences.language;
 
-        if self.config.start_minimized != preferences.start_minimized {
+        if start_minimized_changed {
             self.config.start_minimized = preferences.start_minimized;
             changed = true;
         }
@@ -1179,6 +1181,12 @@ impl AppWindow {
             if apply_startup_preference(&mut self.config, preferences.launch_on_startup) {
                 self.clear_issue(StatusIssue::StartupUpdateFailed);
                 changed = true;
+            } else {
+                self.set_issue(StatusIssue::StartupUpdateFailed);
+            }
+        } else if start_minimized_changed && self.config.launch_on_startup {
+            if apply_startup_command_preference(&self.config) {
+                self.clear_issue(StatusIssue::StartupUpdateFailed);
             } else {
                 self.set_issue(StatusIssue::StartupUpdateFailed);
             }
@@ -1833,9 +1841,6 @@ impl AppWindow {
             self.save_config();
         }
         self.apply_audio_update_result(apply_result.had_failures);
-        if apply_result.had_failures {
-            self.audio = None;
-        }
 
         self.sync_target_mute_indicators();
         self.sync_audio_fallback_timer();
@@ -2147,7 +2152,8 @@ impl AppWindow {
         let target_matcher_changed =
             target_matcher_inputs_changed(&self.config.targets, &config.targets);
         let interval_changed = self.config.polling_interval_ms != config.polling_interval_ms;
-        let startup_changed = self.config.launch_on_startup != config.launch_on_startup;
+        let startup_changed = self.config.launch_on_startup != config.launch_on_startup
+            || (config.launch_on_startup && self.config.start_minimized != config.start_minimized);
         let previous_launch_on_startup = self.config.launch_on_startup;
         let should_start_fast_retry = config.targets.iter().any(|target| target.managed_muted)
             && !self
@@ -2380,7 +2386,9 @@ impl AppWindow {
             target_matcher_inputs_changed(&previous_config.targets, &self.config.targets);
         let interval_changed =
             previous_config.polling_interval_ms != self.config.polling_interval_ms;
-        let startup_changed = previous_config.launch_on_startup != self.config.launch_on_startup;
+        let startup_changed = previous_config.launch_on_startup != self.config.launch_on_startup
+            || (self.config.launch_on_startup
+                && previous_config.start_minimized != self.config.start_minimized);
         let previous_launch_on_startup = previous_config.launch_on_startup;
         let should_start_fast_retry = self
             .config

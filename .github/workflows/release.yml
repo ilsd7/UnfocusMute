@@ -20,6 +20,8 @@ jobs:
         with:
           persist-credentials: false
       - run: rustup toolchain install stable --profile minimal --component rustfmt --component clippy --target x86_64-pc-windows-msvc
+      - run: cargo install cargo-audit --locked
+      - run: cargo audit
       - run: cargo fmt --check
       - run: cargo test --locked --target x86_64-pc-windows-msvc
       - run: cargo clippy --locked --target x86_64-pc-windows-msvc --all-targets -- -D warnings

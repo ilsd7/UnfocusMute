@@ -12,8 +12,10 @@ mod non_windows;
 mod windows_app;
 
 #[cfg(windows)]
-fn main() -> windows_app::error::Result<()> {
-    windows_app::run()
+fn main() {
+    if let Err(error) = windows_app::run() {
+        windows_app::show_startup_error(&error.to_string());
+    }
 }
 
 #[cfg(not(windows))]

@@ -11,12 +11,12 @@ pub(super) struct StartupSyncResult {
 pub(super) fn sync_startup_setting(config: &mut AppConfig) -> StartupSyncResult {
     apply_startup_sync_result(
         config,
-        startup::set_launch_on_startup(config.launch_on_startup).is_err(),
+        startup::set_launch_on_startup(config.launch_on_startup, config.start_minimized).is_err(),
     )
 }
 
 pub(super) fn apply_startup_preference(config: &mut AppConfig, launch_on_startup: bool) -> bool {
-    if startup::set_launch_on_startup(launch_on_startup).is_err() {
+    if startup::set_launch_on_startup(launch_on_startup, config.start_minimized).is_err() {
         return false;
     }
 
@@ -24,11 +24,16 @@ pub(super) fn apply_startup_preference(config: &mut AppConfig, launch_on_startup
     true
 }
 
+pub(super) fn apply_startup_command_preference(config: &AppConfig) -> bool {
+    !config.launch_on_startup
+        || startup::set_launch_on_startup(true, config.start_minimized).is_ok()
+}
+
 pub(super) fn apply_external_startup_config(
     config: &mut AppConfig,
     previous_launch_on_startup: bool,
 ) -> bool {
-    if startup::set_launch_on_startup(config.launch_on_startup).is_ok() {
+    if startup::set_launch_on_startup(config.launch_on_startup, config.start_minimized).is_ok() {
         return true;
     }
 
@@ -126,5 +131,16 @@ mod tests {
         assert!(!should_sync_startup_setting(true, false));
         assert!(should_sync_startup_setting(true, true));
         assert!(should_sync_startup_setting(false, false));
+    }
+
+    #[test]
+    fn startup_command_sync_is_not_needed_when_startup_is_disabled() {
+        let config = AppConfig {
+            launch_on_startup: false,
+            start_minimized: false,
+            ..AppConfig::default()
+        };
+
+        assert!(apply_startup_command_preference(&config));
     }
 }

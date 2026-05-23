@@ -15,11 +15,11 @@ const MINIMIZED_STARTUP_SUFFIX_WIDE: [u16; 12] = [
     0x20, 0x2d, 0x2d, 0x6d, 0x69, 0x6e, 0x69, 0x6d, 0x69, 0x7a, 0x65, 0x64,
 ];
 
-pub fn set_launch_on_startup(enabled: bool) -> Result<()> {
+pub fn set_launch_on_startup(enabled: bool, start_minimized: bool) -> Result<()> {
     if enabled {
         let key = create_run_key()?;
         let exe = env::current_exe().context("resolve current executable")?;
-        let wide = startup_command(&exe);
+        let wide = startup_command(&exe, start_minimized);
         let bytes = wide_command_bytes(&wide);
         if startup_value_matches(key.raw(), &bytes) {
             return Ok(());
@@ -166,14 +166,20 @@ impl Drop for RunKey {
     }
 }
 
-fn startup_command(exe: &Path) -> Vec<u16> {
+fn startup_command(exe: &Path, start_minimized: bool) -> Vec<u16> {
     let exe_len = exe.as_os_str().encode_wide().count();
-    let suffix_len = MINIMIZED_STARTUP_SUFFIX_WIDE.len();
+    let suffix_len = if start_minimized {
+        MINIMIZED_STARTUP_SUFFIX_WIDE.len()
+    } else {
+        0
+    };
     let mut command = Vec::with_capacity(1 + exe_len + 1 + suffix_len + 1);
     command.push(u16::from(b'"'));
     command.extend(exe.as_os_str().encode_wide());
     command.push(u16::from(b'"'));
-    command.extend_from_slice(&MINIMIZED_STARTUP_SUFFIX_WIDE);
+    if start_minimized {
+        command.extend_from_slice(&MINIMIZED_STARTUP_SUFFIX_WIDE);
+    }
     command.push(0);
     command
 }
@@ -192,7 +198,10 @@ mod tests {
 
     #[test]
     fn startup_command_quotes_executable_path() {
-        let command = startup_command(Path::new(r"C:\Program Files\UnfocusMute\UnfocusMute.exe"));
+        let command = startup_command(
+            Path::new(r"C:\Program Files\UnfocusMute\UnfocusMute.exe"),
+            true,
+        );
         let text = String::from_utf16(&command[..command.len() - 1]).unwrap();
 
         assert_eq!(
@@ -204,7 +213,7 @@ mod tests {
 
     #[test]
     fn startup_command_bytes_match_utf16_memory_layout_without_unsafe_cast() {
-        let command = startup_command(Path::new(r"C:\Tools\UnfocusMute\UnfocusMute.exe"));
+        let command = startup_command(Path::new(r"C:\Tools\UnfocusMute\UnfocusMute.exe"), true);
         let bytes = wide_command_bytes(&command);
 
         assert_eq!(bytes.len(), command.len() * 2);
@@ -214,13 +223,25 @@ mod tests {
 
     #[test]
     fn startup_command_allows_versioned_executable_name() {
-        let command = startup_command(Path::new(r"C:\Tools\UnfocusMute\UnfocusMute-1.0.0.exe"));
+        let command = startup_command(
+            Path::new(r"C:\Tools\UnfocusMute\UnfocusMute-1.0.0.exe"),
+            true,
+        );
         let text = String::from_utf16(&command[..command.len() - 1]).unwrap();
 
         assert_eq!(
             text,
             r#""C:\Tools\UnfocusMute\UnfocusMute-1.0.0.exe" --minimized"#
         );
+        assert_eq!(command.last(), Some(&0));
+    }
+
+    #[test]
+    fn startup_command_can_follow_visible_start_setting() {
+        let command = startup_command(Path::new(r"C:\Tools\UnfocusMute\UnfocusMute.exe"), false);
+        let text = String::from_utf16(&command[..command.len() - 1]).unwrap();
+
+        assert_eq!(text, r#""C:\Tools\UnfocusMute\UnfocusMute.exe""#);
         assert_eq!(command.last(), Some(&0));
     }
 }

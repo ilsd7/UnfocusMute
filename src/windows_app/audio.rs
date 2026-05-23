@@ -973,11 +973,6 @@ unsafe fn active_render_session_managers(
         };
         managers.push(manager);
     }
-    if !endpoint_snapshot_complete(count, managers.len()) {
-        return Err(message_error(
-            "active render endpoint session managers unavailable",
-        ));
-    }
 
     if managers.is_empty() {
         return Err(message_error(
@@ -1005,7 +1000,8 @@ unsafe fn active_render_endpoint_ids(enumerator: &IMMDeviceEnumerator) -> Result
             ids.push(id);
         }
     }
-    if !endpoint_snapshot_complete(count, ids.len()) {
+
+    if count > 0 && ids.is_empty() {
         return Err(message_error("active render endpoint ids unavailable"));
     }
 
@@ -1013,10 +1009,6 @@ unsafe fn active_render_endpoint_ids(enumerator: &IMMDeviceEnumerator) -> Result
         ids.sort_unstable();
     }
     Ok(ids)
-}
-
-fn endpoint_snapshot_complete(endpoint_count: u32, item_count: usize) -> bool {
-    usize::try_from(endpoint_count).is_ok_and(|endpoint_count| endpoint_count == item_count)
 }
 
 fn endpoint_ids_for_change_detection(
@@ -1457,26 +1449,6 @@ mod tests {
     fn wide_lossy_string_preserves_unicode_and_replacement_behavior() {
         assert_eq!(string_from_wide_lossy(&[0xd55c, 0xae00]), "한글");
         assert_eq!(string_from_wide_lossy(&[0xd800]), "\u{fffd}");
-    }
-
-    #[test]
-    fn endpoint_snapshot_is_complete_when_no_active_endpoints_exist() {
-        assert!(endpoint_snapshot_complete(0, 0));
-    }
-
-    #[test]
-    fn endpoint_snapshot_is_complete_when_every_active_item_is_available() {
-        assert!(endpoint_snapshot_complete(3, 3));
-    }
-
-    #[test]
-    fn endpoint_snapshot_is_incomplete_when_active_endpoints_have_no_items() {
-        assert!(!endpoint_snapshot_complete(3, 0));
-    }
-
-    #[test]
-    fn endpoint_snapshot_is_incomplete_when_only_some_active_items_are_available() {
-        assert!(!endpoint_snapshot_complete(3, 1));
     }
 
     #[test]
