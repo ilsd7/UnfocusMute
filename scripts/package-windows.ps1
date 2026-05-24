@@ -120,15 +120,35 @@ function Replace-PackageZip {
         [string]$Destination
     )
 
-    if (Test-Path $Destination -PathType Leaf) {
-        [System.IO.File]::Replace(
-            [System.IO.Path]::GetFullPath($Source),
-            [System.IO.Path]::GetFullPath($Destination),
-            $null
-        )
+    $SourcePath = [System.IO.Path]::GetFullPath($Source)
+    $DestinationPath = [System.IO.Path]::GetFullPath($Destination)
+
+    if (-not (Test-Path -LiteralPath $DestinationPath -PathType Leaf)) {
+        Move-Item -LiteralPath $SourcePath -Destination $DestinationPath
+        return
     }
-    else {
-        Move-Item $Source $Destination
+
+    $DestinationDirectory = [System.IO.Path]::GetDirectoryName($DestinationPath)
+    $DestinationFileName = [System.IO.Path]::GetFileName($DestinationPath)
+    $BackupPath = Join-Path $DestinationDirectory ".$DestinationFileName.$([System.Guid]::NewGuid().ToString('N')).bak"
+
+    Move-Item -LiteralPath $DestinationPath -Destination $BackupPath
+    try {
+        Move-Item -LiteralPath $SourcePath -Destination $DestinationPath
+        Remove-Item -LiteralPath $BackupPath -Force -ErrorAction SilentlyContinue
+    }
+    catch {
+        $MoveError = $_
+        try {
+            if ((Test-Path -LiteralPath $BackupPath -PathType Leaf) -and -not (Test-Path -LiteralPath $DestinationPath -PathType Leaf)) {
+                Move-Item -LiteralPath $BackupPath -Destination $DestinationPath
+            }
+        }
+        catch {
+            throw "Could not move package output into place and could not restore the previous output. New output: $SourcePath. Previous output: $BackupPath. Original error: $($MoveError.Exception.Message). Restore error: $($_.Exception.Message)"
+        }
+
+        throw $MoveError
     }
 }
 
