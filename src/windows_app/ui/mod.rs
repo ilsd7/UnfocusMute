@@ -1373,7 +1373,7 @@ impl AppWindow {
         let manual_edit_y = MANUAL_PROCESS_EDIT_Y;
         let manual_label_y = MANUAL_PROCESS_ROW_Y;
 
-        let add_selected_width = self.button_width(self.strings.add_selected, 92, 128);
+        let add_selected_width = self.compact_button_width(self.strings.add_selected, 78, 150);
         let refresh_width = self.button_width(self.strings.refresh, 116, 162);
         let details_text = if self.show_process_details {
             self.strings.hide_pid_details
@@ -1628,6 +1628,10 @@ impl AppWindow {
     }
 
     fn footer_button_width(&self, text: &str, min_width: i32, max_width: i32) -> i32 {
+        (self.text_width(text) + 34).clamp(min_width, max_width)
+    }
+
+    fn compact_button_width(&self, text: &str, min_width: i32, max_width: i32) -> i32 {
         (self.text_width(text) + 34).clamp(min_width, max_width)
     }
 
