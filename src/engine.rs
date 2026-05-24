@@ -367,27 +367,15 @@ impl<'a> MutePlanner<'a> {
             || self.foreground_process_name.as_deref() == Some(process_name)
     }
 
-    #[cfg(test)]
     pub(crate) fn can_clear_managed_target_state(
         &self,
         match_kind: Option<TargetMatchKind>,
-        process_name: &str,
         session_pid: u32,
     ) -> bool {
-        // Some apps expose audio through a helper PID. Use the same exe-name
-        // fallback as desired_mute so restarted sessions can be restored.
-        self.can_clear_managed_target_state_with_foreground(
-            match_kind,
-            self.session_is_foreground(process_name, session_pid),
-        )
-    }
-
-    pub(crate) fn can_clear_managed_target_state_with_foreground(
-        &self,
-        match_kind: Option<TargetMatchKind>,
-        session_is_foreground: bool,
-    ) -> bool {
-        match_kind.is_none() || session_is_foreground
+        // A process-name foreground match can point at a stale session from an
+        // old PID after an app restart. Only the current foreground PID proves
+        // that the persisted restore state belongs to the active session.
+        match_kind.is_none() || self.foreground_pid == Some(session_pid)
     }
 }
 
@@ -559,11 +547,7 @@ mod tests {
         let matcher = TargetMatcher::new(&[TargetProcess::new("game.exe").unwrap()]);
         let planner = MutePlanner::new(&matcher, Some(20), Some("other.exe"));
 
-        assert!(!planner.can_clear_managed_target_state(
-            Some(TargetMatchKind::ProcessName),
-            "game.exe",
-            10,
-        ));
+        assert!(!planner.can_clear_managed_target_state(Some(TargetMatchKind::ProcessName), 10,));
     }
 
     #[test]
@@ -571,23 +555,15 @@ mod tests {
         let matcher = TargetMatcher::new(&[TargetProcess::new("game.exe").unwrap()]);
         let planner = MutePlanner::new(&matcher, Some(20), Some("game.exe"));
 
-        assert!(planner.can_clear_managed_target_state(
-            Some(TargetMatchKind::ProcessName),
-            "game.exe",
-            20,
-        ));
+        assert!(planner.can_clear_managed_target_state(Some(TargetMatchKind::ProcessName), 20,));
     }
 
     #[test]
-    fn target_state_is_cleared_by_foreground_process_name() {
+    fn target_state_is_not_cleared_by_foreground_process_name_only() {
         let matcher = TargetMatcher::new(&[TargetProcess::new("game.exe").unwrap()]);
         let planner = MutePlanner::new(&matcher, Some(20), Some("game.exe"));
 
-        assert!(planner.can_clear_managed_target_state(
-            Some(TargetMatchKind::ProcessName),
-            "game.exe",
-            10,
-        ));
+        assert!(!planner.can_clear_managed_target_state(Some(TargetMatchKind::ProcessName), 10,));
     }
 
     #[test]
@@ -595,7 +571,7 @@ mod tests {
         let matcher = TargetMatcher::new(&[]);
         let planner = MutePlanner::new(&matcher, None, None);
 
-        assert!(planner.can_clear_managed_target_state(None, "game.exe", 20));
+        assert!(planner.can_clear_managed_target_state(None, 20));
     }
 
     #[test]

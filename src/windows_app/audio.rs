@@ -692,7 +692,7 @@ fn apply_plan_to_session(
     let managed = managed_session || has_managed_target;
     let session_is_foreground = session_is_foreground(planner, session);
     let allow_unmuted_target_update =
-        planner.can_clear_managed_target_state_with_foreground(match_kind, session_is_foreground);
+        planner.can_clear_managed_target_state(match_kind, session.pid);
 
     if match_kind.is_none() && !managed {
         return;
