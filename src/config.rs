@@ -214,11 +214,12 @@ impl AppConfig {
         let mut config = self.clone();
         config.sanitize();
 
+        let config_bytes = serialized_config_bytes(&config)?;
         let (mut temp_file, temp_path) = create_temp_config_file(path)?;
         let write_result = {
             let mut writer = BufWriter::new(&mut temp_file);
-            serde_json::to_writer_pretty(&mut writer, &config)
-                .map_err(io::Error::other)
+            writer
+                .write_all(&config_bytes)
                 .and_then(|()| writer.flush())
         };
         if let Err(error) = write_result {
@@ -579,6 +580,18 @@ fn parse_config_file(file: fs::File) -> io::Result<AppConfig> {
         .map_err(|error| io::Error::new(io::ErrorKind::InvalidData, error))
 }
 
+fn serialized_config_bytes(config: &AppConfig) -> io::Result<Vec<u8>> {
+    let bytes = serde_json::to_vec_pretty(config).map_err(io::Error::other)?;
+    if bytes.len() as u64 <= MAX_CONFIG_FILE_BYTES {
+        return Ok(bytes);
+    }
+
+    Err(io::Error::new(
+        io::ErrorKind::InvalidData,
+        "config file would exceed maximum size",
+    ))
+}
+
 fn reject_oversized_config_file(file: &fs::File) -> io::Result<()> {
     let len = file.metadata()?.len();
     if len <= MAX_CONFIG_FILE_BYTES {
@@ -820,10 +833,19 @@ pub(crate) fn normalize_manual_process_name_cow(input: &str) -> Option<Cow<'_, s
 }
 
 fn normalized_process_name_cow(candidate: ProcessNameCandidate<'_>) -> Option<Cow<'_, str>> {
-    if candidate.has_uppercase {
-        Some(Cow::Owned(candidate.name.to_ascii_lowercase()))
-    } else {
+    if candidate.name.is_ascii() {
+        return if candidate.has_uppercase {
+            Some(Cow::Owned(candidate.name.to_ascii_lowercase()))
+        } else {
+            Some(Cow::Borrowed(candidate.name))
+        };
+    }
+
+    let lowercase = candidate.name.to_lowercase();
+    if lowercase == candidate.name {
         Some(Cow::Borrowed(candidate.name))
+    } else {
+        Some(Cow::Owned(lowercase))
     }
 }
 
@@ -831,16 +853,84 @@ pub fn normalize_process_name_owned(mut input: String) -> Option<String> {
     let candidate = process_name_candidate(&input)?;
 
     if candidate.name.len() == input.len() && candidate.name.as_ptr() == input.as_ptr() {
-        if candidate.has_uppercase {
-            input.make_ascii_lowercase();
+        if input.is_ascii() {
+            if candidate.has_uppercase {
+                input.make_ascii_lowercase();
+            }
+            return Some(input);
         }
-        return Some(input);
+
+        let lowercase = input.to_lowercase();
+        if lowercase == input {
+            return Some(input);
+        }
+        return Some(lowercase);
     }
 
-    if candidate.has_uppercase {
-        Some(candidate.name.to_ascii_lowercase())
+    if candidate.name.is_ascii() {
+        if candidate.has_uppercase {
+            Some(candidate.name.to_ascii_lowercase())
+        } else {
+            Some(candidate.name.to_owned())
+        }
     } else {
-        Some(candidate.name.to_owned())
+        let lowercase = candidate.name.to_lowercase();
+        if lowercase == candidate.name {
+            Some(candidate.name.to_owned())
+        } else {
+            Some(lowercase)
+        }
+    }
+}
+
+fn is_normalized_process_name_candidate(input: &str, candidate: ProcessNameCandidate<'_>) -> bool {
+    if candidate.name.len() != input.len() || candidate.name.as_ptr() != input.as_ptr() {
+        return false;
+    }
+
+    if input.is_ascii() {
+        !candidate.has_uppercase
+    } else {
+        input.to_lowercase() == input
+    }
+}
+
+fn normalized_utf16_process_name(candidate: Utf16ProcessNameCandidate<'_>) -> String {
+    if candidate.is_ascii {
+        return ascii_utf16_process_name(candidate.name, candidate.has_uppercase);
+    }
+
+    let name = String::from_utf16_lossy(candidate.name);
+    let lowercase = name.to_lowercase();
+    if lowercase == name { name } else { lowercase }
+}
+
+pub fn is_normalized_process_name(input: &str) -> bool {
+    process_name_candidate(input)
+        .is_some_and(|candidate| is_normalized_process_name_candidate(input, candidate))
+}
+
+pub(crate) fn is_supported_target_process_name(input: &str) -> bool {
+    is_normalized_process_name(input) && is_supported_normalized_target_process_name(input)
+}
+
+pub(crate) fn is_supported_normalized_target_process_name(input: &str) -> bool {
+    input
+        .strip_suffix(".exe")
+        .is_some_and(|name| !name.is_empty() && !windows_reserved_device_name(name))
+}
+
+fn windows_reserved_device_name(name: &str) -> bool {
+    let device_name = name.split('.').next().unwrap_or(name);
+    match device_name.len() {
+        3 => matches!(device_name, "con" | "prn" | "aux" | "nul"),
+        4 => {
+            let bytes = device_name.as_bytes();
+            matches!(&bytes[..3], b"com" | b"lpt") && matches!(bytes[3], b'1'..=b'9')
+        }
+        6 => device_name == "conin$",
+        7 => device_name == "conout$",
+        _ => false,
     }
 }
 
@@ -887,50 +977,6 @@ pub(crate) fn normalize_supported_process_name_utf16(input: &[u16]) -> Option<St
         return None;
     }
     Some(normalized_utf16_process_name(candidate))
-}
-
-fn normalized_utf16_process_name(candidate: Utf16ProcessNameCandidate<'_>) -> String {
-    if candidate.is_ascii {
-        return ascii_utf16_process_name(candidate.name, candidate.has_uppercase);
-    }
-
-    let mut name = String::from_utf16_lossy(candidate.name);
-    if candidate.has_uppercase {
-        name.make_ascii_lowercase();
-    }
-    name
-}
-
-pub fn is_normalized_process_name(input: &str) -> bool {
-    process_name_candidate(input).is_some_and(|candidate| {
-        !candidate.has_uppercase
-            && candidate.name.len() == input.len()
-            && candidate.name.as_ptr() == input.as_ptr()
-    })
-}
-
-pub(crate) fn is_supported_target_process_name(input: &str) -> bool {
-    is_normalized_process_name(input) && is_supported_normalized_target_process_name(input)
-}
-
-pub(crate) fn is_supported_normalized_target_process_name(input: &str) -> bool {
-    input
-        .strip_suffix(".exe")
-        .is_some_and(|name| !name.is_empty() && !windows_reserved_device_name(name))
-}
-
-fn windows_reserved_device_name(name: &str) -> bool {
-    let device_name = name.split('.').next().unwrap_or(name);
-    match device_name.len() {
-        3 => matches!(device_name, "con" | "prn" | "aux" | "nul"),
-        4 => {
-            let bytes = device_name.as_bytes();
-            matches!(&bytes[..3], b"com" | b"lpt") && matches!(bytes[3], b'1'..=b'9')
-        }
-        6 => device_name == "conin$",
-        7 => device_name == "conout$",
-        _ => false,
-    }
 }
 
 fn is_supported_utf16_target_process_name(input: &[u16]) -> bool {
@@ -1364,6 +1410,20 @@ mod tests {
     }
 
     #[test]
+    fn normalizes_unicode_case_consistently() {
+        assert_eq!(
+            normalize_process_name("ÄPP.EXE"),
+            Some("äpp.exe".to_owned())
+        );
+        assert_eq!(
+            normalize_process_name_utf16(&wide_null_terminated("ÄPP.EXE")),
+            Some("äpp.exe".to_owned())
+        );
+        assert!(is_normalized_process_name("äpp.exe"));
+        assert!(!is_normalized_process_name("Äpp.exe"));
+    }
+
+    #[test]
     fn manual_process_names_accept_only_direct_supported_exe_names() {
         let plain = normalize_manual_process_name("  Game.EXE  ").unwrap();
         let quoted = normalize_manual_process_name(r#""Game.EXE""#).unwrap();
@@ -1525,6 +1585,29 @@ mod tests {
         let error = parse_config_file(fs::File::open(&path).unwrap()).unwrap_err();
 
         assert_eq!(error.kind(), io::ErrorKind::InvalidData);
+    }
+
+    #[test]
+    fn oversized_serialized_config_is_rejected_before_save() {
+        let dir = TestDir::new();
+        let path = dir.path().join("config.json");
+        let config = AppConfig {
+            targets: (0..2_000)
+                .map(|index| TargetProcess {
+                    name: format!("app{index}.exe"),
+                    pid: None,
+                    note: Some("x".repeat(MAX_TARGET_NOTE_CHARS)),
+                    enabled: true,
+                    managed_muted: false,
+                })
+                .collect(),
+            ..AppConfig::default()
+        };
+
+        let error = config.save_to_path(&path, false).unwrap_err();
+
+        assert_eq!(error.kind(), io::ErrorKind::InvalidData);
+        assert!(!path.exists());
     }
 
     #[test]

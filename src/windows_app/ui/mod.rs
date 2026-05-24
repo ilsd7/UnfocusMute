@@ -99,9 +99,9 @@ use runtime_logic::{
 };
 use settings_window::{SettingsPreferences, prompt_settings};
 use startup_sync::{
-    StartupSyncResult, apply_external_startup_config, apply_startup_command_preference,
-    apply_startup_preference, should_save_startup_config, should_sync_startup_setting,
-    sync_startup_setting,
+    StartupSyncResult, apply_external_startup_config as sync_external_startup_config,
+    apply_startup_command_preference, apply_startup_preference, should_save_startup_config,
+    should_sync_startup_setting, sync_startup_setting,
 };
 use state::{
     ActionButtonState, ConfigReloadResult, IssueState, ProcessRefreshResult, StatusIssue,
@@ -309,12 +309,15 @@ unsafe fn run_window() -> Result<()> {
 
     let title = to_wide(config.language.strings().app_title);
     let taskbar_created_message = unsafe { RegisterWindowMessageW(w!("TaskbarCreated")) };
+    let icons = AppIcons {
+        main: icon,
+        tray: tray_icon,
+        github: github_icon,
+        settings: settings_icon,
+    };
     let mut app = Box::new(AppWindow::new(
         config,
-        icon,
-        tray_icon,
-        github_icon,
-        settings_icon,
+        icons,
         taskbar_created_message,
         initial_issues,
     )?);
@@ -600,8 +603,7 @@ struct AppWindow {
     status_detail_text: String,
     display_text_buffer: String,
     wide_text_buffer: Vec<u16>,
-    github_icon: HICON,
-    settings_icon: HICON,
+    icons: AppIcons,
     settings_button_hot: bool,
     settings_window_open: bool,
     foreground_process_name_cache: Option<(u32, Option<String>)>,
@@ -624,19 +626,49 @@ struct AppWindow {
     window_position_dirty: bool,
     theme: AppTheme,
     font_applied: bool,
-    icon: HICON,
-    tray_icon: HICON,
     taskbar_created_message: u32,
     default_button_id: i32,
+}
+
+#[derive(Clone, Copy)]
+struct AppIcons {
+    main: HICON,
+    tray: HICON,
+    github: HICON,
+    settings: HICON,
+}
+
+#[derive(Clone, Copy)]
+struct ConfigChangeEffects {
+    language_changed: bool,
+    target_list_changed: bool,
+    target_matcher_changed: bool,
+    interval_changed: bool,
+    should_start_fast_retry: bool,
+}
+
+impl ConfigChangeEffects {
+    fn between(previous: &AppConfig, next: &AppConfig) -> Self {
+        Self {
+            language_changed: previous.language != next.language,
+            target_list_changed: previous.targets != next.targets,
+            target_matcher_changed: target_matcher_inputs_changed(&previous.targets, &next.targets),
+            interval_changed: previous.polling_interval_ms != next.polling_interval_ms,
+            should_start_fast_retry: next.targets.iter().any(|target| target.managed_muted)
+                && !previous.targets.iter().any(|target| target.managed_muted),
+        }
+    }
+}
+
+fn startup_setting_changed(previous: &AppConfig, next: &AppConfig) -> bool {
+    previous.launch_on_startup != next.launch_on_startup
+        || (next.launch_on_startup && previous.start_minimized != next.start_minimized)
 }
 
 impl AppWindow {
     fn new(
         config: AppConfig,
-        icon: HICON,
-        tray_icon: HICON,
-        github_icon: HICON,
-        settings_icon: HICON,
+        icons: AppIcons,
         taskbar_created_message: u32,
         initial_issues: IssueState,
     ) -> Result<Self> {
@@ -663,8 +695,7 @@ impl AppWindow {
             status_detail_text: String::new(),
             display_text_buffer: String::new(),
             wide_text_buffer: Vec::new(),
-            github_icon,
-            settings_icon,
+            icons,
             settings_button_hot: false,
             settings_window_open: false,
             foreground_process_name_cache: None,
@@ -687,8 +718,6 @@ impl AppWindow {
             window_position_dirty: false,
             theme: AppTheme::new(language),
             font_applied: false,
-            icon,
-            tray_icon,
             taskbar_created_message,
             default_button_id: ID_ADD_SELECTED,
         })
@@ -701,13 +730,13 @@ impl AppWindow {
                 hwnd,
                 WM_SETICON,
                 Some(WPARAM(ICON_BIG as usize)),
-                Some(LPARAM(self.icon.0 as isize)),
+                Some(LPARAM(self.icons.main.0 as isize)),
             );
             SendMessageW(
                 hwnd,
                 WM_SETICON,
                 Some(WPARAM(ICON_SMALL as usize)),
-                Some(LPARAM(self.tray_icon.0 as isize)),
+                Some(LPARAM(self.icons.tray.0 as isize)),
             );
         }
 
@@ -1202,8 +1231,8 @@ impl AppWindow {
             return;
         };
         let hwnd = self.hwnd;
-        let icon = self.icon;
-        let github_icon = self.github_icon;
+        let icon = self.icons.main;
+        let github_icon = self.icons.github;
         let language = self.config.language;
         let initial = SettingsPreferences {
             language,
@@ -2254,50 +2283,17 @@ impl AppWindow {
     }
 
     fn apply_external_config(&mut self, mut config: AppConfig) -> bool {
-        let language_changed = self.config.language != config.language;
-        let target_list_changed = self.config.targets != config.targets;
-        let target_matcher_changed =
-            target_matcher_inputs_changed(&self.config.targets, &config.targets);
-        let interval_changed = self.config.polling_interval_ms != config.polling_interval_ms;
-        let startup_changed = self.config.launch_on_startup != config.launch_on_startup
-            || (config.launch_on_startup && self.config.start_minimized != config.start_minimized);
-        let previous_launch_on_startup = self.config.launch_on_startup;
-        let should_start_fast_retry = config.targets.iter().any(|target| target.managed_muted)
-            && !self
-                .config
-                .targets
-                .iter()
-                .any(|target| target.managed_muted);
-
-        if startup_changed {
-            if apply_external_startup_config(&mut config, previous_launch_on_startup) {
-                self.clear_issue(StatusIssue::StartupUpdateFailed);
-            } else {
-                self.set_issue(StatusIssue::StartupUpdateFailed);
-            }
+        let previous_config = self.config.clone();
+        if startup_setting_changed(&previous_config, &config) {
+            let startup_synced =
+                sync_external_startup_config(&mut config, previous_config.launch_on_startup);
+            self.update_startup_sync_issue(startup_synced);
         }
 
+        let effects = ConfigChangeEffects::between(&previous_config, &config);
         self.config = config;
-        if should_start_fast_retry {
-            self.start_managed_mute_fast_retry();
-        }
-        if target_matcher_changed {
-            self.refresh_targets();
-        } else if target_list_changed {
-            self.refresh_target_list();
-        }
-        if interval_changed {
-            self.reset_polling_timer();
-            self.last_status = None;
-        } else if target_matcher_changed || should_start_fast_retry {
-            self.sync_audio_fallback_timer();
-        }
-        if language_changed {
-            self.refresh_text();
-        } else {
-            self.update_status();
-        }
-        target_matcher_changed
+        self.apply_config_change_effects(effects);
+        effects.target_matcher_changed
     }
 
     fn install_foreground_hook(&mut self) {
@@ -2487,49 +2483,40 @@ impl AppWindow {
     }
 
     fn refresh_after_external_save_merge(&mut self, previous_config: &AppConfig) {
-        let language_changed = previous_config.language != self.config.language;
-        let target_list_changed = previous_config.targets != self.config.targets;
-        let target_matcher_changed =
-            target_matcher_inputs_changed(&previous_config.targets, &self.config.targets);
-        let interval_changed =
-            previous_config.polling_interval_ms != self.config.polling_interval_ms;
-        let startup_changed = previous_config.launch_on_startup != self.config.launch_on_startup
-            || (self.config.launch_on_startup
-                && previous_config.start_minimized != self.config.start_minimized);
-        let previous_launch_on_startup = previous_config.launch_on_startup;
-        let should_start_fast_retry = self
-            .config
-            .targets
-            .iter()
-            .any(|target| target.managed_muted)
-            && !previous_config
-                .targets
-                .iter()
-                .any(|target| target.managed_muted);
-
-        if startup_changed {
-            if apply_external_startup_config(&mut self.config, previous_launch_on_startup) {
-                self.clear_issue(StatusIssue::StartupUpdateFailed);
-            } else {
-                self.set_issue(StatusIssue::StartupUpdateFailed);
-            }
+        if startup_setting_changed(previous_config, &self.config) {
+            let startup_synced =
+                sync_external_startup_config(&mut self.config, previous_config.launch_on_startup);
+            self.update_startup_sync_issue(startup_synced);
         }
 
-        if target_matcher_changed {
-            self.refresh_targets();
-        } else if target_list_changed {
-            self.refresh_target_list();
+        let effects = ConfigChangeEffects::between(previous_config, &self.config);
+        self.apply_config_change_effects(effects);
+    }
+
+    fn update_startup_sync_issue(&mut self, startup_synced: bool) {
+        if startup_synced {
+            self.clear_issue(StatusIssue::StartupUpdateFailed);
+        } else {
+            self.set_issue(StatusIssue::StartupUpdateFailed);
         }
-        if should_start_fast_retry {
+    }
+
+    fn apply_config_change_effects(&mut self, effects: ConfigChangeEffects) {
+        if effects.should_start_fast_retry {
             self.start_managed_mute_fast_retry();
         }
-        if interval_changed {
+        if effects.target_matcher_changed {
+            self.refresh_targets();
+        } else if effects.target_list_changed {
+            self.refresh_target_list();
+        }
+        if effects.interval_changed {
             self.reset_polling_timer();
             self.last_status = None;
-        } else if target_matcher_changed || should_start_fast_retry {
+        } else if effects.target_matcher_changed || effects.should_start_fast_retry {
             self.sync_audio_fallback_timer();
         }
-        if language_changed {
+        if effects.language_changed {
             self.refresh_text();
         } else {
             self.update_status();
@@ -2827,7 +2814,7 @@ impl AppWindow {
             prompt_target_note(
                 self.hwnd,
                 HINSTANCE(module.0),
-                self.icon,
+                self.icons.main,
                 self.config.language,
                 &display_name,
                 current_note,
@@ -3273,7 +3260,7 @@ impl AppWindow {
             uID: TRAY_ID,
             uFlags: NIF_MESSAGE | NIF_ICON | NIF_TIP,
             uCallbackMessage: WM_TRAY_ICON,
-            hIcon: self.tray_icon,
+            hIcon: self.icons.tray,
             ..Default::default()
         };
         copy_wide_fixed(tip, &mut data.szTip);
@@ -3636,13 +3623,13 @@ impl AppWindow {
         }
 
         let offset = if pressed { px(1) } else { 0 };
-        if !self.settings_icon.0.is_null() {
+        if !self.icons.settings.0.is_null() {
             unsafe {
                 let _ = DrawIconEx(
                     draw.hDC,
                     draw.rcItem.left + offset,
                     px(SETTINGS_BUTTON_ICON_Y - SETTINGS_BUTTON_Y) + draw.rcItem.top + offset,
-                    self.settings_icon,
+                    self.icons.settings,
                     px(SETTINGS_ICON_SIZE),
                     px(SETTINGS_ICON_SIZE),
                     0,
