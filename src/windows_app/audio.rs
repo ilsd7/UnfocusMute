@@ -96,8 +96,14 @@ impl AudioController {
                                 .insert(key);
                         }
                     }
-                    SessionVisit::UnresolvedPid(pid) => {
-                        insert_session_keys_for_pid(&mut failed_sessions, session_keys, pid);
+                    SessionVisit::Unresolved(session) => {
+                        if let Err(keys) =
+                            apply_unmute_to_unresolved_session(&session, session_keys)
+                        {
+                            failed_sessions
+                                .get_or_insert_with(|| HashSet::with_capacity(session_keys.len()))
+                                .extend(keys);
+                        }
                     }
                     SessionVisit::Unreadable => {
                         failed_sessions
@@ -155,14 +161,33 @@ impl AudioController {
                             &mut apply_result,
                         );
                     }
-                    SessionVisit::UnresolvedPid(pid) => {
-                        if lookup.may_include_pid(pid) {
-                            apply_result.keep_active_sessions_for_pid(pid, managed_muted_sessions);
-                            apply_result.had_failures = true;
+                    SessionVisit::Unresolved(session) => {
+                        if lookup.may_include_pid(session.pid) {
+                            match apply_unmute_to_unresolved_session(
+                                &session,
+                                managed_muted_sessions,
+                            ) {
+                                Ok(restored_sessions) => {
+                                    apply_result.set_target_states_for_session_keys(
+                                        &target_lookup,
+                                        &restored_sessions,
+                                        false,
+                                    );
+                                }
+                                Err(failed_sessions) => {
+                                    apply_result.keep_active_session_keys(&failed_sessions);
+                                    apply_result.set_target_states_for_session_keys(
+                                        &target_lookup,
+                                        &failed_sessions,
+                                        true,
+                                    );
+                                    apply_result.had_failures = true;
+                                }
+                            }
                         } else if unresolved_unmanaged_pid_is_failure(
                             needs_all_session_process_names,
                             matcher,
-                            pid,
+                            session.pid,
                         ) {
                             apply_result.had_failures = true;
                         }
@@ -229,7 +254,10 @@ impl AudioController {
                         continue;
                     }
                     let Some(process_name) = process_names.name(pid) else {
-                        visit(SessionVisit::UnresolvedPid(pid));
+                        visit(SessionVisit::Unresolved(UnresolvedAudioSessionControl {
+                            control: control2,
+                            pid,
+                        }));
                         continue;
                     };
 
@@ -254,8 +282,13 @@ struct AudioSessionControl<'a> {
 
 enum SessionVisit<'a> {
     Resolved(AudioSessionControl<'a>),
-    UnresolvedPid(u32),
+    Unresolved(UnresolvedAudioSessionControl),
     Unreadable,
+}
+
+struct UnresolvedAudioSessionControl {
+    control: IAudioSessionControl2,
+    pid: u32,
 }
 
 impl AudioSessionControl<'_> {
@@ -267,6 +300,16 @@ impl AudioSessionControl<'_> {
 
     fn volume(&self) -> Option<ISimpleAudioVolume> {
         self.control.cast().ok()
+    }
+}
+
+impl UnresolvedAudioSessionControl {
+    fn volume(&self) -> Option<ISimpleAudioVolume> {
+        self.control.cast().ok()
+    }
+
+    fn instance_id(&self) -> Option<String> {
+        unsafe { session_instance_id(&self.control) }
     }
 }
 
@@ -302,14 +345,13 @@ impl PlanApplyResult {
             .push(key.unwrap_or_else(|| session.key()));
     }
 
-    fn keep_active_sessions_for_pid(&mut self, pid: u32, session_keys: &HashSet<AudioSessionKey>) {
-        for key in session_keys.iter().filter(|key| key.pid == pid) {
-            if self.active_managed_sessions.capacity() == 0 {
-                self.active_managed_sessions
-                    .reserve(LINEAR_MANAGED_SESSION_LIMIT);
-            }
-            self.active_managed_sessions.push(key.clone());
+    fn keep_active_session_keys(&mut self, session_keys: &HashSet<AudioSessionKey>) {
+        if self.active_managed_sessions.capacity() == 0 {
+            self.active_managed_sessions
+                .reserve(session_keys.len().max(LINEAR_MANAGED_SESSION_LIMIT));
         }
+        self.active_managed_sessions
+            .extend(session_keys.iter().cloned());
     }
 
     fn keep_active_sessions(&mut self, session_keys: &HashSet<AudioSessionKey>) {
@@ -335,6 +377,23 @@ impl PlanApplyResult {
                     muted,
                 },
             ),
+        }
+    }
+
+    fn set_target_states_for_session_keys(
+        &mut self,
+        target_lookup: &ManagedTargetLookup<'_>,
+        session_keys: &HashSet<AudioSessionKey>,
+        muted: bool,
+    ) {
+        for key in session_keys {
+            set_target_states_for_session(
+                self,
+                target_lookup.matching_sessions(&key.process_name, key.pid),
+                None,
+                muted,
+                true,
+            );
         }
     }
 }
@@ -703,6 +762,9 @@ fn apply_plan_to_session(
                 desired_mute,
                 allow_unmuted_target_update,
             );
+        } else if has_managed_target && desired_mute {
+            result.keep_active_session(session, key);
+            set_target_states_for_session(result, target_matches, target_identity, true, true);
         } else if should_clear_untrusted_persisted_target(
             managed_session,
             has_managed_target,
@@ -847,16 +909,53 @@ fn apply_unmute_to_session(
     Ok(())
 }
 
-fn insert_session_keys_for_pid(
-    output: &mut Option<HashSet<AudioSessionKey>>,
+fn apply_unmute_to_unresolved_session(
+    session: &UnresolvedAudioSessionControl,
+    session_keys: &HashSet<AudioSessionKey>,
+) -> std::result::Result<HashSet<AudioSessionKey>, HashSet<AudioSessionKey>> {
+    let instance_id = session.instance_id();
+    let matching_sessions =
+        matching_unresolved_session_keys(session_keys, session.pid, instance_id.as_deref());
+    if matching_sessions.is_empty() {
+        return Ok(matching_sessions);
+    }
+
+    let Some(volume) = session.volume() else {
+        return Err(matching_sessions);
+    };
+    let Ok(muted) = session_muted(&volume) else {
+        return Err(matching_sessions);
+    };
+    if muted && unsafe { volume.SetMute(false, std::ptr::null()) }.is_err() {
+        return Err(matching_sessions);
+    }
+    Ok(matching_sessions)
+}
+
+fn matching_unresolved_session_keys(
     session_keys: &HashSet<AudioSessionKey>,
     pid: u32,
-) {
+    instance_id: Option<&str>,
+) -> HashSet<AudioSessionKey> {
+    let mut pid_match_count = 0;
+    let mut fallback_match = None;
+    let mut matches = HashSet::new();
     for key in session_keys.iter().filter(|key| key.pid == pid) {
-        output
-            .get_or_insert_with(|| HashSet::with_capacity(session_keys.len()))
-            .insert(key.clone());
+        pid_match_count += 1;
+        fallback_match = Some(key);
+        if key.instance_id.as_deref() == instance_id {
+            matches.insert(key.clone());
+        }
     }
+
+    if matches.is_empty()
+        && instance_id.is_none()
+        && pid_match_count == 1
+        && let Some(key) = fallback_match
+    {
+        matches.insert(key.clone());
+    }
+    matches
 }
 
 fn unresolved_unmanaged_pid_is_failure(
@@ -1098,31 +1197,47 @@ mod tests {
     use super::*;
 
     #[test]
-    fn unresolved_pid_retains_matching_session_keys() {
-        let retained = AudioSessionKey::from_normalized(7, "game.exe".to_owned(), None);
+    fn unresolved_session_matches_exact_instance_id() {
+        let retained =
+            AudioSessionKey::from_normalized(7, "game.exe".to_owned(), Some("a".to_owned()));
+        let same_pid_other_instance =
+            AudioSessionKey::from_normalized(7, "game.exe".to_owned(), Some("b".to_owned()));
         let ignored = AudioSessionKey::from_normalized(8, "chat.exe".to_owned(), None);
-        let session_keys = HashSet::from([retained.clone(), ignored.clone()]);
-        let mut output = None;
+        let session_keys = HashSet::from([
+            retained.clone(),
+            same_pid_other_instance.clone(),
+            ignored.clone(),
+        ]);
 
-        insert_session_keys_for_pid(&mut output, &session_keys, 7);
+        let matches = matching_unresolved_session_keys(&session_keys, 7, Some("a"));
 
-        let output = output.expect("matching pid should create failure set");
-        assert!(output.contains(&retained));
-        assert!(!output.contains(&ignored));
+        assert!(matches.contains(&retained));
+        assert!(!matches.contains(&same_pid_other_instance));
+        assert!(!matches.contains(&ignored));
     }
 
     #[test]
-    fn unresolved_pid_without_matching_session_keys_stays_empty() {
-        let session_keys = HashSet::from([AudioSessionKey::from_normalized(
-            8,
-            "chat.exe".to_owned(),
-            None,
-        )]);
-        let mut output = None;
+    fn unresolved_session_uses_single_pid_fallback_without_instance_id() {
+        let retained =
+            AudioSessionKey::from_normalized(7, "game.exe".to_owned(), Some("a".to_owned()));
+        let ignored = AudioSessionKey::from_normalized(8, "chat.exe".to_owned(), None);
+        let session_keys = HashSet::from([retained.clone(), ignored.clone()]);
 
-        insert_session_keys_for_pid(&mut output, &session_keys, 7);
+        let matches = matching_unresolved_session_keys(&session_keys, 7, None);
 
-        assert!(output.is_none());
+        assert!(matches.contains(&retained));
+        assert!(!matches.contains(&ignored));
+    }
+
+    #[test]
+    fn unresolved_session_skips_ambiguous_pid_fallback() {
+        let first =
+            AudioSessionKey::from_normalized(7, "game.exe".to_owned(), Some("a".to_owned()));
+        let second =
+            AudioSessionKey::from_normalized(7, "game.exe".to_owned(), Some("b".to_owned()));
+        let session_keys = HashSet::from([first, second]);
+
+        assert!(matching_unresolved_session_keys(&session_keys, 7, None).is_empty());
     }
 
     #[test]
