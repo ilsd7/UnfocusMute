@@ -9,7 +9,7 @@ use windows::Win32::Graphics::Gdi::{
 };
 use windows::Win32::UI::HiDpi::GetDpiForSystem;
 use windows::Win32::UI::WindowsAndMessaging::{GetSystemMetrics, SM_CXSCREEN, SM_CYSCREEN};
-use windows::core::w;
+use windows::core::{PCWSTR, w};
 
 const BASE_DESKTOP_WIDTH: i32 = 1920;
 const BASE_DESKTOP_HEIGHT: i32 = 1080;
@@ -98,7 +98,11 @@ impl UiFonts {
         let font_point_size = ui_font_point_size(language);
         Self {
             font: UiFont::new(font_point_size),
-            title_font: UiFont::new_with_weight(font_point_size + 2, 600),
+            title_font: UiFont::new_with_face(
+                font_point_size + 2,
+                600,
+                w!("Segoe UI Variable Display"),
+            ),
             strong_font: UiFont::new_with_weight(font_point_size, 500),
             point_size: font_point_size,
         }
@@ -116,6 +120,10 @@ impl UiFont {
     }
 
     pub(super) fn new_with_weight(point_size: i32, weight: i32) -> Self {
+        Self::new_with_face(point_size, weight, w!("Segoe UI"))
+    }
+
+    pub(super) fn new_with_face(point_size: i32, weight: i32, face: PCWSTR) -> Self {
         let dpi = effective_ui_dpi();
         let height = -((point_size * dpi + 36) / 72);
         let font = unsafe {
@@ -133,7 +141,7 @@ impl UiFont {
                 CLIP_DEFAULT_PRECIS,
                 DEFAULT_QUALITY,
                 FF_DONTCARE.0 as u32,
-                w!("Segoe UI"),
+                face,
             )
         };
         if font.0.is_null() {

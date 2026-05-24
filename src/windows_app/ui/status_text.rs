@@ -102,7 +102,13 @@ mod tests {
         let strings = Language::En.strings();
         let mut detail = String::new();
 
-        status_detail_text_into(strings, Some(strings.audio_unavailable), 12, 3, &mut detail);
+        status_detail_text_into(
+            strings,
+            Some("Could not access audio sessions"),
+            12,
+            3,
+            &mut detail,
+        );
 
         assert_eq!(detail, "Could not access audio sessions");
     }

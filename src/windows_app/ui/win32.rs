@@ -949,56 +949,32 @@ pub(super) unsafe fn draw_flat_button(draw: &DRAWITEMSTRUCT, font: HGDIOBJ) -> b
 
     let (bg_color, border_color, text_color) = if is_primary {
         if disabled {
-            (rgb(241, 245, 249), rgb(226, 232, 240), rgb(100, 116, 139))
+            (rgb(248, 248, 250), rgb(229, 229, 234), rgb(160, 160, 166))
         } else if pressed {
-            (rgb(67, 56, 202), rgb(67, 56, 202), rgb(255, 255, 255))
+            (rgb(45, 45, 48), rgb(45, 45, 48), rgb(255, 255, 255))
         } else if hovered {
-            (rgb(99, 102, 241), rgb(99, 102, 241), rgb(255, 255, 255))
+            (rgb(57, 57, 60), rgb(57, 57, 60), rgb(255, 255, 255))
         } else {
-            (rgb(79, 70, 229), rgb(79, 70, 229), rgb(255, 255, 255))
+            (rgb(29, 29, 31), rgb(29, 29, 31), rgb(255, 255, 255))
         }
     } else {
         if disabled {
-            (rgb(248, 250, 252), rgb(241, 245, 249), rgb(148, 163, 184))
+            (rgb(250, 250, 252), rgb(229, 229, 234), rgb(160, 160, 166))
         } else if pressed {
-            (rgb(203, 213, 225), rgb(148, 163, 184), rgb(15, 23, 42))
+            (rgb(238, 238, 240), rgb(218, 220, 224), rgb(29, 29, 31))
         } else if hovered {
-            (rgb(226, 232, 240), rgb(203, 213, 225), rgb(15, 23, 42))
+            (rgb(248, 248, 250), rgb(218, 220, 224), rgb(29, 29, 31))
         } else {
-            (rgb(241, 245, 249), rgb(226, 232, 240), rgb(30, 41, 59))
+            (rgb(255, 255, 255), rgb(218, 220, 224), rgb(29, 29, 31))
         }
     };
 
     unsafe {
-        let clean_brush = CreateSolidBrush(rgb(248, 250, 252));
+        let clean_brush = CreateSolidBrush(rgb(245, 245, 247));
         let _ = FillRect(hdc, &draw.rcItem, clean_brush);
         let _ = DeleteObject(clean_brush.into());
 
         let r = px(6);
-
-        if !disabled && !pressed {
-            let shadow_color = rgb(226, 232, 240);
-            let shadow_brush = CreateSolidBrush(shadow_color);
-            let shadow_pen = CreatePen(PS_SOLID, px(1), shadow_color);
-
-            let old_brush = SelectObject(hdc, shadow_brush.into());
-            let old_pen = SelectObject(hdc, shadow_pen.into());
-
-            let _ = RoundRect(
-                hdc,
-                draw.rcItem.left,
-                draw.rcItem.top + px(1),
-                draw.rcItem.right,
-                draw.rcItem.bottom + px(2),
-                r * 2,
-                r * 2,
-            );
-
-            let _ = SelectObject(hdc, old_brush);
-            let _ = SelectObject(hdc, old_pen);
-            let _ = DeleteObject(shadow_brush.into());
-            let _ = DeleteObject(shadow_pen.into());
-        }
 
         let brush = CreateSolidBrush(bg_color);
         let pen = CreatePen(PS_SOLID, px(1), border_color);
