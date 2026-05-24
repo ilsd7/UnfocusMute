@@ -15,8 +15,8 @@ use std::io::ErrorKind;
 use std::mem::size_of;
 use std::os::windows::ffi::OsStrExt;
 use std::path::Path;
-use std::sync::atomic::{AtomicBool, AtomicIsize, Ordering};
-use std::time::Instant;
+use std::sync::atomic::{AtomicBool, AtomicIsize, AtomicU32, Ordering};
+use std::time::{Duration, Instant};
 use windows::Win32::Foundation::{
     CloseHandle, ERROR_ALREADY_EXISTS, GetLastError, HANDLE, HINSTANCE, HWND, LPARAM, LRESULT,
     POINT, RECT, WPARAM,
@@ -46,20 +46,20 @@ use windows::Win32::UI::WindowsAndMessaging::{
     CREATESTRUCTW, CreatePopupMenu, CreateWindowExW, DI_NORMAL, DefWindowProcW, DestroyMenu,
     DestroyWindow, DispatchMessageW, DrawIconEx, EN_CHANGE, ES_AUTOHSCROLL,
     EVENT_SYSTEM_FOREGROUND, FindWindowW, GWLP_USERDATA, GetCursorPos, GetSystemMetrics,
-    GetWindowRect, HICON, HMENU, ICON_BIG, ICON_SMALL, IDC_ARROW, IDC_HAND, IsDialogMessageW,
-    IsWindowVisible, KillTimer, LB_GETCURSEL, LB_RESETCONTENT, LB_SETCURSEL, LBN_DBLCLK,
-    LBN_SELCHANGE, LBS_HASSTRINGS, LBS_NOINTEGRALHEIGHT, LBS_NOTIFY, LBS_OWNERDRAWVARIABLE,
-    LoadCursorW, MB_ICONINFORMATION, MB_ICONWARNING, MB_OK, MF_GRAYED, MF_SEPARATOR, MF_STRING,
-    MSG, MessageBoxW, PostMessageW, PostQuitMessage, RegisterClassW, RegisterWindowMessageW,
-    SM_CXVSCROLL, SW_HIDE, SW_RESTORE, SW_SHOW, SendMessageW, SetCursor, SetForegroundWindow,
-    SetTimer, SetWindowLongPtrW, ShowWindow, TPM_NONOTIFY, TPM_RETURNCMD, TPM_RIGHTBUTTON,
-    TRACK_POPUP_MENU_FLAGS, TrackPopupMenu, TranslateMessage, WINDOW_EX_STYLE, WINDOW_STYLE,
-    WINEVENT_OUTOFCONTEXT, WM_CLOSE, WM_COMMAND, WM_CONTEXTMENU, WM_CREATE, WM_CTLCOLOREDIT,
-    WM_CTLCOLORLISTBOX, WM_CTLCOLORSTATIC, WM_DESTROY, WM_DRAWITEM, WM_EXITSIZEMOVE, WM_KEYDOWN,
-    WM_LBUTTONDBLCLK, WM_LBUTTONDOWN, WM_MEASUREITEM, WM_MOVE, WM_NCCREATE, WM_NCDESTROY, WM_PAINT,
-    WM_RBUTTONUP, WM_SETCURSOR, WM_SETFONT, WM_SETICON, WM_SETREDRAW, WM_SHOWWINDOW, WM_TIMER,
-    WNDCLASSW, WS_BORDER, WS_CAPTION, WS_CHILD, WS_CLIPCHILDREN, WS_MINIMIZEBOX, WS_OVERLAPPED,
-    WS_SYSMENU, WS_TABSTOP, WS_VISIBLE, WS_VSCROLL,
+    GetWindowRect, GetWindowThreadProcessId, HICON, HMENU, ICON_BIG, ICON_SMALL, IDC_ARROW,
+    IDC_HAND, IsDialogMessageW, IsWindowVisible, KillTimer, LB_GETCURSEL, LB_RESETCONTENT,
+    LB_SETCURSEL, LBN_DBLCLK, LBN_SELCHANGE, LBS_HASSTRINGS, LBS_NOINTEGRALHEIGHT, LBS_NOTIFY,
+    LBS_OWNERDRAWVARIABLE, LoadCursorW, MB_ICONINFORMATION, MB_ICONWARNING, MB_OK, MF_GRAYED,
+    MF_SEPARATOR, MF_STRING, MSG, MessageBoxW, PostMessageW, PostQuitMessage, RegisterClassW,
+    RegisterWindowMessageW, SM_CXVSCROLL, SW_HIDE, SW_RESTORE, SW_SHOW, SendMessageW, SetCursor,
+    SetForegroundWindow, SetTimer, SetWindowLongPtrW, ShowWindow, TPM_NONOTIFY, TPM_RETURNCMD,
+    TPM_RIGHTBUTTON, TRACK_POPUP_MENU_FLAGS, TrackPopupMenu, TranslateMessage, WINDOW_EX_STYLE,
+    WINDOW_STYLE, WINEVENT_OUTOFCONTEXT, WM_CLOSE, WM_COMMAND, WM_CONTEXTMENU, WM_CREATE,
+    WM_CTLCOLOREDIT, WM_CTLCOLORLISTBOX, WM_CTLCOLORSTATIC, WM_DESTROY, WM_DRAWITEM,
+    WM_EXITSIZEMOVE, WM_KEYDOWN, WM_LBUTTONDBLCLK, WM_LBUTTONDOWN, WM_MEASUREITEM, WM_MOVE,
+    WM_NCCREATE, WM_NCDESTROY, WM_PAINT, WM_RBUTTONUP, WM_SETCURSOR, WM_SETFONT, WM_SETICON,
+    WM_SETREDRAW, WM_SHOWWINDOW, WM_TIMER, WNDCLASSW, WS_BORDER, WS_CAPTION, WS_CHILD,
+    WS_CLIPCHILDREN, WS_MINIMIZEBOX, WS_OVERLAPPED, WS_SYSMENU, WS_TABSTOP, WS_VISIBLE, WS_VSCROLL,
 };
 use windows::core::{PCWSTR, w};
 
@@ -128,7 +128,9 @@ use win32::{
 use window_position::{initial_window_position, should_start_hidden, window_position_is_visible};
 
 static FOREGROUND_EVENT_HWND: AtomicIsize = AtomicIsize::new(0);
+static FOREGROUND_EVENT_PID: AtomicU32 = AtomicU32::new(0);
 static FOREGROUND_EVENT_PENDING: AtomicBool = AtomicBool::new(false);
+const RECENT_FOREGROUND_EVENT_PID_MAX_AGE: Duration = Duration::from_secs(12);
 const MAIN_WINDOW_STYLE: WINDOW_STYLE = WINDOW_STYLE(
     WS_OVERLAPPED.0 | WS_CAPTION.0 | WS_SYSMENU.0 | WS_MINIMIZEBOX.0 | WS_CLIPCHILDREN.0,
 );
@@ -502,6 +504,7 @@ struct ForegroundEventHook {
 impl ForegroundEventHook {
     unsafe fn new(hwnd: HWND) -> Result<Self> {
         FOREGROUND_EVENT_HWND.store(hwnd.0 as isize, Ordering::Release);
+        FOREGROUND_EVENT_PID.store(0, Ordering::Release);
         FOREGROUND_EVENT_PENDING.store(false, Ordering::Release);
         let hook = unsafe {
             SetWinEventHook(
@@ -516,6 +519,7 @@ impl ForegroundEventHook {
         };
         if hook.0.is_null() {
             FOREGROUND_EVENT_HWND.store(0, Ordering::Release);
+            FOREGROUND_EVENT_PID.store(0, Ordering::Release);
             FOREGROUND_EVENT_PENDING.store(false, Ordering::Release);
             return Err(message_error("register foreground window event hook"));
         }
@@ -526,6 +530,7 @@ impl ForegroundEventHook {
 impl Drop for ForegroundEventHook {
     fn drop(&mut self) {
         FOREGROUND_EVENT_HWND.store(0, Ordering::Release);
+        FOREGROUND_EVENT_PID.store(0, Ordering::Release);
         FOREGROUND_EVENT_PENDING.store(false, Ordering::Release);
         unsafe {
             let _ = UnhookWinEvent(self.hook);
@@ -550,6 +555,12 @@ unsafe extern "system" fn foreground_event_proc(
     if target == 0 {
         return;
     }
+
+    let mut pid = 0;
+    unsafe {
+        GetWindowThreadProcessId(hwnd, Some(&mut pid as *mut u32));
+    }
+    FOREGROUND_EVENT_PID.store(pid, Ordering::Release);
     if FOREGROUND_EVENT_PENDING.swap(true, Ordering::AcqRel) {
         return;
     }
@@ -563,6 +574,7 @@ unsafe extern "system" fn foreground_event_proc(
         )
     };
     if result.is_err() {
+        FOREGROUND_EVENT_PID.store(0, Ordering::Release);
         FOREGROUND_EVENT_PENDING.store(false, Ordering::Release);
     }
 }
@@ -604,6 +616,7 @@ struct AppWindow {
     settings_button_hot: bool,
     settings_window_open: bool,
     foreground_process_name_cache: Option<(u32, Option<String>)>,
+    recent_foreground_pid: Option<(u32, Instant)>,
     last_process_refresh_attempt: Instant,
     updating_process_combo: bool,
     muted_by_app: HashSet<AudioSessionKey>,
@@ -667,6 +680,7 @@ impl AppWindow {
             settings_button_hot: false,
             settings_window_open: false,
             foreground_process_name_cache: None,
+            recent_foreground_pid: None,
             last_process_refresh_attempt: initial_process_refresh_attempt(),
             updating_process_combo: false,
             muted_by_app: HashSet::new(),
@@ -1867,11 +1881,14 @@ impl AppWindow {
                     .audio
                     .as_ref()
                     .is_some_and(|audio| audio.take_session_changed());
+                let foreground_pid = session_changed
+                    .then(|| self.recent_foreground_pid())
+                    .flatten();
                 if session_changed {
                     self.start_managed_mute_fast_retry();
                 }
                 if config_changed || session_changed {
-                    self.tick();
+                    self.tick_with_foreground_pid(foreground_pid);
                 }
             }
             AUDIO_FALLBACK_TIMER_ID => {
@@ -1883,6 +1900,10 @@ impl AppWindow {
     }
 
     fn tick(&mut self) {
+        self.tick_with_foreground_pid(None);
+    }
+
+    fn tick_with_foreground_pid(&mut self, foreground_pid_override: Option<u32>) {
         self.reload_config_if_due();
 
         if self.paused {
@@ -1918,7 +1939,7 @@ impl AppWindow {
             return;
         }
 
-        let foreground_pid = process::foreground_pid();
+        let foreground_pid = foreground_pid_override.or_else(process::foreground_pid);
         let needs_foreground_process_name = self.target_matcher.needs_foreground_process_name();
         if needs_foreground_process_name {
             self.update_foreground_process_name_cache(foreground_pid);
@@ -2043,6 +2064,16 @@ impl AppWindow {
 
     fn clear_foreground_process_cache(&mut self) {
         self.foreground_process_name_cache = None;
+    }
+
+    fn remember_foreground_pid(&mut self, foreground_pid: Option<u32>) {
+        self.recent_foreground_pid = foreground_pid.map(|pid| (pid, Instant::now()));
+    }
+
+    fn recent_foreground_pid(&self) -> Option<u32> {
+        self.recent_foreground_pid
+            .filter(|(_, captured_at)| captured_at.elapsed() <= RECENT_FOREGROUND_EVENT_PID_MAX_AGE)
+            .map(|(pid, _)| pid)
     }
 
     fn restore_managed_mutes(&mut self) {
@@ -3942,10 +3973,15 @@ unsafe extern "system" fn window_proc(
                 return LRESULT(0);
             }
             WM_FOREGROUND_CHANGED => {
+                let foreground_pid = match FOREGROUND_EVENT_PID.swap(0, Ordering::AcqRel) {
+                    0 => None,
+                    pid => Some(pid),
+                };
                 FOREGROUND_EVENT_PENDING.store(false, Ordering::Release);
                 app.clear_foreground_process_cache();
+                app.remember_foreground_pid(foreground_pid);
                 app.start_managed_mute_fast_retry();
-                app.tick();
+                app.tick_with_foreground_pid(foreground_pid);
                 return LRESULT(0);
             }
             WM_PAINT => {
