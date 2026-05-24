@@ -2,7 +2,7 @@ use super::constants::PROCESS_REFRESH_STALE_INTERVAL;
 use crate::config::TargetProcess;
 use std::time::Instant;
 
-pub(super) const MANAGED_MUTE_FOREGROUND_RETRY_INTERVAL_MS: u32 = 100;
+pub(super) const MANAGED_MUTE_FOREGROUND_RETRY_INTERVAL_MS: u32 = 300;
 pub(super) const MANAGED_MUTE_FOREGROUND_RETRY_TICKS: u8 = 20;
 
 pub(super) fn cached_foreground_process_name(

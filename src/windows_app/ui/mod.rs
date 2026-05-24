@@ -2161,7 +2161,7 @@ impl AppWindow {
             };
             changed |= self.config.set_target_managed_muted_at(index, update.muted);
         }
-        if changed && !self.has_managed_mutes() {
+        if !self.has_managed_mutes() {
             self.managed_mute_fast_retry_remaining = 0;
         }
         changed
