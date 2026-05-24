@@ -887,6 +887,9 @@ where
                 PostQuitMessage(quit_code);
                 break;
             }
+            if message_is_parent_close(&msg, parent) {
+                continue;
+            }
             if !IsDialogMessageW(hwnd, &msg).as_bool() {
                 let _ = TranslateMessage(&msg);
                 DispatchMessageW(&msg);
@@ -901,6 +904,10 @@ where
     }
 
     Ok(state.selected)
+}
+
+fn message_is_parent_close(message: &MSG, parent: HWND) -> bool {
+    message.hwnd == parent && message.message == WM_CLOSE
 }
 
 unsafe extern "system" fn settings_window_proc(
