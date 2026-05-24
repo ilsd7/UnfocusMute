@@ -561,7 +561,7 @@ enum ManagedSessionLookup<'a> {
         identities: [(u32, &'a str); LINEAR_MANAGED_SESSION_LIMIT],
         len: usize,
     },
-    // Prefilter only; exact AudioSessionKey lookup still decides ownership.
+    // 사전 필터 용도일 뿐이며, 실제 소유 여부는 정확한 AudioSessionKey 조회가 결정한다.
     Many {
         pids: Vec<u32>,
     },
@@ -679,6 +679,9 @@ fn apply_plan_to_session(
     } else {
         false
     };
+    // 앱 재시작 후에는 정확한 오디오 세션 키가 메모리에 남아 있지 않으므로,
+    // 타깃 단위 복원 상태가 음소거 해제 판단에 쓰이는 유일한 단서다.
+    // 저장된 타깃 상태를 실제로 해제할지는 아래 `allow_unmuted_target_update`가 제한한다.
     let managed = managed_session || has_managed_target;
     let session_is_foreground = planner.session_is_foreground(session.process_name, session.pid);
     let allow_unmuted_target_update =

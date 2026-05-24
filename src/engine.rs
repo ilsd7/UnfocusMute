@@ -368,9 +368,9 @@ impl<'a> MutePlanner<'a> {
         match_kind: Option<TargetMatchKind>,
         session_pid: u32,
     ) -> bool {
-        // A process-name foreground match can point at a stale session from an
-        // old PID after an app restart. Only the current foreground PID proves
-        // that the persisted restore state belongs to the active session.
+        // 프로세스 이름만으로 전면 여부를 맞추면 앱 재시작 후 예전 PID의
+        // 오래된 세션을 가리킬 수 있다. 현재 전면 PID만 저장된 복원 상태가
+        // 활성 세션에 속한다는 것을 증명한다.
         match_kind.is_none() || self.foreground_pid == Some(session_pid)
     }
 }
