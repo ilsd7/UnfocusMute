@@ -132,6 +132,35 @@ function Replace-PackageZip {
     }
 }
 
+function Get-Sha256Hash {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$Path
+    )
+
+    if (Get-Command Get-FileHash -ErrorAction SilentlyContinue) {
+        return (Get-FileHash -Algorithm SHA256 -Path $Path).Hash.ToLowerInvariant()
+    }
+
+    $Stream = [System.IO.File]::OpenRead($Path)
+    try {
+        $Sha256 = [System.Security.Cryptography.SHA256]::Create()
+        try {
+            $HashBytes = $Sha256.ComputeHash($Stream)
+        }
+        finally {
+            if ($null -ne $Sha256) {
+                $Sha256.Dispose()
+            }
+        }
+    }
+    finally {
+        $Stream.Dispose()
+    }
+
+    return ([System.BitConverter]::ToString($HashBytes)).Replace("-", "").ToLowerInvariant()
+}
+
 function Write-ZipChecksum {
     param(
         [Parameter(Mandatory = $true)]
@@ -142,7 +171,7 @@ function Write-ZipChecksum {
         [string]$ZipFileName
     )
 
-    $Hash = (Get-FileHash -Algorithm SHA256 -Path $SourceZip).Hash.ToLowerInvariant()
+    $Hash = Get-Sha256Hash $SourceZip
     [System.IO.File]::WriteAllText($Destination, "$Hash  $ZipFileName`n", $Utf8NoBom)
 }
 
@@ -169,7 +198,7 @@ function Assert-ZipChecksum {
         throw "Package checksum hash must be 64 lowercase hexadecimal characters"
     }
 
-    $ExpectedHash = (Get-FileHash -Algorithm SHA256 -Path $SourceZip).Hash.ToLowerInvariant()
+    $ExpectedHash = Get-Sha256Hash $SourceZip
     if ($Parts[0] -cne $ExpectedHash) {
         throw "Package checksum hash does not match $ZipFileName"
     }
