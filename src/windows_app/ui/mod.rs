@@ -95,7 +95,7 @@ use runtime_logic::{
     foreground_process_cache_needs_refresh, initial_managed_mute_fast_retry_count,
     initial_process_refresh_attempt, process_refresh_is_stale, replace_text_if_changed,
     should_hide_to_tray, should_release_idle_audio_while_paused,
-    should_retry_tray_icon_before_hide,
+    should_retry_tray_icon_before_hide, should_start_managed_mute_fast_retry_after_audio_update,
 };
 use settings_window::{SettingsPreferences, prompt_settings};
 use startup_sync::{
@@ -1924,6 +1924,8 @@ impl AppWindow {
         } else {
             None
         };
+        let previous_has_managed_mutes = self.has_managed_mutes();
+        let previous_managed_session_count = self.muted_by_app.len();
         let apply_result = match audio.apply_mute_plan(
             &self.target_matcher,
             foreground_pid,
@@ -1944,6 +1946,14 @@ impl AppWindow {
 
         if self.apply_target_mute_updates(&apply_result.target_updates) {
             self.save_config();
+        }
+        if should_start_managed_mute_fast_retry_after_audio_update(
+            previous_has_managed_mutes,
+            self.has_managed_mutes(),
+            previous_managed_session_count,
+            self.muted_by_app.len(),
+        ) {
+            self.start_managed_mute_fast_retry();
         }
         self.apply_audio_update_result(apply_result.had_failures);
 

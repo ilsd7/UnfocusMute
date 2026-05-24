@@ -3,7 +3,7 @@ use crate::config::TargetProcess;
 use std::time::Instant;
 
 pub(super) const MANAGED_MUTE_FOREGROUND_RETRY_INTERVAL_MS: u32 = 100;
-pub(super) const MANAGED_MUTE_FOREGROUND_RETRY_TICKS: u8 = 20;
+pub(super) const MANAGED_MUTE_FOREGROUND_RETRY_TICKS: u8 = 120;
 
 pub(super) fn cached_foreground_process_name(
     cache: Option<&(u32, Option<String>)>,
@@ -35,6 +35,17 @@ pub(super) fn initial_managed_mute_fast_retry_count(targets: &[TargetProcess]) -
     } else {
         0
     }
+}
+
+pub(super) fn should_start_managed_mute_fast_retry_after_audio_update(
+    previous_has_managed_mutes: bool,
+    next_has_managed_mutes: bool,
+    previous_managed_session_count: usize,
+    next_managed_session_count: usize,
+) -> bool {
+    next_has_managed_mutes
+        && (!previous_has_managed_mutes
+            || next_managed_session_count > previous_managed_session_count)
 }
 
 fn audio_fallback_timer_needed(
@@ -158,6 +169,22 @@ mod tests {
             initial_managed_mute_fast_retry_count(&[target]),
             MANAGED_MUTE_FOREGROUND_RETRY_TICKS
         );
+    }
+
+    #[test]
+    fn managed_mute_fast_retry_restarts_for_new_managed_audio_session() {
+        assert!(should_start_managed_mute_fast_retry_after_audio_update(
+            true, true, 0, 1
+        ));
+        assert!(should_start_managed_mute_fast_retry_after_audio_update(
+            false, true, 0, 0
+        ));
+        assert!(!should_start_managed_mute_fast_retry_after_audio_update(
+            true, true, 1, 1
+        ));
+        assert!(!should_start_managed_mute_fast_retry_after_audio_update(
+            true, false, 1, 0
+        ));
     }
 
     #[test]
