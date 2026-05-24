@@ -71,6 +71,10 @@ pub(super) unsafe fn get_message(msg: &mut MSG) -> Result<bool> {
     }
 }
 
+fn marker_handle() -> HANDLE {
+    HANDLE(std::ptr::dangling_mut::<c_void>())
+}
+
 struct WindowDc {
     hwnd: HWND,
     hdc: HDC,
@@ -177,7 +181,7 @@ pub(super) unsafe fn create_primary_button(
             height,
             id,
         )?;
-        let _ = SetPropW(hwnd, w!("IsPrimaryButton"), Some(HANDLE(1 as *mut c_void)));
+        let _ = SetPropW(hwnd, w!("IsPrimaryButton"), Some(marker_handle()));
         install_button_hover_subclass(hwnd);
         Ok(hwnd)
     }
@@ -671,6 +675,187 @@ pub(super) fn utf16_code_unit_count(text: &str) -> usize {
     }
 }
 
+unsafe extern "system" fn button_hover_subclass_proc(
+    hwnd: HWND,
+    message: u32,
+    wparam: WPARAM,
+    lparam: LPARAM,
+    subclass_id: usize,
+    _ref_data: usize,
+) -> LRESULT {
+    match message {
+        WM_MOUSEMOVE => {
+            let handle = unsafe { GetPropW(hwnd, w!("ButtonHovered")) };
+            let hovered = !handle.0.is_null();
+            if !hovered {
+                let mut tme = TRACKMOUSEEVENT {
+                    cbSize: std::mem::size_of::<TRACKMOUSEEVENT>() as u32,
+                    dwFlags: windows::Win32::UI::Input::KeyboardAndMouse::TRACKMOUSEEVENT_FLAGS(
+                        TME_LEAVE,
+                    ),
+                    hwndTrack: hwnd,
+                    dwHoverTime: 0,
+                };
+                unsafe {
+                    let _ = TrackMouseEvent(&mut tme);
+                    let _ = SetPropW(hwnd, w!("ButtonHovered"), Some(marker_handle()));
+                    let _ = windows::Win32::Graphics::Gdi::RedrawWindow(
+                        Some(hwnd),
+                        None,
+                        None,
+                        windows::Win32::Graphics::Gdi::RDW_INVALIDATE
+                            | windows::Win32::Graphics::Gdi::RDW_UPDATENOW,
+                    );
+                }
+            }
+        }
+        WM_MOUSELEAVE => unsafe {
+            let _ = RemovePropW(hwnd, w!("ButtonHovered"));
+            let _ = windows::Win32::Graphics::Gdi::RedrawWindow(
+                Some(hwnd),
+                None,
+                None,
+                windows::Win32::Graphics::Gdi::RDW_INVALIDATE
+                    | windows::Win32::Graphics::Gdi::RDW_UPDATENOW,
+            );
+        },
+        WM_NCDESTROY => unsafe {
+            let _ = RemovePropW(hwnd, w!("ButtonHovered"));
+            let _ = RemovePropW(hwnd, w!("IsPrimaryButton"));
+            let _ = RemoveWindowSubclass(hwnd, Some(button_hover_subclass_proc), subclass_id);
+        },
+        _ => {}
+    }
+    unsafe { DefSubclassProc(hwnd, message, wparam, lparam) }
+}
+
+pub(super) unsafe fn install_button_hover_subclass(hwnd: HWND) {
+    unsafe {
+        let _ = SetWindowSubclass(hwnd, Some(button_hover_subclass_proc), 42, 0);
+    }
+}
+
+pub(super) fn default_button_message_result(
+    message: u32,
+    wparam: WPARAM,
+    default_button_id: &mut i32,
+) -> Option<LRESULT> {
+    match message {
+        DM_GETDEFID => {
+            let default_id = (*default_button_id as u32) & 0xffff;
+            Some(LRESULT(((DC_HASDEFID << 16) | default_id) as isize))
+        }
+        DM_SETDEFID => {
+            *default_button_id = (wparam.0 as u32 & 0xffff) as i32;
+            Some(LRESULT(1))
+        }
+        _ => None,
+    }
+}
+
+pub(super) unsafe fn draw_flat_button(draw: &DRAWITEMSTRUCT, font: HGDIOBJ) -> bool {
+    let hwnd = draw.hwndItem;
+    let hdc = draw.hDC;
+
+    let mut text_buffer = [0u16; 256];
+    let len = unsafe { GetWindowTextW(hwnd, &mut text_buffer) } as usize;
+
+    let pressed = (draw.itemState.0 & ODS_SELECTED.0) != 0;
+    let disabled = (draw.itemState.0 & ODS_DISABLED.0) != 0;
+    let focused = (draw.itemState.0 & ODS_FOCUS.0) != 0;
+    let hovered = unsafe { !GetPropW(hwnd, w!("ButtonHovered")).0.is_null() };
+    let is_primary = unsafe { !GetPropW(hwnd, w!("IsPrimaryButton")).0.is_null() };
+
+    let rgb = |r: u8, g: u8, b: u8| -> COLORREF {
+        COLORREF((r as u32) | ((g as u32) << 8) | ((b as u32) << 16))
+    };
+
+    let (bg_color, border_color, text_color) = if is_primary {
+        if disabled {
+            (rgb(248, 248, 250), rgb(229, 229, 234), rgb(160, 160, 166))
+        } else if pressed {
+            (rgb(45, 45, 48), rgb(45, 45, 48), rgb(255, 255, 255))
+        } else if hovered {
+            (rgb(57, 57, 60), rgb(57, 57, 60), rgb(255, 255, 255))
+        } else {
+            (rgb(29, 29, 31), rgb(29, 29, 31), rgb(255, 255, 255))
+        }
+    } else {
+        if disabled {
+            (rgb(250, 250, 252), rgb(229, 229, 234), rgb(160, 160, 166))
+        } else if pressed {
+            (rgb(238, 238, 240), rgb(218, 220, 224), rgb(29, 29, 31))
+        } else if hovered {
+            (rgb(248, 248, 250), rgb(218, 220, 224), rgb(29, 29, 31))
+        } else {
+            (rgb(255, 255, 255), rgb(218, 220, 224), rgb(29, 29, 31))
+        }
+    };
+
+    unsafe {
+        let clean_brush = CreateSolidBrush(rgb(245, 245, 247));
+        let _ = FillRect(hdc, &draw.rcItem, clean_brush);
+        let _ = DeleteObject(clean_brush.into());
+
+        let r = px(6);
+        let horizontal_inset = px(1);
+        let top_inset = px(2);
+        let bottom_inset = px(1);
+        let mut button_rect = draw.rcItem;
+        button_rect.left += horizontal_inset;
+        button_rect.top += top_inset;
+        button_rect.right -= horizontal_inset;
+        button_rect.bottom -= bottom_inset;
+
+        let brush = CreateSolidBrush(bg_color);
+        let pen = CreatePen(PS_SOLID, px(1), border_color);
+
+        let old_brush = SelectObject(hdc, brush.into());
+        let old_pen = SelectObject(hdc, pen.into());
+
+        let _ = RoundRect(
+            hdc,
+            button_rect.left,
+            button_rect.top,
+            button_rect.right,
+            button_rect.bottom,
+            r * 2,
+            r * 2,
+        );
+
+        let _ = SelectObject(hdc, old_brush);
+        let _ = SelectObject(hdc, old_pen);
+        let _ = DeleteObject(brush.into());
+        let _ = DeleteObject(pen.into());
+
+        let old_font = SelectObject(hdc, font);
+        let _ = SetBkMode(hdc, TRANSPARENT);
+        let _ = SetTextColor(hdc, text_color);
+
+        let mut rect = button_rect;
+        let _ = DrawTextW(
+            hdc,
+            &mut text_buffer[..len],
+            &mut rect,
+            DT_CENTER | DT_SINGLELINE | DT_VCENTER | DT_NOPREFIX,
+        );
+
+        let _ = SelectObject(hdc, old_font);
+
+        if focused && !disabled {
+            let mut focus_rect = button_rect;
+            let inset = px(4);
+            focus_rect.left += inset;
+            focus_rect.top += inset;
+            focus_rect.right -= inset;
+            focus_rect.bottom -= inset;
+            let _ = DrawFocusRect(hdc, &focus_rect);
+        }
+    }
+
+    true
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -850,185 +1035,4 @@ mod tests {
         assert_eq!(result.0, 1);
         assert_eq!(default_button_id, 42);
     }
-}
-
-unsafe extern "system" fn button_hover_subclass_proc(
-    hwnd: HWND,
-    message: u32,
-    wparam: WPARAM,
-    lparam: LPARAM,
-    subclass_id: usize,
-    _ref_data: usize,
-) -> LRESULT {
-    match message {
-        WM_MOUSEMOVE => {
-            let handle = unsafe { GetPropW(hwnd, w!("ButtonHovered")) };
-            let hovered = !handle.0.is_null();
-            if !hovered {
-                let mut tme = TRACKMOUSEEVENT {
-                    cbSize: std::mem::size_of::<TRACKMOUSEEVENT>() as u32,
-                    dwFlags: windows::Win32::UI::Input::KeyboardAndMouse::TRACKMOUSEEVENT_FLAGS(
-                        TME_LEAVE,
-                    ),
-                    hwndTrack: hwnd,
-                    dwHoverTime: 0,
-                };
-                unsafe {
-                    let _ = TrackMouseEvent(&mut tme);
-                    let _ = SetPropW(hwnd, w!("ButtonHovered"), Some(HANDLE(1 as *mut c_void)));
-                    let _ = windows::Win32::Graphics::Gdi::RedrawWindow(
-                        Some(hwnd),
-                        None,
-                        None,
-                        windows::Win32::Graphics::Gdi::RDW_INVALIDATE
-                            | windows::Win32::Graphics::Gdi::RDW_UPDATENOW,
-                    );
-                }
-            }
-        }
-        WM_MOUSELEAVE => unsafe {
-            let _ = RemovePropW(hwnd, w!("ButtonHovered"));
-            let _ = windows::Win32::Graphics::Gdi::RedrawWindow(
-                Some(hwnd),
-                None,
-                None,
-                windows::Win32::Graphics::Gdi::RDW_INVALIDATE
-                    | windows::Win32::Graphics::Gdi::RDW_UPDATENOW,
-            );
-        },
-        WM_NCDESTROY => unsafe {
-            let _ = RemovePropW(hwnd, w!("ButtonHovered"));
-            let _ = RemovePropW(hwnd, w!("IsPrimaryButton"));
-            let _ = RemoveWindowSubclass(hwnd, Some(button_hover_subclass_proc), subclass_id);
-        },
-        _ => {}
-    }
-    unsafe { DefSubclassProc(hwnd, message, wparam, lparam) }
-}
-
-pub(super) unsafe fn install_button_hover_subclass(hwnd: HWND) {
-    unsafe {
-        let _ = SetWindowSubclass(hwnd, Some(button_hover_subclass_proc), 42, 0);
-    }
-}
-
-pub(super) fn default_button_message_result(
-    message: u32,
-    wparam: WPARAM,
-    default_button_id: &mut i32,
-) -> Option<LRESULT> {
-    match message {
-        DM_GETDEFID => {
-            let default_id = (*default_button_id as u32) & 0xffff;
-            Some(LRESULT(((DC_HASDEFID << 16) | default_id) as isize))
-        }
-        DM_SETDEFID => {
-            *default_button_id = (wparam.0 as u32 & 0xffff) as i32;
-            Some(LRESULT(1))
-        }
-        _ => None,
-    }
-}
-
-pub(super) unsafe fn draw_flat_button(draw: &DRAWITEMSTRUCT, font: HGDIOBJ) -> bool {
-    let hwnd = draw.hwndItem;
-    let hdc = draw.hDC;
-
-    let mut text_buffer = [0u16; 256];
-    let len = unsafe { GetWindowTextW(hwnd, &mut text_buffer) } as usize;
-
-    let pressed = (draw.itemState.0 & ODS_SELECTED.0) != 0;
-    let disabled = (draw.itemState.0 & ODS_DISABLED.0) != 0;
-    let focused = (draw.itemState.0 & ODS_FOCUS.0) != 0;
-    let hovered = unsafe { !GetPropW(hwnd, w!("ButtonHovered")).0.is_null() };
-    let is_primary = unsafe { !GetPropW(hwnd, w!("IsPrimaryButton")).0.is_null() };
-
-    let rgb = |r: u8, g: u8, b: u8| -> COLORREF {
-        COLORREF((r as u32) | ((g as u32) << 8) | ((b as u32) << 16))
-    };
-
-    let (bg_color, border_color, text_color) = if is_primary {
-        if disabled {
-            (rgb(248, 248, 250), rgb(229, 229, 234), rgb(160, 160, 166))
-        } else if pressed {
-            (rgb(45, 45, 48), rgb(45, 45, 48), rgb(255, 255, 255))
-        } else if hovered {
-            (rgb(57, 57, 60), rgb(57, 57, 60), rgb(255, 255, 255))
-        } else {
-            (rgb(29, 29, 31), rgb(29, 29, 31), rgb(255, 255, 255))
-        }
-    } else {
-        if disabled {
-            (rgb(250, 250, 252), rgb(229, 229, 234), rgb(160, 160, 166))
-        } else if pressed {
-            (rgb(238, 238, 240), rgb(218, 220, 224), rgb(29, 29, 31))
-        } else if hovered {
-            (rgb(248, 248, 250), rgb(218, 220, 224), rgb(29, 29, 31))
-        } else {
-            (rgb(255, 255, 255), rgb(218, 220, 224), rgb(29, 29, 31))
-        }
-    };
-
-    unsafe {
-        let clean_brush = CreateSolidBrush(rgb(245, 245, 247));
-        let _ = FillRect(hdc, &draw.rcItem, clean_brush);
-        let _ = DeleteObject(clean_brush.into());
-
-        let r = px(6);
-        let horizontal_inset = px(1);
-        let top_inset = px(2);
-        let bottom_inset = px(1);
-        let mut button_rect = draw.rcItem;
-        button_rect.left += horizontal_inset;
-        button_rect.top += top_inset;
-        button_rect.right -= horizontal_inset;
-        button_rect.bottom -= bottom_inset;
-
-        let brush = CreateSolidBrush(bg_color);
-        let pen = CreatePen(PS_SOLID, px(1), border_color);
-
-        let old_brush = SelectObject(hdc, brush.into());
-        let old_pen = SelectObject(hdc, pen.into());
-
-        let _ = RoundRect(
-            hdc,
-            button_rect.left,
-            button_rect.top,
-            button_rect.right,
-            button_rect.bottom,
-            r * 2,
-            r * 2,
-        );
-
-        let _ = SelectObject(hdc, old_brush);
-        let _ = SelectObject(hdc, old_pen);
-        let _ = DeleteObject(brush.into());
-        let _ = DeleteObject(pen.into());
-
-        let old_font = SelectObject(hdc, font);
-        let _ = SetBkMode(hdc, TRANSPARENT);
-        let _ = SetTextColor(hdc, text_color);
-
-        let mut rect = button_rect;
-        let _ = DrawTextW(
-            hdc,
-            &mut text_buffer[..len],
-            &mut rect,
-            DT_CENTER | DT_SINGLELINE | DT_VCENTER | DT_NOPREFIX,
-        );
-
-        let _ = SelectObject(hdc, old_font);
-
-        if focused && !disabled {
-            let mut focus_rect = button_rect;
-            let inset = px(4);
-            focus_rect.left += inset;
-            focus_rect.top += inset;
-            focus_rect.right -= inset;
-            focus_rect.bottom -= inset;
-            let _ = DrawFocusRect(hdc, &focus_rect);
-        }
-    }
-
-    true
 }
