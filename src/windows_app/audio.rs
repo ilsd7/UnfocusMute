@@ -811,6 +811,13 @@ fn apply_plan_to_session(
     if desired_mute {
         result.keep_active_session(session, key);
     }
+    if should_wait_for_observed_persisted_target_unmute(
+        desired_mute,
+        managed_session,
+        has_managed_target,
+    ) {
+        return;
+    }
     set_target_states_for_session(
         result,
         target_matches,
@@ -849,6 +856,14 @@ fn should_defer_persisted_target_unmute(
     !desired_mute
         && untrusted_persisted_target_only(managed_session, has_managed_target)
         && !allow_unmuted_target_update
+}
+
+fn should_wait_for_observed_persisted_target_unmute(
+    desired_mute: bool,
+    managed_session: bool,
+    has_managed_target: bool,
+) -> bool {
+    !desired_mute && untrusted_persisted_target_only(managed_session, has_managed_target)
 }
 
 fn clear_untrusted_persisted_target_state(
@@ -1613,6 +1628,22 @@ mod tests {
         ));
         assert!(!should_defer_persisted_target_unmute(
             false, false, false, false
+        ));
+    }
+
+    #[test]
+    fn persisted_target_state_clears_only_after_unmute_is_observed() {
+        assert!(should_wait_for_observed_persisted_target_unmute(
+            false, false, true
+        ));
+        assert!(!should_wait_for_observed_persisted_target_unmute(
+            false, true, true
+        ));
+        assert!(!should_wait_for_observed_persisted_target_unmute(
+            true, false, true
+        ));
+        assert!(!should_wait_for_observed_persisted_target_unmute(
+            false, false, false
         ));
     }
 

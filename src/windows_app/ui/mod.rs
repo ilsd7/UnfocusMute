@@ -1885,6 +1885,7 @@ impl AppWindow {
                     .then(|| self.recent_foreground_pid())
                     .flatten();
                 if session_changed {
+                    self.clear_foreground_process_cache();
                     self.start_managed_mute_fast_retry();
                 }
                 if config_changed || session_changed {
@@ -1892,6 +1893,7 @@ impl AppWindow {
                 }
             }
             AUDIO_FALLBACK_TIMER_ID => {
+                self.clear_foreground_process_cache();
                 self.consume_managed_mute_fast_retry();
                 self.tick();
             }
