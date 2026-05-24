@@ -4,9 +4,8 @@ use super::constants::{
 };
 use super::theme::{OwnedBrush, UiFont, px, ui_font_point_size};
 use super::win32::{
-    WindowClassRegistration, create_button, create_control, create_primary_button,
-    default_button_message_result, get_message, hiword, loword, measure_text_width, move_window,
-    to_wide, window_text_into,
+    WindowClassRegistration, create_button, create_control, default_button_message_result,
+    get_message, hiword, loword, measure_text_width, move_window, to_wide, window_text_into,
 };
 use super::window_position::centered_position;
 use crate::config::{MAX_TARGET_NOTE_CHARS, normalize_target_note};
@@ -155,7 +154,7 @@ impl<'a> TargetNotePrompt<'a> {
             )?
         };
         self.save_button = unsafe {
-            create_primary_button(
+            create_button(
                 hwnd,
                 instance,
                 strings.target_note_save,

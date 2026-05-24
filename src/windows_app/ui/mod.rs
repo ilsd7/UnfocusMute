@@ -1517,9 +1517,9 @@ impl AppWindow {
 
     fn layout_footer_buttons(&self, content_right: i32) {
         let gap = 12;
-        let quit_width = self.button_width(self.strings.quit, 112, 180);
-        let pause_width = self.button_width(self.pause_button_text(), 120, 220);
-        let hide_width = self.button_width(self.strings.hide, 118, 220);
+        let quit_width = self.footer_button_width(self.strings.quit, 78, 150);
+        let pause_width = self.footer_button_width(self.pause_button_text(), 98, 190);
+        let hide_width = self.footer_button_width(self.strings.hide, 110, 300);
         let total_width = quit_width + pause_width + hide_width + gap * 2;
         let quit_x = content_right - total_width;
 
@@ -1625,6 +1625,10 @@ impl AppWindow {
 
     fn button_width(&self, text: &str, min_width: i32, max_width: i32) -> i32 {
         (self.text_width(text) + 44).clamp(min_width, max_width)
+    }
+
+    fn footer_button_width(&self, text: &str, min_width: i32, max_width: i32) -> i32 {
+        (self.text_width(text) + 34).clamp(min_width, max_width)
     }
 
     fn text_width(&self, text: &str) -> i32 {
