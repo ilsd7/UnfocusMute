@@ -105,6 +105,10 @@ pub(super) fn should_release_idle_audio_while_paused(
     paused && !has_managed_mutes
 }
 
+pub(super) fn should_reset_audio_controller_after_update(had_failures: bool) -> bool {
+    had_failures
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -239,5 +243,11 @@ mod tests {
         assert!(should_release_idle_audio_while_paused(true, false));
         assert!(!should_release_idle_audio_while_paused(true, true));
         assert!(!should_release_idle_audio_while_paused(false, false));
+    }
+
+    #[test]
+    fn audio_controller_is_reset_after_failed_update() {
+        assert!(should_reset_audio_controller_after_update(true));
+        assert!(!should_reset_audio_controller_after_update(false));
     }
 }

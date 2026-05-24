@@ -95,7 +95,8 @@ use runtime_logic::{
     foreground_process_cache_needs_refresh, initial_managed_mute_fast_retry_count,
     initial_process_refresh_attempt, process_refresh_is_stale, replace_text_if_changed,
     should_hide_to_tray, should_release_idle_audio_while_paused,
-    should_retry_tray_icon_before_hide, should_start_managed_mute_fast_retry_after_audio_update,
+    should_reset_audio_controller_after_update, should_retry_tray_icon_before_hide,
+    should_start_managed_mute_fast_retry_after_audio_update,
 };
 use settings_window::{SettingsPreferences, prompt_settings};
 use startup_sync::{
@@ -1968,6 +1969,9 @@ impl AppWindow {
             self.start_managed_mute_fast_retry();
         }
         self.apply_audio_update_result(apply_result.had_failures);
+        if should_reset_audio_controller_after_update(apply_result.had_failures) {
+            self.audio = None;
+        }
 
         self.sync_target_mute_indicators();
         self.sync_audio_fallback_timer();

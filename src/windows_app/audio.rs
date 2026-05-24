@@ -713,35 +713,29 @@ fn apply_plan_to_session(
         }
         return;
     };
-    let muted = match session_muted(&volume) {
-        Ok(muted) => muted,
-        Err(_) => {
-            result.had_failures = true;
-            if managed_session {
-                result.keep_active_session(session, key);
-                set_target_states_for_session(result, target_matches, target_identity, true, true);
+    let mute = match session_muted(&volume) {
+        Ok(muted) => {
+            if desired_mute == muted {
+                if managed {
+                    if desired_mute {
+                        result.keep_active_session(session, key);
+                    }
+                    set_target_states_for_session(
+                        result,
+                        target_matches,
+                        target_identity,
+                        desired_mute,
+                        allow_unmuted_target_update,
+                    );
+                }
+                return;
             }
-            return;
+            desired_mute
         }
+        Err(_) => desired_mute,
     };
 
-    if desired_mute == muted {
-        if managed {
-            if desired_mute {
-                result.keep_active_session(session, key);
-            }
-            set_target_states_for_session(
-                result,
-                target_matches,
-                target_identity,
-                desired_mute,
-                allow_unmuted_target_update,
-            );
-        }
-        return;
-    }
-
-    if unsafe { volume.SetMute(desired_mute, std::ptr::null()) }.is_err() {
+    if unsafe { volume.SetMute(mute, std::ptr::null()) }.is_err() {
         result.had_failures = true;
         if managed {
             result.keep_active_session(session, key);
@@ -750,14 +744,14 @@ fn apply_plan_to_session(
         return;
     }
 
-    if desired_mute {
+    if mute {
         result.keep_active_session(session, key);
     }
     set_target_states_for_session(
         result,
         target_matches,
         target_identity,
-        desired_mute,
+        mute,
         allow_unmuted_target_update,
     );
 }
