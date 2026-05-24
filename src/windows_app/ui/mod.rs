@@ -3460,7 +3460,7 @@ impl AppWindow {
 
         let text_width = self.text_width(status);
         let status_height = 22;
-        let status_right = draw.rcItem.right - px(4);
+        let status_right = draw.rcItem.right - px(1);
         let text_rect = RECT {
             left: status_right - px(text_width),
             top: draw.rcItem.top,
