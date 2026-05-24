@@ -10,8 +10,9 @@ use std::sync::{
 };
 use windows::Win32::Foundation::PROPERTYKEY;
 use windows::Win32::Media::Audio::{
-    DEVICE_STATE, DEVICE_STATE_ACTIVE, EDataFlow, ERole, IAudioSessionControl2,
-    IAudioSessionManager2, IMMDevice, IMMDeviceEnumerator, IMMNotificationClient,
+    DEVICE_STATE, DEVICE_STATE_ACTIVE, EDataFlow, ERole, IAudioSessionControl,
+    IAudioSessionControl2, IAudioSessionManager2, IAudioSessionNotification,
+    IAudioSessionNotification_Impl, IMMDevice, IMMDeviceEnumerator, IMMNotificationClient,
     IMMNotificationClient_Impl, ISimpleAudioVolume, MMDeviceEnumerator, eMultimedia, eRender,
 };
 use windows::Win32::System::Com::{CLSCTX_ALL, CoCreateInstance, CoTaskMemFree};
@@ -26,6 +27,7 @@ pub struct AudioController {
     managers: Vec<IAudioSessionManager2>,
     endpoint_ids: Vec<String>,
     endpoint_notification: Option<EndpointNotification>,
+    session_notification: Option<SessionNotification>,
 }
 
 pub struct MuteApplyResult {
@@ -50,6 +52,7 @@ impl AudioController {
             let enumerator = device_enumerator()?;
             let managers = active_render_session_managers(&enumerator)?;
             let endpoint_notification = EndpointNotification::new(&enumerator).ok();
+            let session_notification = SessionNotification::new(&managers).ok();
             let endpoint_ids =
                 endpoint_ids_for_change_detection(endpoint_notification.is_some(), || {
                     active_render_endpoint_ids(&enumerator)
@@ -59,6 +62,7 @@ impl AudioController {
                 managers,
                 endpoint_ids,
                 endpoint_notification,
+                session_notification,
             })
         }
     }
@@ -70,6 +74,12 @@ impl AudioController {
             unsafe { active_render_endpoint_ids(&self.enumerator) }
                 .map_or(true, |endpoint_ids| endpoint_ids != self.endpoint_ids)
         }
+    }
+
+    pub fn take_session_changed(&self) -> bool {
+        self.session_notification
+            .as_ref()
+            .is_some_and(SessionNotification::take_changed)
     }
 
     pub fn unmute_sessions(
@@ -1054,6 +1064,67 @@ impl IMMNotificationClient_Impl for EndpointNotificationClient_Impl {
         &self,
         _pwstrdeviceid: &PCWSTR,
         _key: &PROPERTYKEY,
+    ) -> windows::core::Result<()> {
+        self.changed.store(true, Ordering::Relaxed);
+        Ok(())
+    }
+}
+
+struct SessionNotification {
+    managers: Vec<IAudioSessionManager2>,
+    client: IAudioSessionNotification,
+    changed: Arc<AtomicBool>,
+}
+
+impl SessionNotification {
+    unsafe fn new(managers: &[IAudioSessionManager2]) -> Result<Self> {
+        let changed = Arc::new(AtomicBool::new(false));
+        let client: IAudioSessionNotification = SessionNotificationClient {
+            changed: Arc::clone(&changed),
+        }
+        .into();
+        let mut notification = Self {
+            managers: Vec::with_capacity(managers.len()),
+            client,
+            changed,
+        };
+
+        for manager in managers {
+            unsafe { manager.GetSessionEnumerator() }
+                .context("initialize audio session notification")?;
+            unsafe { manager.RegisterSessionNotification(&notification.client) }
+                .context("register audio session notification")?;
+            notification.managers.push(manager.clone());
+        }
+
+        Ok(notification)
+    }
+
+    fn take_changed(&self) -> bool {
+        self.changed.swap(false, Ordering::Relaxed)
+    }
+}
+
+impl Drop for SessionNotification {
+    fn drop(&mut self) {
+        for manager in &self.managers {
+            unsafe {
+                let _ = manager.UnregisterSessionNotification(&self.client);
+            }
+        }
+    }
+}
+
+#[implement(IAudioSessionNotification)]
+struct SessionNotificationClient {
+    changed: Arc<AtomicBool>,
+}
+
+#[allow(non_snake_case)]
+impl IAudioSessionNotification_Impl for SessionNotificationClient_Impl {
+    fn OnSessionCreated(
+        &self,
+        _newsession: windows_core::Ref<'_, IAudioSessionControl>,
     ) -> windows::core::Result<()> {
         self.changed.store(true, Ordering::Relaxed);
         Ok(())

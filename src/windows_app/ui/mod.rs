@@ -1861,10 +1861,19 @@ impl AppWindow {
     fn timer_tick(&mut self, timer_id: usize) {
         self.retry_missing_timers();
         match timer_id {
-            CONFIG_RELOAD_TIMER_ID if self.reload_config_if_due().target_matcher_changed => {
-                self.tick()
+            CONFIG_RELOAD_TIMER_ID => {
+                let config_changed = self.reload_config_if_due().target_matcher_changed;
+                let session_changed = self
+                    .audio
+                    .as_ref()
+                    .is_some_and(|audio| audio.take_session_changed());
+                if session_changed {
+                    self.start_managed_mute_fast_retry();
+                }
+                if config_changed || session_changed {
+                    self.tick();
+                }
             }
-            CONFIG_RELOAD_TIMER_ID => {}
             AUDIO_FALLBACK_TIMER_ID => {
                 self.consume_managed_mute_fast_retry();
                 self.tick();
