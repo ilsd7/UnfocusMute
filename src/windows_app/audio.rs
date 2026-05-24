@@ -173,27 +173,9 @@ impl AudioController {
                     }
                     SessionVisit::Unresolved(session) => {
                         if lookup.may_include_pid(session.pid) {
-                            match apply_unmute_to_unresolved_session(
-                                &session,
-                                managed_muted_sessions,
-                            ) {
-                                Ok(restored_sessions) => {
-                                    apply_result.set_target_states_for_session_keys(
-                                        &target_lookup,
-                                        &restored_sessions,
-                                        false,
-                                    );
-                                }
-                                Err(failed_sessions) => {
-                                    apply_result.keep_active_session_keys(&failed_sessions);
-                                    apply_result.set_target_states_for_session_keys(
-                                        &target_lookup,
-                                        &failed_sessions,
-                                        true,
-                                    );
-                                    apply_result.had_failures = true;
-                                }
-                            }
+                            apply_result
+                                .keep_active_sessions_for_pid(session.pid, managed_muted_sessions);
+                            apply_result.had_failures = true;
                         } else if unresolved_unmanaged_pid_is_failure(
                             needs_all_session_process_names,
                             matcher,
@@ -355,13 +337,14 @@ impl PlanApplyResult {
             .push(key.unwrap_or_else(|| session.key()));
     }
 
-    fn keep_active_session_keys(&mut self, session_keys: &HashSet<AudioSessionKey>) {
-        if self.active_managed_sessions.capacity() == 0 {
-            self.active_managed_sessions
-                .reserve(session_keys.len().max(LINEAR_MANAGED_SESSION_LIMIT));
+    fn keep_active_sessions_for_pid(&mut self, pid: u32, session_keys: &HashSet<AudioSessionKey>) {
+        for key in session_keys.iter().filter(|key| key.pid == pid) {
+            if self.active_managed_sessions.capacity() == 0 {
+                self.active_managed_sessions
+                    .reserve(LINEAR_MANAGED_SESSION_LIMIT);
+            }
+            self.active_managed_sessions.push(key.clone());
         }
-        self.active_managed_sessions
-            .extend(session_keys.iter().cloned());
     }
 
     fn keep_active_sessions(&mut self, session_keys: &HashSet<AudioSessionKey>) {
@@ -387,23 +370,6 @@ impl PlanApplyResult {
                     muted,
                 },
             ),
-        }
-    }
-
-    fn set_target_states_for_session_keys(
-        &mut self,
-        target_lookup: &ManagedTargetLookup<'_>,
-        session_keys: &HashSet<AudioSessionKey>,
-        muted: bool,
-    ) {
-        for key in session_keys {
-            set_target_states_for_session(
-                self,
-                target_lookup.matching_sessions(&key.process_name, key.pid),
-                None,
-                muted,
-                true,
-            );
         }
     }
 }
