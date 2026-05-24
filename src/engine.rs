@@ -325,6 +325,7 @@ impl<'a> MutePlanner<'a> {
         (should_mute != muted).then_some(should_mute)
     }
 
+    #[cfg(test)]
     pub(crate) fn desired_mute_with_match(
         &self,
         match_kind: Option<TargetMatchKind>,
@@ -332,21 +333,41 @@ impl<'a> MutePlanner<'a> {
         pid: u32,
         managed: bool,
     ) -> Option<bool> {
+        self.desired_mute_with_foreground(
+            match_kind,
+            managed,
+            self.session_is_foreground(process_name, pid),
+        )
+    }
+
+    pub(crate) fn desired_mute_with_foreground(
+        &self,
+        match_kind: Option<TargetMatchKind>,
+        managed: bool,
+        session_is_foreground: bool,
+    ) -> Option<bool> {
         if match_kind.is_none() && !managed {
             return None;
         }
 
         let should_mute = match match_kind {
-            Some(TargetMatchKind::ProcessName | TargetMatchKind::Pid) => {
-                self.foreground_pid != Some(pid)
-                    && self.foreground_process_name.as_deref() != Some(process_name)
-            }
+            Some(TargetMatchKind::ProcessName | TargetMatchKind::Pid) => !session_is_foreground,
             None => false,
         };
 
         (should_mute || managed).then_some(should_mute)
     }
 
+    pub(crate) fn foreground_pid(&self) -> Option<u32> {
+        self.foreground_pid
+    }
+
+    pub(crate) fn session_is_foreground(&self, process_name: &str, pid: u32) -> bool {
+        self.foreground_pid == Some(pid)
+            || self.foreground_process_name.as_deref() == Some(process_name)
+    }
+
+    #[cfg(test)]
     pub(crate) fn can_clear_managed_target_state(
         &self,
         match_kind: Option<TargetMatchKind>,
@@ -355,9 +376,18 @@ impl<'a> MutePlanner<'a> {
     ) -> bool {
         // Some apps expose audio through a helper PID. Use the same exe-name
         // fallback as desired_mute so restarted sessions can be restored.
-        match_kind.is_none()
-            || self.foreground_pid == Some(session_pid)
-            || self.foreground_process_name.as_deref() == Some(process_name)
+        self.can_clear_managed_target_state_with_foreground(
+            match_kind,
+            self.session_is_foreground(process_name, session_pid),
+        )
+    }
+
+    pub(crate) fn can_clear_managed_target_state_with_foreground(
+        &self,
+        match_kind: Option<TargetMatchKind>,
+        session_is_foreground: bool,
+    ) -> bool {
+        match_kind.is_none() || session_is_foreground
     }
 }
 
@@ -509,6 +539,17 @@ mod tests {
 
         assert_eq!(
             planner.desired_mute_with_match(None, "game.exe", 10, true),
+            Some(false)
+        );
+    }
+
+    #[test]
+    fn desired_mute_allows_external_foreground_match() {
+        let matcher = TargetMatcher::new(&[TargetProcess::new("game.exe").unwrap()]);
+        let planner = MutePlanner::new(&matcher, Some(20), Some("launcher.exe"));
+
+        assert_eq!(
+            planner.desired_mute_with_foreground(planner.match_kind("game.exe", 10), true, true,),
             Some(false)
         );
     }

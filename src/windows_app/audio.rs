@@ -714,15 +714,16 @@ fn apply_plan_to_session(
         false
     };
     let managed = managed_session || has_managed_target;
+    let session_is_foreground = session_is_foreground(planner, session);
     let allow_unmuted_target_update =
-        planner.can_clear_managed_target_state(match_kind, session.process_name, session.pid);
+        planner.can_clear_managed_target_state_with_foreground(match_kind, session_is_foreground);
 
     if match_kind.is_none() && !managed {
         return;
     }
 
     let Some(desired_mute) =
-        planner.desired_mute_with_match(match_kind, session.process_name, session.pid, managed)
+        planner.desired_mute_with_foreground(match_kind, managed, session_is_foreground)
     else {
         return;
     };
@@ -807,6 +808,13 @@ fn apply_plan_to_session(
         desired_mute,
         allow_unmuted_target_update,
     );
+}
+
+fn session_is_foreground(planner: &MutePlanner<'_>, session: &AudioSessionControl<'_>) -> bool {
+    planner.session_is_foreground(session.process_name, session.pid)
+        || planner
+            .foreground_pid()
+            .is_some_and(|pid| process::processes_are_related(pid, session.pid))
 }
 
 fn untrusted_persisted_target_only(managed_session: bool, has_managed_target: bool) -> bool {
