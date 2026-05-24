@@ -358,10 +358,6 @@ impl<'a> MutePlanner<'a> {
         (should_mute || managed).then_some(should_mute)
     }
 
-    pub(crate) fn foreground_pid(&self) -> Option<u32> {
-        self.foreground_pid
-    }
-
     pub(crate) fn session_is_foreground(&self, process_name: &str, pid: u32) -> bool {
         self.foreground_pid == Some(pid)
             || self.foreground_process_name.as_deref() == Some(process_name)

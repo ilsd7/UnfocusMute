@@ -96,7 +96,6 @@ use runtime_logic::{
     initial_process_refresh_attempt, process_refresh_is_stale, replace_text_if_changed,
     should_hide_to_tray, should_release_idle_audio_while_paused,
     should_reset_audio_controller_after_update, should_retry_tray_icon_before_hide,
-    should_start_managed_mute_fast_retry_after_audio_update,
 };
 use settings_window::{SettingsPreferences, prompt_settings};
 use startup_sync::{
@@ -1863,20 +1862,10 @@ impl AppWindow {
     fn timer_tick(&mut self, timer_id: usize) {
         self.retry_missing_timers();
         match timer_id {
-            CONFIG_RELOAD_TIMER_ID => {
-                let config_changed = self.reload_config_if_due().target_matcher_changed;
-                let session_changed = self
-                    .audio
-                    .as_ref()
-                    .is_some_and(|audio| audio.take_session_changed());
-                if session_changed {
-                    self.clear_foreground_process_cache();
-                    self.start_managed_mute_fast_retry();
-                }
-                if config_changed || session_changed {
-                    self.tick();
-                }
+            CONFIG_RELOAD_TIMER_ID if self.reload_config_if_due().target_matcher_changed => {
+                self.tick()
             }
+            CONFIG_RELOAD_TIMER_ID => {}
             AUDIO_FALLBACK_TIMER_ID => {
                 self.clear_foreground_process_cache();
                 self.consume_managed_mute_fast_retry();
@@ -1937,8 +1926,6 @@ impl AppWindow {
         } else {
             None
         };
-        let previous_has_managed_mutes = self.has_managed_mutes();
-        let previous_managed_session_count = self.muted_by_app.len();
         let apply_result = match audio.apply_mute_plan(
             &self.target_matcher,
             foreground_pid,
@@ -1959,14 +1946,6 @@ impl AppWindow {
 
         if self.apply_target_mute_updates(&apply_result.target_updates) {
             self.save_config();
-        }
-        if should_start_managed_mute_fast_retry_after_audio_update(
-            previous_has_managed_mutes,
-            self.has_managed_mutes(),
-            previous_managed_session_count,
-            self.muted_by_app.len(),
-        ) {
-            self.start_managed_mute_fast_retry();
         }
         self.apply_audio_update_result(apply_result.had_failures);
         if should_reset_audio_controller_after_update(apply_result.had_failures) {

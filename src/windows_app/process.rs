@@ -383,41 +383,6 @@ pub fn process_name(pid: u32) -> Option<String> {
     process_image_name(pid).or_else(|| process_name_from_snapshot(pid))
 }
 
-pub fn processes_are_related(left_pid: u32, right_pid: u32) -> bool {
-    if left_pid == right_pid {
-        return true;
-    }
-
-    let mut left_parent = None;
-    let mut right_parent = None;
-    if !visit_process_snapshot_entries(|entry| {
-        if entry.th32ProcessID == left_pid {
-            left_parent = non_zero_parent_pid(entry.th32ParentProcessID);
-        }
-        if entry.th32ProcessID == right_pid {
-            right_parent = non_zero_parent_pid(entry.th32ParentProcessID);
-        }
-        left_parent.is_none() || right_parent.is_none()
-    }) {
-        return false;
-    }
-
-    parent_pids_are_related(left_pid, right_pid, left_parent, right_parent)
-}
-
-fn non_zero_parent_pid(pid: u32) -> Option<u32> {
-    (pid != 0).then_some(pid)
-}
-
-fn parent_pids_are_related(
-    left_pid: u32,
-    right_pid: u32,
-    left_parent: Option<u32>,
-    right_parent: Option<u32>,
-) -> bool {
-    left_parent == Some(right_pid) || right_parent == Some(left_pid)
-}
-
 fn process_image_name(pid: u32) -> Option<String> {
     unsafe {
         let handle = OwnedHandle(OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, false, pid).ok()?);
@@ -666,15 +631,6 @@ mod tests {
         assert!(!process_snapshot_finished(HRESULT::from_win32(
             ERROR_INSUFFICIENT_BUFFER.0
         )));
-    }
-
-    #[test]
-    fn parent_pid_relationship_matches_process_families() {
-        assert!(parent_pids_are_related(10, 20, Some(1), Some(10)));
-        assert!(parent_pids_are_related(10, 20, Some(20), Some(1)));
-        assert!(!parent_pids_are_related(10, 20, Some(1), Some(1)));
-        assert!(!parent_pids_are_related(10, 20, None, Some(1)));
-        assert!(!parent_pids_are_related(10, 20, Some(1), Some(2)));
     }
 
     #[test]
