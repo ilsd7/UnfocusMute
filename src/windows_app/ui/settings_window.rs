@@ -46,6 +46,7 @@ const SETTINGS_WINDOW_STYLE: WINDOW_STYLE =
 const SETTINGS_WINDOW_WIDTH: i32 = 370;
 const SETTINGS_WINDOW_HEIGHT: i32 = 344;
 const SETTINGS_MARGIN: i32 = 24;
+const SETTINGS_CONTENT_X: i32 = SETTINGS_MARGIN - 3;
 const SETTINGS_CONTENT_WIDTH: i32 = SETTINGS_WINDOW_WIDTH - SETTINGS_MARGIN * 2;
 const SETTINGS_BEHAVIOR_Y: i32 = 16;
 const SETTINGS_CHECK_1_Y: i32 = 44;
@@ -181,7 +182,7 @@ impl SettingsWindow {
                 strings.settings_behavior,
                 child | SS_ENDELLIPSIS_STYLE,
                 WINDOW_EX_STYLE(0),
-                SETTINGS_MARGIN,
+                SETTINGS_CONTENT_X,
                 SETTINGS_BEHAVIOR_Y,
                 SETTINGS_CONTENT_WIDTH,
                 22,
@@ -193,7 +194,7 @@ impl SettingsWindow {
                 hwnd,
                 instance,
                 strings.start_minimized,
-                SETTINGS_MARGIN,
+                SETTINGS_CONTENT_X,
                 SETTINGS_CHECK_1_Y,
                 SETTINGS_CONTENT_WIDTH,
                 26,
@@ -205,7 +206,7 @@ impl SettingsWindow {
                 hwnd,
                 instance,
                 strings.launch_on_startup,
-                SETTINGS_MARGIN,
+                SETTINGS_CONTENT_X,
                 SETTINGS_CHECK_2_Y,
                 SETTINGS_CONTENT_WIDTH,
                 26,
@@ -217,7 +218,7 @@ impl SettingsWindow {
                 hwnd,
                 instance,
                 strings.restore_on_exit,
-                SETTINGS_MARGIN,
+                SETTINGS_CONTENT_X,
                 SETTINGS_CHECK_3_Y,
                 SETTINGS_CONTENT_WIDTH,
                 26,
@@ -232,7 +233,7 @@ impl SettingsWindow {
                 strings.settings_general,
                 child | SS_ENDELLIPSIS_STYLE,
                 WINDOW_EX_STYLE(0),
-                SETTINGS_MARGIN,
+                SETTINGS_CONTENT_X,
                 SETTINGS_LANGUAGE_Y,
                 SETTINGS_CONTENT_WIDTH,
                 22,
@@ -247,7 +248,7 @@ impl SettingsWindow {
                 "",
                 child | WS_TABSTOP | WINDOW_STYLE(CBS_DROPDOWNLIST as u32),
                 WS_EX_CLIENTEDGE,
-                SETTINGS_MARGIN,
+                SETTINGS_CONTENT_X,
                 SETTINGS_LANGUAGE_COMBO_Y,
                 150,
                 210,
@@ -262,7 +263,7 @@ impl SettingsWindow {
                 strings.settings_file_info,
                 child | SS_ENDELLIPSIS_STYLE,
                 WINDOW_EX_STYLE(0),
-                SETTINGS_MARGIN,
+                SETTINGS_CONTENT_X,
                 SETTINGS_FILE_INFO_Y,
                 SETTINGS_CONTENT_WIDTH,
                 22,
@@ -274,7 +275,7 @@ impl SettingsWindow {
                 hwnd,
                 instance,
                 strings.open_config,
-                SETTINGS_MARGIN,
+                SETTINGS_CONTENT_X,
                 SETTINGS_OPEN_CONFIG_Y,
                 self.button_width(strings.open_config, 150, 230),
                 32,
@@ -464,7 +465,7 @@ impl SettingsWindow {
         unsafe {
             let _ = move_window(
                 self.open_config_button,
-                SETTINGS_MARGIN,
+                SETTINGS_CONTENT_X,
                 SETTINGS_OPEN_CONFIG_Y,
                 self.button_width(self.language.strings().open_config, 150, 230),
                 32,
@@ -527,7 +528,7 @@ impl SettingsWindow {
 
     unsafe fn redraw_info_area(&self) {
         let rect = RECT {
-            left: px(SETTINGS_MARGIN),
+            left: px(SETTINGS_CONTENT_X),
             top: px(SETTINGS_FILE_INFO_Y - 4),
             right: px(SETTINGS_WINDOW_WIDTH - SETTINGS_MARGIN),
             bottom: px(SETTINGS_WINDOW_HEIGHT),

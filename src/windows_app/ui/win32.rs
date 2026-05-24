@@ -975,6 +975,14 @@ pub(super) unsafe fn draw_flat_button(draw: &DRAWITEMSTRUCT, font: HGDIOBJ) -> b
         let _ = DeleteObject(clean_brush.into());
 
         let r = px(6);
+        let horizontal_inset = px(1);
+        let top_inset = px(2);
+        let bottom_inset = px(1);
+        let mut button_rect = draw.rcItem;
+        button_rect.left += horizontal_inset;
+        button_rect.top += top_inset;
+        button_rect.right -= horizontal_inset;
+        button_rect.bottom -= bottom_inset;
 
         let brush = CreateSolidBrush(bg_color);
         let pen = CreatePen(PS_SOLID, px(1), border_color);
@@ -984,10 +992,10 @@ pub(super) unsafe fn draw_flat_button(draw: &DRAWITEMSTRUCT, font: HGDIOBJ) -> b
 
         let _ = RoundRect(
             hdc,
-            draw.rcItem.left,
-            draw.rcItem.top,
-            draw.rcItem.right,
-            draw.rcItem.bottom,
+            button_rect.left,
+            button_rect.top,
+            button_rect.right,
+            button_rect.bottom,
             r * 2,
             r * 2,
         );
@@ -1001,7 +1009,7 @@ pub(super) unsafe fn draw_flat_button(draw: &DRAWITEMSTRUCT, font: HGDIOBJ) -> b
         let _ = SetBkMode(hdc, TRANSPARENT);
         let _ = SetTextColor(hdc, text_color);
 
-        let mut rect = draw.rcItem;
+        let mut rect = button_rect;
         let _ = DrawTextW(
             hdc,
             &mut text_buffer[..len],
@@ -1012,7 +1020,7 @@ pub(super) unsafe fn draw_flat_button(draw: &DRAWITEMSTRUCT, font: HGDIOBJ) -> b
         let _ = SelectObject(hdc, old_font);
 
         if focused && !disabled {
-            let mut focus_rect = draw.rcItem;
+            let mut focus_rect = button_rect;
             let inset = px(4);
             focus_rect.left += inset;
             focus_rect.top += inset;

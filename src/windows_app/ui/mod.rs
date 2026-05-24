@@ -48,7 +48,7 @@ use windows::Win32::UI::WindowsAndMessaging::{
     EVENT_SYSTEM_FOREGROUND, FindWindowW, GWLP_USERDATA, GetCursorPos, GetSystemMetrics,
     GetWindowRect, HICON, HMENU, ICON_BIG, ICON_SMALL, IDC_ARROW, IDC_HAND, IsDialogMessageW,
     IsWindowVisible, KillTimer, LB_GETCURSEL, LB_RESETCONTENT, LB_SETCURSEL, LBN_DBLCLK,
-    LBN_SELCHANGE, LBS_HASSTRINGS, LBS_NOINTEGRALHEIGHT, LBS_NOTIFY, LBS_OWNERDRAWFIXED,
+    LBN_SELCHANGE, LBS_HASSTRINGS, LBS_NOINTEGRALHEIGHT, LBS_NOTIFY, LBS_OWNERDRAWVARIABLE,
     LoadCursorW, MB_ICONINFORMATION, MB_ICONWARNING, MB_OK, MF_GRAYED, MF_SEPARATOR, MF_STRING,
     MSG, MessageBoxW, PostMessageW, PostQuitMessage, RegisterClassW, RegisterWindowMessageW,
     SM_CXVSCROLL, SW_HIDE, SW_RESTORE, SW_SHOW, SendMessageW, SetCursor, SetForegroundWindow,
@@ -144,23 +144,31 @@ const HEADER_TITLE_Y: i32 = 24;
 const HEADER_SUBTITLE_Y: i32 = 56;
 const HEADER_DETAIL_Y: i32 = 82;
 const TARGET_PANEL_LEFT: i32 = 14;
-const TARGET_PANEL_RIGHT: i32 = WINDOW_WIDTH - TARGET_PANEL_LEFT;
+const TARGET_PANEL_RIGHT: i32 = HEADER_CONTENT_RIGHT + (HEADER_LEFT_X - TARGET_PANEL_LEFT);
 const HEADER_STATUS_WIDTH: i32 = 180;
-const HEADER_STATUS_X: i32 = TARGET_PANEL_RIGHT - HEADER_STATUS_WIDTH;
+const HEADER_STATUS_X: i32 = HEADER_CONTENT_RIGHT - HEADER_STATUS_WIDTH;
 const TARGET_PANEL_TOP: i32 = 112;
 const TARGET_PANEL_BOTTOM: i32 = 432;
-const TARGET_LIST_Y: i32 = TARGET_PANEL_TOP + 10;
+const TARGET_LIST_Y: i32 = TARGET_PANEL_TOP + 2;
 const TARGET_LIST_X: i32 = TARGET_PANEL_LEFT + 10;
 const TARGET_LIST_WIDTH: i32 = TARGET_PANEL_RIGHT - TARGET_LIST_X - 10;
 const TARGET_LIST_HEIGHT: i32 = TARGET_PANEL_BOTTOM - TARGET_LIST_Y - 12;
-const TARGET_ROW_HEIGHT: i32 = 44;
+const TARGET_PLAIN_ROW_HEIGHT: i32 = 34;
+const TARGET_NOTE_ROW_HEIGHT: i32 = 44;
+const TARGET_ROW_HORIZONTAL_PADDING: i32 = 16;
+const TARGET_ROW_TEXT_GAP: i32 = 16;
+const TARGET_ROW_CENTER_LINE_HEIGHT: i32 = 20;
+const TARGET_ROW_PRIMARY_TOP: i32 = 5;
+const TARGET_ROW_PRIMARY_BOTTOM: i32 = 23;
+const TARGET_ROW_SECONDARY_TOP: i32 = 24;
+const TARGET_ROW_SECONDARY_BOTTOM_INSET: i32 = 4;
 const PROCESS_PICKER_LABEL_Y: i32 = 442;
 const PROCESS_PICKER_HINT_Y: i32 = 462;
 const PROCESS_PICKER_COMBO_Y: i32 = 482;
 const PROCESS_PICKER_COMBO_HEIGHT: i32 = 28;
 const PROCESS_PICKER_BUTTON_HEIGHT: i32 = 32;
 const PROCESS_PICKER_BUTTON_Y_OFFSET: i32 =
-    (PROCESS_PICKER_COMBO_HEIGHT - PROCESS_PICKER_BUTTON_HEIGHT) / 2;
+    (PROCESS_PICKER_COMBO_HEIGHT - PROCESS_PICKER_BUTTON_HEIGHT) / 2 - 2;
 const MANUAL_PROCESS_ROW_Y: i32 = 520;
 const MANUAL_PROCESS_EDIT_Y: i32 = MANUAL_PROCESS_ROW_Y + 20;
 const MANUAL_PROCESS_EDIT_HEIGHT: i32 = 26;
@@ -800,7 +808,7 @@ impl AppWindow {
                 child
                     | WS_VSCROLL
                     | WINDOW_STYLE(
-                        (LBS_NOTIFY | LBS_OWNERDRAWFIXED | LBS_HASSTRINGS | LBS_NOINTEGRALHEIGHT)
+                        (LBS_NOTIFY | LBS_OWNERDRAWVARIABLE | LBS_HASSTRINGS | LBS_NOINTEGRALHEIGHT)
                             as u32,
                     ),
                 WINDOW_EX_STYLE(0),
@@ -1276,8 +1284,8 @@ impl AppWindow {
             .text_width(self.strings.target_ready)
             .max(self.text_width(self.strings.target_muted))
             .max(self.text_width(self.strings.target_excluded))
-            .saturating_add(4)
-            .clamp(52, 92);
+            .saturating_add(8)
+            .clamp(58, 100);
     }
 
     fn refresh_process_details_ui(&self) {
@@ -1468,12 +1476,13 @@ impl AppWindow {
             .max(combo_width)
             .min(add_manual_x - content_left - gap);
         let manual_edit_x = content_left;
+        let manual_label_width = manual_edit_width;
         let _ = unsafe {
             move_window(
                 self.controls.manual_label,
                 content_left,
                 manual_label_y,
-                content_right - content_left,
+                manual_label_width,
                 20,
                 true,
             )
@@ -3410,7 +3419,13 @@ impl AppWindow {
             return false;
         }
 
-        measure.itemHeight = px(TARGET_ROW_HEIGHT) as u32;
+        let row_height = self
+            .config
+            .targets
+            .get(measure.itemID as usize)
+            .map(target_row_height)
+            .unwrap_or(TARGET_NOTE_ROW_HEIGHT);
+        measure.itemHeight = px(row_height) as u32;
         true
     }
 
@@ -3528,59 +3543,50 @@ impl AppWindow {
         }
 
         let status_width = self.target_status_width;
-        let horizontal_padding = px(16);
-        let status_rect = RECT {
-            left: draw.rcItem.right - px(status_width) - horizontal_padding,
-            top: draw.rcItem.top + px(1),
-            right: draw.rcItem.right - horizontal_padding,
-            bottom: draw.rcItem.bottom - px(1),
-        };
-        let text_right = status_rect.left - px(16);
+        let horizontal_padding = px(TARGET_ROW_HORIZONTAL_PADDING);
+        let text_gap = px(TARGET_ROW_TEXT_GAP);
+        let content_left = draw.rcItem.left + horizontal_padding;
+        let content_right = draw.rcItem.right - horizontal_padding;
+        let status_rect = target_status_rect(draw.rcItem, status_width);
+        let text_right = status_rect.left - text_gap;
+        let primary_text_rect = target_primary_text_rect(draw.rcItem, text_right, note.is_empty());
+        let secondary_text_rect = target_secondary_text_rect(draw.rcItem, text_right);
 
         if note.is_empty() {
-            let identity_rect = RECT {
-                left: draw.rcItem.left + horizontal_padding,
-                top: draw.rcItem.top + px(1),
-                right: text_right,
-                bottom: draw.rcItem.bottom - px(1),
-            };
             draw_target_identity_line(
                 draw.hDC,
                 self.theme.font.handle(),
                 target,
-                identity_rect,
+                RECT {
+                    left: content_left,
+                    ..primary_text_rect
+                },
                 primary_color,
                 DT_LEFT | DT_SINGLELINE | DT_VCENTER | DT_END_ELLIPSIS | DT_NOPREFIX,
             );
         } else {
-            let note_rect = RECT {
-                left: draw.rcItem.left + horizontal_padding,
-                top: draw.rcItem.top + px(5),
-                right: text_right,
-                bottom: draw.rcItem.top + px(23),
-            };
             draw_text_line(
                 draw.hDC,
                 self.theme.font.handle(),
                 note,
-                note_rect,
+                RECT {
+                    left: content_left,
+                    ..primary_text_rect
+                },
                 primary_color,
-                DT_LEFT | DT_SINGLELINE | DT_END_ELLIPSIS | DT_NOPREFIX,
+                DT_LEFT | DT_SINGLELINE | DT_VCENTER | DT_END_ELLIPSIS | DT_NOPREFIX,
             );
 
-            let identity_rect = RECT {
-                left: draw.rcItem.left + horizontal_padding,
-                top: draw.rcItem.top + px(24),
-                right: text_right,
-                bottom: draw.rcItem.bottom - px(4),
-            };
             draw_target_identity_line(
                 draw.hDC,
                 self.theme.font.handle(),
                 target,
-                identity_rect,
+                RECT {
+                    left: content_left,
+                    ..secondary_text_rect
+                },
                 SUBTLE_TEXT_COLOR,
-                DT_LEFT | DT_SINGLELINE | DT_END_ELLIPSIS | DT_NOPREFIX,
+                DT_LEFT | DT_SINGLELINE | DT_VCENTER | DT_END_ELLIPSIS | DT_NOPREFIX,
             );
         }
 
@@ -3594,9 +3600,9 @@ impl AppWindow {
         );
 
         let separator = RECT {
-            left: draw.rcItem.left + horizontal_padding,
+            left: content_left,
             top: draw.rcItem.bottom - px(1),
-            right: draw.rcItem.right - horizontal_padding,
+            right: content_right,
             bottom: draw.rcItem.bottom,
         };
         unsafe {
@@ -3736,6 +3742,67 @@ impl AppWindow {
 fn selected_list_index(hwnd: HWND) -> Option<usize> {
     let index = unsafe { SendMessageW(hwnd, LB_GETCURSEL, None, None).0 };
     (index >= 0).then_some(index as usize)
+}
+
+fn target_row_height(target: &TargetProcess) -> i32 {
+    if target.note.as_deref().unwrap_or_default().is_empty() {
+        TARGET_PLAIN_ROW_HEIGHT
+    } else {
+        TARGET_NOTE_ROW_HEIGHT
+    }
+}
+
+fn target_status_rect(item_rect: RECT, status_width: i32) -> RECT {
+    let right = item_rect.right - px(TARGET_ROW_HORIZONTAL_PADDING);
+    let center_rect = target_center_line_rect(item_rect, right);
+
+    RECT {
+        left: right - px(status_width),
+        top: center_rect.top,
+        right,
+        bottom: center_rect.bottom,
+    }
+}
+
+fn target_primary_text_rect(item_rect: RECT, right: i32, plain_row: bool) -> RECT {
+    if plain_row {
+        return target_center_line_rect(item_rect, right);
+    }
+
+    let left = item_rect.left + px(TARGET_ROW_HORIZONTAL_PADDING);
+    let (top, bottom) = (
+        item_rect.top + px(TARGET_ROW_PRIMARY_TOP),
+        item_rect.top + px(TARGET_ROW_PRIMARY_BOTTOM),
+    );
+
+    RECT {
+        left,
+        top,
+        right,
+        bottom,
+    }
+}
+
+fn target_center_line_rect(item_rect: RECT, right: i32) -> RECT {
+    let line_height = px(TARGET_ROW_CENTER_LINE_HEIGHT);
+    let available_height = item_rect.bottom - item_rect.top;
+    let top = item_rect.top + (available_height - line_height).max(0) / 2;
+
+    RECT {
+        left: item_rect.left + px(TARGET_ROW_HORIZONTAL_PADDING),
+        top,
+        right,
+        bottom: top + line_height,
+    }
+}
+
+fn target_secondary_text_rect(item_rect: RECT, right: i32) -> RECT {
+    RECT {
+        left: item_rect.left + px(TARGET_ROW_HORIZONTAL_PADDING),
+        top: item_rect.top + px(TARGET_ROW_SECONDARY_TOP),
+        right,
+        bottom: item_rect.bottom - px(TARGET_ROW_SECONDARY_BOTTOM_INSET),
+    }
 }
 
 fn point_is_in_rect(point: POINT, rect: RECT) -> bool {
@@ -3934,6 +4001,17 @@ mod target_list_tests {
         assert!(point_is_in_rect(POINT { x: 29, y: 39 }, rect));
         assert!(!point_is_in_rect(POINT { x: 30, y: 20 }, rect));
         assert!(!point_is_in_rect(POINT { x: 10, y: 40 }, rect));
+    }
+
+    #[test]
+    fn target_row_height_is_shorter_without_note() {
+        let mut target = TargetProcess::new("game.exe").unwrap();
+
+        assert_eq!(target_row_height(&target), TARGET_PLAIN_ROW_HEIGHT);
+
+        target.note = Some("test server".to_owned());
+
+        assert_eq!(target_row_height(&target), TARGET_NOTE_ROW_HEIGHT);
     }
 
     #[test]
