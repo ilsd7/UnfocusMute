@@ -602,6 +602,7 @@ struct AppWindow {
     github_icon: HICON,
     settings_icon: HICON,
     settings_button_hot: bool,
+    settings_window_open: bool,
     foreground_process_name_cache: Option<(u32, Option<String>)>,
     last_process_refresh_attempt: Instant,
     updating_process_combo: bool,
@@ -664,6 +665,7 @@ impl AppWindow {
             github_icon,
             settings_icon,
             settings_button_hot: false,
+            settings_window_open: false,
             foreground_process_name_cache: None,
             last_process_refresh_attempt: initial_process_refresh_attempt(),
             updating_process_combo: false,
@@ -1098,7 +1100,7 @@ impl AppWindow {
             set_text(self.controls.subtitle_label, self.strings.app_subtitle);
             set_text(self.controls.targets_label, "");
             set_text(self.controls.add_label, "");
-            set_text(self.controls.running_label, self.strings.running_processes);
+            set_text(self.controls.running_label, "");
             set_text(
                 self.controls.target_empty_title,
                 self.strings.registered_processes,
@@ -1133,7 +1135,7 @@ impl AppWindow {
                 Some(LPARAM(cue_banner_buffer.as_ptr() as isize)),
             );
             let _ = ShowWindow(self.controls.add_label, SW_HIDE);
-            let _ = ShowWindow(self.controls.running_label, SW_SHOW);
+            let _ = ShowWindow(self.controls.running_label, SW_HIDE);
             let _ = ShowWindow(self.controls.targets_label, SW_HIDE);
         }
         self.refresh_target_list();
@@ -1208,6 +1210,7 @@ impl AppWindow {
             launch_on_startup: self.config.launch_on_startup,
             restore_on_exit: self.config.restore_muted_on_exit,
         };
+        self.settings_window_open = true;
         let result = unsafe {
             prompt_settings(
                 hwnd,
@@ -1219,6 +1222,7 @@ impl AppWindow {
                 |language| self.apply_settings_language(language),
             )
         };
+        self.settings_window_open = false;
         let Ok(Some(preferences)) = result else {
             return;
         };
@@ -1470,7 +1474,7 @@ impl AppWindow {
             )
         };
 
-        let add_manual_width = self.button_width(self.strings.add_manual, 118, 150);
+        let add_manual_width = add_selected_width;
         let add_manual_x = add_selected_x;
         let manual_edit_width = MANUAL_PROCESS_EDIT_WIDTH
             .max(combo_width)
@@ -3381,7 +3385,6 @@ impl AppWindow {
                     } else if child == self.controls.title_label
                         || child == self.controls.targets_label
                         || child == self.controls.running_label
-                        || child == self.controls.manual_label
                         || child == self.controls.target_empty_title
                     {
                         TEXT_COLOR
@@ -3953,6 +3956,9 @@ unsafe extern "system" fn window_proc(
                 return LRESULT(0);
             }
             WM_CLOSE => {
+                if app.settings_window_open {
+                    return LRESULT(0);
+                }
                 app.hide_to_tray();
                 return LRESULT(0);
             }
