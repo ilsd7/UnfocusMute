@@ -22,10 +22,10 @@ use windows::Win32::Foundation::{
     POINT, RECT, WPARAM,
 };
 use windows::Win32::Graphics::Gdi::{
-    BeginPaint, DT_END_ELLIPSIS, DT_LEFT, DT_NOPREFIX, DT_RIGHT, DT_SINGLELINE, DT_VCENTER,
-    EndPaint, FillRect, FrameRect, HDC, OPAQUE, PAINTSTRUCT, RDW_ALLCHILDREN, RDW_ERASE,
-    RDW_INVALIDATE, RDW_UPDATENOW, RedrawWindow, ScreenToClient, SetBkColor, SetBkMode,
-    SetTextColor, TRANSPARENT,
+    BeginPaint, CreatePen, DT_END_ELLIPSIS, DT_LEFT, DT_NOPREFIX, DT_RIGHT, DT_SINGLELINE,
+    DT_VCENTER, DeleteObject, EndPaint, FillRect, HDC, OPAQUE, PAINTSTRUCT, PS_SOLID,
+    RDW_ALLCHILDREN, RDW_ERASE, RDW_INVALIDATE, RDW_UPDATENOW, RedrawWindow, RoundRect,
+    ScreenToClient, SelectObject, SetBkColor, SetBkMode, SetTextColor, TRANSPARENT,
 };
 use windows::Win32::System::Com::{COINIT_APARTMENTTHREADED, CoInitializeEx, CoUninitialize};
 use windows::Win32::System::LibraryLoader::GetModuleHandleW;
@@ -119,10 +119,11 @@ use target_note_prompt::prompt_target_note;
 use theme::{AppTheme, OwnedBrush, UiFont, px};
 use win32::{
     WindowClassRegistration, add_combo_item_with_buffer, add_list_item_with_buffer,
-    copy_wide_fixed, create_button, create_control, create_primary_button, get_message, hiword,
-    load_app_icon, load_github_icon, load_settings_icon, load_tray_icon, loword,
-    measure_text_width, move_window, reserve_combo_items, reserve_list_items, set_combo_edit_caret,
-    set_text, to_wide, window_text_into, write_wide_buffer,
+    copy_wide_fixed, create_button, create_control, create_primary_button,
+    default_button_message_result, get_message, hiword, load_app_icon, load_github_icon,
+    load_settings_icon, load_tray_icon, loword, measure_text_width, move_window,
+    reserve_combo_items, reserve_list_items, set_combo_edit_caret, set_text, to_wide,
+    window_text_into, write_wide_buffer,
 };
 use window_position::{initial_window_position, should_start_hidden, window_position_is_visible};
 
@@ -603,6 +604,7 @@ struct AppWindow {
     icon: HICON,
     tray_icon: HICON,
     taskbar_created_message: u32,
+    default_button_id: i32,
 }
 
 impl AppWindow {
@@ -664,6 +666,7 @@ impl AppWindow {
             icon,
             tray_icon,
             taskbar_created_message,
+            default_button_id: ID_ADD_SELECTED,
         })
     }
 
@@ -3335,6 +3338,18 @@ impl AppWindow {
         }
 
         let draw = unsafe { &*(lparam.0 as *const DRAWITEMSTRUCT) };
+        let ctl_id = draw.CtlID as i32;
+        if ctl_id == ID_REFRESH
+            || ctl_id == ID_TOGGLE_PROCESS_DETAILS
+            || ctl_id == ID_PID_DETAILS_HELP
+            || ctl_id == ID_ADD_SELECTED
+            || ctl_id == ID_ADD_MANUAL
+            || ctl_id == ID_PAUSE
+            || ctl_id == ID_HIDE
+            || ctl_id == ID_QUIT
+        {
+            return unsafe { win32::draw_flat_button(draw, self.theme.font.handle()) };
+        }
         if draw.CtlID == ID_SETTINGS as u32 {
             return self.draw_settings_button(draw);
         }
@@ -3514,8 +3529,24 @@ impl AppWindow {
             bottom: px(TARGET_PANEL_BOTTOM),
         };
         unsafe {
-            let _ = FillRect(paint.hdc(), &target_rect, self.theme.panel_brush.handle());
-            let _ = FrameRect(paint.hdc(), &target_rect, self.theme.border_brush.handle());
+            let brush = self.theme.panel_brush.handle();
+            let pen = CreatePen(PS_SOLID, px(1), PANEL_BORDER_COLOR);
+            let old_brush = SelectObject(paint.hdc(), brush.into());
+            let old_pen = SelectObject(paint.hdc(), pen.into());
+            let r = px(12);
+            let _ = RoundRect(
+                paint.hdc(),
+                target_rect.left,
+                target_rect.top,
+                target_rect.right,
+                target_rect.bottom,
+                r * 2,
+                r * 2,
+            );
+
+            let _ = SelectObject(paint.hdc(), old_brush);
+            let _ = SelectObject(paint.hdc(), old_pen);
+            let _ = DeleteObject(pen.into());
         }
     }
 
@@ -3640,7 +3671,6 @@ unsafe extern "system" fn window_proc(
         }
         return LRESULT(1);
     }
-
     let app = unsafe {
         let ptr = windows::Win32::UI::WindowsAndMessaging::GetWindowLongPtrW(hwnd, GWLP_USERDATA)
             as *mut AppWindow;
@@ -3648,6 +3678,11 @@ unsafe extern "system" fn window_proc(
     };
 
     if let Some(app) = app {
+        if let Some(result) =
+            default_button_message_result(message, wparam, &mut app.default_button_id)
+        {
+            return result;
+        }
         if app.taskbar_created_message != 0 && message == app.taskbar_created_message {
             app.restore_tray_icon();
             return LRESULT(0);

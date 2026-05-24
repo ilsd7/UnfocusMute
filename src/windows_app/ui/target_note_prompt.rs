@@ -4,8 +4,9 @@ use super::constants::{
 };
 use super::theme::{OwnedBrush, UiFont, px, ui_font_point_size};
 use super::win32::{
-    WindowClassRegistration, create_button, create_control, create_primary_button, get_message,
-    hiword, loword, measure_text_width, move_window, to_wide, window_text_into,
+    WindowClassRegistration, create_button, create_control, create_primary_button,
+    default_button_message_result, get_message, hiword, loword, measure_text_width, move_window,
+    to_wide, window_text_into,
 };
 use super::window_position::centered_position;
 use crate::config::{MAX_TARGET_NOTE_CHARS, normalize_target_note};
@@ -14,14 +15,16 @@ use crate::windows_app::error::{Context, Result};
 use std::ffi::c_void;
 use windows::Win32::Foundation::{HINSTANCE, HWND, LPARAM, LRESULT, WPARAM};
 use windows::Win32::Graphics::Gdi::{HDC, SetBkMode, SetTextColor, TRANSPARENT};
+use windows::Win32::UI::Controls::DRAWITEMSTRUCT;
 use windows::Win32::UI::Input::KeyboardAndMouse::{EnableWindow, IsWindowEnabled, SetFocus};
 use windows::Win32::UI::WindowsAndMessaging::{
     CREATESTRUCTW, CreateWindowExW, DefWindowProcW, DestroyWindow, DispatchMessageW,
     ES_AUTOHSCROLL, GWLP_USERDATA, GetWindowLongPtrW, HICON, IDC_ARROW, IsDialogMessageW,
     LoadCursorW, MSG, PostQuitMessage, RegisterClassW, SW_SHOW, SendMessageW, SetForegroundWindow,
     SetWindowLongPtrW, ShowWindow, TranslateMessage, WINDOW_EX_STYLE, WINDOW_STYLE, WM_CLOSE,
-    WM_COMMAND, WM_CREATE, WM_CTLCOLORSTATIC, WM_NCCREATE, WM_NCDESTROY, WM_SETFONT, WNDCLASSW,
-    WS_CAPTION, WS_CHILD, WS_EX_CLIENTEDGE, WS_OVERLAPPED, WS_SYSMENU, WS_TABSTOP, WS_VISIBLE,
+    WM_COMMAND, WM_CREATE, WM_CTLCOLORSTATIC, WM_DRAWITEM, WM_NCCREATE, WM_NCDESTROY, WM_SETFONT,
+    WNDCLASSW, WS_CAPTION, WS_CHILD, WS_EX_CLIENTEDGE, WS_OVERLAPPED, WS_SYSMENU, WS_TABSTOP,
+    WS_VISIBLE,
 };
 use windows::core::PCWSTR;
 
@@ -43,6 +46,7 @@ struct TargetNotePrompt<'a> {
     cancel_button: HWND,
     done: bool,
     selected: Option<Option<String>>,
+    default_button_id: i32,
     language: Language,
     target_display: &'a str,
     current_note: Option<&'a str>,
@@ -90,6 +94,7 @@ impl<'a> TargetNotePrompt<'a> {
             cancel_button: HWND::default(),
             done: false,
             selected: None,
+            default_button_id: ID_TARGET_NOTE_SAVE,
             language,
             target_display,
             current_note,
@@ -368,6 +373,11 @@ unsafe extern "system" fn target_note_prompt_proc(
     };
 
     if let Some(prompt) = prompt {
+        if let Some(result) =
+            default_button_message_result(message, wparam, &mut prompt.default_button_id)
+        {
+            return result;
+        }
         match message {
             WM_CREATE => {
                 let create = lparam.0 as *const CREATESTRUCTW;
@@ -390,6 +400,19 @@ unsafe extern "system" fn target_note_prompt_proc(
                 }
                 unsafe {
                     let _ = DestroyWindow(hwnd);
+                }
+                return LRESULT(0);
+            }
+            WM_DRAWITEM if lparam.0 != 0 => {
+                let draw = unsafe { &*(lparam.0 as *const DRAWITEMSTRUCT) };
+                let id = draw.CtlID as i32;
+                if id == ID_TARGET_NOTE_SAVE
+                    || id == ID_TARGET_NOTE_CLEAR
+                    || id == ID_TARGET_NOTE_CANCEL
+                {
+                    return LRESULT(unsafe {
+                        super::win32::draw_flat_button(draw, prompt.font.handle())
+                    } as isize);
                 }
                 return LRESULT(0);
             }

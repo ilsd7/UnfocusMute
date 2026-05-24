@@ -954,6 +954,11 @@ unsafe extern "system" fn settings_window_proc(
             }
             WM_DRAWITEM if lparam.0 != 0 => {
                 let draw = unsafe { &*(lparam.0 as *const DRAWITEMSTRUCT) };
+                if draw.CtlID == ID_SETTINGS_WINDOW_OPEN_CONFIG as u32 {
+                    return LRESULT(unsafe {
+                        super::win32::draw_flat_button(draw, settings.font.handle())
+                    } as isize);
+                }
                 if draw.CtlID == ID_SETTINGS_WINDOW_GITHUB as u32 {
                     return LRESULT(settings.draw_github_button(draw) as isize);
                 }

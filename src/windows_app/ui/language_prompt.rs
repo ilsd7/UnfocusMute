@@ -5,9 +5,9 @@ use super::constants::{
 use super::theme::{OwnedBrush, UiFont, px, ui_font_point_size};
 use super::win32::{
     WindowClassRegistration, add_combo_item_with_buffer, create_control, create_multiline_checkbox,
-    create_primary_button, get_message, hiword, is_checked, loword, measure_text_width,
-    move_window, reserve_combo_items, set_checkbox, set_text, storage_bytes_hint, to_wide,
-    utf16_code_unit_count,
+    create_primary_button, default_button_message_result, get_message, hiword, is_checked, loword,
+    measure_text_width, move_window, reserve_combo_items, set_checkbox, set_text,
+    storage_bytes_hint, to_wide, utf16_code_unit_count,
 };
 use super::window_position::centered_position;
 use crate::i18n::Language;
@@ -16,15 +16,15 @@ use std::ffi::c_void;
 use windows::Win32::Foundation::{HINSTANCE, HWND, LPARAM, LRESULT, WPARAM};
 use windows::Win32::Graphics::Gdi::{HDC, SetBkMode, SetTextColor, TRANSPARENT};
 use windows::Win32::System::LibraryLoader::GetModuleHandleW;
-use windows::Win32::UI::Controls::CB_SETMINVISIBLE;
+use windows::Win32::UI::Controls::{CB_SETMINVISIBLE, DRAWITEMSTRUCT};
 use windows::Win32::UI::WindowsAndMessaging::{
     CB_GETCURSEL, CB_SETCURSEL, CBN_SELCHANGE, CBN_SELENDOK, CBS_DROPDOWNLIST, CREATESTRUCTW,
     CreateWindowExW, DefWindowProcW, DestroyWindow, DispatchMessageW, GWLP_USERDATA,
     GetWindowLongPtrW, HICON, IDC_ARROW, IsDialogMessageW, LoadCursorW, MSG, PostQuitMessage,
     RegisterClassW, SW_SHOW, SendMessageW, SetForegroundWindow, SetWindowLongPtrW, ShowWindow,
     TranslateMessage, WINDOW_EX_STYLE, WINDOW_STYLE, WM_CLOSE, WM_COMMAND, WM_CREATE,
-    WM_CTLCOLORSTATIC, WM_NCCREATE, WM_NCDESTROY, WM_SETFONT, WNDCLASSW, WS_CAPTION, WS_CHILD,
-    WS_EX_CLIENTEDGE, WS_OVERLAPPED, WS_SYSMENU, WS_TABSTOP, WS_VISIBLE,
+    WM_CTLCOLORSTATIC, WM_DRAWITEM, WM_NCCREATE, WM_NCDESTROY, WM_SETFONT, WNDCLASSW, WS_CAPTION,
+    WS_CHILD, WS_EX_CLIENTEDGE, WS_OVERLAPPED, WS_SYSMENU, WS_TABSTOP, WS_VISIBLE,
 };
 use windows::core::{PCWSTR, w};
 
@@ -37,6 +37,7 @@ struct LanguagePrompt {
     start_button: HWND,
     done: bool,
     selected: Option<InitialPreferences>,
+    default_button_id: i32,
     current: Language,
     launch_on_startup: bool,
     brush: OwnedBrush,
@@ -73,6 +74,7 @@ impl LanguagePrompt {
             start_button: HWND::default(),
             done: false,
             selected: None,
+            default_button_id: ID_LANGUAGE_PROMPT_OK,
             current,
             launch_on_startup,
             brush: OwnedBrush::solid(PAGE_COLOR),
@@ -394,6 +396,11 @@ unsafe extern "system" fn language_prompt_proc(
     };
 
     if let Some(prompt) = prompt {
+        if let Some(result) =
+            default_button_message_result(message, wparam, &mut prompt.default_button_id)
+        {
+            return result;
+        }
         match message {
             WM_CREATE => {
                 if unsafe { prompt.create_controls(hwnd) }.is_err() {
@@ -413,6 +420,15 @@ unsafe extern "system" fn language_prompt_proc(
                     && (notification == CBN_SELCHANGE as u16 || notification == CBN_SELENDOK as u16)
                 {
                     prompt.refresh_prompt_text();
+                }
+                return LRESULT(0);
+            }
+            WM_DRAWITEM if lparam.0 != 0 => {
+                let draw = unsafe { &*(lparam.0 as *const DRAWITEMSTRUCT) };
+                if draw.CtlID == ID_LANGUAGE_PROMPT_OK as u32 {
+                    return LRESULT(unsafe {
+                        super::win32::draw_flat_button(draw, prompt.font.handle())
+                    } as isize);
                 }
                 return LRESULT(0);
             }
