@@ -77,10 +77,19 @@ impl SearchTerms<'_> {
 }
 
 fn lowercase_if_needed(text: &str) -> Cow<'_, str> {
-    if text.bytes().any(|byte| byte.is_ascii_uppercase()) {
-        Cow::Owned(text.to_ascii_lowercase())
+    if text.is_ascii() {
+        if text.bytes().any(|byte| byte.is_ascii_uppercase()) {
+            Cow::Owned(text.to_ascii_lowercase())
+        } else {
+            Cow::Borrowed(text)
+        }
     } else {
-        Cow::Borrowed(text)
+        let lowercase = text.to_lowercase();
+        if lowercase == text {
+            Cow::Borrowed(text)
+        } else {
+            Cow::Owned(lowercase)
+        }
     }
 }
 
@@ -227,6 +236,21 @@ mod tests {
 
         assert_eq!(choice.search_text.as_deref(), Some("player.exe"));
         assert!(choice.matches_search(&search_terms("player")));
+    }
+
+    #[test]
+    fn non_ascii_uppercase_search_terms_match_normalized_choices() {
+        let choice = ProcessChoice::new("äpp.exe".to_owned(), None, 1);
+
+        assert!(choice.matches_search(&search_terms("ÄPP")));
+    }
+
+    #[test]
+    fn non_ascii_uppercase_choices_keep_lowercase_search_text() {
+        let choice = ProcessChoice::new("ÄPP.EXE".to_owned(), None, 1);
+
+        assert_eq!(choice.search_text.as_deref(), Some("äpp.exe"));
+        assert!(choice.matches_search(&search_terms("ÄPP")));
     }
 
     #[test]
