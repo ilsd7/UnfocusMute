@@ -1,5 +1,4 @@
 use crate::i18n::Strings;
-use std::fmt::Write as _;
 
 const APP_VERSION: &str = env!("CARGO_PKG_VERSION");
 
@@ -41,11 +40,11 @@ pub(super) fn status_detail_text_into(
 
     output.push_str(strings.target_count);
     output.push(' ');
-    let _ = write!(output, "{target_count}");
+    push_decimal(output, target_count);
     output.push_str(" · ");
     output.push_str(strings.muted_count);
     output.push(' ');
-    let _ = write!(output, "{muted_count}");
+    push_decimal(output, muted_count);
 }
 
 pub(super) fn tray_tip_text_into(
@@ -72,13 +71,30 @@ pub(super) fn app_title_with_version_into(strings: &Strings, output: &mut String
     output.push_str(APP_VERSION);
 }
 
-pub(super) fn status_summary_text_into(status: &str, detail: &str, output: &mut String) {
+#[cfg(test)]
+fn status_summary_text_into(status: &str, detail: &str, output: &mut String) {
     output.clear();
     output.reserve(status.len() + detail.len() + 3);
     output.push_str(status);
     if !detail.is_empty() {
         output.push_str(" - ");
         output.push_str(detail);
+    }
+}
+
+fn push_decimal(output: &mut String, mut number: usize) {
+    let mut digits = [0u8; 20];
+    let mut len = 0;
+    loop {
+        digits[len] = b'0' + (number % 10) as u8;
+        len += 1;
+        number /= 10;
+        if number == 0 {
+            break;
+        }
+    }
+    for digit in digits[..len].iter().rev() {
+        output.push(*digit as char);
     }
 }
 

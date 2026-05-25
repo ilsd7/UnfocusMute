@@ -189,10 +189,8 @@ pub(super) fn matching_session_keys_for_target(
     matches
 }
 
-pub(super) fn managed_mute_count(
-    targets: &[TargetProcess],
-    muted_by_app: &HashSet<AudioSessionKey>,
-) -> usize {
+#[cfg(test)]
+fn managed_mute_count(targets: &[TargetProcess], muted_by_app: &HashSet<AudioSessionKey>) -> usize {
     let mute_lookup = ManagedMuteLookup::new(muted_by_app);
     targets
         .iter()

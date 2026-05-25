@@ -8,7 +8,7 @@ use crate::engine::{AudioSessionKey, TargetMatcher};
 use crate::i18n::{Language, Strings};
 use crate::windows_app::audio::{AudioController, TargetMuteStateUpdate};
 use crate::windows_app::error::{Context, Result, message_error};
-use crate::windows_app::process::{self, ProcessInfo};
+use crate::windows_app::process::{self, ProcessInfo, ProcessRefreshOutcome};
 use std::collections::HashSet;
 use std::ffi::c_void;
 use std::io::ErrorKind;
@@ -85,8 +85,8 @@ use controls::Controls;
 use drawing::{draw_target_identity_line, draw_text_line};
 use language_prompt::prompt_initial_language;
 use managed_mute::{
-    ManagedMuteLookup, managed_mute_count, matching_session_keys_for_target,
-    target_has_managed_mute, target_matches_session_key, target_status_text,
+    ManagedMuteLookup, matching_session_keys_for_target, target_has_managed_mute,
+    target_matches_session_key, target_status_text,
 };
 use process_choice::{ProcessChoice, search_terms};
 use runtime_logic::{
@@ -108,8 +108,7 @@ use state::{
     StatusSnapshot,
 };
 use status_text::{
-    app_title_with_version_into, status_summary_text_into, status_text,
-    status_text_and_detail_into, tray_tip_text_into,
+    app_title_with_version_into, status_text, status_text_and_detail_into, tray_tip_text_into,
 };
 use target_model::{
     grouped_process_choice_count, target_display_name_into, target_display_storage_bytes_hint,
@@ -596,11 +595,13 @@ struct AppWindow {
     foreground_hook: Option<ForegroundEventHook>,
     foreground_hook_failure_notified: bool,
     running_processes: Vec<ProcessInfo>,
+    running_process_refresh_buffer: Vec<ProcessInfo>,
     all_process_choices: Vec<ProcessChoice>,
     process_choice_indices: Vec<usize>,
     process_query: String,
     manual_process_text: String,
     status_detail_text: String,
+    tray_tip_text_buffer: String,
     display_text_buffer: String,
     wide_text_buffer: Vec<u16>,
     icons: AppIcons,
@@ -611,6 +612,7 @@ struct AppWindow {
     updating_process_combo: bool,
     muted_by_app: HashSet<AudioSessionKey>,
     last_target_muted: Vec<bool>,
+    muted_target_count: usize,
     paused: bool,
     show_process_details: bool,
     tray_added: bool,
@@ -688,11 +690,13 @@ impl AppWindow {
             foreground_hook: None,
             foreground_hook_failure_notified: false,
             running_processes: Vec::new(),
+            running_process_refresh_buffer: Vec::new(),
             all_process_choices: Vec::new(),
             process_choice_indices: Vec::new(),
             process_query: String::new(),
             manual_process_text: String::new(),
             status_detail_text: String::new(),
+            tray_tip_text_buffer: String::new(),
             display_text_buffer: String::new(),
             wide_text_buffer: Vec::new(),
             icons,
@@ -703,6 +707,7 @@ impl AppWindow {
             updating_process_combo: false,
             muted_by_app: HashSet::new(),
             last_target_muted: Vec::new(),
+            muted_target_count: 0,
             paused: false,
             show_process_details: false,
             tray_added: false,
@@ -1722,16 +1727,17 @@ impl AppWindow {
         self.last_target_muted.clear();
         self.last_target_muted.reserve(self.config.targets.len());
         let mute_lookup = ManagedMuteLookup::new(&self.muted_by_app);
-        self.last_target_muted.extend(
-            self.config
-                .targets
-                .iter()
-                .map(|target| mute_lookup.target_has_managed_mute(target)),
-        );
+        self.muted_target_count = 0;
+        for target in &self.config.targets {
+            let muted = mute_lookup.target_has_managed_mute(target);
+            self.muted_target_count += usize::from(muted);
+            self.last_target_muted.push(muted);
+        }
     }
 
     fn sync_target_mute_indicators(&mut self) {
         if self.config.targets.is_empty() {
+            self.muted_target_count = 0;
             if !self.last_target_muted.is_empty() {
                 self.last_target_muted.clear();
                 self.redraw_target_list();
@@ -1745,8 +1751,10 @@ impl AppWindow {
                 .resize(self.config.targets.len(), false);
         }
         let mute_lookup = ManagedMuteLookup::new(&self.muted_by_app);
+        self.muted_target_count = 0;
         for (muted, target) in self.last_target_muted.iter_mut().zip(&self.config.targets) {
             let next = mute_lookup.target_has_managed_mute(target);
+            self.muted_target_count += usize::from(next);
             if *muted != next {
                 *muted = next;
                 changed = true;
@@ -1768,16 +1776,27 @@ impl AppWindow {
         }
     }
 
-    fn refresh_processes(&mut self) -> bool {
+    fn refresh_processes(&mut self) -> ProcessRefreshResult {
         self.last_process_refresh_attempt = Instant::now();
-        if !process::refresh_running_processes(&mut self.running_processes) {
-            self.set_issue(StatusIssue::ProcessRefreshFailed);
-            return false;
+        match process::refresh_running_processes(
+            &mut self.running_processes,
+            &mut self.running_process_refresh_buffer,
+        ) {
+            ProcessRefreshOutcome::Changed => {
+                self.clear_issue(StatusIssue::ProcessRefreshFailed);
+                self.rebuild_process_choices();
+                self.apply_process_filter();
+                ProcessRefreshResult::Refreshed
+            }
+            ProcessRefreshOutcome::Unchanged => {
+                self.clear_issue(StatusIssue::ProcessRefreshFailed);
+                ProcessRefreshResult::Unchanged
+            }
+            ProcessRefreshOutcome::Failed => {
+                self.set_issue(StatusIssue::ProcessRefreshFailed);
+                ProcessRefreshResult::Failed
+            }
         }
-        self.clear_issue(StatusIssue::ProcessRefreshFailed);
-        self.rebuild_process_choices();
-        self.apply_process_filter();
-        true
     }
 
     fn refresh_processes_if_stale(&mut self) -> ProcessRefreshResult {
@@ -1785,11 +1804,7 @@ impl AppWindow {
             return ProcessRefreshResult::Skipped;
         }
 
-        if self.refresh_processes() {
-            ProcessRefreshResult::Refreshed
-        } else {
-            ProcessRefreshResult::Failed
-        }
+        self.refresh_processes()
     }
 
     fn apply_process_filter(&mut self) {
@@ -1991,7 +2006,7 @@ impl AppWindow {
             paused: self.paused,
             issue: self.issues.visible(),
             target_count: self.config.targets.len(),
-            muted_count: managed_mute_count(&self.config.targets, &self.muted_by_app),
+            muted_count: self.muted_target_count,
         };
         if self
             .last_status
@@ -2014,12 +2029,11 @@ impl AppWindow {
             snapshot.muted_count,
             &mut self.status_detail_text,
         );
-        let mut tray_tip = String::new();
         tray_tip_text_into(
             self.strings,
             status,
             &self.status_detail_text,
-            &mut tray_tip,
+            &mut self.tray_tip_text_buffer,
         );
         unsafe {
             set_text(self.controls.status, status);
@@ -2030,7 +2044,8 @@ impl AppWindow {
             self.redraw_header();
         }
         self.last_status = Some(snapshot);
-        self.add_tray_icon_with_tip(&tray_tip);
+        let tray_data = self.tray_data(&self.tray_tip_text_buffer);
+        self.add_tray_icon_data(&tray_data);
     }
 
     fn reset_audio_after_endpoint_change(&mut self) {
@@ -3226,18 +3241,31 @@ impl AppWindow {
     }
 
     fn add_tray_icon(&mut self) {
-        let tip = self.current_tray_tip_text();
-        self.add_tray_icon_with_tip(&tip);
+        let status = status_text_and_detail_into(
+            self.strings,
+            self.issues.visible().map(|issue| self.issue_text(issue)),
+            self.paused,
+            self.config.targets.len(),
+            self.muted_target_count,
+            &mut self.status_detail_text,
+        );
+        tray_tip_text_into(
+            self.strings,
+            status,
+            &self.status_detail_text,
+            &mut self.tray_tip_text_buffer,
+        );
+        let tray_data = self.tray_data(&self.tray_tip_text_buffer);
+        self.add_tray_icon_data(&tray_data);
     }
 
-    fn add_tray_icon_with_tip(&mut self, tip: &str) {
-        let data = self.tray_data(tip);
-        if self.tray_added && unsafe { Shell_NotifyIconW(NIM_MODIFY, &data).as_bool() } {
+    fn add_tray_icon_data(&mut self, data: &NOTIFYICONDATAW) {
+        if self.tray_added && unsafe { Shell_NotifyIconW(NIM_MODIFY, data).as_bool() } {
             self.clear_issue(StatusIssue::TrayIconUnavailable);
             return;
         }
         self.tray_added = false;
-        if unsafe { Shell_NotifyIconW(NIM_ADD, &data).as_bool() } {
+        if unsafe { Shell_NotifyIconW(NIM_ADD, data).as_bool() } {
             self.tray_added = true;
             self.clear_issue(StatusIssue::TrayIconUnavailable);
         } else {
@@ -3267,31 +3295,16 @@ impl AppWindow {
         data
     }
 
-    fn current_tray_tip_text(&self) -> String {
-        let mut detail = String::new();
-        let status = status_text_and_detail_into(
-            self.strings,
-            self.issues.visible().map(|issue| self.issue_text(issue)),
-            self.paused,
-            self.config.targets.len(),
-            managed_mute_count(&self.config.targets, &self.muted_by_app),
-            &mut detail,
-        );
-        let mut tip = String::new();
-        tray_tip_text_into(self.strings, status, &detail, &mut tip);
-        tip
-    }
-
     fn tray_menu(&mut self) {
         unsafe {
             let Some(menu) = PopupMenu::create() else {
                 return;
             };
             let window_visible = IsWindowVisible(self.hwnd).as_bool();
-            let status_summary = self.current_status_summary_text();
+            let status = status_text(self.strings, self.paused, self.issues.visible().is_some());
 
             let text_buffer = &mut self.wide_text_buffer;
-            write_wide_buffer(&status_summary, text_buffer);
+            write_wide_buffer(status, text_buffer);
             let _ = AppendMenuW(
                 menu.handle(),
                 MF_STRING | MF_GRAYED,
@@ -3352,13 +3365,6 @@ impl AppWindow {
                 );
             }
         }
-    }
-
-    fn current_status_summary_text(&self) -> String {
-        let status = status_text(self.strings, self.paused, self.issues.visible().is_some());
-        let mut summary = String::new();
-        status_summary_text_into(status, "", &mut summary);
-        summary
     }
 
     fn control_color(&self, wparam: WPARAM, lparam: LPARAM, message: u32) -> LRESULT {

@@ -820,7 +820,7 @@ fn apply_unmute_to_session(
 fn apply_unmute_to_unresolved_session(
     session: &UnresolvedAudioSessionControl,
     session_keys: &HashSet<AudioSessionKey>,
-) -> std::result::Result<HashSet<AudioSessionKey>, HashSet<AudioSessionKey>> {
+) -> std::result::Result<Vec<AudioSessionKey>, Vec<AudioSessionKey>> {
     let instance_id = session.instance_id();
     let matching_sessions =
         matching_unresolved_session_keys(session_keys, session.pid, instance_id.as_deref());
@@ -844,15 +844,15 @@ fn matching_unresolved_session_keys(
     session_keys: &HashSet<AudioSessionKey>,
     pid: u32,
     instance_id: Option<&str>,
-) -> HashSet<AudioSessionKey> {
+) -> Vec<AudioSessionKey> {
     let mut pid_match_count = 0;
     let mut fallback_match = None;
-    let mut matches = HashSet::new();
+    let mut matches = Vec::new();
     for key in session_keys.iter().filter(|key| key.pid == pid) {
         pid_match_count += 1;
         fallback_match = Some(key);
         if key.instance_id.as_deref() == instance_id {
-            matches.insert(key.clone());
+            matches.push(key.clone());
         }
     }
 
@@ -861,7 +861,7 @@ fn matching_unresolved_session_keys(
         && pid_match_count == 1
         && let Some(key) = fallback_match
     {
-        matches.insert(key.clone());
+        matches.push(key.clone());
     }
     matches
 }

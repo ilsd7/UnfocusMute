@@ -124,6 +124,7 @@ impl ConfigReloadResult {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(super) enum ProcessRefreshResult {
     Refreshed,
+    Unchanged,
     Skipped,
     Failed,
 }
@@ -190,6 +191,7 @@ mod tests {
     #[test]
     fn process_refresh_result_only_reports_refreshed_for_successful_refresh() {
         assert!(ProcessRefreshResult::Refreshed.refreshed());
+        assert!(!ProcessRefreshResult::Unchanged.refreshed());
         assert!(!ProcessRefreshResult::Skipped.refreshed());
         assert!(!ProcessRefreshResult::Failed.refreshed());
     }
