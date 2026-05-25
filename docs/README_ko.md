@@ -3,7 +3,7 @@
 
   <h1>UnfocusMute</h1>
 
-  <p><strong>선택한 게임이나 앱이 포커스를 잃으면 자동으로 음소거하는 가벼운 Windows 트레이 앱입니다.</strong></p>
+  <p><strong>선택한 게임이나 앱이 포커스를 잃으면 자동으로 음소거하는 가벼운 Windows용 트레이 앱입니다.</strong></p>
 
   <p>
     <a href="../README.md">English</a> · 한국어 · <a href="README_ja.md">日本語</a> · <a href="README_zh-CN.md">简体中文</a> · <a href="README_es.md">Español</a> · <a href="README_fr.md">Français</a> · <a href="README_pt.md">Português</a> · <a href="README_hi.md">हिन्दी</a> · <a href="README_ar.md">العربية</a>
@@ -27,13 +27,15 @@
 
 ---
 
-UnfocusMute는 선택한 게임이나 앱이 백그라운드로 전환될 때 해당 앱의 오디오 세션을 자동으로 음소거하는 작고 가벼운 Windows용 트레이 앱입니다. 게임뿐 아니라 브라우저, 메신저, 런처, 미디어 플레이어처럼 Windows 오디오 세션으로 표시되는 일반 앱도 등록할 수 있습니다.
+UnfocusMute는 선택한 게임이나 앱이 백그라운드로 전환되면 자동으로 음소거하는 작고 가벼운 Windows용 트레이 앱입니다.
 
-Rust 네이티브 앱으로 빌드되어 별도 런타임 없이 바로 실행할 수 있으며, 실행 파일 크기는 약 500KB입니다.
+게임에만 한정되지 않으며 브라우저, 메신저, 런처, 미디어 플레이어 같은 일반 앱도 등록할 수 있습니다.
 
 <p align="center">
-  <img src="../assets/screenshot_ko.png" alt="UnfocusMute 앱 화면">
+  <img src="../assets/screenshot_ko.png" width="760" alt="UnfocusMute 메인 창">
 </p>
+
+Rust 네이티브 앱으로 빌드되어 별도 런타임 없이 바로 실행할 수 있으며, 실행 파일 크기는 약 500KB입니다.
 
 음소거와 복원은 UnfocusMute가 직접 변경한 세션에만 적용되며, 사용자가 원래 음소거해 둔 세션은 변경하지 않습니다.
 

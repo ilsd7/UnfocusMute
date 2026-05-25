@@ -60,6 +60,18 @@ function Convert-ReadmeForPackage {
     return $Content.TrimStart()
 }
 
+function Convert-RootReadmeForPackage {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$Content
+    )
+
+    $Content = Convert-ReadmeForPackage $Content
+    $Content = $Content.Replace("](LICENSE)", "](../LICENSE)")
+    $Content = $Content.Replace("](THIRD_PARTY_NOTICES.md)", "](../THIRD_PARTY_NOTICES.md)")
+    return $Content
+}
+
 function Remove-ReadmeLanguageLinks {
     param(
         [Parameter(Mandatory = $true)]
@@ -378,12 +390,16 @@ try {
     if (Test-Path "docs" -PathType Container) {
         $DocFiles = @(
             Get-ChildItem "docs" -File -Filter "README_*.md" |
-                Where-Object { $_.Name -ne "README_ko.md" } |
+                Where-Object { $_.Name -notin @("README_en.md", "README_ko.md") } |
                 Sort-Object Name
         )
     }
     $DocsStage = Join-Path $Stage "docs"
     New-Item -ItemType Directory -Force -Path $DocsStage | Out-Null
+
+    $ReadmeEn = [System.IO.File]::ReadAllText((Join-Path $RepoRoot "README.md"), [System.Text.Encoding]::UTF8)
+    $ReadmeEn = Convert-RootReadmeForPackage $ReadmeEn
+    [System.IO.File]::WriteAllText((Join-Path $DocsStage "README_en.txt"), $ReadmeEn, $Utf8NoBom)
 
     $ReadmeKo = [System.IO.File]::ReadAllText((Join-Path $RepoRoot "docs\README_ko.md"), [System.Text.Encoding]::UTF8)
     $ReadmeKo = Convert-ReadmeForPackage $ReadmeKo
@@ -402,6 +418,7 @@ try {
         $ExpectedExeEntry,
         "$PackageName/LICENSE",
         "$PackageName/THIRD_PARTY_NOTICES.md",
+        "$PackageName/docs/README_en.txt",
         "$PackageName/docs/README_ko.txt"
     )
     if ($DocFiles.Count -gt 0) {

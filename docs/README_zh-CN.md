@@ -27,13 +27,15 @@
 
 ---
 
-UnfocusMute 是一个小巧轻量的 Windows 托盘应用。当你选定的游戏或应用切到后台时，它会自动静音该应用的音频会话。它不仅适用于游戏，浏览器、聊天工具、启动器、媒体播放器等只要显示为 Windows 音频会话，也可以注册使用。
+UnfocusMute 是一款小巧轻量的 Windows 托盘应用，可在选定的游戏或应用移到后台时自动将其静音。
 
-它是 Rust 原生应用，无需额外运行时即可直接运行。可执行文件大小约为 500 KB。
+它并不局限于游戏：你也可以注册浏览器、聊天工具、启动器、媒体播放器等常规应用。
 
 <p align="center">
-  <img src="../assets/screenshot_zh-Hans.png" alt="UnfocusMute 应用窗口">
+  <img src="../assets/screenshot_zh-CN.png" width="760" alt="UnfocusMute 主窗口">
 </p>
+
+它是 Rust 原生应用，无需额外运行时即可直接运行。可执行文件大小约为 500 KB。
 
 静音和恢复都只会作用于 UnfocusMute 自己改动过的会话。你原本就静音的会话不会被改动。
 
