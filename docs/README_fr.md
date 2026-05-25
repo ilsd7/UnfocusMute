@@ -50,8 +50,8 @@ La mise en sourdine et la restauration ne s’appliquent qu’aux sessions qu’
 
 - Met automatiquement en sourdine les applications enregistrées lorsqu’elles sont en arrière-plan et réactive l’audio à leur retour au premier plan.
 - Enregistrement depuis la liste des applications en cours ou en saisissant un nom comme `game.exe`.
-- Prend en charge les cibles par `.exe`, les cibles par PID de l’instance en cours et `Vue PID`.
-- Notes par application, état de sourdine en direct par cible, `Pause` et `Reprendre` par application.
+- Prend en charge l’enregistrement par `.exe`, l’enregistrement par PID de l’instance en cours et `Vue PID`.
+- Notes par application, état de sourdine en direct par application, `Pause` et `Reprendre` par application.
 - Présence dans la zone de notification, résumé d’état dans la zone de notification, pause globale, accès au dossier de configuration et protection contre les instances multiples.
 - Le bouton Réglages en bas à gauche regroupe comportement, langue, dossier de configuration, GitHub et version.
 - Choix de la langue au premier démarrage, puis changement immédiat dans l’application entre English/한국어/日本語/简体中文/Español/Français/Português/हिन्दी/العربية.
@@ -76,7 +76,7 @@ Déplacez le dossier extrait `UnfocusMute-windows-x64` à l’emplacement où vo
 
 UnfocusMute s’appuie sur les noms de processus, les informations de fenêtre au premier plan et les sessions CoreAudio fournies par Windows. Si une application n’a pas encore créé de session audio, ou si un pilote, un réglage de permission ou un logiciel de sécurité limite l’accès aux sessions, l’affichage dans la liste ou le contrôle de sourdine peut être limité.
 
-**Comportement des cibles par PID :** Windows ne fournit pas toujours le même PID pour une session audio et pour la fenêtre au premier plan. Pour compenser cela, UnfocusMute considère que l’application est revenue au premier plan lorsque le nom `.exe` du PID enregistré correspond au nom `.exe` de la fenêtre actuellement active.
+**Comportement de l’enregistrement par PID :** Windows ne fournit pas toujours le même PID pour une session audio et pour la fenêtre au premier plan. Pour compenser cela, UnfocusMute considère que l’application est revenue au premier plan lorsque le nom `.exe` du PID enregistré correspond au nom `.exe` de la fenêtre actuellement active.
 
 Si plusieurs instances du même `.exe` sont ouvertes en même temps, un PID précis ne peut donc pas toujours être séparé parfaitement. Dans ce cas, le son peut être rétabli lorsqu’une autre instance est au premier plan.
 
@@ -87,15 +87,15 @@ Si plusieurs instances du même `.exe` sont ouvertes en même temps, un PID pré
 1. Lancez UnfocusMute.
 2. Choisissez la langue au premier démarrage. La valeur par défaut est l’anglais.
 3. Lancez le jeu ou l’application à mettre en sourdine lorsqu’il passe en arrière-plan.
-4. Ouvrez la liste `Rechercher un processus` ou saisissez un terme de recherche, choisissez un élément, puis cliquez sur `Ajouter la sélection`.
-5. Si vous devez enregistrer seulement un PID précis, cliquez sur `Vue PID` et choisissez l’entrée concernée. Une cible par PID ne vaut que pour l’instance actuellement ouverte ; si l’application redémarre avec un autre PID, sélectionnez-la à nouveau.
+4. Ouvrez la liste `Rechercher un processus` ou saisissez un terme de recherche, choisissez un élément, puis cliquez sur `Enregistrer`.
+5. Si vous devez enregistrer seulement un PID précis, cliquez sur `Vue PID` et choisissez l’entrée concernée. Une entrée par PID n’est valable que pour l’instance actuellement ouverte ; si l’application redémarre avec un autre PID, sélectionnez-la à nouveau.
 6. Faites un clic droit sur une application enregistrée pour modifier sa note ou utiliser `Pause`.
 7. Ouvrez `Réglages` en bas à gauche pour modifier le comportement.
-8. Fermer la fenêtre laisse l’application dans la zone de notification, où elle continue de surveiller les cibles. Cliquez sur `Quitter` pour l’arrêter complètement.
+8. Fermer la fenêtre laisse l’application dans la zone de notification, où elle continue de surveiller les apps enregistrées. Cliquez sur `Quitter` pour l’arrêter complètement.
 
 ## Utiliser les notes des applications enregistrées
 
-Si le nom du processus ne suffit pas à reconnaître l’application, faites un clic droit sur l’application enregistrée et choisissez `Modifier la note`. La note s’affiche au-dessus du nom du processus dans la liste, sans influencer la détection de la cible.
+Si le nom du processus ne suffit pas à reconnaître l’application, faites un clic droit sur l’application enregistrée et choisissez `Modifier la note`. La note s’affiche au-dessus du nom du processus dans la liste, sans influencer la détection de l’application.
 
 C’est utile lorsqu’un même lanceur de jeu ouvre plusieurs processus, ou lorsqu’un nom d’exécutable n’indique pas clairement son rôle.
 
@@ -123,7 +123,7 @@ UnfocusMute est une application entièrement locale. Tout se passe sur votre PC,
 
 Par exception, lorsque vous cliquez sur le bouton GitHub dans Réglages, la page GitHub du projet s’ouvre dans votre navigateur par défaut.
 
-**Ce qui est stocké :** Les noms de processus enregistrés, les PID facultatifs, les notes que vous écrivez, la langue choisie, la position de la fenêtre, les options de démarrage et l'état de restauration du mode muet pour les cibles enregistrées.
+**Ce qui est stocké :** Les noms de processus enregistrés, les PID facultatifs, les notes que vous écrivez, la langue choisie, la position de la fenêtre, les options de démarrage et l’état de restauration des apps mises en sourdine par UnfocusMute.
 Ces données sont stockées uniquement dans `%APPDATA%\UnfocusMute\config.json` et ne sont envoyées nulle part.
 
 **Ce qui n’est pas stocké :** L’application ne crée pas de fichier journal. Aucun historique d’activité n’est conservé entre les sessions.
@@ -142,9 +142,9 @@ Si les droits de publication sont détournés ou si un compte est compromis, des
 
 Par transparence, UnfocusMute fournit une méthode permettant de vérifier que les fichiers mis en ligne sur GitHub Releases sont bien des artefacts officiels générés par GitHub Actions à partir du code source de ce dépôt pour le tag correspondant.
 
-Le fichier ZIP de release et le fichier de somme de contrôle SHA-256 sont générés automatiquement par GitHub Actions, et chaque fichier est fourni avec une attestation permettant de vérifier son origine de build.
+Le fichier ZIP de release et le fichier de somme de contrôle SHA-256 sont générés automatiquement par GitHub Actions, et chaque fichier est fourni avec une attestation de provenance de build.
 
-Les commandes ci-dessous permettent de vérifier que le ZIP téléchargé a été généré par le build officiel de ce dépôt.
+Les commandes ci-dessous permettent de vérifier que le ZIP téléchargé a été généré par la compilation officielle de ce dépôt.
 
 ```powershell
 gh attestation verify .\UnfocusMute-windows-x64.zip -R ilsd7/UnfocusMute
@@ -168,7 +168,7 @@ rustup target add x86_64-pc-windows-msvc
 cargo build --release --target x86_64-pc-windows-msvc --locked
 ```
 
-Les builds de release sont configurés pour réduire la taille du binaire. Le release profile de `Cargo.toml` retire les symboles, active LTO, utilise une seule codegen unit, définit `panic = "abort"` et optimise pour la taille.
+Les builds de release sont configurés pour réduire la taille du binaire. Le profil de release de `Cargo.toml` retire les symboles, active LTO, utilise une seule codegen unit, définit `panic = "abort"` et optimise pour la taille.
 
 Exécutable :
 

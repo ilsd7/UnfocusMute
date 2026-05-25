@@ -3,7 +3,7 @@
 
   <h1>UnfocusMute</h1>
 
-  <p><strong>Lightweight, portable Windows tray app that automatically mutes selected games and apps when they move to the background.<br>Restores only sessions muted by UnfocusMute itself and runs fully locally without background network access.</strong></p>
+  <p><strong>Lightweight, portable Windows tray app that automatically mutes selected games and apps when they move to the background.<br>Restores only sessions muted by UnfocusMute itself and runs entirely locally without background network access.</strong></p>
 
   <p>
     <a href="docs/README_ko.md">한국어</a> · English · <a href="docs/README_ja.md">日本語</a> · <a href="docs/README_zh-CN.md">简体中文</a> · <a href="docs/README_es.md">Español</a> · <a href="docs/README_fr.md">Français</a> · <a href="docs/README_pt.md">Português</a> · <a href="docs/README_hi.md">हिन्दी</a> · <a href="docs/README_ar.md">العربية</a>
@@ -49,11 +49,11 @@ Mute and restore actions apply only to sessions UnfocusMute changed itself. Sess
 ## Features
 
 - Automatically mutes registered apps while they are in the background and restores them when they return to the foreground.
-- Register targets from the running app list or by typing a name such as `game.exe`.
-- Supports `.exe` targets, current-instance PID targets, and `PID view`.
-- Per-app notes, per-target live mute state, per-app `Pause`, and `Resume`.
+- Register apps from the running app list or by typing a name such as `game.exe`.
+- Supports `.exe` app entries, current-instance PID entries, and `PID view`.
+- Per-app notes, live mute state for each registered app, per-app `Pause`, and `Resume`.
 - Tray resident behavior, tray status summaries, global pause, config folder access, and single-instance protection.
-- The lower-left settings button collects behavior options, language, config-folder access, GitHub, and version info.
+- The lower-left Settings button groups behavior options, language, config-folder access, GitHub, and version info.
 - Choose a language on first run, then switch in-app between English/한국어/日本語/简体中文/Español/Français/Português/हिन्दी/العربية.
 - Settings are stored locally at `%APPDATA%\UnfocusMute\config.json`.
 
@@ -70,32 +70,32 @@ On Windows 10/11, download the ZIP package and extract it to run the app.
 
 Move the extracted `UnfocusMute-windows-x64` folder wherever you want to keep the app, then run `UnfocusMute-v<version>.exe` inside that folder. It is portable, so there is no installer, and you do not need Rust, Visual Studio Build Tools, MinGW, or any other development tools.
 
-> **Note:** Because of code-signing certificate costs, the app is currently distributed without Windows code signing. Windows SmartScreen or an "unknown publisher" warning may appear on first run. To verify the file integrity yourself, see [Verifying Release Files](#verifying-release-files).
+> **Note:** Because code-signing certificates are costly, the app is currently distributed without Windows code signing. Windows SmartScreen or an "unknown publisher" warning may appear on first run. To verify the file integrity yourself, see [Verifying Release Files](#verifying-release-files).
 
 ## Before You Use
 
 UnfocusMute works from the process names, foreground window information, and CoreAudio sessions provided by Windows. If an app has not created an audio session yet, or if a driver, permission setting, or security tool limits session access, listing or mute control may be limited.
 
-**PID target behavior:** Windows does not always report the same PID for an audio session and the foreground window. To compensate for this, UnfocusMute treats the app as back in the foreground when the registered PID's `.exe` name matches the current foreground window's `.exe` name.
+**PID registration behavior:** Windows does not always report the same PID for an audio session and the foreground window. To compensate for this, UnfocusMute treats the app as back in the foreground when the registered PID's `.exe` name matches the current foreground window's `.exe` name.
 
 If several instances of the same `.exe` are running at the same time, a specific PID cannot always be separated perfectly. In that case, audio may be restored when another instance is in the foreground.
 
-**Anti-cheat compatibility:** UnfocusMute does not inject code into games, read game memory, hook input, or modify game files. It only uses Windows process/foreground window information and CoreAudio session mute controls, so it is expected to be fine with most anti-cheat systems, but compatibility with every anti-cheat system cannot be guaranteed.
+**Anti-cheat compatibility:** UnfocusMute does not inject code into games, read game memory, hook input, or modify game files. It only uses Windows process/foreground window information and CoreAudio session mute controls, so it should be compatible with most anti-cheat systems, but compatibility with every anti-cheat system cannot be guaranteed.
 
 ## Usage
 
 1. Launch UnfocusMute.
 2. Choose a language on the first-run language screen. The default is English.
 3. Start the game or app you want to mute when it is in the background.
-4. Open the `Search process` list or type a search term, choose an item, and click `Add selected`.
-5. If you need to register only one specific PID, click `PID view` and choose the individual entry. PID targets apply only to the currently running instance, so choose it again if the app restarts and receives a different PID.
+4. Open the `Search process` list or type a search term, choose an item, and click `Register`.
+5. If you need to register only one specific PID, click `PID view` and choose the individual entry. PID entries apply only to the currently running instance, so choose it again if the app restarts and receives a different PID.
 6. Right-click a registered app to edit its note or use `Pause`.
 7. Open `Settings` from the lower-left corner to change behavior options.
 8. Closing the window leaves the app running in the tray. Click `Quit` to exit completely.
 
 ## Using Notes for Registered Apps
 
-If a process name alone is hard to recognize, right-click the registered app and choose `Edit note`. The note appears above the process name in the registered app list and does not affect how targets are matched.
+If a process name alone is hard to recognize, right-click the registered app and choose `Edit note`. The note appears above the process name in the registered app list and does not affect how apps are matched.
 
 This is useful when a launcher starts several processes, or when an executable name does not clearly tell you what it is for.
 
@@ -123,7 +123,7 @@ UnfocusMute is a fully local app. Everything happens on your current PC, and it 
 
 As an exception, when you click the GitHub button in Settings, this project's GitHub page opens in your default browser.
 
-**What it stores:** Registered process names, optional PIDs, notes you write, selected language, window position, startup options, and UnfocusMute's mute-restore state for registered targets.
+**What it stores:** Registered process names, optional PIDs, notes you write, selected language, window position, startup options, and restore state for apps muted by UnfocusMute.
 This data is stored only in `%APPDATA%\UnfocusMute\config.json` and is not sent anywhere.
 
 **What it does not store:** It does not create app log files. No behavior history is retained between sessions.
@@ -142,7 +142,7 @@ If release permissions are abused or an account is compromised, files built from
 
 For transparency, UnfocusMute provides a way for users to verify that files uploaded to GitHub Releases are official build artifacts generated by GitHub Actions from this repository's source code at the corresponding tag.
 
-The release ZIP and SHA-256 checksum file are generated automatically by GitHub Actions, and each file is provided with an attestation that can verify its build origin.
+The release ZIP and SHA-256 checksum file are generated automatically by GitHub Actions, and each file includes a build provenance attestation.
 
 Use the commands below to check that the downloaded ZIP file was generated by the official build for this repository.
 
@@ -168,7 +168,7 @@ rustup target add x86_64-pc-windows-msvc
 cargo build --release --target x86_64-pc-windows-msvc --locked
 ```
 
-Release builds are configured for small output size. The release profile in `Cargo.toml` strips symbols, enables LTO, uses one codegen unit, sets `panic = "abort"`, and optimizes for size.
+Release builds are configured for a small binary size. The release profile in `Cargo.toml` strips symbols, enables LTO, uses one codegen unit, sets `panic = "abort"`, and optimizes for size.
 
 Executable:
 

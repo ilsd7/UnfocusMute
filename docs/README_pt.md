@@ -3,7 +3,7 @@
 
   <h1>UnfocusMute</h1>
 
-  <p><strong>App leve e portátil para a bandeja do Windows que silencia automaticamente jogos e apps selecionados quando vão para segundo plano.<br>Restaura apenas as sessões que o UnfocusMute silenciou diretamente e funciona totalmente local, sem conexões de rede em segundo plano.</strong></p>
+  <p><strong>App leve e portátil para a bandeja do Windows que silencia automaticamente jogos e apps selecionados quando vão para segundo plano.<br>Restaura apenas as sessões que o UnfocusMute silenciou diretamente e funciona totalmente de forma local, sem conexões de rede em segundo plano.</strong></p>
 
   <p>
     <a href="README_ko.md">한국어</a> · <a href="../README.md">English</a> · <a href="README_ja.md">日本語</a> · <a href="README_zh-CN.md">简体中文</a> · <a href="README_es.md">Español</a> · <a href="README_fr.md">Français</a> · Português · <a href="README_hi.md">हिन्दी</a> · <a href="README_ar.md">العربية</a>
@@ -35,7 +35,7 @@ Criado como app nativo em Rust, ele roda sem runtime separado. O executável tem
   <img src="../assets/screenshot_pt.png" alt="Janela do UnfocusMute">
 </p>
 
-O mudo e a restauração se aplicam apenas às sessões que o UnfocusMute alterou diretamente. Sessões que já estavam silenciadas por você não são modificadas.
+O silenciamento e a restauração se aplicam apenas às sessões que o UnfocusMute alterou diretamente. Sessões que já estavam silenciadas por você não são modificadas.
 
 ---
 
@@ -49,9 +49,9 @@ O mudo e a restauração se aplicam apenas às sessões que o UnfocusMute altero
 ## Recursos
 
 - Silencia automaticamente apps registrados enquanto estão em segundo plano e restaura o áudio quando voltam ao primeiro plano.
-- Registra alvos pela lista de apps em execução ou digitando um nome como `game.exe`.
-- Suporta alvos por `.exe`, alvos por PID da instância atual e `Ver PID`.
-- Notas por app, estado de mudo em tempo real por alvo, `Pausar` e `Retomar` por app.
+- Registra apps pela lista de apps em execução ou digitando um nome como `game.exe`.
+- Suporta entradas por `.exe`, entradas por PID da instância atual e `Ver PID`.
+- Notas por app, estado de silenciamento em tempo real por app, `Pausar` e `Retomar` por app.
 - Execução na bandeja, resumo de status na bandeja, pausa global, acesso à pasta de configuração e proteção contra instâncias duplicadas.
 - O botão de configurações no canto inferior esquerdo reúne opções de comportamento, idioma, pasta de configuração, GitHub e versão.
 - Escolha de idioma no primeiro uso e troca imediata dentro do app entre English/한국어/日本語/简体中文/Español/Français/Português/हिन्दी/العربية.
@@ -74,21 +74,21 @@ Mova a pasta extraída `UnfocusMute-windows-x64` para o local onde você quer ma
 
 ## Antes de usar
 
-UnfocusMute funciona com base nos nomes de processo, nas informações da janela em primeiro plano e nas sessões CoreAudio fornecidas pelo Windows. Se um app ainda não criou uma sessão de áudio, ou se um driver, permissão ou ferramenta de segurança limitar o acesso à sessão, a listagem ou o controle de mudo pode ficar parcialmente limitado.
+UnfocusMute funciona com base nos nomes de processo, nas informações da janela em primeiro plano e nas sessões CoreAudio fornecidas pelo Windows. Se um app ainda não criou uma sessão de áudio, ou se um driver, permissão ou ferramenta de segurança limitar o acesso à sessão, a listagem ou o controle de silenciamento pode ficar parcialmente limitado.
 
 **Comportamento ao registrar por PID:** O Windows nem sempre informa o mesmo PID para uma sessão de áudio e para a janela em primeiro plano. Para compensar isso, o UnfocusMute trata o app como tendo voltado ao primeiro plano quando o nome `.exe` do PID registrado corresponde ao nome `.exe` da janela atual em primeiro plano.
 
 Assim, se houver várias instâncias do mesmo `.exe` em execução ao mesmo tempo, um PID específico pode não ser separado perfeitamente. Nesse caso, o som pode ser restaurado quando outra instância estiver em foco.
 
-**Compatibilidade com anti-cheat:** UnfocusMute não injeta código em jogos, não lê memória do jogo, não intercepta entrada e não modifica arquivos do jogo. Ele usa apenas informações de processo/janela em primeiro plano do Windows e controles de mudo de sessões CoreAudio, então deve funcionar sem problemas na maioria dos anti-cheats, mas não é possível garantir compatibilidade com todos eles.
+**Compatibilidade com anti-cheat:** UnfocusMute não injeta código em jogos, não lê memória do jogo, não intercepta entrada e não modifica arquivos do jogo. Ele usa apenas informações de processo/janela em primeiro plano do Windows e controles de silenciamento de sessões CoreAudio, então deve funcionar sem problemas na maioria dos anti-cheats, mas não é possível garantir compatibilidade com todos eles.
 
 ## Uso
 
 1. Abra o UnfocusMute.
 2. Escolha o idioma na tela de primeiro uso. O padrão é inglês.
 3. Inicie o jogo ou app que você quer silenciar quando estiver em segundo plano.
-4. Abra a lista `Pesquisar processo` ou digite uma busca, escolha um item e clique em `Adicionar seleção`.
-5. Se precisar registrar apenas um PID específico, clique em `Ver PID` e escolha a entrada individual. Alvos por PID valem só para a instância em execução; se o app reiniciar com outro PID, selecione novamente.
+4. Abra a lista `Pesquisar processo` ou digite uma busca, escolha um item e clique em `Registrar`.
+5. Se precisar registrar apenas um PID específico, clique em `Ver PID` e escolha a entrada individual. Entradas por PID valem só para a instância em execução; se o app reiniciar com outro PID, selecione novamente.
 6. Clique com o botão direito em um app registrado para editar sua nota ou usar `Pausar`.
 7. Abra `Configurações` no canto inferior esquerdo para alterar opções de comportamento.
 8. Ao fechar a janela, o app continua rodando na bandeja e monitorando. Use `Sair` para encerrar completamente.
@@ -123,14 +123,14 @@ UnfocusMute é um app totalmente local. Tudo acontece dentro do seu PC, e ele fu
 
 Como exceção, quando você clica no botão do GitHub em Configurações, a página do GitHub deste projeto é aberta no navegador padrão.
 
-**O que ele salva:** Nomes de processos registrados, PIDs opcionais, notas que você escrever, idioma escolhido, posição da janela, opções de inicialização e o estado de restauração de mudo dos alvos registrados.
+**O que ele salva:** Nomes de processos registrados, PIDs opcionais, notas que você escrever, idioma escolhido, posição da janela, opções de inicialização e o estado de restauração dos apps silenciados pelo UnfocusMute.
 Esses dados ficam apenas em `%APPDATA%\UnfocusMute\config.json` e não são enviados para fora.
 
 **O que ele não salva:** O app não cria arquivos de log. Nenhum histórico de atividade é mantido entre sessões.
 
 **O que ele não faz:** Não faz solicitações de rede automáticas, não usa telemetria, não envia relatórios de falha, não faz logs remotos e não coleta dados. Ele também não exige permissões de administrador.
 
-A detecção de sessões de áudio e o controle de mudo usam apenas as APIs CoreAudio do Windows, e o UnfocusMute não injeta código em processos de jogos nem lê a memória deles.
+A detecção de sessões de áudio e o controle de silenciamento usam apenas as APIs CoreAudio do Windows, e o UnfocusMute não injeta código em processos de jogos nem lê a memória deles.
 
 ---
 
@@ -142,9 +142,9 @@ Se permissões de release forem abusadas ou uma conta for comprometida, arquivos
 
 Por transparência, o UnfocusMute oferece uma forma de verificar se os arquivos enviados ao GitHub Releases são artefatos oficiais gerados pelo GitHub Actions a partir do código-fonte deste repositório na tag correspondente.
 
-O ZIP da release e o arquivo de checksum SHA-256 são gerados automaticamente pelo GitHub Actions, e cada arquivo é fornecido com uma attestation que permite verificar sua origem de build.
+O ZIP da release e o arquivo de checksum SHA-256 são gerados automaticamente pelo GitHub Actions, e cada arquivo é fornecido com uma atestação de procedência da compilação (attestation).
 
-Os comandos abaixo permitem confirmar que o ZIP baixado foi gerado pelo build oficial deste repositório.
+Os comandos abaixo permitem confirmar que o ZIP baixado foi gerado pela compilação oficial deste repositório.
 
 ```powershell
 gh attestation verify .\UnfocusMute-windows-x64.zip -R ilsd7/UnfocusMute
@@ -168,7 +168,7 @@ rustup target add x86_64-pc-windows-msvc
 cargo build --release --target x86_64-pc-windows-msvc --locked
 ```
 
-Builds de release são configurados para reduzir o tamanho do binário. O release profile em `Cargo.toml` remove símbolos, ativa LTO, usa uma única codegen unit, define `panic = "abort"` e otimiza para tamanho.
+As compilações de release são configuradas para reduzir o tamanho do binário. O perfil de release em `Cargo.toml` remove símbolos, ativa LTO, usa uma única codegen unit, define `panic = "abort"` e otimiza para tamanho.
 
 Executável:
 

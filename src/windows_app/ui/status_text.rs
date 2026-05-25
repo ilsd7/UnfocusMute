@@ -1,4 +1,4 @@
-use crate::i18n::Strings;
+use crate::i18n::{CountText, CountTextOrder, Strings};
 
 const APP_VERSION: &str = env!("CARGO_PKG_VERSION");
 
@@ -38,13 +38,9 @@ pub(super) fn status_detail_text_into(
         return;
     }
 
-    output.push_str(strings.target_count);
-    output.push(' ');
-    push_decimal(output, target_count);
+    push_count_text(output, strings.target_count, target_count);
     output.push_str(" · ");
-    output.push_str(strings.muted_count);
-    output.push(' ');
-    push_decimal(output, muted_count);
+    push_count_text(output, strings.muted_count, muted_count);
 }
 
 pub(super) fn tray_tip_text_into(
@@ -98,6 +94,21 @@ fn push_decimal(output: &mut String, mut number: usize) {
     }
 }
 
+fn push_count_text(output: &mut String, text: CountText, count: usize) {
+    match text.order {
+        CountTextOrder::LabelFirst => {
+            output.push_str(text.label(count));
+            output.push(' ');
+            push_decimal(output, count);
+        }
+        CountTextOrder::CountFirst => {
+            push_decimal(output, count);
+            output.push(' ');
+            output.push_str(text.label(count));
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -110,7 +121,43 @@ mod tests {
 
         status_detail_text_into(strings, None, 12, 3, &mut detail);
 
-        assert_eq!(detail, "등록 12 · 음소거 3");
+        assert_eq!(detail, "등록 앱 12 · 음소거 중 3");
+    }
+
+    #[test]
+    fn localized_status_detail_labels_read_naturally() {
+        let cases = [
+            (Language::En, "Apps 12 · Muted 3"),
+            (Language::Ja, "登録アプリ 12 · ミュート中 3"),
+            (Language::ZhHans, "已注册应用 12 · 静音中 3"),
+            (Language::Es, "12 registradas · 3 silenciadas"),
+            (Language::Fr, "12 enregistrées · 3 en sourdine"),
+            (Language::Pt, "12 registrados · 3 silenciados"),
+            (Language::Hi, "12 पंजीकृत ऐप · 3 म्यूट"),
+            (Language::Ar, "التطبيقات المسجلة 12 · المكتومة 3"),
+        ];
+
+        let mut detail = String::new();
+        for (language, expected) in cases {
+            status_detail_text_into(language.strings(), None, 12, 3, &mut detail);
+            assert_eq!(detail, expected);
+        }
+    }
+
+    #[test]
+    fn localized_status_detail_uses_singular_count_labels() {
+        let cases = [
+            (Language::Es, "1 registrada · 1 silenciada"),
+            (Language::Fr, "1 enregistrée · 1 en sourdine"),
+            (Language::Pt, "1 registrado · 1 silenciado"),
+            (Language::Hi, "1 पंजीकृत ऐप · 1 म्यूट"),
+        ];
+
+        let mut detail = String::new();
+        for (language, expected) in cases {
+            status_detail_text_into(language.strings(), None, 1, 1, &mut detail);
+            assert_eq!(detail, expected);
+        }
     }
 
     #[test]

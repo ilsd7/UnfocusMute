@@ -49,9 +49,9 @@ El silencio y la restauración solo se aplican a las sesiones que UnfocusMute ca
 ## Funciones
 
 - Silencia automáticamente las apps registradas mientras están en segundo plano y restaura el audio al volver al primer plano.
-- Registra objetivos desde la lista de apps en ejecución o escribiendo un nombre como `game.exe`.
-- Admite objetivos por `.exe`, objetivos por PID de la instancia actual y `Ver PID`.
-- Notas por app, estado de silencio en vivo por objetivo, `Pausar` y `Reanudar` por app.
+- Registra apps desde la lista de apps en ejecución o escribiendo un nombre como `game.exe`.
+- Admite entradas por `.exe`, entradas por PID de la instancia actual y `Vista PID`.
+- Notas por app, estado de silencio en vivo por app, `Pausar` y `Reanudar` por app.
 - Permanencia en bandeja, resumen de estado en bandeja, pausa global, acceso a la carpeta de configuración y protección contra instancias duplicadas.
 - El botón de configuración en la esquina inferior izquierda reúne opciones de comportamiento, idioma, carpeta de configuración, GitHub y versión.
 - Permite elegir idioma en el primer inicio y cambiar después dentro de la app entre English/한국어/日本語/简体中文/Español/Français/Português/हिन्दी/العربية.
@@ -87,15 +87,15 @@ Por eso, si hay varias instancias del mismo `.exe` ejecutándose a la vez, un PI
 1. Abre UnfocusMute.
 2. Elige un idioma en la pantalla de primer inicio. El valor predeterminado es inglés.
 3. Inicia el juego o la app que quieres silenciar cuando esté en segundo plano.
-4. Abre la lista `Buscar proceso` o escribe una búsqueda, selecciona un elemento y pulsa `Añadir selección`.
-5. Si necesitas registrar solo un PID concreto, pulsa `Ver PID` y elige el elemento individual. Los objetivos por PID solo se aplican a la instancia que está en ejecución; si la app se reinicia con otro PID, selecciónala de nuevo.
+4. Abre la lista `Buscar proceso` o escribe una búsqueda, selecciona un elemento y pulsa `Registrar`.
+5. Si necesitas registrar solo un PID concreto, pulsa `Vista PID` y elige el elemento individual. Las entradas por PID solo se aplican a la instancia que está en ejecución; si la app se reinicia con otro PID, selecciónala de nuevo.
 6. Haz clic derecho en una app registrada para editar su nota o usar `Pausar`.
 7. Abre `Configuración` desde la esquina inferior izquierda para cambiar opciones de comportamiento.
 8. Al cerrar la ventana, la app permanece en la bandeja y sigue vigilando. Usa `Salir` para cerrarla por completo.
 
 ## Usar notas en apps registradas
 
-Si el nombre del proceso no basta para recordar qué app es, haz clic derecho en la app registrada y elige `Editar nota`. La nota aparece encima del nombre del proceso en la lista de apps registradas y no afecta a la detección del objetivo.
+Si el nombre del proceso no basta para recordar qué app es, haz clic derecho en la app registrada y elige `Editar nota`. La nota aparece encima del nombre del proceso en la lista de apps registradas y no afecta a la detección de apps.
 
 Es útil cuando un mismo launcher abre varios procesos, o cuando el nombre del ejecutable no deja claro para qué sirve.
 
@@ -123,7 +123,7 @@ UnfocusMute es una app completamente local. Todo ocurre dentro de tu PC y funcio
 
 Como excepción, si pulsas el botón de GitHub en Configuración, se abre la página de GitHub del proyecto en tu navegador predeterminado.
 
-**Lo que guarda:** Nombres de procesos registrados, PID opcionales, las notas que escribas, el idioma elegido, la posición de la ventana, las opciones de inicio y el estado de restauración del silencio de los objetivos registrados.
+**Lo que guarda:** Nombres de procesos registrados, PID opcionales, las notas que escribas, el idioma elegido, la posición de la ventana, las opciones de inicio y el estado de restauración de las apps silenciadas por UnfocusMute.
 Estos datos solo se guardan en `%APPDATA%\UnfocusMute\config.json` y no se envían fuera.
 
 **Lo que no guarda:** No crea archivos de log de la app. Tampoco conserva historial de actividad entre sesiones.
@@ -138,13 +138,13 @@ La detección de sesiones de audio y el control de silencio solo usan las API Co
 
 No debes asumir que los archivos subidos a GitHub Releases siempre coinciden con el código fuente publicado en el repositorio.
 
-Si se abusan los permisos de publicación o una cuenta se ve comprometida, podrían subirse a una release archivos compilados desde otro código o archivos modificados.
+Si se abusa de los permisos de publicación o una cuenta se ve comprometida, podrían subirse a una release archivos compilados desde otro código o archivos modificados.
 
 Por transparencia, UnfocusMute ofrece una forma de verificar que los archivos subidos a GitHub Releases son artefactos oficiales generados por GitHub Actions a partir del código fuente de este repositorio en la etiqueta correspondiente.
 
-El ZIP de la versión y el archivo de suma SHA-256 se generan automáticamente con GitHub Actions, y cada archivo se entrega con una attestation que permite verificar su origen de build.
+El ZIP de la versión y el archivo de suma SHA-256 se generan automáticamente con GitHub Actions, y cada archivo se entrega con una certificación de procedencia de compilación (attestation).
 
-Los comandos de abajo permiten comprobar que el ZIP descargado fue generado por el build oficial de este repositorio.
+Los comandos de abajo permiten comprobar que el ZIP descargado fue generado por la compilación oficial de este repositorio.
 
 ```powershell
 gh attestation verify .\UnfocusMute-windows-x64.zip -R ilsd7/UnfocusMute
@@ -168,7 +168,7 @@ rustup target add x86_64-pc-windows-msvc
 cargo build --release --target x86_64-pc-windows-msvc --locked
 ```
 
-La compilación de release está configurada para reducir el tamaño del binario. El release profile de `Cargo.toml` elimina símbolos, activa LTO, usa una sola codegen unit, establece `panic = "abort"` y optimiza por tamaño.
+La compilación de release está configurada para reducir el tamaño del binario. El perfil de release de `Cargo.toml` elimina símbolos, activa LTO, usa una sola codegen unit, establece `panic = "abort"` y optimiza por tamaño.
 
 Ejecutable:
 
