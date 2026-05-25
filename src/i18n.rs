@@ -386,7 +386,7 @@ impl Language {
                 version: "Versión",
                 target_count: count_first_count!("registrada", "registradas"),
                 muted_count: count_first_count!("silenciada", "silenciadas"),
-                open_config: "Abrir carpeta de configuración",
+                open_config: "Abrir configuración",
                 github_repository: "Repositorio de GitHub",
                 open_github_page: "Abrir página de GitHub",
                 open_github_failed: "No se pudo abrir la página de GitHub",
