@@ -3,8 +3,7 @@
 
   <h1>UnfocusMute</h1>
 
-  <p><strong>선택한 게임이나 앱이 백그라운드로 전환되면 자동으로 음소거하는 가볍고 포터블한 Windows 트레이 앱입니다.<br>
-UnfocusMute가 직접 음소거한 세션만 복원하며, 백그라운드 네트워크 연결 없이 완전히 로컬에서 동작합니다.</strong></p>
+  <p><strong>선택한 게임이나 앱이 포커스를 잃으면 자동으로 음소거하는 가벼운 Windows 트레이 앱입니다.</strong></p>
 
   <p>
     <a href="../README.md">English</a> · 한국어 · <a href="README_ja.md">日本語</a> · <a href="README_zh-CN.md">简体中文</a> · <a href="README_es.md">Español</a> · <a href="README_fr.md">Français</a> · <a href="README_pt.md">Português</a> · <a href="README_hi.md">हिन्दी</a> · <a href="README_ar.md">العربية</a>
@@ -16,7 +15,7 @@ UnfocusMute가 직접 음소거한 세션만 복원하며, 백그라운드 네�
     <a href="../LICENSE"><img src="https://img.shields.io/badge/license-Apache--2.0-blue?style=flat-square" alt="Apache-2.0 license"></a>
   </p>
 
-  <p>완전한 로컬 실행 &nbsp;·&nbsp; 백그라운드 네트워크 연결 없음 &nbsp;·&nbsp; 로그 파일 없음 &nbsp;·&nbsp; 관리자 권한 불필요</p>
+  <p>완전 로컬 &nbsp;·&nbsp; 네트워크 접근 없음 &nbsp;·&nbsp; 텔레메트리 없음 &nbsp;·&nbsp; 포터블</p>
 
   <p>
     <a href="https://github.com/ilsd7/UnfocusMute/releases/latest/download/UnfocusMute-windows-x64.zip">다운로드</a>

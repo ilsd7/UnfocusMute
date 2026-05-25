@@ -3,7 +3,7 @@
 
   <h1>UnfocusMute</h1>
 
-  <p><strong>تطبيق خفيف ومحمول لعلبة نظام Windows يكتم تلقائيًا الألعاب أو التطبيقات المحددة عندما تنتقل إلى الخلفية.<br>لا يستعيد إلا الجلسات التي كتمها UnfocusMute بنفسه، ويعمل محليًا بالكامل من دون اتصالات شبكة في الخلفية.</strong></p>
+  <p><strong>تطبيق خفيف لعلبة نظام Windows يكتم تلقائيًا الألعاب والتطبيقات المحددة عندما ينتقل التركيز عنها.</strong></p>
 
   <p>
     <a href="../README.md">English</a> · <a href="README_ko.md">한국어</a> · <a href="README_ja.md">日本語</a> · <a href="README_zh-CN.md">简体中文</a> · <a href="README_es.md">Español</a> · <a href="README_fr.md">Français</a> · <a href="README_pt.md">Português</a> · <a href="README_hi.md">हिन्दी</a> · العربية
@@ -15,7 +15,7 @@
     <a href="../LICENSE"><img src="https://img.shields.io/badge/license-Apache--2.0-blue?style=flat-square" alt="Apache-2.0 license"></a>
   </p>
 
-  <p>تشغيل محلي بالكامل &nbsp;·&nbsp; لا اتصالات شبكة في الخلفية &nbsp;·&nbsp; لا ملفات سجل &nbsp;·&nbsp; لا حاجة إلى صلاحيات مسؤول</p>
+  <p>محلي بالكامل &nbsp;·&nbsp; بلا وصول إلى الشبكة &nbsp;·&nbsp; بلا قياس عن بُعد &nbsp;·&nbsp; محمول</p>
 
   <p>
     <a href="https://github.com/ilsd7/UnfocusMute/releases/latest/download/UnfocusMute-windows-x64.zip">تنزيل</a>

@@ -3,7 +3,7 @@
 
   <h1>UnfocusMute</h1>
 
-  <p><strong>轻量、便携的 Windows 托盘应用，可在选定的游戏或应用切到后台时自动将其静音。<br>只恢复 UnfocusMute 自己静音过的会话，并且没有后台网络连接，完全在本地运行。</strong></p>
+  <p><strong>轻量级 Windows 托盘应用，可在选定的游戏或应用失去焦点时自动将其静音。</strong></p>
 
   <p>
     <a href="../README.md">English</a> · <a href="README_ko.md">한국어</a> · <a href="README_ja.md">日本語</a> · 简体中文 · <a href="README_es.md">Español</a> · <a href="README_fr.md">Français</a> · <a href="README_pt.md">Português</a> · <a href="README_hi.md">हिन्दी</a> · <a href="README_ar.md">العربية</a>
@@ -15,7 +15,7 @@
     <a href="../LICENSE"><img src="https://img.shields.io/badge/license-Apache--2.0-blue?style=flat-square" alt="Apache-2.0 license"></a>
   </p>
 
-  <p>完全本地运行 &nbsp;·&nbsp; 无后台网络连接 &nbsp;·&nbsp; 无日志文件 &nbsp;·&nbsp; 不需要管理员权限</p>
+  <p>完全本地 &nbsp;·&nbsp; 无网络访问 &nbsp;·&nbsp; 无遥测 &nbsp;·&nbsp; 便携</p>
 
   <p>
     <a href="https://github.com/ilsd7/UnfocusMute/releases/latest/download/UnfocusMute-windows-x64.zip">下载</a>

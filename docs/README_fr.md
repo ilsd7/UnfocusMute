@@ -3,7 +3,7 @@
 
   <h1>UnfocusMute</h1>
 
-  <p><strong>Application Windows légère et portable, dans la zone de notification, qui coupe automatiquement le son des jeux et apps choisis lorsqu’ils passent en arrière-plan.<br>Elle restaure uniquement les sessions qu’UnfocusMute a lui-même mises en sourdine et fonctionne entièrement en local, sans connexion réseau en arrière-plan.</strong></p>
+  <p><strong>Application légère pour la zone de notification Windows qui coupe automatiquement le son des jeux et apps choisis lorsqu’ils ne sont plus actifs.</strong></p>
 
   <p>
     <a href="../README.md">English</a> · <a href="README_ko.md">한국어</a> · <a href="README_ja.md">日本語</a> · <a href="README_zh-CN.md">简体中文</a> · <a href="README_es.md">Español</a> · Français · <a href="README_pt.md">Português</a> · <a href="README_hi.md">हिन्दी</a> · <a href="README_ar.md">العربية</a>
@@ -15,7 +15,7 @@
     <a href="../LICENSE"><img src="https://img.shields.io/badge/license-Apache--2.0-blue?style=flat-square" alt="Apache-2.0 license"></a>
   </p>
 
-  <p>Fonctionnement entièrement local &nbsp;·&nbsp; Aucune connexion réseau en arrière-plan &nbsp;·&nbsp; Aucun fichier journal &nbsp;·&nbsp; Aucun droit administrateur requis</p>
+  <p>Entièrement local &nbsp;·&nbsp; Aucun accès réseau &nbsp;·&nbsp; Aucune télémétrie &nbsp;·&nbsp; Portable</p>
 
   <p>
     <a href="https://github.com/ilsd7/UnfocusMute/releases/latest/download/UnfocusMute-windows-x64.zip">Télécharger</a>

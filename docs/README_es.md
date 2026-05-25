@@ -3,7 +3,7 @@
 
   <h1>UnfocusMute</h1>
 
-  <p><strong>App ligera y portátil para la bandeja de Windows que silencia automáticamente juegos y apps seleccionados cuando pasan a segundo plano.<br>Solo restaura las sesiones que UnfocusMute silenció directamente y funciona por completo en local, sin conexiones de red en segundo plano.</strong></p>
+  <p><strong>App ligera para la bandeja de Windows que silencia automáticamente juegos y apps seleccionados cuando pierden el foco.</strong></p>
 
   <p>
     <a href="../README.md">English</a> · <a href="README_ko.md">한국어</a> · <a href="README_ja.md">日本語</a> · <a href="README_zh-CN.md">简体中文</a> · Español · <a href="README_fr.md">Français</a> · <a href="README_pt.md">Português</a> · <a href="README_hi.md">हिन्दी</a> · <a href="README_ar.md">العربية</a>
@@ -15,7 +15,7 @@
     <a href="../LICENSE"><img src="https://img.shields.io/badge/license-Apache--2.0-blue?style=flat-square" alt="Apache-2.0 license"></a>
   </p>
 
-  <p>Funcionamiento completamente local &nbsp;·&nbsp; Sin conexiones de red en segundo plano &nbsp;·&nbsp; Sin archivos de log &nbsp;·&nbsp; No requiere permisos de administrador</p>
+  <p>Totalmente local &nbsp;·&nbsp; Sin acceso a la red &nbsp;·&nbsp; Sin telemetría &nbsp;·&nbsp; Portátil</p>
 
   <p>
     <a href="https://github.com/ilsd7/UnfocusMute/releases/latest/download/UnfocusMute-windows-x64.zip">Descargar</a>
