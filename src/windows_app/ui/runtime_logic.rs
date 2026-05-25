@@ -79,6 +79,10 @@ pub(super) fn replace_text_if_changed(current: &mut String, next: &mut String) -
     }
 }
 
+pub(super) fn running_process_selection_has_input(process_query: &str, picker_text: &str) -> bool {
+    !process_query.trim().is_empty() || !picker_text.trim().is_empty()
+}
+
 pub(super) fn should_hide_to_tray(tray_added: bool) -> bool {
     tray_added
 }
@@ -120,6 +124,18 @@ mod tests {
         assert!(replace_text_if_changed(&mut current, &mut next));
         assert_eq!(current, "chat.exe");
         assert!(next.is_empty());
+    }
+
+    #[test]
+    fn empty_process_picker_input_does_not_accept_stale_selection() {
+        assert!(!running_process_selection_has_input("", ""));
+        assert!(!running_process_selection_has_input("   ", "   "));
+    }
+
+    #[test]
+    fn process_picker_selection_requires_search_or_visible_text() {
+        assert!(running_process_selection_has_input("game", ""));
+        assert!(running_process_selection_has_input("", "game.exe"));
     }
 
     #[test]

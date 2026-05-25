@@ -94,8 +94,9 @@ use runtime_logic::{
     cached_foreground_process_name, desired_audio_fallback_timer_interval_ms,
     foreground_process_cache_needs_refresh, initial_managed_mute_fast_retry_count,
     initial_process_refresh_attempt, process_refresh_is_stale, replace_text_if_changed,
-    should_hide_to_tray, should_release_idle_audio_while_paused,
-    should_reset_audio_controller_after_update, should_retry_tray_icon_before_hide,
+    running_process_selection_has_input, should_hide_to_tray,
+    should_release_idle_audio_while_paused, should_reset_audio_controller_after_update,
+    should_retry_tray_icon_before_hide,
 };
 use settings_window::{SettingsPreferences, prompt_settings};
 use startup_sync::{
@@ -118,11 +119,10 @@ use target_note_prompt::prompt_target_note;
 use theme::{AppTheme, OwnedBrush, UiFont, px};
 use win32::{
     WindowClassRegistration, add_combo_item_with_buffer, add_list_item_with_buffer,
-    copy_wide_fixed, create_button, create_control, create_primary_button,
-    default_button_message_result, get_message, hiword, load_app_icon, load_github_icon,
-    load_settings_icon, load_tray_icon, loword, measure_text_width, move_window,
-    reserve_combo_items, reserve_list_items, set_combo_edit_caret, set_text, to_wide,
-    window_text_into, write_wide_buffer,
+    copy_wide_fixed, create_button, create_control, default_button_message_result, get_message,
+    hiword, load_app_icon, load_github_icon, load_settings_icon, load_tray_icon, loword,
+    measure_text_width, move_window, reserve_combo_items, reserve_list_items, set_combo_edit_caret,
+    set_text, to_wide, window_text_into, write_wide_buffer,
 };
 use window_position::{initial_window_position, should_start_hidden, window_position_is_visible};
 
@@ -983,7 +983,7 @@ impl AppWindow {
             )?
         };
         self.controls.add_selected_button = unsafe {
-            create_primary_button(
+            create_button(
                 self.hwnd,
                 instance,
                 "",
@@ -3077,8 +3077,9 @@ impl AppWindow {
     }
 
     fn update_action_buttons(&mut self) {
-        let can_add_selected = self
-            .selected_process_choice()
+        let selected_process_choice_index = self.selected_process_choice_index();
+        let can_add_selected = selected_process_choice_index
+            .and_then(|index| self.all_process_choices.get(index))
             .is_some_and(|choice| self.can_add_process_choice(choice));
         let can_add_manual = self.can_submit_manual_target();
         let state = ActionButtonState {
@@ -3096,19 +3097,27 @@ impl AppWindow {
         self.last_action_buttons = Some(state);
     }
 
-    fn selected_process_choice(&self) -> Option<&ProcessChoice> {
-        self.selected_process_choice_index()
-            .and_then(|index| self.all_process_choices.get(index))
-    }
-
-    fn selected_process_choice_index(&self) -> Option<usize> {
+    fn selected_process_choice_index(&mut self) -> Option<usize> {
         let index =
             unsafe { SendMessageW(self.controls.running_combo, CB_GETCURSEL, None, None).0 };
         if index >= 0 {
+            if !self.running_process_selection_has_input() {
+                return None;
+            }
             self.process_choice_indices.get(index as usize).copied()
         } else {
             self.single_filtered_process_choice_index()
         }
+    }
+
+    fn running_process_selection_has_input(&mut self) -> bool {
+        unsafe {
+            window_text_into(self.controls.running_combo, &mut self.display_text_buffer);
+        }
+        let has_input =
+            running_process_selection_has_input(&self.process_query, &self.display_text_buffer);
+        self.display_text_buffer.clear();
+        has_input
     }
 
     fn single_filtered_process_choice_index(&self) -> Option<usize> {
