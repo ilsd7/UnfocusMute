@@ -32,7 +32,7 @@ UnfocusMute는 선택한 게임이나 앱이 백그라운드로 전환되면 자
 게임에만 한정되지 않으며, 브라우저, 메신저, 런처, 미디어 플레이어 같은 일반 앱도 등록할 수 있습니다.
 
 <p align="center">
-  <img src="../assets/screenshot_ko.png" width="760" alt="UnfocusMute 메인 창">
+  <img src="../assets/screenshot_ko.png" width="600" alt="UnfocusMute 메인 창">
 </p>
 
 Rust 네이티브 앱으로 빌드되어 별도 런타임 없이 바로 실행되며, 실행 파일 크기는 약 500KB입니다.

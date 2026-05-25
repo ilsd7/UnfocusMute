@@ -32,7 +32,7 @@ UnfocusMute Windows ट्रे के लिए एक छोटा और ह
 यह सिर्फ गेम तक सीमित नहीं है — आप ब्राउज़र, मैसेंजर, लॉन्चर और मीडिया प्लेयर जैसे सामान्य ऐप्स भी रजिस्टर कर सकते हैं।
 
 <p align="center">
-  <img src="../assets/screenshot_hi.png" width="760" alt="UnfocusMute मुख्य विंडो">
+  <img src="../assets/screenshot_hi.png" width="600" alt="UnfocusMute मुख्य विंडो">
 </p>
 
 Rust नेटिव ऐप के रूप में बना होने के कारण यह अलग रनटाइम के बिना सीधे चलता है। निष्पादन योग्य फ़ाइल लगभग 500 KB की है।

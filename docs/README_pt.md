@@ -32,7 +32,7 @@ UnfocusMute é um app pequeno e leve para a bandeja do Windows que silencia auto
 Ele não se limita a jogos: você também pode registrar apps comuns, como navegadores, mensageiros, launchers e players de mídia.
 
 <p align="center">
-  <img src="../assets/screenshot_pt.png" width="760" alt="Janela principal do UnfocusMute">
+  <img src="../assets/screenshot_pt.png" width="600" alt="Janela principal do UnfocusMute">
 </p>
 
 Criado como app nativo em Rust, ele roda sem runtime separado. O executável tem cerca de 500 KB.

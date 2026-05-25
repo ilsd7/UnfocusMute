@@ -32,7 +32,7 @@ UnfocusMute 是一款小巧轻量的 Windows 托盘应用，可在选定的游�
 它并不局限于游戏，也可以注册浏览器、聊天工具、启动器、媒体播放器等常规应用。
 
 <p align="center">
-  <img src="../assets/screenshot_zh-CN.png" width="760" alt="UnfocusMute 主窗口">
+  <img src="../assets/screenshot_zh-CN.png" width="600" alt="UnfocusMute 主窗口">
 </p>
 
 它是 Rust 原生应用，无需额外运行时即可直接运行。可执行文件大小约为 500 KB。

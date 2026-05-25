@@ -32,7 +32,7 @@ UnfocusMute est une petite application légère pour la zone de notification Win
 Elle ne se limite pas aux jeux : vous pouvez aussi enregistrer des applications classiques comme des navigateurs, des messageries, des lanceurs et des lecteurs multimédias.
 
 <p align="center">
-  <img src="../assets/screenshot_fr.png" width="760" alt="Fenêtre principale d’UnfocusMute">
+  <img src="../assets/screenshot_fr.png" width="600" alt="Fenêtre principale d’UnfocusMute">
 </p>
 
 Compilée comme application native Rust, elle s’exécute sans runtime séparé. L’exécutable fait environ 500 Ko.

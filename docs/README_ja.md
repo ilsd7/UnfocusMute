@@ -32,7 +32,7 @@ UnfocusMuteは、選択したゲームやアプリがバックグラウンドへ
 ゲームに限らず、ブラウザ、メッセンジャー、ランチャー、メディアプレイヤーなどの一般的なアプリも登録できます。
 
 <p align="center">
-  <img src="../assets/screenshot_ja.png" width="760" alt="UnfocusMuteのメインウィンドウ">
+  <img src="../assets/screenshot_ja.png" width="600" alt="UnfocusMuteのメインウィンドウ">
 </p>
 
 Rust製のネイティブアプリなので、別途ランタイムなしでそのまま実行できます。実行ファイルのサイズは約500 KBです。
