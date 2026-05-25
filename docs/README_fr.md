@@ -3,7 +3,7 @@
 
   <h1>UnfocusMute</h1>
 
-  <p><strong>Application légère pour la zone de notification Windows qui coupe automatiquement le son des jeux et apps choisis lorsqu’ils ne sont plus actifs.</strong></p>
+  <p><strong>Application légère pour la zone de notification Windows qui coupe automatiquement le son des jeux et applications choisis lorsqu’ils ne sont plus au premier plan.</strong></p>
 
   <p>
     <a href="../README.md">English</a> · <a href="README_ko.md">한국어</a> · <a href="README_ja.md">日本語</a> · <a href="README_zh-CN.md">简体中文</a> · <a href="README_es.md">Español</a> · Français · <a href="README_pt.md">Português</a> · <a href="README_hi.md">हिन्दी</a> · <a href="README_ar.md">العربية</a>
@@ -27,9 +27,9 @@
 
 ---
 
-UnfocusMute est une petite application légère pour la zone de notification Windows qui coupe automatiquement le son des jeux et apps choisis lorsqu’ils passent en arrière-plan.
+UnfocusMute est une petite application légère pour la zone de notification Windows qui coupe automatiquement le son des jeux et applications choisis lorsqu’ils passent en arrière-plan.
 
-Elle ne se limite pas aux jeux : vous pouvez aussi enregistrer des applications classiques comme des navigateurs, messageries, lanceurs et lecteurs multimédias.
+Elle ne se limite pas aux jeux : vous pouvez aussi enregistrer des applications classiques comme des navigateurs, des messageries, des lanceurs et des lecteurs multimédias.
 
 <p align="center">
   <img src="../assets/screenshot_fr.png" width="760" alt="Fenêtre principale d’UnfocusMute">
@@ -37,7 +37,7 @@ Elle ne se limite pas aux jeux : vous pouvez aussi enregistrer des applications 
 
 Compilée comme application native Rust, elle s’exécute sans runtime séparé. L’exécutable fait environ 500 Ko.
 
-La mise en sourdine et la restauration ne s’appliquent qu’aux sessions qu’UnfocusMute a modifiées lui-même. Les sessions que vous aviez déjà mises en sourdine ne sont pas modifiées.
+La mise en sourdine et la restauration du son ne s’appliquent qu’aux sessions qu’UnfocusMute a modifiées lui-même. Les sessions que vous aviez déjà mises en sourdine ne sont pas modifiées.
 
 ---
 
@@ -46,16 +46,16 @@ La mise en sourdine et la restauration ne s’appliquent qu’aux sessions qu’
 - Vous laissez un jeu ou une application ouvert et passez souvent à une autre fenêtre avec Alt+Tab.
 - Un jeu ou une application ne propose pas sa propre option de sourdine en arrière-plan.
 - Vous voulez couper seulement le son d’un jeu en arrière-plan tout en gardant audible un navigateur ou une application d’appel.
-- Le même `.exe` lance plusieurs processus et vous devez passer d’une gestion par application entière à un PID précis.
+- Le même `.exe` lance plusieurs processus et vous devez passer d’une gestion de l’application entière à un PID précis.
 
 ## Fonctionnalités
 
-- Met automatiquement en sourdine les applications enregistrées lorsqu’elles sont en arrière-plan et réactive l’audio à leur retour au premier plan.
-- Enregistrement depuis la liste des applications en cours ou en saisissant un nom comme `game.exe`.
+- Met automatiquement en sourdine les applications enregistrées lorsqu’elles sont en arrière-plan et rétablit leur son à leur retour au premier plan.
+- Enregistrement depuis la liste des applications en cours d’exécution ou en saisissant un nom comme `game.exe`.
 - Prend en charge l’enregistrement par `.exe`, l’enregistrement par PID de l’instance en cours et `Vue PID`.
-- Notes par application, état de sourdine en direct par application, `Pause` et `Reprendre` par application.
-- Présence dans la zone de notification, résumé d’état dans la zone de notification, pause globale, accès au dossier de configuration et protection contre les instances multiples.
-- Le bouton Réglages en bas à gauche regroupe comportement, langue, dossier de configuration, GitHub et version.
+- Notes par application, état de mise en sourdine en temps réel et commandes `Pause` / `Reprendre` par application.
+- Fonctionnement dans la zone de notification, résumé d’état dans la zone de notification, pause globale, accès au dossier de configuration et protection contre les instances multiples.
+- Le bouton Paramètres en bas à gauche regroupe les options de comportement, la langue, le dossier de configuration, Dépôt GitHub et les informations de version.
 - Choix de la langue au premier démarrage, puis changement immédiat dans l’application entre English/한국어/日本語/简体中文/Español/Français/Português/हिन्दी/العربية.
 - Les réglages sont stockés localement dans `%APPDATA%\UnfocusMute\config.json`.
 
@@ -72,28 +72,28 @@ Sous Windows 10/11, téléchargez le paquet ZIP puis extrayez-le pour lancer l�
 
 Déplacez le dossier extrait `UnfocusMute-windows-x64` à l’emplacement où vous souhaitez conserver l’application, puis lancez `UnfocusMute-v<version>.exe` depuis ce dossier. L’application est portable : il n’y a pas d’installateur et vous n’avez pas besoin de Rust, Visual Studio Build Tools, MinGW ni d’autres outils de développement.
 
-> **Remarque :** En raison du coût des certificats de signature de code, l’application est actuellement distribuée sans signature de code Windows. Windows SmartScreen ou un avertissement d’éditeur inconnu peut apparaître au premier lancement. Pour vérifier vous-même l’intégrité du fichier, consultez la section de vérification des fichiers de release ci-dessous.
+> **Remarque :** Comme les certificats de signature de code ont un coût, l’application est actuellement distribuée sans signature de code Windows. Windows SmartScreen ou un avertissement d’éditeur inconnu peut apparaître au premier lancement. Pour vérifier vous-même l’intégrité du fichier, consultez la section de vérification des fichiers de release ci-dessous.
 
 ## À savoir avant utilisation
 
-UnfocusMute s’appuie sur les noms de processus, les informations de fenêtre au premier plan et les sessions CoreAudio fournies par Windows. Si une application n’a pas encore créé de session audio, ou si un pilote, un réglage de permission ou un logiciel de sécurité limite l’accès aux sessions, l’affichage dans la liste ou le contrôle de sourdine peut être limité.
+UnfocusMute s’appuie sur les noms de processus, les informations de fenêtre au premier plan et les sessions CoreAudio fournies par Windows. Si une application n’a pas encore créé de session audio, ou si un pilote, un réglage d’autorisation ou un logiciel de sécurité limite l’accès aux sessions, l’affichage dans la liste ou le contrôle de sourdine peut être limité.
 
 **Comportement de l’enregistrement par PID :** Windows ne fournit pas toujours le même PID pour une session audio et pour la fenêtre au premier plan. Pour compenser cela, UnfocusMute considère que l’application est revenue au premier plan lorsque le nom `.exe` du PID enregistré correspond au nom `.exe` de la fenêtre actuellement active.
 
 Si plusieurs instances du même `.exe` sont ouvertes en même temps, un PID précis ne peut donc pas toujours être séparé parfaitement. Dans ce cas, le son peut être rétabli lorsqu’une autre instance est au premier plan.
 
-**Compatibilité anti-triche :** UnfocusMute n’injecte pas de code dans les jeux, ne lit pas la mémoire du jeu, n’intercepte pas les entrées et ne modifie pas les fichiers du jeu. Il utilise seulement les informations de processus/fenêtre au premier plan de Windows et les commandes de sourdine des sessions CoreAudio. Il devrait donc être acceptable pour la plupart des systèmes anti-triche, mais la compatibilité avec tous les systèmes anti-triche ne peut pas être garantie.
+**Compatibilité anti-triche :** UnfocusMute n’injecte pas de code dans les jeux, ne lit pas la mémoire du jeu, n’intercepte pas les entrées et ne modifie pas les fichiers du jeu. Il utilise seulement les informations de processus/fenêtre au premier plan de Windows et les commandes de sourdine des sessions CoreAudio. Il devrait donc fonctionner sans problème avec la plupart des systèmes anti-triche, mais la compatibilité avec tous les systèmes anti-triche ne peut pas être garantie.
 
 ## Utilisation
 
 1. Lancez UnfocusMute.
-2. Choisissez la langue au premier démarrage. La valeur par défaut est l’anglais.
+2. Choisissez la langue dans l’écran affiché au premier démarrage. La langue par défaut est l’anglais.
 3. Lancez le jeu ou l’application à mettre en sourdine lorsqu’il passe en arrière-plan.
 4. Ouvrez la liste `Rechercher un processus` ou saisissez un terme de recherche, choisissez un élément, puis cliquez sur `Enregistrer`.
 5. Si vous devez enregistrer seulement un PID précis, cliquez sur `Vue PID` et choisissez l’entrée concernée. Une entrée par PID n’est valable que pour l’instance actuellement ouverte ; si l’application redémarre avec un autre PID, sélectionnez-la à nouveau.
 6. Faites un clic droit sur une application enregistrée pour modifier sa note ou utiliser `Pause`.
-7. Ouvrez `Réglages` en bas à gauche pour modifier le comportement.
-8. Fermer la fenêtre laisse l’application dans la zone de notification, où elle continue de surveiller les apps enregistrées. Cliquez sur `Quitter` pour l’arrêter complètement.
+7. Ouvrez `Paramètres` en bas à gauche pour modifier le comportement.
+8. Fermer la fenêtre laisse l’application dans la zone de notification, où elle continue de surveiller les applications enregistrées. Cliquez sur `Quitter` pour l’arrêter complètement.
 
 ## Utiliser les notes des applications enregistrées
 
@@ -121,14 +121,14 @@ Si vous ne savez pas quel nom enregistrer, vérifiez dans le Gestionnaire des t�
 
 ## Sécurité et confidentialité
 
-UnfocusMute est une application entièrement locale. Tout se passe sur votre PC, et l’application fonctionne normalement même sans connexion internet.
+UnfocusMute est une application entièrement locale. Toute l’activité reste sur votre PC, et l’application fonctionne normalement même sans connexion internet.
 
-Par exception, lorsque vous cliquez sur le bouton GitHub dans Réglages, la page GitHub du projet s’ouvre dans votre navigateur par défaut.
+Par exception, lorsque vous cliquez sur le bouton Dépôt GitHub dans Paramètres, le dépôt GitHub du projet s’ouvre dans votre navigateur par défaut.
 
-**Ce qui est stocké :** Les noms de processus enregistrés, les PID facultatifs, les notes que vous écrivez, la langue choisie, la position de la fenêtre, les options de démarrage et l’état de restauration des apps mises en sourdine par UnfocusMute.
-Ces données sont stockées uniquement dans `%APPDATA%\UnfocusMute\config.json` et ne sont envoyées nulle part.
+**Ce qui est stocké :** Les noms de processus enregistrés, les PID facultatifs, les notes que vous écrivez, la langue choisie, la position de la fenêtre, les options de démarrage et l’état de restauration des applications mises en sourdine par UnfocusMute.
+Ces données restent uniquement dans `%APPDATA%\UnfocusMute\config.json` et ne sont envoyées nulle part.
 
-**Ce qui n’est pas stocké :** L’application ne crée pas de fichier journal. Aucun historique d’activité n’est conservé entre les sessions.
+**Ce qui n’est pas stocké :** L’application ne crée pas de fichier journal et ne conserve aucun historique d’activité entre les sessions.
 
 **Ce qui n’est pas fait :** L’application n’effectue pas de requêtes réseau automatiques, n’utilise pas de télémétrie, n’envoie pas de rapports de crash, ne fait pas de journalisation distante et ne collecte pas de données. Elle ne demande pas non plus de droits administrateur.
 

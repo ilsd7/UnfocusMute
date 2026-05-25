@@ -27,9 +27,9 @@
 
 ---
 
-UnfocusMute 是一款小巧轻量的 Windows 托盘应用，可在选定的游戏或应用移到后台时自动将其静音。
+UnfocusMute 是一款小巧轻量的 Windows 托盘应用，可在选定的游戏或应用转入后台时自动将其静音。
 
-它并不局限于游戏：你也可以注册浏览器、聊天工具、启动器、媒体播放器等常规应用。
+它并不局限于游戏，也可以注册浏览器、聊天工具、启动器、媒体播放器等常规应用。
 
 <p align="center">
   <img src="../assets/screenshot_zh-CN.png" width="760" alt="UnfocusMute 主窗口">
@@ -37,7 +37,7 @@ UnfocusMute 是一款小巧轻量的 Windows 托盘应用，可在选定的游�
 
 它是 Rust 原生应用，无需额外运行时即可直接运行。可执行文件大小约为 500 KB。
 
-静音和恢复都只会作用于 UnfocusMute 自己改动过的会话。你原本就静音的会话不会被改动。
+静音和恢复都只会作用于 UnfocusMute 自己改动过的会话。你原本已经静音的会话会保持不变。
 
 ---
 
@@ -45,17 +45,17 @@ UnfocusMute 是一款小巧轻量的 Windows 托盘应用，可在选定的游�
 
 - 游戏或应用保持运行时，你经常用 Alt+Tab 切换到其他窗口
 - 游戏或应用本身没有后台自动静音选项
-- 想暂时关掉后台游戏声音，同时保留浏览器或通话应用的声音
+- 想只关掉后台游戏声音，同时保留浏览器或通话应用的声音
 - 同一个 `.exe` 会启动多个进程，需要在应用级管理和指定 PID 控制之间切换
 
 ## 功能
 
-- 注册应用位于后台时自动静音其音频会话，回到前台时恢复
+- 注册应用处于后台时自动静音其音频会话，回到前台时恢复音频
 - 可从正在运行的应用列表中选择注册，也可直接输入 `game.exe` 这样的名称
 - 支持按 `.exe` 注册、当前运行实例的单个 PID 注册，以及 `PID 视图`
 - 可为每个注册应用添加备注，显示实时静音状态，并单独 `暂停` 或 `继续`
-- 托盘常驻、托盘状态摘要、全局暂停、打开配置文件夹、防止重复启动
-- 左下角的设置按钮集中放置行为选项、语言、配置文件夹、GitHub 和版本信息
+- 托盘常驻、托盘状态摘要、全局暂停、打开配置文件夹、防止重复运行
+- 左下角的设置按钮集中放置行为选项、语言、配置文件夹、GitHub 仓库和版本信息
 - 首次运行时选择语言，之后可在应用内立即切换 English/한국어/日本語/简体中文/Español/Français/Português/हिन्दी/العربية
 - 设置保存在本地 `%APPDATA%\UnfocusMute\config.json`
 
@@ -70,15 +70,15 @@ UnfocusMute 是一款小巧轻量的 Windows 托盘应用，可在选定的游�
 | [UnfocusMute-windows-x64.zip](https://github.com/ilsd7/UnfocusMute/releases/latest/download/UnfocusMute-windows-x64.zip) |
 | [SHA-256 校验文件](https://github.com/ilsd7/UnfocusMute/releases/latest/download/UnfocusMute-windows-x64.zip.sha256) · [发行说明](https://github.com/ilsd7/UnfocusMute/releases/latest) |
 
-把解压后的 `UnfocusMute-windows-x64` 文件夹移动到你想保存的位置，再运行其中的 `UnfocusMute-v<version>.exe`。它是便携应用，没有安装步骤，也不需要 Rust、Visual Studio Build Tools、MinGW 等开发工具。
+把解压后的 `UnfocusMute-windows-x64` 文件夹移动到你想保存的位置，再运行其中的 `UnfocusMute-v<version>.exe`。它是便携应用，无需安装，也不需要 Rust、Visual Studio Build Tools、MinGW 等开发工具。
 
 > **提示：** 由于代码签名证书需要成本，目前发布文件未进行 Windows 代码签名。首次运行时，Windows SmartScreen 或“未知发布者”警告可能会出现。如果你想自行确认文件完整性，请参阅下面的发布文件验证部分。
 
 ## 使用前须知
 
-UnfocusMute 依赖 Windows 提供的进程名、前台窗口信息和 CoreAudio 会话工作。如果应用尚未创建音频会话，或驱动、权限、安防软件限制了会话访问，列表显示或静音控制可能会受到一定限制。
+UnfocusMute 依赖 Windows 提供的进程名、前台窗口信息和 CoreAudio 会话工作。如果应用尚未创建音频会话，或驱动、权限设置或安全软件限制了会话访问，列表显示或静音控制可能会受到一定限制。
 
-**PID 注册时的行为：** Windows 不一定总是为音频会话和前台窗口报告同一个 PID。为修正这种情况，UnfocusMute 会在已注册 PID 的 `.exe` 名称与当前前台窗口的 `.exe` 名称相同时，将该应用视为已回到前台。
+**PID 注册时的行为：** Windows 并不总是为音频会话和前台窗口报告同一个 PID。为修正这种情况，UnfocusMute 会在已注册 PID 的 `.exe` 名称与当前前台窗口的 `.exe` 名称相同时，将该应用视为已回到前台。
 
 因此，如果同时运行多个相同 `.exe` 实例，指定 PID 可能无法被完全区分。在这种情况下，当其他实例位于前台时，声音也可能被恢复。
 
@@ -87,13 +87,13 @@ UnfocusMute 依赖 Windows 提供的进程名、前台窗口信息和 CoreAudio 
 ## 使用方法
 
 1. 启动 UnfocusMute。
-2. 在首次运行的语言选择窗口中选择语言。默认值为英语。
+2. 在首次运行的语言选择窗口中选择语言。默认语言为英语。
 3. 启动你想在后台时静音的游戏或应用。
 4. 打开 `搜索进程` 列表或输入搜索词，选择项目后点击 `注册`。
 5. 如果只需要注册某个 PID，请点击 `PID 视图` 并选择单独项目。按 PID 注册只适用于当前运行的实例；如果应用重启后 PID 变化，请重新选择。
 6. 右键点击已注册应用，可以编辑该应用的备注，或使用 `暂停`。
 7. 打开左下角的 `设置`，即可更改行为选项。
-8. 关闭窗口后，应用会留在托盘中继续监视。如需完全退出，请点击 `退出`。
+8. 关闭窗口后，应用会留在托盘中继续监视已注册应用。如需完全退出，请点击 `退出`。
 
 ## 使用已注册应用备注
 
@@ -106,27 +106,27 @@ UnfocusMute 依赖 Windows 提供的进程名、前台窗口信息和 CoreAudio 
 
 备注会和其他设置一起保存在本地的 `%APPDATA%\UnfocusMute\config.json`。
 
-## 查看执行文件名
+## 查看可执行文件名
 
-如果不确定要注册哪个名称，请在任务管理器中查看以 `.exe` 结尾的执行文件名。
+如果不确定要注册哪个名称，请在任务管理器中查看以 `.exe` 结尾的可执行文件名。
 
 1. 先启动要注册的应用。
 2. 使用 `Alt`+`Tab` 或 `Windows`+`Tab` 离开游戏画面并返回 Windows。
 3. 按 `Ctrl`+`Shift`+`Esc` 打开任务管理器。
 4. 将进程列表按 `CPU` 排序，找到刚启动的应用。
 5. 右键点击该项目并打开 `属性`。
-6. 找到类似 `game.exe` 这样以 `.exe` 结尾的执行文件名，并将其添加到 UnfocusMute。
+6. 找到类似 `game.exe` 这样以 `.exe` 结尾的可执行文件名，并将其添加到 UnfocusMute。
 
 ---
 
 ## 安全与隐私
 
-UnfocusMute 是完全本地运行的应用。所有操作都只在当前电脑内完成，即使没有互联网连接也能正常工作。
+UnfocusMute 是完全在本地运行的应用。所有操作都只在当前电脑内完成，即使没有互联网连接也能正常工作。
 
-作为例外，只有当你点击设置界面中的 GitHub 按钮时，才会通过默认浏览器打开本项目的 GitHub 页面。
+作为例外，只有当你点击设置界面中的 GitHub 仓库按钮时，才会通过默认浏览器打开本项目的 GitHub 仓库。
 
 **保存的内容：** 已注册的进程名、可选 PID、你写入的备注、选择的语言、窗口位置、启动选项，以及 UnfocusMute 静音过的应用恢复状态。
-这些数据只保存在 `%APPDATA%\UnfocusMute\config.json`，不会发送到外部。
+这些数据只保存在 `%APPDATA%\UnfocusMute\config.json`，不会发送到任何外部位置。
 
 **不会保存的内容：** 不会创建应用日志文件。跨会话的操作记录也不会保留在任何地方。
 
@@ -142,7 +142,7 @@ UnfocusMute 是完全本地运行的应用。所有操作都只在当前电脑�
 
 如果发布权限被滥用，或账号遭到盗用，使用不同代码构建的文件或被篡改的文件可能会被上传到 Release。
 
-为了透明起见，UnfocusMute 提供了一种方法，让用户可以验证上传到 GitHub Releases 的文件是否确实是由 GitHub Actions 根据本仓库对应标签的源代码生成的官方构建产物。
+为保持透明，UnfocusMute 提供了一种方法，让用户可以验证上传到 GitHub Releases 的文件是否确实是由 GitHub Actions 根据本仓库对应标签的源代码生成的官方构建产物。
 
 发布 ZIP 文件和 SHA-256 校验和文件由 GitHub Actions 自动生成，并且每个文件都会附带可验证构建来源的构建证明（attestation）。
 

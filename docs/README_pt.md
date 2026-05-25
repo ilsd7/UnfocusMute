@@ -27,7 +27,7 @@
 
 ---
 
-UnfocusMute é um app pequeno e leve para a bandeja do Windows que silencia automaticamente jogos e apps selecionados quando eles passam para segundo plano.
+UnfocusMute é um app pequeno e leve para a bandeja do Windows que silencia automaticamente jogos e apps selecionados quando passam para segundo plano.
 
 Ele não se limita a jogos: você também pode registrar apps comuns, como navegadores, mensageiros, launchers e players de mídia.
 
@@ -37,7 +37,7 @@ Ele não se limita a jogos: você também pode registrar apps comuns, como naveg
 
 Criado como app nativo em Rust, ele roda sem runtime separado. O executável tem cerca de 500 KB.
 
-O silenciamento e a restauração se aplicam apenas às sessões que o UnfocusMute alterou diretamente. Sessões que já estavam silenciadas por você não são modificadas.
+O silenciamento e a restauração se aplicam apenas às sessões que o UnfocusMute alterou diretamente. Sessões que você já tinha silenciado não são modificadas.
 
 ---
 
@@ -46,24 +46,24 @@ O silenciamento e a restauração se aplicam apenas às sessões que o UnfocusMu
 - Você costuma usar Alt+Tab para sair de um jogo ou app enquanto ele continua aberto.
 - Um jogo ou app não oferece opção própria de silenciar em segundo plano.
 - Você quer silenciar só o áudio do jogo em segundo plano enquanto mantém navegador ou chamada audíveis.
-- O mesmo `.exe` abre vários processos e você precisa alternar entre gerenciar o app inteiro e controlar um PID específico.
+- O mesmo `.exe` abre vários processos e você precisa alternar entre gerenciar o app como um todo e controlar um PID específico.
 
 ## Recursos
 
 - Silencia automaticamente apps registrados enquanto estão em segundo plano e restaura o áudio quando voltam ao primeiro plano.
 - Registra apps pela lista de apps em execução ou digitando um nome como `game.exe`.
 - Suporta entradas por `.exe`, entradas por PID da instância atual e `Ver PID`.
-- Notas por app, estado de silenciamento em tempo real por app, `Pausar` e `Retomar` por app.
-- Execução na bandeja, resumo de status na bandeja, pausa global, acesso à pasta de configuração e proteção contra instâncias duplicadas.
-- O botão de configurações no canto inferior esquerdo reúne opções de comportamento, idioma, pasta de configuração, GitHub e versão.
-- Escolha de idioma no primeiro uso e troca imediata dentro do app entre English/한국어/日本語/简体中文/Español/Français/Português/हिन्दी/العربية.
+- Notas por app, estado de silenciamento em tempo real e controles `Pausar` / `Retomar` por app.
+- Execução residente na bandeja, resumo de status na bandeja, pausa global, acesso à pasta de configuração e proteção contra instâncias duplicadas.
+- O botão de configurações no canto inferior esquerdo reúne opções de comportamento, idioma, pasta de configuração, Repositório GitHub e informações de versão.
+- Escolha de idioma na primeira execução e troca imediata dentro do app entre English/한국어/日本語/简体中文/Español/Français/Português/हिन्दी/العربية.
 - Configurações salvas localmente em `%APPDATA%\UnfocusMute\config.json`.
 
 ---
 
 ## Baixar e executar
 
-No Windows 10/11, baixe o pacote ZIP e extraia para executar o app.
+No Windows 10/11, baixe o pacote ZIP, extraia e execute o app.
 
 | Pacote mais recente |
 | --- |
@@ -82,18 +82,18 @@ UnfocusMute funciona com base nos nomes de processo, nas informações da janela
 
 Assim, se houver várias instâncias do mesmo `.exe` em execução ao mesmo tempo, um PID específico pode não ser separado perfeitamente. Nesse caso, o som pode ser restaurado quando outra instância estiver em foco.
 
-**Compatibilidade com anti-cheat:** UnfocusMute não injeta código em jogos, não lê memória do jogo, não intercepta entrada e não modifica arquivos do jogo. Ele usa apenas informações de processo/janela em primeiro plano do Windows e controles de silenciamento de sessões CoreAudio, então deve funcionar sem problemas na maioria dos anti-cheats, mas não é possível garantir compatibilidade com todos eles.
+**Compatibilidade com anti-cheat:** UnfocusMute não injeta código em jogos, não lê memória do jogo, não intercepta entrada e não modifica arquivos do jogo. Ele usa apenas informações de processo/janela em primeiro plano do Windows e controles de silenciamento de sessões CoreAudio, então espera-se que funcione sem problemas na maioria dos anti-cheats, mas não é possível garantir compatibilidade com todos eles.
 
 ## Uso
 
 1. Abra o UnfocusMute.
-2. Escolha o idioma na tela de primeiro uso. O padrão é inglês.
+2. Escolha o idioma na tela exibida na primeira execução. O idioma padrão é inglês.
 3. Inicie o jogo ou app que você quer silenciar quando estiver em segundo plano.
 4. Abra a lista `Pesquisar processo` ou digite uma busca, escolha um item e clique em `Registrar`.
 5. Se precisar registrar apenas um PID específico, clique em `Ver PID` e escolha a entrada individual. Entradas por PID valem só para a instância em execução; se o app reiniciar com outro PID, selecione novamente.
 6. Clique com o botão direito em um app registrado para editar sua nota ou usar `Pausar`.
 7. Abra `Configurações` no canto inferior esquerdo para alterar opções de comportamento.
-8. Ao fechar a janela, o app continua rodando na bandeja e monitorando. Use `Sair` para encerrar completamente.
+8. Ao fechar a janela, o app continua rodando na bandeja e monitorando os apps registrados. Use `Sair` para encerrar completamente.
 
 ## Usar notas em apps registrados
 
@@ -121,16 +121,16 @@ Se você não souber qual nome registrar, confira no Gerenciador de Tarefas o ex
 
 ## Segurança e privacidade
 
-UnfocusMute é um app totalmente local. Tudo acontece dentro do seu PC, e ele funciona normalmente mesmo sem conexão com a internet.
+UnfocusMute é um app totalmente local. Toda a atividade permanece dentro do seu PC, e ele funciona normalmente mesmo sem conexão com a internet.
 
-Como exceção, quando você clica no botão do GitHub em Configurações, a página do GitHub deste projeto é aberta no navegador padrão.
+Como exceção, quando você clica no botão Repositório GitHub em Configurações, o repositório GitHub deste projeto é aberto no navegador padrão.
 
 **O que ele salva:** Nomes de processos registrados, PIDs opcionais, notas que você escrever, idioma escolhido, posição da janela, opções de inicialização e o estado de restauração dos apps silenciados pelo UnfocusMute.
-Esses dados ficam apenas em `%APPDATA%\UnfocusMute\config.json` e não são enviados para fora.
+Esses dados ficam apenas em `%APPDATA%\UnfocusMute\config.json` e não são enviados para nenhum lugar externo.
 
-**O que ele não salva:** O app não cria arquivos de log. Nenhum histórico de atividade é mantido entre sessões.
+**O que ele não salva:** O app não cria arquivos de log e nenhum histórico de atividade é mantido entre sessões.
 
-**O que ele não faz:** Não faz solicitações de rede automáticas, não usa telemetria, não envia relatórios de falha, não faz logs remotos e não coleta dados. Ele também não exige permissões de administrador.
+**O que ele não faz:** Não faz solicitações de rede automáticas, não usa telemetria, não envia relatórios de falha, não faz registro remoto e não coleta dados. Ele também não exige permissões de administrador.
 
 A detecção de sessões de áudio e o controle de silenciamento usam apenas as APIs CoreAudio do Windows, e o UnfocusMute não injeta código em processos de jogos nem lê a memória deles.
 
