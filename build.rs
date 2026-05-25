@@ -1,12 +1,10 @@
 use std::env;
 
 const APP_ICON_ICO: &str = "assets/app-icon.ico";
-const GITHUB_ICON_ICO: &str = "assets/github-invertocat.ico";
 const SETTINGS_ICON_ICO: &str = "assets/settings.ico";
 
 fn main() {
     println!("cargo:rerun-if-changed={APP_ICON_ICO}");
-    println!("cargo:rerun-if-changed={GITHUB_ICON_ICO}");
     println!("cargo:rerun-if-changed={SETTINGS_ICON_ICO}");
     println!("cargo:rerun-if-changed=Cargo.toml");
 
@@ -20,7 +18,6 @@ fn main() {
     let mut resource = winresource::WindowsResource::new();
     let resource_version = windows_resource_version();
     resource.set_icon(APP_ICON_ICO);
-    resource.set_icon_with_id(GITHUB_ICON_ICO, "2");
     resource.set_icon_with_id(SETTINGS_ICON_ICO, "3");
     resource.set("ProductName", "UnfocusMute");
     resource.set("FileDescription", "UnfocusMute");

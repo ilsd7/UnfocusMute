@@ -16,7 +16,7 @@ use std::mem::size_of;
 use std::os::windows::ffi::OsStrExt;
 use std::path::Path;
 use std::sync::atomic::{AtomicBool, AtomicIsize, Ordering};
-use std::time::Instant;
+use std::time::{Duration, Instant};
 use windows::Win32::Foundation::{
     CloseHandle, ERROR_ALREADY_EXISTS, GetLastError, HANDLE, HINSTANCE, HWND, LPARAM, LRESULT,
     POINT, RECT, WPARAM,
@@ -47,19 +47,20 @@ use windows::Win32::UI::WindowsAndMessaging::{
     DestroyWindow, DispatchMessageW, DrawIconEx, EN_CHANGE, ES_AUTOHSCROLL,
     EVENT_SYSTEM_FOREGROUND, FindWindowW, GWLP_USERDATA, GetCursorPos, GetSystemMetrics,
     GetWindowRect, HICON, HMENU, ICON_BIG, ICON_SMALL, IDC_ARROW, IDC_HAND, IsDialogMessageW,
-    IsWindowVisible, KillTimer, LB_GETCURSEL, LB_RESETCONTENT, LB_SETCURSEL, LBN_DBLCLK,
+    IsIconic, IsWindowVisible, KillTimer, LB_GETCURSEL, LB_RESETCONTENT, LB_SETCURSEL, LBN_DBLCLK,
     LBN_SELCHANGE, LBS_HASSTRINGS, LBS_NOINTEGRALHEIGHT, LBS_NOTIFY, LBS_OWNERDRAWVARIABLE,
     LoadCursorW, MB_ICONINFORMATION, MB_ICONWARNING, MB_OK, MF_GRAYED, MF_SEPARATOR, MF_STRING,
     MSG, MessageBoxW, PostMessageW, PostQuitMessage, RegisterClassW, RegisterWindowMessageW,
-    SM_CXVSCROLL, SW_HIDE, SW_RESTORE, SW_SHOW, SendMessageW, SetCursor, SetForegroundWindow,
-    SetTimer, SetWindowLongPtrW, ShowWindow, TPM_NONOTIFY, TPM_RETURNCMD, TPM_RIGHTBUTTON,
-    TRACK_POPUP_MENU_FLAGS, TrackPopupMenu, TranslateMessage, WINDOW_EX_STYLE, WINDOW_STYLE,
-    WINEVENT_OUTOFCONTEXT, WM_CLOSE, WM_COMMAND, WM_CONTEXTMENU, WM_CREATE, WM_CTLCOLOREDIT,
-    WM_CTLCOLORLISTBOX, WM_CTLCOLORSTATIC, WM_DESTROY, WM_DRAWITEM, WM_EXITSIZEMOVE, WM_KEYDOWN,
-    WM_LBUTTONDBLCLK, WM_LBUTTONDOWN, WM_MEASUREITEM, WM_MOVE, WM_NCCREATE, WM_NCDESTROY, WM_PAINT,
-    WM_RBUTTONUP, WM_SETCURSOR, WM_SETFONT, WM_SETICON, WM_SETREDRAW, WM_SHOWWINDOW, WM_TIMER,
-    WNDCLASSW, WS_BORDER, WS_CAPTION, WS_CHILD, WS_CLIPCHILDREN, WS_MINIMIZEBOX, WS_OVERLAPPED,
-    WS_SYSMENU, WS_TABSTOP, WS_VISIBLE, WS_VSCROLL,
+    SIZE_MINIMIZED, SM_CXVSCROLL, SW_HIDE, SW_RESTORE, SW_SHOW, SendMessageW, SetCursor,
+    SetForegroundWindow, SetTimer, SetWindowLongPtrW, ShowWindow, TPM_NONOTIFY, TPM_RETURNCMD,
+    TPM_RIGHTBUTTON, TRACK_POPUP_MENU_FLAGS, TrackPopupMenu, TranslateMessage, WINDOW_EX_STYLE,
+    WINDOW_STYLE, WINEVENT_OUTOFCONTEXT, WM_CLOSE, WM_COMMAND, WM_CONTEXTMENU, WM_CREATE,
+    WM_CTLCOLOREDIT, WM_CTLCOLORLISTBOX, WM_CTLCOLORSTATIC, WM_DESTROY, WM_DRAWITEM,
+    WM_EXITSIZEMOVE, WM_KEYDOWN, WM_LBUTTONDBLCLK, WM_LBUTTONDOWN, WM_MEASUREITEM, WM_MOVE,
+    WM_NCCREATE, WM_NCDESTROY, WM_PAINT, WM_RBUTTONUP, WM_SETCURSOR, WM_SETFONT, WM_SETICON,
+    WM_SETREDRAW, WM_SHOWWINDOW, WM_SIZE, WM_SYSCOMMAND, WM_TIMER, WNDCLASSW, WS_BORDER,
+    WS_CAPTION, WS_CHILD, WS_CLIPCHILDREN, WS_MINIMIZEBOX, WS_OVERLAPPED, WS_SYSMENU, WS_TABSTOP,
+    WS_VISIBLE, WS_VSCROLL,
 };
 use windows::core::{PCWSTR, w};
 
@@ -120,9 +121,10 @@ use theme::{AppTheme, OwnedBrush, UiFont, px};
 use win32::{
     WindowClassRegistration, add_combo_item_with_buffer, add_list_item_with_buffer,
     copy_wide_fixed, create_button, create_control, default_button_message_result, get_message,
-    hiword, load_app_icon, load_github_icon, load_settings_icon, load_tray_icon, loword,
-    measure_text_width, move_window, reserve_combo_items, reserve_list_items, set_combo_edit_caret,
-    set_text, to_wide, window_text_into, write_wide_buffer,
+    hiword, load_app_icon, load_settings_icon, load_tray_icon, loword, measure_text_width,
+    move_window, reserve_combo_items, reserve_list_items, set_combo_edit_caret, set_text,
+    system_command_closes_or_minimizes, system_command_minimizes, to_wide, window_text_into,
+    write_wide_buffer,
 };
 use window_position::{initial_window_position, should_start_hidden, window_position_is_visible};
 
@@ -187,6 +189,7 @@ const SETTINGS_BUTTON_TEXT_GAP: i32 = 6;
 const SETTINGS_BUTTON_ICON_Y: i32 =
     SETTINGS_BUTTON_Y + (SETTINGS_BUTTON_HEIGHT - SETTINGS_ICON_SIZE) / 2;
 const TARGET_LIST_SUBCLASS_ID: usize = 1;
+const SETTINGS_CLOSE_MINIMIZE_GUARD_MS: u64 = 1200;
 const CB_SETITEMHEIGHT_MESSAGE: u32 = 0x0153;
 const PROCESS_PICKER_COMBO_SELECTION_HEIGHT: i32 = 22;
 const LB_ITEMFROMPOINT_MESSAGE: u32 = 0x01A9;
@@ -232,7 +235,6 @@ unsafe fn run_window() -> Result<()> {
     let instance = HINSTANCE(module.0);
     let icon = unsafe { load_app_icon(instance) };
     let tray_icon = unsafe { load_tray_icon(instance) };
-    let github_icon = unsafe { load_github_icon(instance, px(SETTINGS_ICON_SIZE)) };
     let settings_icon = unsafe { load_settings_icon(instance, px(SETTINGS_ICON_SIZE)) };
     let cursor = unsafe { LoadCursorW(None, IDC_ARROW).context("load cursor")? };
     let background = OwnedBrush::solid(PAGE_COLOR);
@@ -311,7 +313,6 @@ unsafe fn run_window() -> Result<()> {
     let icons = AppIcons {
         main: icon,
         tray: tray_icon,
-        github: github_icon,
         settings: settings_icon,
     };
     let mut app = Box::new(AppWindow::new(
@@ -607,6 +608,7 @@ struct AppWindow {
     icons: AppIcons,
     settings_button_hot: bool,
     settings_window_open: bool,
+    settings_close_minimize_guard_until: Option<Instant>,
     foreground_process_name_cache: Option<(u32, Option<String>)>,
     last_process_refresh_attempt: Instant,
     updating_process_combo: bool,
@@ -636,7 +638,6 @@ struct AppWindow {
 struct AppIcons {
     main: HICON,
     tray: HICON,
-    github: HICON,
     settings: HICON,
 }
 
@@ -702,6 +703,7 @@ impl AppWindow {
             icons,
             settings_button_hot: false,
             settings_window_open: false,
+            settings_close_minimize_guard_until: None,
             foreground_process_name_cache: None,
             last_process_refresh_attempt: initial_process_refresh_attempt(),
             updating_process_combo: false,
@@ -1237,7 +1239,6 @@ impl AppWindow {
         };
         let hwnd = self.hwnd;
         let icon = self.icons.main;
-        let github_icon = self.icons.github;
         let language = self.config.language;
         let initial = SettingsPreferences {
             language,
@@ -1251,17 +1252,57 @@ impl AppWindow {
                 hwnd,
                 HINSTANCE(module.0),
                 icon,
-                github_icon,
                 language,
                 initial,
                 |language| self.apply_settings_language(language),
             )
         };
         self.settings_window_open = false;
+        self.start_settings_close_minimize_guard();
         let Ok(Some(preferences)) = result else {
             return;
         };
         self.apply_settings_preferences(preferences);
+    }
+
+    fn start_settings_close_minimize_guard(&mut self) {
+        self.settings_close_minimize_guard_until =
+            Some(Instant::now() + Duration::from_millis(SETTINGS_CLOSE_MINIMIZE_GUARD_MS));
+        self.restore_if_minimized_after_settings();
+    }
+
+    fn settings_close_minimize_guard_active(&mut self) -> bool {
+        let Some(until) = self.settings_close_minimize_guard_until else {
+            return false;
+        };
+        if Instant::now() <= until {
+            return true;
+        }
+        self.settings_close_minimize_guard_until = None;
+        false
+    }
+
+    fn should_block_system_command_after_settings(&mut self, wparam: WPARAM) -> bool {
+        if self.settings_window_open {
+            return system_command_closes_or_minimizes(wparam);
+        }
+        self.settings_close_minimize_guard_active() && system_command_minimizes(wparam)
+    }
+
+    fn restore_if_size_minimized_after_settings(&mut self, wparam: WPARAM) -> bool {
+        if wparam.0 != SIZE_MINIMIZED as usize || !self.settings_close_minimize_guard_active() {
+            return false;
+        }
+        self.restore_if_minimized_after_settings();
+        true
+    }
+
+    fn restore_if_minimized_after_settings(&self) {
+        unsafe {
+            if IsIconic(self.hwnd).as_bool() {
+                let _ = ShowWindow(self.hwnd, SW_RESTORE);
+            }
+        }
     }
 
     fn apply_settings_language(&mut self, language: Language) {
@@ -3975,6 +4016,12 @@ unsafe extern "system" fn window_proc(
                     return LRESULT(0);
                 }
                 app.hide_to_tray();
+                return LRESULT(0);
+            }
+            WM_SYSCOMMAND if app.should_block_system_command_after_settings(wparam) => {
+                return LRESULT(0);
+            }
+            WM_SIZE if app.restore_if_size_minimized_after_settings(wparam) => {
                 return LRESULT(0);
             }
             WM_CTLCOLORSTATIC | WM_CTLCOLOREDIT | WM_CTLCOLORLISTBOX => {

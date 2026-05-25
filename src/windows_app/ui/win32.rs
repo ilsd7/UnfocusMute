@@ -39,6 +39,9 @@ const MEASURE_TEXT_STACK_BUFFER_LEN: usize = 256;
 const CREATE_TEXT_STACK_BUFFER_LEN: usize = 256;
 const SET_TEXT_STACK_BUFFER_LEN: usize = 256;
 const WINDOW_TEXT_STACK_BUFFER_LEN: usize = 256;
+const SYSTEM_COMMAND_MASK: usize = 0xfff0;
+const SC_CLOSE_COMMAND: usize = 0xf060;
+const SC_MINIMIZE_COMMAND: usize = 0xf020;
 
 pub(super) struct WindowClassRegistration {
     class_name: PCWSTR,
@@ -69,6 +72,17 @@ pub(super) unsafe fn get_message(msg: &mut MSG) -> Result<bool> {
         0 => Ok(false),
         _ => Ok(true),
     }
+}
+
+pub(super) fn system_command_closes_or_minimizes(wparam: WPARAM) -> bool {
+    matches!(
+        wparam.0 & SYSTEM_COMMAND_MASK,
+        SC_CLOSE_COMMAND | SC_MINIMIZE_COMMAND
+    )
+}
+
+pub(super) fn system_command_minimizes(wparam: WPARAM) -> bool {
+    wparam.0 & SYSTEM_COMMAND_MASK == SC_MINIMIZE_COMMAND
 }
 
 fn marker_handle() -> HANDLE {
@@ -573,10 +587,6 @@ pub(super) unsafe fn load_tray_icon(instance: HINSTANCE) -> HICON {
     unsafe { load_sized_app_icon(instance, size).unwrap_or_else(|| load_app_icon(instance)) }
 }
 
-pub(super) unsafe fn load_github_icon(instance: HINSTANCE, size: i32) -> HICON {
-    unsafe { load_resource_icon(instance, 2, size) }
-}
-
 pub(super) unsafe fn load_settings_icon(instance: HINSTANCE, size: i32) -> HICON {
     unsafe { load_resource_icon(instance, 3, size) }
 }
@@ -1034,5 +1044,28 @@ mod tests {
 
         assert_eq!(result.0, 1);
         assert_eq!(default_button_id, 42);
+    }
+
+    #[test]
+    fn system_command_detection_handles_close_and_minimize_variants() {
+        assert!(system_command_closes_or_minimizes(WPARAM(SC_CLOSE_COMMAND)));
+        assert!(system_command_closes_or_minimizes(WPARAM(
+            SC_CLOSE_COMMAND | 0x0002
+        )));
+        assert!(system_command_closes_or_minimizes(WPARAM(
+            SC_MINIMIZE_COMMAND
+        )));
+        assert!(system_command_minimizes(WPARAM(SC_MINIMIZE_COMMAND)));
+        assert!(system_command_minimizes(WPARAM(
+            SC_MINIMIZE_COMMAND | 0x0002
+        )));
+    }
+
+    #[test]
+    fn system_command_detection_ignores_other_commands() {
+        assert!(!system_command_closes_or_minimizes(WPARAM(0xf120)));
+        assert!(!system_command_closes_or_minimizes(WPARAM(0)));
+        assert!(!system_command_minimizes(WPARAM(SC_CLOSE_COMMAND)));
+        assert!(!system_command_minimizes(WPARAM(0xf120)));
     }
 }

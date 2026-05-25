@@ -9,7 +9,8 @@ use super::theme::{OwnedBrush, UiFont, px, ui_font_point_size};
 use super::win32::{
     WindowClassRegistration, add_combo_item_with_buffer, create_button, create_control,
     create_multiline_checkbox, get_message, hiword, is_checked, loword, measure_text_width,
-    move_window, reserve_combo_items, set_checkbox, set_text, to_wide,
+    move_window, reserve_combo_items, set_checkbox, set_text, system_command_closes_or_minimizes,
+    to_wide,
 };
 use super::window_position::centered_position;
 use crate::config::{WindowPosition, cached_config_file_path};
@@ -27,17 +28,18 @@ use windows::Win32::Graphics::Gdi::{
 use windows::Win32::UI::Controls::{CB_SETMINVISIBLE, DRAWITEMSTRUCT, ODS_DISABLED, ODS_SELECTED};
 use windows::Win32::UI::Input::KeyboardAndMouse::{EnableWindow, IsWindowEnabled};
 use windows::Win32::UI::Shell::ShellExecuteW;
+use windows::Win32::UI::WindowsAndMessaging::PM_REMOVE;
 use windows::Win32::UI::WindowsAndMessaging::{
     BringWindowToTop, CB_GETCURSEL, CB_SETCURSEL, CBN_SELCHANGE, CBN_SELENDOK, CBS_DROPDOWNLIST,
-    CREATESTRUCTW, CreateWindowExW, DI_NORMAL, DefWindowProcW, DestroyWindow, DispatchMessageW,
-    DrawIconEx, GWLP_USERDATA, GetWindowLongPtrW, GetWindowRect, HICON, IDC_ARROW, IDC_HAND,
-    IsDialogMessageW, LoadCursorW, MB_ICONWARNING, MB_OK, MSG, MessageBoxW, MoveWindow,
-    PostQuitMessage, RegisterClassW, SW_HIDE, SW_SHOW, SW_SHOWNOACTIVATE, SendMessageW, SetCursor,
-    SetForegroundWindow, SetWindowLongPtrW, ShowWindow, TranslateMessage, WINDOW_EX_STYLE,
-    WINDOW_STYLE, WM_CLOSE, WM_COMMAND, WM_CREATE, WM_CTLCOLORSTATIC, WM_DRAWITEM, WM_NCCREATE,
-    WM_NCDESTROY, WM_PAINT, WM_SETCURSOR, WM_SETFONT, WNDCLASSW, WS_CAPTION, WS_CHILD,
-    WS_EX_CLIENTEDGE, WS_EX_TOOLWINDOW, WS_OVERLAPPED, WS_POPUP, WS_SYSMENU, WS_TABSTOP,
-    WS_VISIBLE,
+    CREATESTRUCTW, CreateWindowExW, DefWindowProcW, DestroyWindow, DispatchMessageW, GWLP_USERDATA,
+    GetWindowLongPtrW, GetWindowRect, HICON, IDC_ARROW, IDC_HAND, IsDialogMessageW, IsIconic,
+    LoadCursorW, MB_ICONWARNING, MB_OK, MSG, MessageBoxW, MoveWindow, PeekMessageW,
+    PostQuitMessage, RegisterClassW, SW_HIDE, SW_RESTORE, SW_SHOW, SW_SHOWNOACTIVATE, SendMessageW,
+    SetCursor, SetForegroundWindow, SetWindowLongPtrW, ShowWindow, TranslateMessage,
+    WINDOW_EX_STYLE, WINDOW_STYLE, WM_CLOSE, WM_COMMAND, WM_CREATE, WM_CTLCOLORSTATIC, WM_DRAWITEM,
+    WM_NCCREATE, WM_NCDESTROY, WM_PAINT, WM_SETCURSOR, WM_SETFONT, WM_SYSCOMMAND, WNDCLASSW,
+    WS_CAPTION, WS_CHILD, WS_EX_CLIENTEDGE, WS_EX_TOOLWINDOW, WS_OVERLAPPED, WS_POPUP, WS_SYSMENU,
+    WS_TABSTOP, WS_VISIBLE,
 };
 use windows::core::{PCWSTR, w};
 
@@ -56,13 +58,12 @@ const SETTINGS_LANGUAGE_Y: i32 = 150;
 const SETTINGS_LANGUAGE_COMBO_Y: i32 = 178;
 const SETTINGS_FILE_INFO_Y: i32 = 224;
 const SETTINGS_OPEN_CONFIG_Y: i32 = 252;
-const SETTINGS_GITHUB_ROW_Y: i32 = 247;
-const SETTINGS_VERSION_ROW_Y: i32 = 271;
-const SETTINGS_ICON_SIZE: i32 = 16;
-const SETTINGS_GITHUB_GAP: i32 = 6;
+const SETTINGS_VERSION_ROW_Y: i32 = 242;
+const SETTINGS_GITHUB_ROW_Y: i32 = 266;
 const SETTINGS_GITHUB_HEIGHT: i32 = 20;
-const SETTINGS_GITHUB_ICON_Y_OFFSET: i32 = (SETTINGS_GITHUB_HEIGHT - SETTINGS_ICON_SIZE) / 2;
-const SETTINGS_GITHUB_LINK_TEXT: &str = "GitHub";
+const SETTINGS_GITHUB_LEFT_GAP: i32 = 12;
+const SETTINGS_GITHUB_X_OFFSET: i32 = 2;
+const SETTINGS_FILE_INFO_RIGHT_GAP: i32 = 12;
 const SETTINGS_GITHUB_LINK_HIT_TOP: i32 = 1;
 const SETTINGS_GITHUB_LINK_HIT_BOTTOM: i32 = 15;
 const SETTINGS_GITHUB_TOOLTIP_HEIGHT: i32 = 24;
@@ -101,7 +102,6 @@ struct SettingsWindow {
     language: Language,
     initial: SettingsPreferences,
     pending_language: Option<Language>,
-    github_icon: HICON,
     github_link_hot: bool,
     brush: OwnedBrush,
     panel_brush: OwnedBrush,
@@ -139,7 +139,7 @@ impl Drop for DisabledParent {
 }
 
 impl SettingsWindow {
-    fn new(language: Language, initial: SettingsPreferences, github_icon: HICON) -> Self {
+    fn new(language: Language, initial: SettingsPreferences) -> Self {
         Self {
             hwnd: HWND::default(),
             behavior_label: HWND::default(),
@@ -158,7 +158,6 @@ impl SettingsWindow {
             language,
             initial,
             pending_language: None,
-            github_icon,
             github_link_hot: false,
             brush: OwnedBrush::solid(PAGE_COLOR),
             panel_brush: OwnedBrush::solid(PANEL_COLOR),
@@ -265,7 +264,7 @@ impl SettingsWindow {
                 WINDOW_EX_STYLE(0),
                 SETTINGS_CONTENT_X,
                 SETTINGS_FILE_INFO_Y,
-                SETTINGS_CONTENT_WIDTH,
+                self.file_info_label_width(),
                 22,
                 0,
             )?
@@ -287,7 +286,7 @@ impl SettingsWindow {
                 hwnd,
                 instance,
                 w!("BUTTON"),
-                SETTINGS_GITHUB_LINK_TEXT,
+                strings.github_repository,
                 child
                     | WS_TABSTOP
                     | WINDOW_STYLE(windows::Win32::UI::WindowsAndMessaging::BS_OWNERDRAW as u32),
@@ -453,6 +452,7 @@ impl SettingsWindow {
             set_text(self.language_label, strings.settings_general);
             set_text(self.file_info_label, strings.settings_file_info);
             set_text(self.open_config_button, strings.open_config);
+            set_text(self.github_button, strings.github_repository);
             self.display_text.clear();
             version_text_into(strings, &mut self.display_text);
             self.layout_dynamic_controls();
@@ -463,6 +463,14 @@ impl SettingsWindow {
 
     unsafe fn layout_dynamic_controls(&self) {
         unsafe {
+            let _ = move_window(
+                self.file_info_label,
+                SETTINGS_CONTENT_X,
+                SETTINGS_FILE_INFO_Y,
+                self.file_info_label_width(),
+                22,
+                true,
+            );
             let _ = move_window(
                 self.open_config_button,
                 SETTINGS_CONTENT_X,
@@ -496,8 +504,18 @@ impl SettingsWindow {
     }
 
     fn github_link_width(&self) -> i32 {
-        unsafe { measure_text_width(self.hwnd, self.font.handle(), SETTINGS_GITHUB_LINK_TEXT) }
-            .max(1)
+        let measured = unsafe {
+            measure_text_width(
+                self.hwnd,
+                self.font.handle(),
+                self.language.strings().github_repository,
+            )
+        };
+        measured.min(self.github_link_available_width()).max(1)
+    }
+
+    fn github_link_available_width(&self) -> i32 {
+        self.github_right_x() - self.github_min_x()
     }
 
     fn version_width(&self) -> i32 {
@@ -508,22 +526,30 @@ impl SettingsWindow {
     }
 
     fn github_group_width(&self) -> i32 {
-        SETTINGS_ICON_SIZE + SETTINGS_GITHUB_GAP + self.github_link_width()
-    }
-
-    fn github_icon_x(&self) -> i32 {
-        SETTINGS_WINDOW_WIDTH
-            - SETTINGS_MARGIN
-            - SETTINGS_INFO_RIGHT_OFFSET
-            - self.github_group_width()
+        self.github_link_width()
     }
 
     fn github_text_x(&self) -> i32 {
-        self.github_icon_x() + SETTINGS_ICON_SIZE + SETTINGS_GITHUB_GAP
+        self.github_right_x() - self.github_group_width() + SETTINGS_GITHUB_X_OFFSET
+    }
+
+    fn github_right_x(&self) -> i32 {
+        SETTINGS_WINDOW_WIDTH - SETTINGS_MARGIN - SETTINGS_INFO_RIGHT_OFFSET
+    }
+
+    fn github_min_x(&self) -> i32 {
+        SETTINGS_CONTENT_X
+            + self.button_width(self.language.strings().open_config, 150, 230)
+            + SETTINGS_GITHUB_LEFT_GAP
     }
 
     fn version_x(&self) -> i32 {
         SETTINGS_WINDOW_WIDTH - SETTINGS_MARGIN - SETTINGS_INFO_RIGHT_OFFSET - self.version_width()
+    }
+
+    fn file_info_label_width(&self) -> i32 {
+        (self.version_x() - SETTINGS_CONTENT_X - SETTINGS_FILE_INFO_RIGHT_GAP)
+            .clamp(1, SETTINGS_CONTENT_WIDTH)
     }
 
     unsafe fn redraw_info_area(&self) {
@@ -686,8 +712,8 @@ impl SettingsWindow {
             (unsafe { measure_text_width(self.hwnd, self.font.handle(), super::GITHUB_PAGE_URL) }
                 + SETTINGS_GITHUB_TOOLTIP_X_PADDING * 2)
                 .max(1);
-        let client_x = self.github_icon_x() + (self.github_group_width() - width) / 2;
-        let client_y = (SETTINGS_GITHUB_ROW_Y
+        let client_x = self.github_text_x() + (self.github_group_width() - width) / 2;
+        let client_y = (SETTINGS_VERSION_ROW_Y
             - SETTINGS_GITHUB_TOOLTIP_HEIGHT
             - SETTINGS_GITHUB_TOOLTIP_Y_GAP)
             .max(0);
@@ -706,25 +732,7 @@ impl SettingsWindow {
         )
     }
 
-    fn paint(&self, hdc: HDC) {
-        if self.github_icon.0.is_null() {
-            return;
-        }
-
-        unsafe {
-            let _ = DrawIconEx(
-                hdc,
-                px(self.github_icon_x()),
-                px(SETTINGS_GITHUB_ROW_Y + SETTINGS_GITHUB_ICON_Y_OFFSET),
-                self.github_icon,
-                px(SETTINGS_ICON_SIZE),
-                px(SETTINGS_ICON_SIZE),
-                0,
-                None,
-                DI_NORMAL,
-            );
-        }
-    }
+    fn paint(&self, _hdc: HDC) {}
 
     fn draw_github_tooltip(&self, draw: &DRAWITEMSTRUCT) -> bool {
         unsafe {
@@ -772,7 +780,7 @@ impl SettingsWindow {
         draw_text_line(
             draw.hDC,
             self.font.handle(),
-            SETTINGS_GITHUB_LINK_TEXT,
+            self.language.strings().github_repository,
             rect,
             color,
         );
@@ -825,7 +833,6 @@ pub(super) unsafe fn prompt_settings<F>(
     parent: HWND,
     instance: HINSTANCE,
     icon: HICON,
-    github_icon: HICON,
     language: Language,
     initial: SettingsPreferences,
     mut on_language_change: F,
@@ -850,7 +857,7 @@ where
     let _class_registration = (unsafe { RegisterClassW(&class) } != 0)
         .then(|| WindowClassRegistration::new(SETTINGS_WINDOW_CLASS_NAME, instance));
 
-    let mut state = Box::new(SettingsWindow::new(language, initial, github_icon));
+    let mut state = Box::new(SettingsWindow::new(language, initial));
     let state_ptr = state.as_mut() as *mut SettingsWindow;
     let title = to_wide(language.strings().settings_title);
     let width = px(SETTINGS_WINDOW_WIDTH);
@@ -887,7 +894,7 @@ where
                 PostQuitMessage(quit_code);
                 break;
             }
-            if message_is_parent_close(&msg, parent) {
+            if message_is_blocked_parent_message(&msg, parent) {
                 continue;
             }
             if !IsDialogMessageW(hwnd, &msg).as_bool() {
@@ -900,14 +907,42 @@ where
         }
 
         drop(parent_guard);
+        discard_stale_parent_messages(parent);
+        restore_parent_if_minimized(parent);
         let _ = SetForegroundWindow(parent);
     }
 
     Ok(state.selected)
 }
 
-fn message_is_parent_close(message: &MSG, parent: HWND) -> bool {
-    message.hwnd == parent && message.message == WM_CLOSE
+fn message_is_blocked_parent_message(message: &MSG, parent: HWND) -> bool {
+    if message.hwnd != parent {
+        return false;
+    }
+    message.message == WM_CLOSE
+        || (message.message == WM_SYSCOMMAND && system_command_closes_or_minimizes(message.wParam))
+}
+
+unsafe fn discard_stale_parent_messages(parent: HWND) {
+    let mut msg = MSG::default();
+    while unsafe { PeekMessageW(&mut msg, Some(parent), WM_CLOSE, WM_CLOSE, PM_REMOVE).as_bool() } {
+    }
+    while unsafe {
+        PeekMessageW(
+            &mut msg,
+            Some(parent),
+            WM_SYSCOMMAND,
+            WM_SYSCOMMAND,
+            PM_REMOVE,
+        )
+        .as_bool()
+    } {}
+}
+
+unsafe fn restore_parent_if_minimized(parent: HWND) {
+    if unsafe { IsIconic(parent).as_bool() } {
+        let _ = unsafe { ShowWindow(parent, SW_RESTORE) };
+    }
 }
 
 unsafe extern "system" fn settings_window_proc(
