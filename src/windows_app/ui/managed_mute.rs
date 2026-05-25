@@ -208,11 +208,20 @@ mod tests {
         let strings = Language::Ko.strings();
         let mut target = TargetProcess::new("game.exe").unwrap();
 
-        assert_eq!(target_status_text(&target, false, strings), "대기 중");
-        assert_eq!(target_status_text(&target, true, strings), "음소거 중");
+        assert_eq!(
+            target_status_text(&target, false, strings),
+            strings.target_ready
+        );
+        assert_eq!(
+            target_status_text(&target, true, strings),
+            strings.target_muted
+        );
 
         target.enabled = false;
-        assert_eq!(target_status_text(&target, true, strings), "일시 중지");
+        assert_eq!(
+            target_status_text(&target, true, strings),
+            strings.target_excluded
+        );
     }
 
     #[test]
