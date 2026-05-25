@@ -6,7 +6,7 @@
   <p><strong>選択したゲームやアプリがバックグラウンドへ移ったときに自動でミュートする、軽量でポータブルなWindowsトレイアプリです。<br>UnfocusMute自身がミュートしたセッションだけを復元し、バックグラウンドのネットワーク接続なしで完全にローカル動作します。</strong></p>
 
   <p>
-    <a href="README_ko.md">한국어</a> · <a href="../README.md">English</a> · 日本語 · <a href="README_zh-CN.md">简体中文</a> · <a href="README_es.md">Español</a> · <a href="README_fr.md">Français</a> · <a href="README_pt.md">Português</a> · <a href="README_hi.md">हिन्दी</a> · <a href="README_ar.md">العربية</a>
+    <a href="../README.md">English</a> · <a href="README_ko.md">한국어</a> · 日本語 · <a href="README_zh-CN.md">简体中文</a> · <a href="README_es.md">Español</a> · <a href="README_fr.md">Français</a> · <a href="README_pt.md">Português</a> · <a href="README_hi.md">हिन्दी</a> · <a href="README_ar.md">العربية</a>
   </p>
 
   <p>

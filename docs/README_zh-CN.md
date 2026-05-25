@@ -6,7 +6,7 @@
   <p><strong>轻量、便携的 Windows 托盘应用，可在选定的游戏或应用切到后台时自动将其静音。<br>只恢复 UnfocusMute 自己静音过的会话，并且没有后台网络连接，完全在本地运行。</strong></p>
 
   <p>
-    <a href="README_ko.md">한국어</a> · <a href="../README.md">English</a> · <a href="README_ja.md">日本語</a> · 简体中文 · <a href="README_es.md">Español</a> · <a href="README_fr.md">Français</a> · <a href="README_pt.md">Português</a> · <a href="README_hi.md">हिन्दी</a> · <a href="README_ar.md">العربية</a>
+    <a href="../README.md">English</a> · <a href="README_ko.md">한국어</a> · <a href="README_ja.md">日本語</a> · 简体中文 · <a href="README_es.md">Español</a> · <a href="README_fr.md">Français</a> · <a href="README_pt.md">Português</a> · <a href="README_hi.md">हिन्दी</a> · <a href="README_ar.md">العربية</a>
   </p>
 
   <p>

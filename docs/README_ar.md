@@ -6,7 +6,7 @@
   <p><strong>تطبيق خفيف ومحمول لعلبة نظام Windows يكتم تلقائيًا الألعاب أو التطبيقات المحددة عندما تنتقل إلى الخلفية.<br>لا يستعيد إلا الجلسات التي كتمها UnfocusMute بنفسه، ويعمل محليًا بالكامل من دون اتصالات شبكة في الخلفية.</strong></p>
 
   <p>
-    <a href="README_ko.md">한국어</a> · <a href="../README.md">English</a> · <a href="README_ja.md">日本語</a> · <a href="README_zh-CN.md">简体中文</a> · <a href="README_es.md">Español</a> · <a href="README_fr.md">Français</a> · <a href="README_pt.md">Português</a> · <a href="README_hi.md">हिन्दी</a> · العربية
+    <a href="../README.md">English</a> · <a href="README_ko.md">한국어</a> · <a href="README_ja.md">日本語</a> · <a href="README_zh-CN.md">简体中文</a> · <a href="README_es.md">Español</a> · <a href="README_fr.md">Français</a> · <a href="README_pt.md">Português</a> · <a href="README_hi.md">हिन्दी</a> · العربية
   </p>
 
   <p>

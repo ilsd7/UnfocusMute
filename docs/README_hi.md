@@ -6,7 +6,7 @@
   <p><strong>चुने हुए गेम या ऐप के बैकग्राउंड में जाते ही उन्हें अपने आप म्यूट करने वाला हल्का और पोर्टेबल Windows ट्रे ऐप।<br>यह सिर्फ वही सेशन वापस चालू करता है जिन्हें UnfocusMute ने खुद म्यूट किया था, और बैकग्राउंड नेटवर्क कनेक्शन के बिना पूरी तरह स्थानीय रूप से काम करता है।</strong></p>
 
   <p>
-    <a href="README_ko.md">한국어</a> · <a href="../README.md">English</a> · <a href="README_ja.md">日本語</a> · <a href="README_zh-CN.md">简体中文</a> · <a href="README_es.md">Español</a> · <a href="README_fr.md">Français</a> · <a href="README_pt.md">Português</a> · हिन्दी · <a href="README_ar.md">العربية</a>
+    <a href="../README.md">English</a> · <a href="README_ko.md">한국어</a> · <a href="README_ja.md">日本語</a> · <a href="README_zh-CN.md">简体中文</a> · <a href="README_es.md">Español</a> · <a href="README_fr.md">Français</a> · <a href="README_pt.md">Português</a> · हिन्दी · <a href="README_ar.md">العربية</a>
   </p>
 
   <p>

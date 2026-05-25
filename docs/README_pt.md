@@ -6,7 +6,7 @@
   <p><strong>App leve e portátil para a bandeja do Windows que silencia automaticamente jogos e apps selecionados quando vão para segundo plano.<br>Restaura apenas as sessões que o UnfocusMute silenciou diretamente e funciona totalmente de forma local, sem conexões de rede em segundo plano.</strong></p>
 
   <p>
-    <a href="README_ko.md">한국어</a> · <a href="../README.md">English</a> · <a href="README_ja.md">日本語</a> · <a href="README_zh-CN.md">简体中文</a> · <a href="README_es.md">Español</a> · <a href="README_fr.md">Français</a> · Português · <a href="README_hi.md">हिन्दी</a> · <a href="README_ar.md">العربية</a>
+    <a href="../README.md">English</a> · <a href="README_ko.md">한국어</a> · <a href="README_ja.md">日本語</a> · <a href="README_zh-CN.md">简体中文</a> · <a href="README_es.md">Español</a> · <a href="README_fr.md">Français</a> · Português · <a href="README_hi.md">हिन्दी</a> · <a href="README_ar.md">العربية</a>
   </p>
 
   <p>

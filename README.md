@@ -6,7 +6,7 @@
   <p><strong>Lightweight, portable Windows tray app that automatically mutes selected games and apps when they move to the background.<br>Restores only sessions muted by UnfocusMute itself and runs entirely locally without background network access.</strong></p>
 
   <p>
-    <a href="docs/README_ko.md">한국어</a> · English · <a href="docs/README_ja.md">日本語</a> · <a href="docs/README_zh-CN.md">简体中文</a> · <a href="docs/README_es.md">Español</a> · <a href="docs/README_fr.md">Français</a> · <a href="docs/README_pt.md">Português</a> · <a href="docs/README_hi.md">हिन्दी</a> · <a href="docs/README_ar.md">العربية</a>
+    English · <a href="docs/README_ko.md">한국어</a> · <a href="docs/README_ja.md">日本語</a> · <a href="docs/README_zh-CN.md">简体中文</a> · <a href="docs/README_es.md">Español</a> · <a href="docs/README_fr.md">Français</a> · <a href="docs/README_pt.md">Português</a> · <a href="docs/README_hi.md">हिन्दी</a> · <a href="docs/README_ar.md">العربية</a>
   </p>
 
   <p>

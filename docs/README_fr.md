@@ -6,7 +6,7 @@
   <p><strong>Application Windows légère et portable, dans la zone de notification, qui coupe automatiquement le son des jeux et apps choisis lorsqu’ils passent en arrière-plan.<br>Elle restaure uniquement les sessions qu’UnfocusMute a lui-même mises en sourdine et fonctionne entièrement en local, sans connexion réseau en arrière-plan.</strong></p>
 
   <p>
-    <a href="README_ko.md">한국어</a> · <a href="../README.md">English</a> · <a href="README_ja.md">日本語</a> · <a href="README_zh-CN.md">简体中文</a> · <a href="README_es.md">Español</a> · Français · <a href="README_pt.md">Português</a> · <a href="README_hi.md">हिन्दी</a> · <a href="README_ar.md">العربية</a>
+    <a href="../README.md">English</a> · <a href="README_ko.md">한국어</a> · <a href="README_ja.md">日本語</a> · <a href="README_zh-CN.md">简体中文</a> · <a href="README_es.md">Español</a> · Français · <a href="README_pt.md">Português</a> · <a href="README_hi.md">हिन्दी</a> · <a href="README_ar.md">العربية</a>
   </p>
 
   <p>
