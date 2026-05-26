@@ -483,7 +483,7 @@ fn merge_pending_target_changes(
         match base_target {
             None => upsert_target(disk, target.clone()),
             Some(base_target) if target_differs_ignoring_managed_muted(base_target, target) => {
-                upsert_target(disk, target.clone());
+                upsert_target_preserving_external_managed_mute(disk, base_target, target);
             }
             Some(base_target) if base_target.managed_muted != target.managed_muted => {
                 set_target_managed_muted_by_key(
@@ -503,6 +503,20 @@ fn target_differs_ignoring_managed_muted(left: &TargetProcess, right: &TargetPro
         || left.pid != right.pid
         || left.note != right.note
         || left.enabled != right.enabled
+}
+
+fn upsert_target_preserving_external_managed_mute(
+    disk: &mut Vec<TargetProcess>,
+    base: &TargetProcess,
+    local: &TargetProcess,
+) {
+    let mut merged = local.clone();
+    if base.managed_muted == local.managed_muted
+        && let Some(index) = target_index_by_key(disk, &local.name, local.pid)
+    {
+        merged.managed_muted = disk[index].managed_muted;
+    }
+    upsert_target(disk, merged);
 }
 
 fn set_target_managed_muted_by_key(
@@ -2396,6 +2410,24 @@ mod tests {
         assert_eq!(disk.targets.len(), 1);
         assert_eq!(disk.targets[0].note.as_deref(), Some("external"));
         assert!(!disk.targets[0].enabled);
+        assert!(disk.targets[0].managed_muted);
+    }
+
+    #[test]
+    fn merge_pending_config_changes_keeps_external_runtime_mute_for_local_target_edits() {
+        let mut base = AppConfig::default();
+        assert!(base.add_target("game.exe"));
+
+        let mut local = base.clone();
+        assert!(local.set_target_note_at(0, Some("local".to_owned())));
+
+        let mut disk = base.clone();
+        assert!(disk.set_target_managed_muted_at(0, true));
+
+        merge_pending_config_changes(&base, &local, &mut disk);
+
+        assert_eq!(disk.targets.len(), 1);
+        assert_eq!(disk.targets[0].note.as_deref(), Some("local"));
         assert!(disk.targets[0].managed_muted);
     }
 
