@@ -80,8 +80,8 @@ impl ProcessNameResolver {
             };
         }
 
-        if let Some(lookup) = self.names.lookup(pid) {
-            return Some(self.names.get_at(lookup));
+        if let Ok(index) = self.names.lookup(pid) {
+            return Some(self.names.get_at(index));
         }
         let name = load_process_name(pid).or_else(|| {
             self.snapshot_names
@@ -187,68 +187,19 @@ impl ProcessIdCache {
     }
 }
 
-#[derive(Clone, Copy)]
-enum ProcessNameCacheLookup {
-    One,
-    TwoFirst,
-    TwoSecond,
-    Many(usize),
-}
-
 #[derive(Default)]
-enum ProcessNameCache {
-    #[default]
-    Empty,
-    One {
-        pid: u32,
-        name: String,
-    },
-    Two {
-        first_pid: u32,
-        first_name: String,
-        second_pid: u32,
-        second_name: String,
-    },
-    Many {
-        names: Vec<(u32, String)>,
-    },
+struct ProcessNameCache {
+    names: Vec<(u32, String)>,
 }
 
 impl ProcessNameCache {
-    fn lookup(&self, pid: u32) -> Option<ProcessNameCacheLookup> {
-        match self {
-            Self::Empty => None,
-            Self::One {
-                pid: cached_pid, ..
-            } => (*cached_pid == pid).then_some(ProcessNameCacheLookup::One),
-            Self::Two {
-                first_pid,
-                second_pid,
-                ..
-            } => {
-                if *first_pid == pid {
-                    Some(ProcessNameCacheLookup::TwoFirst)
-                } else if *second_pid == pid {
-                    Some(ProcessNameCacheLookup::TwoSecond)
-                } else {
-                    None
-                }
-            }
-            Self::Many { names } => names
-                .binary_search_by_key(&pid, |(cached_pid, _)| *cached_pid)
-                .ok()
-                .map(ProcessNameCacheLookup::Many),
-        }
+    fn lookup(&self, pid: u32) -> Result<usize, usize> {
+        self.names
+            .binary_search_by_key(&pid, |(cached_pid, _)| *cached_pid)
     }
 
-    fn get_at(&self, lookup: ProcessNameCacheLookup) -> &str {
-        match (self, lookup) {
-            (Self::One { name, .. }, ProcessNameCacheLookup::One) => name,
-            (Self::Two { first_name, .. }, ProcessNameCacheLookup::TwoFirst) => first_name,
-            (Self::Two { second_name, .. }, ProcessNameCacheLookup::TwoSecond) => second_name,
-            (Self::Many { names }, ProcessNameCacheLookup::Many(index)) => &names[index].1,
-            _ => unreachable!("process name cache lookup must match cache storage"),
-        }
+    fn get_at(&self, index: usize) -> &str {
+        self.names[index].1.as_str()
     }
 
     fn get_or_insert_with(
@@ -256,68 +207,23 @@ impl ProcessNameCache {
         pid: u32,
         load: impl FnOnce(u32) -> Option<String>,
     ) -> Option<&str> {
-        if let Some(lookup) = self.lookup(pid) {
-            return Some(self.get_at(lookup));
+        if let Ok(index) = self.lookup(pid) {
+            return Some(self.names[index].1.as_str());
         }
 
         Some(self.insert_absent(pid, load(pid)?))
     }
 
     fn insert_absent(&mut self, pid: u32, name: String) -> &str {
-        debug_assert!(self.lookup(pid).is_none());
-
-        let lookup = match std::mem::take(self) {
-            Self::Empty => {
-                *self = Self::One { pid, name };
-                ProcessNameCacheLookup::One
-            }
-            Self::One {
-                pid: first_pid,
-                name: first_name,
-            } => {
-                *self = Self::Two {
-                    first_pid,
-                    first_name,
-                    second_pid: pid,
-                    second_name: name,
-                };
-                ProcessNameCacheLookup::TwoSecond
-            }
-            Self::Two {
-                first_pid,
-                first_name,
-                second_pid,
-                second_name,
-            } => {
-                let mut names = Vec::with_capacity(4);
-                names.push((first_pid, first_name));
-                names.push((second_pid, second_name));
-                names.push((pid, name));
-                names.sort_unstable_by_key(|(cached_pid, _)| *cached_pid);
-                let index = insertion_index_by_pid(&names, pid);
-                debug_assert_eq!(names[index].0, pid);
-                *self = Self::Many { names };
-                ProcessNameCacheLookup::Many(index)
-            }
-            Self::Many { mut names } => {
-                let index = insertion_index_by_pid(&names, pid);
-                debug_assert!(
-                    names
-                        .get(index)
-                        .is_none_or(|(cached_pid, _)| *cached_pid != pid)
-                );
-                names.insert(index, (pid, name));
-                *self = Self::Many { names };
-                ProcessNameCacheLookup::Many(index)
+        let index = match self.lookup(pid) {
+            Ok(index) => index,
+            Err(index) => {
+                self.names.insert(index, (pid, name));
+                index
             }
         };
-
-        self.get_at(lookup)
+        self.names[index].1.as_str()
     }
-}
-
-fn insertion_index_by_pid(names: &[(u32, String)], pid: u32) -> usize {
-    names.partition_point(|(cached_pid, _)| *cached_pid < pid)
 }
 
 pub fn foreground_pid() -> Option<u32> {
@@ -565,7 +471,7 @@ mod tests {
     }
 
     #[test]
-    fn process_name_cache_uses_sorted_many_lookup() {
+    fn process_name_cache_keeps_sorted_lookup() {
         let mut cache = ProcessNameCache::default();
         for (pid, name) in [
             (30, "third.exe"),
@@ -579,11 +485,9 @@ mod tests {
             );
         }
 
-        let ProcessNameCache::Many { names } = &cache else {
-            panic!("four cached entries should use many-cache storage");
-        };
         assert_eq!(
-            names
+            cache
+                .names
                 .iter()
                 .map(|(pid, name)| (*pid, name.as_str()))
                 .collect::<Vec<_>>(),

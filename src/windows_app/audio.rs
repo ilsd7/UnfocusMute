@@ -15,13 +15,9 @@ use windows::Win32::Media::Audio::{
     IMMNotificationClient_Impl, ISimpleAudioVolume, MMDeviceEnumerator, eMultimedia, eRender,
 };
 use windows::Win32::System::Com::{CLSCTX_ALL, CoCreateInstance, CoTaskMemFree};
-use windows::core::{Interface, PCWSTR, PWSTR, implement};
-use windows_core::BOOL;
+use windows::core::{BOOL, Interface, PCWSTR, PWSTR, implement};
 
 const EXPECTED_MANAGED_SESSION_COUNT: usize = 8;
-const LINEAR_MANAGED_SESSION_LIMIT: usize = 8;
-const LINEAR_MANAGED_TARGET_LIMIT: usize = 8;
-const LINEAR_PID_PREFILTER_LIMIT: usize = 8;
 
 pub struct AudioController {
     enumerator: IMMDeviceEnumerator,
@@ -486,14 +482,14 @@ struct TargetMuteIdentity<'a> {
 }
 
 struct ManagedTargetLookup<'a> {
-    identities: ManagedTargetIdentities<'a>,
+    identities: Vec<TargetMuteIdentity<'a>>,
     pid_lookup: PidPrefilter,
 }
 
 impl<'a> ManagedTargetLookup<'a> {
     fn new(targets: &'a [TargetProcess]) -> Self {
-        let mut identities = ManagedTargetIdentities::Empty;
-        let mut pid_lookup = PidPrefilter::None;
+        let mut identities = Vec::new();
+        let mut pid_lookup = PidPrefilter::default();
 
         for target in targets.iter().filter(|target| target.managed_muted) {
             identities.push(TargetMuteIdentity {
@@ -503,11 +499,11 @@ impl<'a> ManagedTargetLookup<'a> {
             if let Some(pid) = target.pid {
                 pid_lookup.push_pid(pid);
             } else {
-                pid_lookup = PidPrefilter::Any;
+                pid_lookup.include_any();
             }
         }
         Self {
-            identities: identities.finalized(),
+            identities: sorted_deduped_target_identities(identities),
             pid_lookup: pid_lookup.finalized(),
         }
     }
@@ -537,298 +533,75 @@ impl<'a> ManagedTargetLookup<'a> {
         process_name: &str,
         pid: Option<u32>,
     ) -> Option<TargetMuteIdentity<'a>> {
-        self.identities.find(process_name, pid)
+        self.identities
+            .binary_search_by(|identity| compare_target_identity_key(*identity, process_name, pid))
+            .ok()
+            .map(|index| self.identities[index])
     }
 
     fn block_pid_target_states_for_pid(&self, result: &mut PlanApplyResult, pid: u32) {
-        self.identities.for_each(|identity| {
-            if identity.pid == Some(pid) {
-                result.block_unmuted_target_state(identity);
-            }
-        });
-    }
-}
-
-#[derive(Debug, Eq, PartialEq)]
-enum ManagedTargetIdentities<'a> {
-    Empty,
-    One(TargetMuteIdentity<'a>),
-    Two(TargetMuteIdentity<'a>, TargetMuteIdentity<'a>),
-    Few {
-        identities: [TargetMuteIdentity<'a>; LINEAR_MANAGED_TARGET_LIMIT],
-        len: usize,
-    },
-    Many(Vec<TargetMuteIdentity<'a>>),
-}
-
-impl<'a> ManagedTargetIdentities<'a> {
-    const EMPTY_IDENTITY: TargetMuteIdentity<'static> = TargetMuteIdentity {
-        process_name: "",
-        pid: None,
-    };
-
-    fn push(&mut self, identity: TargetMuteIdentity<'a>) {
-        match self {
-            Self::Empty => *self = Self::One(identity),
-            Self::One(existing) => *self = Self::Two(*existing, identity),
-            Self::Two(first, second) => {
-                let mut identities = [Self::EMPTY_IDENTITY; LINEAR_MANAGED_TARGET_LIMIT];
-                identities[0] = *first;
-                identities[1] = *second;
-                identities[2] = identity;
-                *self = Self::Few { identities, len: 3 };
-            }
-            Self::Few { identities, len } if *len < LINEAR_MANAGED_TARGET_LIMIT => {
-                identities[*len] = identity;
-                *len += 1;
-            }
-            Self::Few { identities, len } => {
-                let mut many = Vec::with_capacity(*len + 1);
-                many.extend_from_slice(&identities[..*len]);
-                many.push(identity);
-                *self = Self::Many(many);
-            }
-            Self::Many(identities) => identities.push(identity),
-        }
-    }
-
-    fn finalized(self) -> Self {
-        match self {
-            Self::Two(first, second) => {
-                if compare_target_identities(first, second).is_eq() {
-                    Self::One(first)
-                } else if compare_target_identities(first, second).is_le() {
-                    Self::Two(first, second)
-                } else {
-                    Self::Two(second, first)
-                }
-            }
-            Self::Few {
-                mut identities,
-                len,
-            } => {
-                identities[..len]
-                    .sort_unstable_by(|left, right| compare_target_identities(*left, *right));
-                let len = dedup_sorted_target_identities(&mut identities, len);
-                match len {
-                    0 => Self::Empty,
-                    1 => Self::One(identities[0]),
-                    2 => Self::Two(identities[0], identities[1]),
-                    _ => Self::Few { identities, len },
-                }
-            }
-            Self::Many(mut identities) => {
-                identities.sort_unstable_by(|left, right| compare_target_identities(*left, *right));
-                identities.dedup();
-                match identities.len() {
-                    0 => Self::Empty,
-                    1 => Self::One(identities[0]),
-                    2 => Self::Two(identities[0], identities[1]),
-                    len if len <= LINEAR_MANAGED_TARGET_LIMIT => {
-                        let mut inline = [Self::EMPTY_IDENTITY; LINEAR_MANAGED_TARGET_LIMIT];
-                        inline[..len].copy_from_slice(&identities);
-                        Self::Few {
-                            identities: inline,
-                            len,
-                        }
-                    }
-                    _ => Self::Many(identities),
-                }
-            }
-            other => other,
-        }
-    }
-
-    fn find(&self, process_name: &str, pid: Option<u32>) -> Option<TargetMuteIdentity<'a>> {
-        match self {
-            Self::Empty => None,
-            Self::One(identity) => {
-                target_identity_matches(*identity, process_name, pid).then_some(*identity)
-            }
-            Self::Two(first, second) => {
-                if target_identity_matches(*first, process_name, pid) {
-                    Some(*first)
-                } else {
-                    target_identity_matches(*second, process_name, pid).then_some(*second)
-                }
-            }
-            Self::Few { identities, len } => identities[..*len]
-                .binary_search_by(|identity| {
-                    compare_target_identity_key(*identity, process_name, pid)
-                })
-                .ok()
-                .map(|index| identities[index]),
-            Self::Many(identities) => identities
-                .binary_search_by(|identity| {
-                    compare_target_identity_key(*identity, process_name, pid)
-                })
-                .ok()
-                .map(|index| identities[index]),
-        }
-    }
-
-    fn for_each(&self, mut visit: impl FnMut(TargetMuteIdentity<'a>)) {
-        match self {
-            Self::Empty => {}
-            Self::One(identity) => visit(*identity),
-            Self::Two(first, second) => {
-                visit(*first);
-                visit(*second);
-            }
-            Self::Few { identities, len } => {
-                for identity in &identities[..*len] {
-                    visit(*identity);
-                }
-            }
-            Self::Many(identities) => {
-                for identity in identities {
-                    visit(*identity);
-                }
-            }
+        for identity in self
+            .identities
+            .iter()
+            .copied()
+            .filter(|identity| identity.pid == Some(pid))
+        {
+            result.block_unmuted_target_state(identity);
         }
     }
 }
 
-fn target_identity_matches(
-    identity: TargetMuteIdentity<'_>,
-    process_name: &str,
-    pid: Option<u32>,
-) -> bool {
-    identity.process_name == process_name && identity.pid == pid
+fn sorted_deduped_target_identities<'a>(
+    mut identities: Vec<TargetMuteIdentity<'a>>,
+) -> Vec<TargetMuteIdentity<'a>> {
+    if identities.len() > 1 {
+        identities.sort_unstable_by(|left, right| compare_target_identities(*left, *right));
+        identities.dedup();
+    }
+    identities
 }
 
-fn dedup_sorted_target_identities(
-    identities: &mut [TargetMuteIdentity<'_>; LINEAR_MANAGED_TARGET_LIMIT],
-    len: usize,
-) -> usize {
-    if len < 2 {
-        return len;
-    }
-
-    let mut write = 1;
-    for read in 1..len {
-        if compare_target_identities(identities[read], identities[write - 1]).is_ne() {
-            identities[write] = identities[read];
-            write += 1;
-        }
-    }
-    write
-}
-
-#[derive(Debug, Eq, PartialEq)]
-enum PidPrefilter {
-    Any,
-    None,
-    One(u32),
-    Two(u32, u32),
-    Few {
-        pids: [u32; LINEAR_PID_PREFILTER_LIMIT],
-        len: usize,
-    },
-    Many(Vec<u32>),
+#[derive(Default, Debug, Eq, PartialEq)]
+struct PidPrefilter {
+    any: bool,
+    pids: Vec<u32>,
 }
 
 impl PidPrefilter {
+    #[cfg(test)]
     fn new(any_process_name_target: bool, mut pids: Vec<u32>) -> Self {
         if any_process_name_target {
-            return Self::Any;
+            pids.clear();
         }
-        if pids.len() < 2 {
-            return match pids.pop() {
-                Some(pid) => Self::One(pid),
-                None => Self::None,
-            };
+        Self {
+            any: any_process_name_target,
+            pids,
         }
-
-        pids.sort_unstable();
-        pids.dedup();
-        match pids.as_slice() {
-            [] => Self::None,
-            [pid] => Self::One(*pid),
-            [first, second] => Self::Two(*first, *second),
-            pids if pids.len() <= LINEAR_PID_PREFILTER_LIMIT => {
-                let mut inline = [0; LINEAR_PID_PREFILTER_LIMIT];
-                inline[..pids.len()].copy_from_slice(pids);
-                Self::Few {
-                    pids: inline,
-                    len: pids.len(),
-                }
-            }
-            _ => Self::Many(pids),
-        }
+        .finalized()
     }
 
     fn push_pid(&mut self, pid: u32) {
-        match self {
-            Self::Any => {}
-            Self::None => *self = Self::One(pid),
-            Self::One(existing) if *existing == pid => {}
-            Self::One(existing) => *self = Self::Two(*existing, pid),
-            Self::Two(first, second) if *first == pid || *second == pid => {}
-            Self::Two(first, second) => {
-                let mut pids = [0; LINEAR_PID_PREFILTER_LIMIT];
-                pids[0] = *first;
-                pids[1] = *second;
-                pids[2] = pid;
-                *self = Self::Few { pids, len: 3 };
-            }
-            Self::Few { pids, len } if pids[..*len].contains(&pid) => {}
-            Self::Few { pids, len } if *len < LINEAR_PID_PREFILTER_LIMIT => {
-                pids[*len] = pid;
-                *len += 1;
-            }
-            Self::Few { pids, len } => {
-                let mut many = Vec::with_capacity(*len + 1);
-                many.extend_from_slice(&pids[..*len]);
-                many.push(pid);
-                *self = Self::Many(many);
-            }
-            Self::Many(pids) => pids.push(pid),
+        if !self.any {
+            self.pids.push(pid);
         }
     }
 
-    fn finalized(self) -> Self {
-        match self {
-            Self::Few { mut pids, len } => {
-                pids[..len].sort_unstable();
-                let len = dedup_sorted_u32s(&mut pids, len);
-                match len {
-                    0 => Self::None,
-                    1 => Self::One(pids[0]),
-                    2 => Self::Two(pids[0], pids[1]),
-                    _ => Self::Few { pids, len },
-                }
-            }
-            Self::Many(pids) => Self::new(false, pids),
-            other => other,
+    fn include_any(&mut self) {
+        self.any = true;
+        self.pids.clear();
+    }
+
+    fn finalized(mut self) -> Self {
+        if !self.any && self.pids.len() > 1 {
+            self.pids.sort_unstable();
+            self.pids.dedup();
         }
+        self
     }
 
     fn may_include_pid(&self, pid: u32) -> bool {
-        match self {
-            Self::Any => true,
-            Self::None => false,
-            Self::One(target_pid) => *target_pid == pid,
-            Self::Two(first, second) => *first == pid || *second == pid,
-            Self::Few { pids, len } => pids[..*len].binary_search(&pid).is_ok(),
-            Self::Many(pids) => pids.binary_search(&pid).is_ok(),
-        }
+        self.any || self.pids.binary_search(&pid).is_ok()
     }
-}
-
-fn dedup_sorted_u32s(pids: &mut [u32; LINEAR_PID_PREFILTER_LIMIT], len: usize) -> usize {
-    if len < 2 {
-        return len;
-    }
-
-    let mut write = 1;
-    for read in 1..len {
-        if pids[read] != pids[write - 1] {
-            pids[write] = pids[read];
-            write += 1;
-        }
-    }
-    write
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -880,116 +653,53 @@ fn compare_target_update_identity(
     )
 }
 
-enum ManagedSessionLookup<'a> {
-    Empty,
-    One {
-        pid: u32,
-        process_name: &'a str,
-    },
-    Two {
-        first_pid: u32,
-        first_process_name: &'a str,
-        second_pid: u32,
-        second_process_name: &'a str,
-    },
-    Few {
-        identities: [(u32, &'a str); LINEAR_MANAGED_SESSION_LIMIT],
-        len: usize,
-    },
-    // 사전 필터 용도이며, 실제 소유 여부는 정확한 AudioSessionKey 조회가 결정한다.
-    Many {
-        pids: Vec<u32>,
-    },
+struct ManagedSessionLookup<'a> {
+    identities: Vec<(u32, &'a str)>,
+    pid_lookup: PidPrefilter,
 }
 
 impl<'a> ManagedSessionLookup<'a> {
     fn new(session_keys: &'a HashSet<AudioSessionKey>) -> Self {
-        let mut keys = session_keys.iter();
-        let Some(first) = keys.next() else {
-            return Self::Empty;
-        };
-        let Some(second) = keys.next() else {
-            return Self::One {
-                pid: first.pid,
-                process_name: first.process_name.as_str(),
-            };
-        };
-        if session_keys.len() == 2 {
-            return Self::Two {
-                first_pid: first.pid,
-                first_process_name: first.process_name.as_str(),
-                second_pid: second.pid,
-                second_process_name: second.process_name.as_str(),
-            };
+        let mut identities = Vec::with_capacity(session_keys.len());
+        let mut pid_lookup = PidPrefilter::default();
+
+        for key in session_keys {
+            identities.push((key.pid, key.process_name.as_str()));
+            pid_lookup.push_pid(key.pid);
+        }
+        if identities.len() > 1 {
+            identities.sort_unstable();
+            identities.dedup();
         }
 
-        if session_keys.len() <= LINEAR_MANAGED_SESSION_LIMIT {
-            let mut identities = [(0, ""); LINEAR_MANAGED_SESSION_LIMIT];
-            identities[0] = (first.pid, first.process_name.as_str());
-            identities[1] = (second.pid, second.process_name.as_str());
-            let mut len = 2;
-            for key in keys {
-                identities[len] = (key.pid, key.process_name.as_str());
-                len += 1;
-            }
-            return Self::Few { identities, len };
+        Self {
+            identities,
+            pid_lookup: pid_lookup.finalized(),
         }
-
-        let mut pids = Vec::with_capacity(session_keys.len());
-        pids.push(first.pid);
-        pids.push(second.pid);
-        for key in keys {
-            pids.push(key.pid);
-        }
-        pids.sort_unstable();
-        pids.dedup();
-        Self::Many { pids }
     }
 
     fn may_include_pid(&self, pid: u32) -> bool {
-        match self {
-            Self::Empty => false,
-            Self::One {
-                pid: managed_pid, ..
-            } => *managed_pid == pid,
-            Self::Two {
-                first_pid,
-                second_pid,
-                ..
-            } => *first_pid == pid || *second_pid == pid,
-            Self::Few { identities, len } => identities[..*len]
-                .iter()
-                .any(|(managed_pid, _)| *managed_pid == pid),
-            Self::Many { pids } => pids.binary_search(&pid).is_ok(),
-        }
+        self.pid_lookup.may_include_pid(pid)
     }
 
     fn may_include(&self, pid: u32, process_name: &str) -> bool {
-        match self {
-            Self::Empty => false,
-            Self::One {
-                pid: managed_pid,
-                process_name: managed_process_name,
-            } => *managed_pid == pid && *managed_process_name == process_name,
-            Self::Two {
-                first_pid,
-                first_process_name,
-                second_pid,
-                second_process_name,
-            } => {
-                (*first_pid == pid && *first_process_name == process_name)
-                    || (*second_pid == pid && *second_process_name == process_name)
-            }
-            Self::Few { identities, len } => {
-                identities[..*len]
-                    .iter()
-                    .any(|(managed_pid, managed_process_name)| {
-                        *managed_pid == pid && *managed_process_name == process_name
-                    })
-            }
-            Self::Many { pids } => pids.binary_search(&pid).is_ok(),
-        }
+        self.identities
+            .binary_search_by(|identity| {
+                compare_managed_session_identity(*identity, pid, process_name)
+            })
+            .is_ok()
     }
+}
+
+fn compare_managed_session_identity(
+    identity: (u32, &str),
+    pid: u32,
+    process_name: &str,
+) -> CmpOrdering {
+    identity
+        .0
+        .cmp(&pid)
+        .then_with(|| identity.1.cmp(process_name))
 }
 
 fn apply_plan_to_session(
@@ -1515,20 +1225,21 @@ mod tests {
     }
 
     #[test]
-    fn many_managed_session_lookup_prefilters_by_pid_only() {
-        let session_keys = (1..=LINEAR_MANAGED_SESSION_LIMIT + 1)
+    fn managed_session_lookup_prefilters_by_pid() {
+        let session_keys = (1..=9)
             .map(|pid| AudioSessionKey::from_normalized(pid as u32, format!("app{pid}.exe"), None))
             .collect::<HashSet<_>>();
         let lookup = ManagedSessionLookup::new(&session_keys);
 
         assert!(lookup.may_include_pid(3));
-        assert!(lookup.may_include(3, "other.exe"));
+        assert!(lookup.may_include(3, "app3.exe"));
+        assert!(!lookup.may_include(3, "other.exe"));
         assert!(!lookup.may_include_pid(99));
     }
 
     #[test]
-    fn many_managed_session_lookup_deduplicates_prefilter_pids() {
-        let session_keys = (1..=LINEAR_MANAGED_SESSION_LIMIT + 1)
+    fn managed_session_lookup_deduplicates_prefilter_pids_and_identities() {
+        let session_keys = (1..=9)
             .map(|index| {
                 AudioSessionKey::from_normalized(
                     7,
@@ -1539,10 +1250,8 @@ mod tests {
             .collect::<HashSet<_>>();
         let lookup = ManagedSessionLookup::new(&session_keys);
 
-        match lookup {
-            ManagedSessionLookup::Many { pids } => assert_eq!(pids, vec![7]),
-            _ => panic!("more than the linear limit should use the many-session lookup"),
-        }
+        assert_eq!(lookup.pid_lookup.pids, vec![7]);
+        assert_eq!(lookup.identities, vec![(7, "game.exe")]);
     }
 
     #[test]
@@ -1603,16 +1312,38 @@ mod tests {
     }
 
     #[test]
-    fn pid_prefilter_uses_small_variants() {
-        assert_eq!(PidPrefilter::new(false, Vec::new()), PidPrefilter::None);
-        assert_eq!(PidPrefilter::new(false, vec![42]), PidPrefilter::One(42));
+    fn pid_prefilter_sorts_and_deduplicates_pids() {
+        assert_eq!(
+            PidPrefilter::new(false, Vec::new()),
+            PidPrefilter::default()
+        );
+        assert_eq!(
+            PidPrefilter::new(false, vec![42]),
+            PidPrefilter {
+                any: false,
+                pids: vec![42],
+            }
+        );
         assert_eq!(
             PidPrefilter::new(false, vec![42, 42]),
-            PidPrefilter::One(42)
+            PidPrefilter {
+                any: false,
+                pids: vec![42],
+            }
         );
         assert_eq!(
             PidPrefilter::new(false, vec![42, 7]),
-            PidPrefilter::Two(7, 42)
+            PidPrefilter {
+                any: false,
+                pids: vec![7, 42],
+            }
+        );
+        assert_eq!(
+            PidPrefilter::new(true, vec![42]),
+            PidPrefilter {
+                any: true,
+                pids: Vec::new(),
+            }
         );
         assert!(PidPrefilter::new(true, Vec::new()).may_include_pid(7));
         assert!(!PidPrefilter::new(false, Vec::new()).may_include_pid(7));
