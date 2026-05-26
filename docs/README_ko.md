@@ -15,7 +15,7 @@
     <a href="../LICENSE"><img src="https://img.shields.io/badge/license-Apache--2.0-blue?style=flat-square" alt="Apache-2.0 license"></a>
   </p>
 
-  <p>완전 로컬 &nbsp;·&nbsp; 네트워크 접근 없음 &nbsp;·&nbsp; 텔레메트리 없음 &nbsp;·&nbsp; 포터블</p>
+  <p>완전 로컬 &nbsp;·&nbsp; 네트워크 접근 없음 &nbsp;·&nbsp; 텔레메트리 없음 &nbsp;·&nbsp; 설치 필요 없음</p>
 
   <p>
     <a href="https://github.com/ilsd7/UnfocusMute/releases/latest/download/UnfocusMute-windows-x64.zip">다운로드</a>
@@ -70,7 +70,7 @@ Windows 10/11에서는 배포 ZIP을 다운로드해 압축을 풀면 바로 사
 | [UnfocusMute-windows-x64.zip](https://github.com/ilsd7/UnfocusMute/releases/latest/download/UnfocusMute-windows-x64.zip) |
 | [SHA-256 확인 파일](https://github.com/ilsd7/UnfocusMute/releases/latest/download/UnfocusMute-windows-x64.zip.sha256) · [릴리스 노트](https://github.com/ilsd7/UnfocusMute/releases/latest) |
 
-압축을 푼 `UnfocusMute-windows-x64` 폴더를 원하는 위치로 옮긴 다음, 폴더 안의 `UnfocusMute-v<version>.exe`를 실행하면 됩니다. 포터블 앱이라 별도 설치 과정이 없으며, Rust, Visual Studio Build Tools, MinGW 같은 개발 도구도 필요하지 않습니다.
+압축을 푼 `UnfocusMute-windows-x64` 폴더를 원하는 위치로 옮긴 다음, 폴더 안의 `UnfocusMute-v<version>.exe`를 실행하면 됩니다. 별도 설치가 필요 없는 standalone 앱이며, Rust, Visual Studio Build Tools, MinGW 같은 개발 도구도 필요하지 않습니다.
 
 > **참고:** 코드 서명 인증서에는 비용이 들기 때문에 현재 앱은 Windows 코드 서명 없이 배포됩니다. 처음 실행할 때 Windows SmartScreen 또는 "알 수 없는 게시자" 경고가 표시될 수 있습니다. 파일의 무결성을 직접 확인하고 싶다면 [배포 파일 검증](#배포-파일-검증) 섹션을 참고하세요.
 
@@ -121,16 +121,16 @@ UnfocusMute는 Windows가 제공하는 프로세스 이름, 전면 창 정보, C
 
 ## 보안 및 개인정보
 
-UnfocusMute는 완전한 로컬 앱입니다. 모든 동작은 현재 PC 안에서만 이루어지며, 인터넷 연결 없이도 정상적으로 작동합니다.
+UnfocusMute는 완전히 로컬에서 동작하는 앱입니다. 인터넷 연결 없이도 정상적으로 작동하며, 자동 네트워크 요청, 텔레메트리, 크래시 리포팅, 원격 로깅, 데이터 수집을 하지 않습니다. 관리자 권한도 요구하지 않습니다.
 
-예외적으로, 사용자가 설정 화면의 `GitHub 저장소` 버튼을 직접 누르면 기본 브라우저를 통해 이 프로젝트의 GitHub 저장소가 열립니다.
+예외적으로, 사용자가 설정 화면의 `GitHub 저장소` 버튼을 직접 누를 때만 기본 브라우저를 통해 이 프로젝트의 GitHub 저장소가 열립니다.
 
 **저장하는 것:** 등록한 프로세스 이름, 선택적으로 등록한 PID, 작성한 메모, 선택한 언어, 창 위치, 시작 옵션, 등록한 앱의 음소거 복원 상태.
-이 데이터는 `%APPDATA%\UnfocusMute\config.json`에만 저장되며, 어디로도 전송되지 않습니다.
+이 앱 설정은 `%APPDATA%\UnfocusMute\config.json`에 저장되며, 어디로도 전송되지 않습니다. Windows 로그인 시 자동 실행을 켜면 현재 실행 파일 경로가 `HKEY_CURRENT_USER\Software\Microsoft\Windows\CurrentVersion\Run`의 `UnfocusMute` 값에도 저장됩니다.
 
-**저장하지 않는 것:** 앱 로그 파일을 생성하지 않습니다. 세션 간 동작 기록은 어디에도 남지 않습니다.
+앱의 흔적까지 완벽히 제거하려면 앱 폴더를 삭제한 뒤 `%APPDATA%\UnfocusMute` 폴더를 지우면 됩니다. 자동 실행을 켠 적이 있다면 위 레지스트리 값도 함께 삭제하세요.
 
-**하지 않는 것:** 자동 네트워크 요청, 텔레메트리, 크래시 리포팅, 원격 로깅, 데이터 수집을 하지 않습니다. 관리자 권한도 요구하지 않습니다.
+**저장하지 않는 것:** 앱 로그 파일이나 세션 간 동작 기록을 생성하지 않습니다.
 
 오디오 세션 감지와 음소거 제어는 Windows CoreAudio API만 사용하며, 게임 프로세스에 코드를 주입하거나 메모리를 읽지 않습니다.
 

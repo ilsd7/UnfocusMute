@@ -15,7 +15,7 @@
     <a href="../LICENSE"><img src="https://img.shields.io/badge/license-Apache--2.0-blue?style=flat-square" alt="Apache-2.0 license"></a>
   </p>
 
-  <p>完全ローカル &nbsp;·&nbsp; ネットワークアクセスなし &nbsp;·&nbsp; テレメトリなし &nbsp;·&nbsp; ポータブル</p>
+  <p>完全ローカル &nbsp;·&nbsp; ネットワークアクセスなし &nbsp;·&nbsp; テレメトリなし &nbsp;·&nbsp; インストール不要</p>
 
   <p>
     <a href="https://github.com/ilsd7/UnfocusMute/releases/latest/download/UnfocusMute-windows-x64.zip">ダウンロード</a>
@@ -70,7 +70,7 @@ Windows 10/11では、配布ZIPをダウンロードして展開すればすぐ�
 | [UnfocusMute-windows-x64.zip](https://github.com/ilsd7/UnfocusMute/releases/latest/download/UnfocusMute-windows-x64.zip) |
 | [SHA-256確認ファイル](https://github.com/ilsd7/UnfocusMute/releases/latest/download/UnfocusMute-windows-x64.zip.sha256) · [リリースノート](https://github.com/ilsd7/UnfocusMute/releases/latest) |
 
-展開した `UnfocusMute-windows-x64` フォルダーを好きな場所へ移動し、その中の `UnfocusMute-v<version>.exe` を実行します。ポータブルアプリなのでインストーラーはなく、Rust、Visual Studio Build Tools、MinGWなどの開発ツールも不要です。
+展開した `UnfocusMute-windows-x64` フォルダーを好きな場所へ移動し、その中の `UnfocusMute-v<version>.exe` を実行します。インストール不要のスタンドアロンアプリで、Rust、Visual Studio Build Tools、MinGWなどの開発ツールも不要です。
 
 > **参考:** コード署名証明書には費用がかかるため、現在はWindowsコード署名なしで配布しています。初回実行時にWindows SmartScreenや「不明な発行元」の警告が表示される場合があります。ファイルの整合性を自分で確認したい場合は、下のリリースファイル検証セクションを参照してください。
 
@@ -121,16 +121,16 @@ UnfocusMuteは、Windowsが提供するプロセス名、前面ウィンドウ�
 
 ## セキュリティとプライバシー
 
-UnfocusMuteは完全ローカルのアプリです。すべての動作は現在のPC内だけで行われ、インターネット接続がなくても通常どおり動作します。
+UnfocusMuteは完全にローカルで動作するアプリです。インターネット接続がなくても通常どおり動作し、自動的なネットワーク要求、テレメトリ、クラッシュレポート、リモートログ送信、データ収集は行いません。管理者権限も要求しません。
 
 例外として、設定画面のGitHubリポジトリボタンをユーザーが押した場合のみ、既定のブラウザーでこのプロジェクトのGitHubリポジトリを開きます。
 
 **保存するもの:** 登録したプロセス名、任意のPID、入力したメモ、選択した言語、ウィンドウ位置、起動オプション、登録アプリのミュート復元状態。
-このデータは `%APPDATA%\UnfocusMute\config.json` にのみ保存され、外部へ送信されません。
+このアプリ設定は `%APPDATA%\UnfocusMute\config.json` に保存され、外部へ送信されません。Windowsサインイン時の自動起動を有効にすると、現在の実行ファイルパスも `HKEY_CURRENT_USER\Software\Microsoft\Windows\CurrentVersion\Run` の `UnfocusMute` 値に保存されます。
 
-**保存しないもの:** アプリのログファイルは作成しません。セッションをまたいだ動作履歴も残しません。
+アプリの痕跡まで完全に削除するには、アプリのフォルダーを削除したうえで `%APPDATA%\UnfocusMute` フォルダーを削除してください。自動起動を有効にしたことがある場合は、上記のレジストリ値も削除してください。
 
-**行わないこと:** 自動的なネットワーク要求、テレメトリ、クラッシュレポート、リモートログ送信、データ収集は行いません。管理者権限も要求しません。
+**保存しないもの:** アプリのログファイルやセッションをまたいだ動作履歴は作成しません。
 
 オーディオセッションの検出とミュート制御にはWindows CoreAudio APIだけを使用し、ゲームプロセスにコードを注入したりメモリを読んだりしません。
 

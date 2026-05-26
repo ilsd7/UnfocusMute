@@ -15,7 +15,7 @@
     <a href="../LICENSE"><img src="https://img.shields.io/badge/license-Apache--2.0-blue?style=flat-square" alt="Apache-2.0 license"></a>
   </p>
 
-  <p>Totalmente local &nbsp;·&nbsp; Sem acesso à rede &nbsp;·&nbsp; Sem telemetria &nbsp;·&nbsp; Portátil</p>
+  <p>Totalmente local &nbsp;·&nbsp; Sem acesso à rede &nbsp;·&nbsp; Sem telemetria &nbsp;·&nbsp; Não requer instalação</p>
 
   <p>
     <a href="https://github.com/ilsd7/UnfocusMute/releases/latest/download/UnfocusMute-windows-x64.zip">Baixar</a>
@@ -70,7 +70,7 @@ No Windows 10/11, baixe o pacote ZIP, extraia e execute o app.
 | [UnfocusMute-windows-x64.zip](https://github.com/ilsd7/UnfocusMute/releases/latest/download/UnfocusMute-windows-x64.zip) |
 | [Arquivo SHA-256](https://github.com/ilsd7/UnfocusMute/releases/latest/download/UnfocusMute-windows-x64.zip.sha256) · [Notas da versão](https://github.com/ilsd7/UnfocusMute/releases/latest) |
 
-Mova a pasta extraída `UnfocusMute-windows-x64` para o local onde você quer manter o app e execute `UnfocusMute-v<version>.exe` dentro dela. O app é portátil: não há instalador e você não precisa de Rust, Visual Studio Build Tools, MinGW nem outras ferramentas de desenvolvimento.
+Mova a pasta extraída `UnfocusMute-windows-x64` para o local onde você quer manter o app e execute `UnfocusMute-v<version>.exe` dentro dela. É um app independente que não requer instalação, e você não precisa de Rust, Visual Studio Build Tools, MinGW nem outras ferramentas de desenvolvimento.
 
 > **Observação:** Como certificados de assinatura de código têm custo, o app atualmente é distribuído sem assinatura de código do Windows. No primeiro uso, podem aparecer avisos do Windows SmartScreen ou de "editor desconhecido". Se quiser verificar a integridade do arquivo por conta própria, consulte a seção de verificação dos arquivos de release abaixo.
 
@@ -121,16 +121,16 @@ Se você não souber qual nome registrar, confira no Gerenciador de Tarefas o ex
 
 ## Segurança e privacidade
 
-UnfocusMute é um app totalmente local. Toda a atividade permanece dentro do seu PC, e ele funciona normalmente mesmo sem conexão com a internet.
+UnfocusMute roda totalmente de forma local. Ele funciona normalmente mesmo sem conexão com a internet e não faz solicitações de rede automáticas, não usa telemetria, não envia relatórios de falha, não faz registro remoto nem coleta dados. Ele também não exige permissões de administrador.
 
 Como exceção, quando você clica no botão Repositório GitHub em Configurações, o repositório GitHub deste projeto é aberto no navegador padrão.
 
 **O que ele salva:** Nomes de processos registrados, PIDs opcionais, notas que você escrever, idioma escolhido, posição da janela, opções de inicialização e o estado de restauração dos apps silenciados pelo UnfocusMute.
-Esses dados ficam apenas em `%APPDATA%\UnfocusMute\config.json` e não são enviados para nenhum lugar externo.
+Essas configurações do app ficam em `%APPDATA%\UnfocusMute\config.json` e não são enviadas para nenhum lugar externo. Se você ativar o início automático ao entrar no Windows, o caminho do executável atual também será salvo no valor `UnfocusMute` em `HKEY_CURRENT_USER\Software\Microsoft\Windows\CurrentVersion\Run`.
 
-**O que ele não salva:** O app não cria arquivos de log e nenhum histórico de atividade é mantido entre sessões.
+Para remover todos os vestígios do app, apague a pasta do app e depois apague `%APPDATA%\UnfocusMute`. Se você já ativou o início automático, apague também o valor do registro indicado acima.
 
-**O que ele não faz:** Não faz solicitações de rede automáticas, não usa telemetria, não envia relatórios de falha, não faz registro remoto e não coleta dados. Ele também não exige permissões de administrador.
+**O que ele não salva:** O app não cria arquivos de log nem mantém histórico de atividade entre sessões.
 
 A detecção de sessões de áudio e o controle de silenciamento usam apenas as APIs CoreAudio do Windows, e o UnfocusMute não injeta código em processos de jogos nem lê a memória deles.
 
