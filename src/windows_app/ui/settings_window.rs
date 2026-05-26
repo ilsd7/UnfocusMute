@@ -5,6 +5,7 @@ use super::constants::{
     PANEL_BORDER_COLOR, PANEL_COLOR, SETTINGS_WINDOW_CLASS_NAME, SS_CENTERIMAGE_STYLE,
     SS_ENDELLIPSIS_STYLE, SS_OWNERDRAW_STYLE, SS_RIGHT_STYLE, SUBTLE_TEXT_COLOR, TEXT_COLOR,
 };
+use super::drawing::draw_text_line;
 use super::modal_window::run_modal_message_loop;
 use super::theme::{OwnedBrush, UiFont, px, ui_font_point_size};
 use super::win32::{
@@ -20,22 +21,21 @@ use std::ffi::c_void;
 use std::fs;
 use windows::Win32::Foundation::{COLORREF, HINSTANCE, HWND, LPARAM, LRESULT, POINT, RECT, WPARAM};
 use windows::Win32::Graphics::Gdi::{
-    BeginPaint, ClientToScreen, DT_END_ELLIPSIS, DT_LEFT, DT_NOPREFIX, DT_SINGLELINE, DT_VCENTER,
-    DrawTextW, EndPaint, FillRect, FrameRect, HDC, HGDIOBJ, PAINTSTRUCT, RDW_ALLCHILDREN,
-    RDW_ERASE, RDW_INVALIDATE, RDW_UPDATENOW, RedrawWindow, SelectObject, SetBkMode, SetTextColor,
-    TRANSPARENT,
+    ClientToScreen, DT_END_ELLIPSIS, DT_LEFT, DT_NOPREFIX, DT_SINGLELINE, DT_VCENTER, FillRect,
+    FrameRect, HDC, RDW_ALLCHILDREN, RDW_ERASE, RDW_INVALIDATE, RDW_UPDATENOW, RedrawWindow,
+    ScreenToClient, SetBkMode, SetTextColor, TRANSPARENT,
 };
 use windows::Win32::UI::Controls::{CB_SETMINVISIBLE, DRAWITEMSTRUCT, ODS_DISABLED, ODS_SELECTED};
 use windows::Win32::UI::Shell::ShellExecuteW;
 use windows::Win32::UI::WindowsAndMessaging::{
     BringWindowToTop, CB_GETCURSEL, CB_SETCURSEL, CBN_SELCHANGE, CBN_SELENDOK, CBS_DROPDOWNLIST,
-    CREATESTRUCTW, CreateWindowExW, DefWindowProcW, DestroyWindow, GWLP_USERDATA,
+    CREATESTRUCTW, CreateWindowExW, DefWindowProcW, DestroyWindow, GWLP_USERDATA, GetCursorPos,
     GetWindowLongPtrW, HICON, IDC_ARROW, IDC_HAND, LoadCursorW, MB_ICONWARNING, MB_OK, MessageBoxW,
     MoveWindow, RegisterClassW, SW_HIDE, SW_SHOW, SW_SHOWNOACTIVATE, SendMessageW, SetCursor,
     SetWindowLongPtrW, ShowWindow, WINDOW_EX_STYLE, WINDOW_STYLE, WM_CLOSE, WM_COMMAND, WM_CREATE,
-    WM_CTLCOLORSTATIC, WM_DRAWITEM, WM_NCCREATE, WM_NCDESTROY, WM_PAINT, WM_SETCURSOR, WM_SETFONT,
-    WNDCLASSW, WS_CAPTION, WS_CHILD, WS_EX_CLIENTEDGE, WS_EX_TOOLWINDOW, WS_OVERLAPPED, WS_POPUP,
-    WS_SYSMENU, WS_TABSTOP, WS_VISIBLE,
+    WM_CTLCOLORSTATIC, WM_DRAWITEM, WM_NCCREATE, WM_NCDESTROY, WM_SETCURSOR, WM_SETFONT, WNDCLASSW,
+    WS_CAPTION, WS_CHILD, WS_EX_CLIENTEDGE, WS_EX_TOOLWINDOW, WS_OVERLAPPED, WS_POPUP, WS_SYSMENU,
+    WS_TABSTOP, WS_VISIBLE,
 };
 use windows::core::{PCWSTR, w};
 
@@ -131,7 +131,7 @@ impl SettingsWindow {
             brush: OwnedBrush::solid(PAGE_COLOR),
             panel_brush: OwnedBrush::solid(PANEL_COLOR),
             border_brush: OwnedBrush::solid(PANEL_BORDER_COLOR),
-            font: UiFont::new(ui_font_point_size(language)),
+            font: UiFont::new(ui_font_point_size()),
             text_buffer: Vec::new(),
             display_text: String::new(),
         }
@@ -397,11 +397,9 @@ impl SettingsWindow {
 
         self.language = language;
         self.pending_language = Some(language);
-        self.font = UiFont::new(ui_font_point_size(language));
         self.github_link_hot = false;
         self.hide_github_tooltip();
         unsafe {
-            self.apply_font();
             self.refresh_text();
         }
     }
@@ -494,12 +492,8 @@ impl SettingsWindow {
             .max(1)
     }
 
-    fn github_group_width(&self) -> i32 {
-        self.github_link_width()
-    }
-
     fn github_text_x(&self) -> i32 {
-        self.github_right_x() - self.github_group_width() + SETTINGS_GITHUB_X_OFFSET
+        self.github_right_x() - self.github_link_width() + SETTINGS_GITHUB_X_OFFSET
     }
 
     fn github_right_x(&self) -> i32 {
@@ -620,12 +614,9 @@ impl SettingsWindow {
     }
 
     fn cursor_is_on_github_link_text(&self) -> bool {
-        let mut point = windows::Win32::Foundation::POINT::default();
-        if unsafe { windows::Win32::UI::WindowsAndMessaging::GetCursorPos(&mut point) }.is_err()
-            || !unsafe {
-                windows::Win32::Graphics::Gdi::ScreenToClient(self.github_button, &mut point)
-                    .as_bool()
-            }
+        let mut point = POINT::default();
+        if unsafe { GetCursorPos(&mut point) }.is_err()
+            || !unsafe { ScreenToClient(self.github_button, &mut point).as_bool() }
         {
             return false;
         }
@@ -642,12 +633,11 @@ impl SettingsWindow {
         }
         self.github_link_hot = hot;
         unsafe {
-            let _ = windows::Win32::Graphics::Gdi::RedrawWindow(
+            let _ = RedrawWindow(
                 Some(self.github_button),
                 None,
                 None,
-                windows::Win32::Graphics::Gdi::RDW_INVALIDATE
-                    | windows::Win32::Graphics::Gdi::RDW_UPDATENOW,
+                RDW_INVALIDATE | RDW_UPDATENOW,
             );
         }
         if hot {
@@ -681,7 +671,10 @@ impl SettingsWindow {
             (unsafe { measure_text_width(self.hwnd, self.font.handle(), super::GITHUB_PAGE_URL) }
                 + SETTINGS_GITHUB_TOOLTIP_X_PADDING * 2)
                 .max(1);
-        let client_x = self.github_text_x() + (self.github_group_width() - width) / 2;
+        let link_width = self.github_link_width();
+        let client_x = self.github_right_x() - link_width
+            + SETTINGS_GITHUB_X_OFFSET
+            + (link_width - width) / 2;
         let client_y = (SETTINGS_VERSION_ROW_Y
             - SETTINGS_GITHUB_TOOLTIP_HEIGHT
             - SETTINGS_GITHUB_TOOLTIP_Y_GAP)
@@ -701,15 +694,13 @@ impl SettingsWindow {
         )
     }
 
-    fn paint(&self, _hdc: HDC) {}
-
     fn draw_github_tooltip(&self, draw: &DRAWITEMSTRUCT) -> bool {
         unsafe {
             let _ = FillRect(draw.hDC, &draw.rcItem, self.panel_brush.handle());
             let _ = FrameRect(draw.hDC, &draw.rcItem, self.border_brush.handle());
         }
 
-        let text_rect = windows::Win32::Foundation::RECT {
+        let text_rect = RECT {
             left: draw.rcItem.left + px(SETTINGS_GITHUB_TOOLTIP_X_PADDING),
             top: draw.rcItem.top,
             right: draw.rcItem.right - px(SETTINGS_GITHUB_TOOLTIP_X_PADDING),
@@ -721,6 +712,7 @@ impl SettingsWindow {
             super::GITHUB_PAGE_URL,
             text_rect,
             TEXT_COLOR,
+            DT_LEFT | DT_SINGLELINE | DT_VCENTER | DT_END_ELLIPSIS | DT_NOPREFIX,
         );
         true
     }
@@ -740,7 +732,7 @@ impl SettingsWindow {
         } else {
             LINK_COLOR
         };
-        let rect = windows::Win32::Foundation::RECT {
+        let rect = RECT {
             left: draw.rcItem.left + offset,
             top: draw.rcItem.top + offset,
             right: draw.rcItem.right + offset,
@@ -752,33 +744,9 @@ impl SettingsWindow {
             self.language.strings().github_repository,
             rect,
             color,
-        );
-        true
-    }
-}
-
-fn draw_text_line(
-    hdc: HDC,
-    font: HGDIOBJ,
-    text: &str,
-    mut rect: windows::Win32::Foundation::RECT,
-    color: COLORREF,
-) {
-    let mut wide = to_wide(text);
-    let len = wide.len().saturating_sub(1);
-    unsafe {
-        let previous_font = SelectObject(hdc, font);
-        let _ = SetBkMode(hdc, TRANSPARENT);
-        let _ = SetTextColor(hdc, color);
-        let _ = DrawTextW(
-            hdc,
-            &mut wide[..len],
-            &mut rect,
             DT_LEFT | DT_SINGLELINE | DT_VCENTER | DT_END_ELLIPSIS | DT_NOPREFIX,
         );
-        if !previous_font.0.is_null() {
-            let _ = SelectObject(hdc, previous_font);
-        }
+        true
     }
 }
 
@@ -917,15 +885,6 @@ unsafe extern "system" fn settings_window_proc(
             }
             WM_SETCURSOR if settings.set_github_link_cursor(HWND(wparam.0 as *mut c_void)) => {
                 return LRESULT(1);
-            }
-            WM_PAINT => {
-                let mut paint = PAINTSTRUCT::default();
-                let hdc = unsafe { BeginPaint(hwnd, &mut paint) };
-                settings.paint(hdc);
-                unsafe {
-                    let _ = EndPaint(hwnd, &paint);
-                }
-                return LRESULT(0);
             }
             WM_CLOSE => {
                 settings.accept();

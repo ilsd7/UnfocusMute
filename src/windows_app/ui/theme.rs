@@ -1,5 +1,4 @@
 use super::constants::{PAGE_COLOR, PANEL_BORDER_COLOR, PANEL_COLOR, SELECTED_ROW_COLOR};
-use crate::i18n::Language;
 use std::sync::OnceLock;
 use windows::Win32::Foundation::{COLORREF, WPARAM};
 use windows::Win32::Graphics::Gdi::{
@@ -51,60 +50,22 @@ pub(super) struct AppTheme {
     pub(super) selected_row_brush: OwnedBrush,
     pub(super) font: UiFont,
     pub(super) title_font: UiFont,
-    pub(super) strong_font: UiFont,
-    font_point_size: i32,
-}
-
-pub(super) struct UiFonts {
-    pub(super) font: UiFont,
-    pub(super) title_font: UiFont,
-    pub(super) strong_font: UiFont,
-    point_size: i32,
 }
 
 impl AppTheme {
-    pub(super) fn new(language: Language) -> Self {
-        let fonts = UiFonts::for_language(language);
+    pub(super) fn new() -> Self {
+        let font_point_size = ui_font_point_size();
         Self {
             page_brush: OwnedBrush::solid(PAGE_COLOR),
             panel_brush: OwnedBrush::solid(PANEL_COLOR),
             border_brush: OwnedBrush::solid(PANEL_BORDER_COLOR),
             selected_row_brush: OwnedBrush::solid(SELECTED_ROW_COLOR),
-            font: fonts.font,
-            title_font: fonts.title_font,
-            strong_font: fonts.strong_font,
-            font_point_size: fonts.point_size,
-        }
-    }
-
-    pub(super) fn needs_font_language(&self, language: Language) -> bool {
-        self.font_point_size != ui_font_point_size(language)
-    }
-
-    pub(super) fn fonts_for_language(language: Language) -> UiFonts {
-        UiFonts::for_language(language)
-    }
-
-    pub(super) fn replace_fonts(&mut self, fonts: UiFonts) {
-        self.font = fonts.font;
-        self.title_font = fonts.title_font;
-        self.strong_font = fonts.strong_font;
-        self.font_point_size = fonts.point_size;
-    }
-}
-
-impl UiFonts {
-    fn for_language(language: Language) -> Self {
-        let font_point_size = ui_font_point_size(language);
-        Self {
             font: UiFont::new(font_point_size),
             title_font: UiFont::new_with_face(
                 font_point_size + 2,
                 600,
                 w!("Segoe UI Variable Display"),
             ),
-            strong_font: UiFont::new_with_weight(font_point_size, 500),
-            point_size: font_point_size,
         }
     }
 }
@@ -116,14 +77,10 @@ pub(super) struct UiFont {
 
 impl UiFont {
     pub(super) fn new(point_size: i32) -> Self {
-        Self::new_with_weight(point_size, FW_NORMAL.0 as i32)
+        Self::new_with_face(point_size, FW_NORMAL.0 as i32, w!("Segoe UI"))
     }
 
-    pub(super) fn new_with_weight(point_size: i32, weight: i32) -> Self {
-        Self::new_with_face(point_size, weight, w!("Segoe UI"))
-    }
-
-    pub(super) fn new_with_face(point_size: i32, weight: i32, face: PCWSTR) -> Self {
+    fn new_with_face(point_size: i32, weight: i32, face: PCWSTR) -> Self {
         let dpi = effective_ui_dpi();
         let height = -((point_size * dpi + 36) / 72);
         let font = unsafe {
@@ -176,7 +133,7 @@ impl Drop for UiFont {
     }
 }
 
-pub(super) fn ui_font_point_size(_language: Language) -> i32 {
+pub(super) fn ui_font_point_size() -> i32 {
     9
 }
 

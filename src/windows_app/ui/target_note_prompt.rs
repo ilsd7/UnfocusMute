@@ -70,7 +70,7 @@ impl<'a> TargetNotePrompt<'a> {
             target_display,
             current_note,
             brush: OwnedBrush::solid(PAGE_COLOR),
-            font: UiFont::new(ui_font_point_size(language)),
+            font: UiFont::new(ui_font_point_size()),
             text_buffer: String::new(),
         }
     }

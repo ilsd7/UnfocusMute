@@ -17,12 +17,7 @@ pub(super) fn target_display_name_into(
 
     output.clear();
     output.push_str(strings.target_paused_prefix);
-    output.push_str(&target.name);
-    if let Some(pid) = target.pid {
-        output.push_str(" (PID ");
-        push_decimal_u32(output, pid);
-        output.push(')');
-    }
+    target.push_identity_into(output);
     if let Some(note) = &target.note {
         output.push_str(" - ");
         output.push_str(note);
@@ -61,22 +56,6 @@ fn decimal_digit_count(value: u32) -> usize {
         return 1;
     }
     value.ilog10() as usize + 1
-}
-
-fn push_decimal_u32(output: &mut String, mut number: u32) {
-    let mut digits = [0u8; 10];
-    let mut len = 0;
-    loop {
-        digits[len] = b'0' + (number % 10) as u8;
-        len += 1;
-        number /= 10;
-        if number == 0 {
-            break;
-        }
-    }
-    for digit in digits[..len].iter().rev() {
-        output.push(*digit as char);
-    }
 }
 
 #[cfg(test)]

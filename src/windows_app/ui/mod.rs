@@ -162,8 +162,8 @@ const TARGET_ROW_PRIMARY_TOP: i32 = 5;
 const TARGET_ROW_PRIMARY_BOTTOM: i32 = 23;
 const TARGET_ROW_SECONDARY_TOP: i32 = 24;
 const TARGET_ROW_SECONDARY_BOTTOM_INSET: i32 = 4;
-const PROCESS_PICKER_LABEL_Y: i32 = 442;
 const PROCESS_PICKER_HINT_Y: i32 = 462;
+const PROCESS_PICKER_REDRAW_TOP: i32 = PROCESS_PICKER_HINT_Y - 8;
 const PROCESS_PICKER_COMBO_Y: i32 = 482;
 const PROCESS_PICKER_COMBO_HEIGHT: i32 = 28;
 const PROCESS_PICKER_BUTTON_HEIGHT: i32 = 32;
@@ -628,7 +628,6 @@ struct AppWindow {
     next_config_check: Instant,
     window_position_dirty: bool,
     theme: AppTheme,
-    font_applied: bool,
     taskbar_created_message: u32,
     default_button_id: i32,
 }
@@ -674,7 +673,6 @@ impl AppWindow {
         taskbar_created_message: u32,
         initial_issues: IssueState,
     ) -> Result<Self> {
-        let language = config.language;
         let strings = config.language.strings();
         let managed_mute_fast_retry_remaining =
             initial_managed_mute_fast_retry_count(&config.targets);
@@ -722,8 +720,7 @@ impl AppWindow {
             config_stamp: current_config_stamp(),
             next_config_check: Instant::now() + CONFIG_RELOAD_CHECK_INTERVAL,
             window_position_dirty: false,
-            theme: AppTheme::new(language),
-            font_applied: false,
+            theme: AppTheme::new(),
             taskbar_created_message,
             default_button_id: ID_ADD_SELECTED,
         })
@@ -822,21 +819,6 @@ impl AppWindow {
             )?
         };
 
-        self.controls.targets_label = unsafe {
-            create_control(
-                self.hwnd,
-                instance,
-                w!("STATIC"),
-                "",
-                child | SS_ENDELLIPSIS_STYLE,
-                WINDOW_EX_STYLE(0),
-                44 - LEFT_EDGE_TRIM,
-                TARGET_LIST_Y,
-                260,
-                24,
-                0,
-            )?
-        };
         self.controls.target_list = unsafe {
             create_control(
                 self.hwnd,
@@ -883,36 +865,6 @@ impl AppWindow {
                 TARGET_LIST_X + 16,
                 TARGET_PANEL_TOP + 150,
                 TARGET_LIST_WIDTH - 32,
-                22,
-                0,
-            )?
-        };
-        self.controls.add_label = unsafe {
-            create_control(
-                self.hwnd,
-                instance,
-                w!("STATIC"),
-                "",
-                child | SS_ENDELLIPSIS_STYLE,
-                WINDOW_EX_STYLE(0),
-                36 - LEFT_EDGE_TRIM,
-                336,
-                220,
-                24,
-                0,
-            )?
-        };
-        self.controls.running_label = unsafe {
-            create_control(
-                self.hwnd,
-                instance,
-                w!("STATIC"),
-                "",
-                child | SS_ENDELLIPSIS_STYLE,
-                WINDOW_EX_STYLE(0),
-                36 - LEFT_EDGE_TRIM,
-                PROCESS_PICKER_LABEL_Y,
-                240,
                 22,
                 0,
             )?
@@ -1114,29 +1066,18 @@ impl AppWindow {
                 return Err(message_error("install target list click handler"));
             }
         }
+        self.apply_font_set_to_controls(&self.theme.font, &self.theme.title_font);
         Ok(())
     }
 
     fn refresh_text(&mut self) {
         self.strings = self.config.language.strings();
-        if self.theme.needs_font_language(self.config.language) {
-            let fonts = AppTheme::fonts_for_language(self.config.language);
-            self.apply_font_set_to_controls(&fonts.font, &fonts.title_font, &fonts.strong_font);
-            self.theme.replace_fonts(fonts);
-            self.font_applied = true;
-        } else if !self.font_applied {
-            self.apply_default_font();
-            self.font_applied = true;
-        }
         self.refresh_target_status_width();
         unsafe {
             app_title_with_version_into(self.strings, &mut self.display_text_buffer);
             set_text(self.controls.title_label, &self.display_text_buffer);
             set_text(self.hwnd, self.strings.app_title);
             set_text(self.controls.subtitle_label, self.strings.app_subtitle);
-            set_text(self.controls.targets_label, "");
-            set_text(self.controls.add_label, "");
-            set_text(self.controls.running_label, "");
             set_text(
                 self.controls.target_empty_title,
                 self.strings.registered_processes,
@@ -1170,9 +1111,6 @@ impl AppWindow {
                 Some(WPARAM(0)),
                 Some(LPARAM(cue_banner_buffer.as_ptr() as isize)),
             );
-            let _ = ShowWindow(self.controls.add_label, SW_HIDE);
-            let _ = ShowWindow(self.controls.running_label, SW_HIDE);
-            let _ = ShowWindow(self.controls.targets_label, SW_HIDE);
         }
         self.refresh_target_list();
         self.refresh_process_details_ui();
@@ -1405,7 +1343,6 @@ impl AppWindow {
     unsafe fn set_process_picker_redraw(&self, enabled: bool) {
         let value = if enabled { 1 } else { 0 };
         for hwnd in [
-            self.controls.running_label,
             self.controls.running_hint,
             self.controls.running_combo,
             self.controls.add_selected_button,
@@ -1424,7 +1361,7 @@ impl AppWindow {
     fn redraw_process_picker(&self) {
         let rect = RECT {
             left: px(0),
-            top: px(PROCESS_PICKER_LABEL_Y - 8),
+            top: px(PROCESS_PICKER_REDRAW_TOP),
             right: px(WINDOW_WIDTH),
             bottom: px(MANUAL_PROCESS_BUTTON_Y + PROCESS_PICKER_BUTTON_HEIGHT + 12),
         };
@@ -1477,16 +1414,6 @@ impl AppWindow {
             )
         } else {
             (content_right, 0, 0)
-        };
-        let _ = unsafe {
-            move_window(
-                self.controls.running_label,
-                content_left,
-                PROCESS_PICKER_LABEL_Y,
-                content_right - content_left,
-                20,
-                true,
-            )
         };
         let _ = unsafe {
             move_window(
@@ -3454,8 +3381,6 @@ impl AppWindow {
                             ACCENT_COLOR
                         }
                     } else if child == self.controls.title_label
-                        || child == self.controls.targets_label
-                        || child == self.controls.running_label
                         || child == self.controls.target_empty_title
                     {
                         TEXT_COLOR
@@ -3467,7 +3392,6 @@ impl AppWindow {
                         || child == self.controls.subtitle_label
                         || child == self.controls.status
                         || child == self.controls.status_detail
-                        || child == self.controls.running_label
                         || child == self.controls.running_hint
                         || child == self.controls.manual_label
                     {
@@ -3765,32 +3689,9 @@ impl AppWindow {
         }
     }
 
-    fn apply_default_font(&self) {
-        self.apply_font_set_to_controls(
-            &self.theme.font,
-            &self.theme.title_font,
-            &self.theme.strong_font,
-        );
-    }
-
-    fn apply_font_set_to_controls(
-        &self,
-        font: &UiFont,
-        title_font: &UiFont,
-        _strong_font: &UiFont,
-    ) {
+    fn apply_font_set_to_controls(&self, font: &UiFont, title_font: &UiFont) {
         self.apply_font_to_controls(font);
         unsafe {
-            for hwnd in [
-                self.controls.targets_label,
-                self.controls.running_label,
-                self.controls.manual_label,
-                self.controls.target_empty_title,
-            ] {
-                if hwnd != HWND::default() {
-                    SendMessageW(hwnd, WM_SETFONT, Some(font.wparam()), Some(LPARAM(1)));
-                }
-            }
             if self.controls.title_label != HWND::default() {
                 SendMessageW(
                     self.controls.title_label,

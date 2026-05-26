@@ -76,6 +76,10 @@ impl TargetProcess {
 
     pub fn display_identity_into(&self, output: &mut String) {
         output.clear();
+        self.push_identity_into(output);
+    }
+
+    pub(crate) fn push_identity_into(&self, output: &mut String) {
         output.push_str(&self.name);
         if let Some(pid) = self.pid {
             output.push_str(" (PID ");
@@ -85,7 +89,8 @@ impl TargetProcess {
     }
 
     pub fn display_name_into(&self, output: &mut String) {
-        self.display_identity_into(output);
+        output.clear();
+        self.push_identity_into(output);
         if let Some(note) = &self.note {
             output.push_str(" - ");
             output.push_str(note);
@@ -817,22 +822,7 @@ fn process_name_candidate(input: &str) -> Option<ProcessNameCandidate<'_>> {
         .trim_matches('"')
         .trim();
 
-    if name.is_empty() {
-        return None;
-    }
-
-    let mut has_uppercase = false;
-    for byte in name.bytes() {
-        if is_invalid_process_file_name_byte(byte) {
-            return None;
-        }
-        has_uppercase |= byte.is_ascii_uppercase();
-    }
-
-    Some(ProcessNameCandidate {
-        name,
-        has_uppercase,
-    })
+    validated_process_name_candidate(name)
 }
 
 fn direct_process_name_candidate(input: &str) -> Option<ProcessNameCandidate<'_>> {
@@ -842,6 +832,14 @@ fn direct_process_name_candidate(input: &str) -> Option<ProcessNameCandidate<'_>
 
     let name = input.trim().trim_matches('"').trim();
     if name.is_empty() || name.bytes().any(|byte| matches!(byte, b'\\' | b'/')) {
+        return None;
+    }
+
+    validated_process_name_candidate(name)
+}
+
+fn validated_process_name_candidate(name: &str) -> Option<ProcessNameCandidate<'_>> {
+    if name.is_empty() {
         return None;
     }
 

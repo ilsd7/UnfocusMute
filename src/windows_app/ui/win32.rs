@@ -10,13 +10,16 @@ use windows::Win32::Foundation::{
 use windows::Win32::Graphics::Gdi::{
     CreatePen, CreateSolidBrush, DT_CENTER, DT_NOPREFIX, DT_SINGLELINE, DT_VCENTER, DeleteObject,
     DrawFocusRect, DrawTextW, FillRect, GetDC, GetTextExtentPoint32W, HDC, HGDIOBJ, PS_SOLID,
-    ReleaseDC, RoundRect, SelectObject, SetBkMode, SetTextColor, TRANSPARENT,
+    RDW_INVALIDATE, RDW_UPDATENOW, RedrawWindow, ReleaseDC, RoundRect, SelectObject, SetBkMode,
+    SetTextColor, TRANSPARENT,
 };
 use windows::Win32::UI::Controls::{
     BST_CHECKED, BST_UNCHECKED, DRAWITEMSTRUCT, ODS_DISABLED, ODS_FOCUS, ODS_SELECTED,
 };
 use windows::Win32::UI::HiDpi::{GetDpiForSystem, GetSystemMetricsForDpi};
-use windows::Win32::UI::Input::KeyboardAndMouse::{TRACKMOUSEEVENT, TrackMouseEvent};
+use windows::Win32::UI::Input::KeyboardAndMouse::{
+    TRACKMOUSEEVENT, TRACKMOUSEEVENT_FLAGS, TrackMouseEvent,
+};
 use windows::Win32::UI::Shell::{DefSubclassProc, RemoveWindowSubclass, SetWindowSubclass};
 use windows::Win32::UI::WindowsAndMessaging::{
     BM_GETCHECK, BM_SETCHECK, BS_AUTOCHECKBOX, BS_MULTILINE, BS_OWNERDRAW, CB_ADDSTRING,
@@ -151,23 +154,7 @@ pub(super) unsafe fn create_button(
     height: i32,
     id: i32,
 ) -> Result<HWND> {
-    unsafe {
-        let hwnd = create_control(
-            parent,
-            instance,
-            w!("BUTTON"),
-            text,
-            WS_CHILD | WS_VISIBLE | WS_TABSTOP | WINDOW_STYLE(BS_OWNERDRAW as u32),
-            WINDOW_EX_STYLE(0),
-            x,
-            y,
-            width,
-            height,
-            id,
-        )?;
-        install_button_hover_subclass(hwnd);
-        Ok(hwnd)
-    }
+    unsafe { create_ownerdraw_button(parent, instance, text, x, y, width, height, id, false) }
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -180,6 +167,21 @@ pub(super) unsafe fn create_primary_button(
     width: i32,
     height: i32,
     id: i32,
+) -> Result<HWND> {
+    unsafe { create_ownerdraw_button(parent, instance, text, x, y, width, height, id, true) }
+}
+
+#[allow(clippy::too_many_arguments)]
+unsafe fn create_ownerdraw_button(
+    parent: HWND,
+    instance: HINSTANCE,
+    text: &str,
+    x: i32,
+    y: i32,
+    width: i32,
+    height: i32,
+    id: i32,
+    primary: bool,
 ) -> Result<HWND> {
     unsafe {
         let hwnd = create_control(
@@ -195,7 +197,9 @@ pub(super) unsafe fn create_primary_button(
             height,
             id,
         )?;
-        let _ = SetPropW(hwnd, w!("IsPrimaryButton"), Some(marker_handle()));
+        if primary {
+            let _ = SetPropW(hwnd, w!("IsPrimaryButton"), Some(marker_handle()));
+        }
         install_button_hover_subclass(hwnd);
         Ok(hwnd)
     }
@@ -700,34 +704,20 @@ unsafe extern "system" fn button_hover_subclass_proc(
             if !hovered {
                 let mut tme = TRACKMOUSEEVENT {
                     cbSize: std::mem::size_of::<TRACKMOUSEEVENT>() as u32,
-                    dwFlags: windows::Win32::UI::Input::KeyboardAndMouse::TRACKMOUSEEVENT_FLAGS(
-                        TME_LEAVE,
-                    ),
+                    dwFlags: TRACKMOUSEEVENT_FLAGS(TME_LEAVE),
                     hwndTrack: hwnd,
                     dwHoverTime: 0,
                 };
                 unsafe {
                     let _ = TrackMouseEvent(&mut tme);
                     let _ = SetPropW(hwnd, w!("ButtonHovered"), Some(marker_handle()));
-                    let _ = windows::Win32::Graphics::Gdi::RedrawWindow(
-                        Some(hwnd),
-                        None,
-                        None,
-                        windows::Win32::Graphics::Gdi::RDW_INVALIDATE
-                            | windows::Win32::Graphics::Gdi::RDW_UPDATENOW,
-                    );
+                    let _ = RedrawWindow(Some(hwnd), None, None, RDW_INVALIDATE | RDW_UPDATENOW);
                 }
             }
         }
         WM_MOUSELEAVE => unsafe {
             let _ = RemovePropW(hwnd, w!("ButtonHovered"));
-            let _ = windows::Win32::Graphics::Gdi::RedrawWindow(
-                Some(hwnd),
-                None,
-                None,
-                windows::Win32::Graphics::Gdi::RDW_INVALIDATE
-                    | windows::Win32::Graphics::Gdi::RDW_UPDATENOW,
-            );
+            let _ = RedrawWindow(Some(hwnd), None, None, RDW_INVALIDATE | RDW_UPDATENOW);
         },
         WM_NCDESTROY => unsafe {
             let _ = RemovePropW(hwnd, w!("ButtonHovered"));

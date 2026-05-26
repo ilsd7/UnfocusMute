@@ -6,12 +6,9 @@ pub(super) struct Controls {
     pub(super) subtitle_label: HWND,
     pub(super) status: HWND,
     pub(super) status_detail: HWND,
-    pub(super) targets_label: HWND,
     pub(super) target_list: HWND,
     pub(super) target_empty_title: HWND,
     pub(super) target_empty_hint: HWND,
-    pub(super) add_label: HWND,
-    pub(super) running_label: HWND,
     pub(super) running_hint: HWND,
     pub(super) running_combo: HWND,
     pub(super) refresh_button: HWND,
@@ -28,18 +25,15 @@ pub(super) struct Controls {
 }
 
 impl Controls {
-    pub(super) fn all(self) -> [HWND; 23] {
+    pub(super) fn all(self) -> [HWND; 20] {
         [
             self.title_label,
             self.subtitle_label,
             self.status,
             self.status_detail,
-            self.targets_label,
             self.target_list,
             self.target_empty_title,
             self.target_empty_hint,
-            self.add_label,
-            self.running_label,
             self.running_hint,
             self.running_combo,
             self.refresh_button,
