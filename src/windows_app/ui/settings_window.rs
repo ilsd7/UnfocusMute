@@ -4,14 +4,13 @@ use super::constants::{
     ID_SETTINGS_WINDOW_RESTORE_EXIT, ID_SETTINGS_WINDOW_START_MINIMIZED, PAGE_COLOR,
     PANEL_BORDER_COLOR, PANEL_COLOR, SETTINGS_WINDOW_CLASS_NAME, SS_CENTERIMAGE_STYLE,
     SS_ENDELLIPSIS_STYLE, SS_OWNERDRAW_STYLE, SS_RIGHT_STYLE, SUBTLE_TEXT_COLOR, TEXT_COLOR,
-    WM_TRAY_ICON,
 };
+use super::modal_window::run_modal_message_loop;
 use super::theme::{OwnedBrush, UiFont, px, ui_font_point_size};
 use super::win32::{
     WindowClassRegistration, add_combo_item_with_buffer, create_button, create_control,
-    create_multiline_checkbox, get_message, hiword, is_checked, loword, measure_text_width,
-    move_window, reserve_combo_items, set_checkbox, set_text, system_command_closes_or_minimizes,
-    to_wide,
+    create_multiline_checkbox, hiword, is_checked, loword, measure_text_width, move_window,
+    reserve_combo_items, set_checkbox, set_text, to_wide,
 };
 use super::window_position::centered_over_parent;
 use crate::config::cached_config_file_path;
@@ -27,20 +26,16 @@ use windows::Win32::Graphics::Gdi::{
     TRANSPARENT,
 };
 use windows::Win32::UI::Controls::{CB_SETMINVISIBLE, DRAWITEMSTRUCT, ODS_DISABLED, ODS_SELECTED};
-use windows::Win32::UI::Input::KeyboardAndMouse::{EnableWindow, IsWindowEnabled};
 use windows::Win32::UI::Shell::ShellExecuteW;
-use windows::Win32::UI::WindowsAndMessaging::PM_REMOVE;
 use windows::Win32::UI::WindowsAndMessaging::{
     BringWindowToTop, CB_GETCURSEL, CB_SETCURSEL, CBN_SELCHANGE, CBN_SELENDOK, CBS_DROPDOWNLIST,
-    CREATESTRUCTW, CreateWindowExW, DefWindowProcW, DestroyWindow, DispatchMessageW, GWLP_USERDATA,
-    GetWindowLongPtrW, HICON, IDC_ARROW, IDC_HAND, IsDialogMessageW, IsIconic, LoadCursorW,
-    MB_ICONWARNING, MB_OK, MSG, MessageBoxW, MoveWindow, PeekMessageW, PostQuitMessage,
-    RegisterClassW, SW_HIDE, SW_RESTORE, SW_SHOW, SW_SHOWNOACTIVATE, SendMessageW, SetCursor,
-    SetForegroundWindow, SetWindowLongPtrW, ShowWindow, TranslateMessage, WINDOW_EX_STYLE,
-    WINDOW_STYLE, WM_CLOSE, WM_COMMAND, WM_CREATE, WM_CTLCOLORSTATIC, WM_DRAWITEM, WM_NCCREATE,
-    WM_NCDESTROY, WM_PAINT, WM_SETCURSOR, WM_SETFONT, WM_SYSCOMMAND, WNDCLASSW, WS_CAPTION,
-    WS_CHILD, WS_EX_CLIENTEDGE, WS_EX_TOOLWINDOW, WS_OVERLAPPED, WS_POPUP, WS_SYSMENU, WS_TABSTOP,
-    WS_VISIBLE,
+    CREATESTRUCTW, CreateWindowExW, DefWindowProcW, DestroyWindow, GWLP_USERDATA,
+    GetWindowLongPtrW, HICON, IDC_ARROW, IDC_HAND, LoadCursorW, MB_ICONWARNING, MB_OK, MessageBoxW,
+    MoveWindow, RegisterClassW, SW_HIDE, SW_SHOW, SW_SHOWNOACTIVATE, SendMessageW, SetCursor,
+    SetWindowLongPtrW, ShowWindow, WINDOW_EX_STYLE, WINDOW_STYLE, WM_CLOSE, WM_COMMAND, WM_CREATE,
+    WM_CTLCOLORSTATIC, WM_DRAWITEM, WM_NCCREATE, WM_NCDESTROY, WM_PAINT, WM_SETCURSOR, WM_SETFONT,
+    WNDCLASSW, WS_CAPTION, WS_CHILD, WS_EX_CLIENTEDGE, WS_EX_TOOLWINDOW, WS_OVERLAPPED, WS_POPUP,
+    WS_SYSMENU, WS_TABSTOP, WS_VISIBLE,
 };
 use windows::core::{PCWSTR, w};
 
@@ -110,33 +105,6 @@ struct SettingsWindow {
     font: UiFont,
     text_buffer: Vec<u16>,
     display_text: String,
-}
-
-struct DisabledParent {
-    hwnd: HWND,
-    was_enabled: bool,
-}
-
-impl DisabledParent {
-    unsafe fn new(hwnd: HWND) -> Self {
-        let was_enabled = unsafe { IsWindowEnabled(hwnd).as_bool() };
-        if was_enabled {
-            unsafe {
-                let _ = EnableWindow(hwnd, false);
-            }
-        }
-        Self { hwnd, was_enabled }
-    }
-}
-
-impl Drop for DisabledParent {
-    fn drop(&mut self) {
-        if self.was_enabled {
-            unsafe {
-                let _ = EnableWindow(self.hwnd, true);
-            }
-        }
-    }
 }
 
 impl SettingsWindow {
@@ -867,82 +835,18 @@ where
     };
 
     unsafe {
-        let parent_guard = DisabledParent::new(parent);
-        let _ = ShowWindow(hwnd, SW_SHOW);
-        let _ = SetForegroundWindow(hwnd);
-
-        let mut msg = MSG::default();
-        while !state.done {
-            if !get_message(&mut msg)? {
-                let quit_code = msg.wParam.0 as i32;
-                let _ = DestroyWindow(hwnd);
-                PostQuitMessage(quit_code);
-                break;
-            }
-            if message_is_blocked_parent_message(&msg, parent) {
-                continue;
-            }
-            if !IsDialogMessageW(hwnd, &msg).as_bool() {
-                let _ = TranslateMessage(&msg);
-                DispatchMessageW(&msg);
+        run_modal_message_loop(parent, hwnd, || {
+            if state.done {
+                return true;
             }
             if let Some(language) = state.take_pending_language() {
                 on_language_change(language);
             }
-        }
-
-        drop(parent_guard);
-        discard_stale_parent_messages(parent);
-        restore_parent_if_minimized(parent);
-        let _ = SetForegroundWindow(parent);
+            false
+        })?;
     }
 
     Ok(state.selected)
-}
-
-fn message_is_blocked_parent_message(message: &MSG, parent: HWND) -> bool {
-    if message.hwnd != parent {
-        return false;
-    }
-    message.message == WM_CLOSE
-        || message.message == WM_COMMAND
-        || message.message == WM_TRAY_ICON
-        || (message.message == WM_SYSCOMMAND && system_command_closes_or_minimizes(message.wParam))
-}
-
-unsafe fn discard_stale_parent_messages(parent: HWND) {
-    let mut msg = MSG::default();
-    while unsafe { PeekMessageW(&mut msg, Some(parent), WM_CLOSE, WM_CLOSE, PM_REMOVE).as_bool() } {
-    }
-    while unsafe {
-        PeekMessageW(&mut msg, Some(parent), WM_COMMAND, WM_COMMAND, PM_REMOVE).as_bool()
-    } {}
-    while unsafe {
-        PeekMessageW(
-            &mut msg,
-            Some(parent),
-            WM_TRAY_ICON,
-            WM_TRAY_ICON,
-            PM_REMOVE,
-        )
-        .as_bool()
-    } {}
-    while unsafe {
-        PeekMessageW(
-            &mut msg,
-            Some(parent),
-            WM_SYSCOMMAND,
-            WM_SYSCOMMAND,
-            PM_REMOVE,
-        )
-        .as_bool()
-    } {}
-}
-
-unsafe fn restore_parent_if_minimized(parent: HWND) {
-    if unsafe { IsIconic(parent).as_bool() } {
-        let _ = unsafe { ShowWindow(parent, SW_RESTORE) };
-    }
 }
 
 unsafe extern "system" fn settings_window_proc(

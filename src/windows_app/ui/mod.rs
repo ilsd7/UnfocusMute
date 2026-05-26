@@ -69,6 +69,7 @@ mod controls;
 mod drawing;
 mod language_prompt;
 mod managed_mute;
+mod modal_window;
 mod process_choice;
 mod runtime_logic;
 mod settings_window;

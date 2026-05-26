@@ -1,12 +1,12 @@
 use super::constants::{
     ID_TARGET_NOTE_CANCEL, ID_TARGET_NOTE_CLEAR, ID_TARGET_NOTE_EDIT, ID_TARGET_NOTE_SAVE,
-    PAGE_COLOR, SS_ENDELLIPSIS_STYLE, TARGET_NOTE_PROMPT_CLASS_NAME, TEXT_COLOR, WM_TRAY_ICON,
+    PAGE_COLOR, SS_ENDELLIPSIS_STYLE, TARGET_NOTE_PROMPT_CLASS_NAME, TEXT_COLOR,
 };
+use super::modal_window::run_modal_message_loop;
 use super::theme::{OwnedBrush, UiFont, px, ui_font_point_size};
 use super::win32::{
-    WindowClassRegistration, create_button, create_control, default_button_message_result,
-    get_message, hiword, loword, measure_text_width, move_window,
-    system_command_closes_or_minimizes, to_wide, window_text_into,
+    WindowClassRegistration, create_button, create_control, default_button_message_result, hiword,
+    loword, measure_text_width, move_window, to_wide, window_text_into,
 };
 use super::window_position::centered_over_parent;
 use crate::config::{MAX_TARGET_NOTE_CHARS, normalize_target_note};
@@ -16,15 +16,13 @@ use std::ffi::c_void;
 use windows::Win32::Foundation::{HINSTANCE, HWND, LPARAM, LRESULT, WPARAM};
 use windows::Win32::Graphics::Gdi::{HDC, SetBkMode, SetTextColor, TRANSPARENT};
 use windows::Win32::UI::Controls::DRAWITEMSTRUCT;
-use windows::Win32::UI::Input::KeyboardAndMouse::{EnableWindow, IsWindowEnabled, SetFocus};
+use windows::Win32::UI::Input::KeyboardAndMouse::SetFocus;
 use windows::Win32::UI::WindowsAndMessaging::{
-    CREATESTRUCTW, CreateWindowExW, DefWindowProcW, DestroyWindow, DispatchMessageW,
-    ES_AUTOHSCROLL, GWLP_USERDATA, GetWindowLongPtrW, HICON, IDC_ARROW, IsDialogMessageW, IsIconic,
-    LoadCursorW, MSG, PM_REMOVE, PeekMessageW, PostQuitMessage, RegisterClassW, SW_RESTORE,
-    SW_SHOW, SendMessageW, SetForegroundWindow, SetWindowLongPtrW, ShowWindow, TranslateMessage,
-    WINDOW_EX_STYLE, WINDOW_STYLE, WM_CLOSE, WM_COMMAND, WM_CREATE, WM_CTLCOLORSTATIC, WM_DRAWITEM,
-    WM_NCCREATE, WM_NCDESTROY, WM_SETFONT, WM_SYSCOMMAND, WNDCLASSW, WS_CAPTION, WS_CHILD,
-    WS_EX_CLIENTEDGE, WS_OVERLAPPED, WS_SYSMENU, WS_TABSTOP, WS_VISIBLE,
+    CREATESTRUCTW, CreateWindowExW, DefWindowProcW, DestroyWindow, ES_AUTOHSCROLL, GWLP_USERDATA,
+    GetWindowLongPtrW, HICON, IDC_ARROW, LoadCursorW, RegisterClassW, SendMessageW,
+    SetWindowLongPtrW, WINDOW_EX_STYLE, WINDOW_STYLE, WM_CLOSE, WM_COMMAND, WM_CREATE,
+    WM_CTLCOLORSTATIC, WM_DRAWITEM, WM_NCCREATE, WM_NCDESTROY, WM_SETFONT, WNDCLASSW, WS_CAPTION,
+    WS_CHILD, WS_EX_CLIENTEDGE, WS_OVERLAPPED, WS_SYSMENU, WS_TABSTOP, WS_VISIBLE,
 };
 use windows::core::PCWSTR;
 
@@ -53,33 +51,6 @@ struct TargetNotePrompt<'a> {
     brush: OwnedBrush,
     font: UiFont,
     text_buffer: String,
-}
-
-struct DisabledParent {
-    hwnd: HWND,
-    was_enabled: bool,
-}
-
-impl DisabledParent {
-    unsafe fn new(hwnd: HWND) -> Self {
-        let was_enabled = unsafe { IsWindowEnabled(hwnd).as_bool() };
-        if was_enabled {
-            unsafe {
-                let _ = EnableWindow(hwnd, false);
-            }
-        }
-        Self { hwnd, was_enabled }
-    }
-}
-
-impl Drop for DisabledParent {
-    fn drop(&mut self) {
-        if self.was_enabled {
-            unsafe {
-                let _ = EnableWindow(self.hwnd, true);
-            }
-        }
-    }
 }
 
 impl<'a> TargetNotePrompt<'a> {
@@ -322,82 +293,10 @@ pub(super) unsafe fn prompt_target_note(
     };
 
     unsafe {
-        let parent_guard = DisabledParent::new(parent);
-        let _ = ShowWindow(hwnd, SW_SHOW);
-        let _ = SetForegroundWindow(hwnd);
-
-        let mut msg = MSG::default();
-        loop {
-            if state.done {
-                break;
-            }
-            if !get_message(&mut msg)? {
-                let quit_code = msg.wParam.0 as i32;
-                let _ = DestroyWindow(hwnd);
-                PostQuitMessage(quit_code);
-                break;
-            }
-            if message_is_blocked_parent_message(&msg, parent) {
-                continue;
-            }
-            if !IsDialogMessageW(hwnd, &msg).as_bool() {
-                let _ = TranslateMessage(&msg);
-                DispatchMessageW(&msg);
-            }
-        }
-
-        drop(parent_guard);
-        discard_stale_parent_messages(parent);
-        restore_parent_if_minimized(parent);
-        let _ = SetForegroundWindow(parent);
+        run_modal_message_loop(parent, hwnd, || state.done)?;
     }
 
     Ok(state.selected)
-}
-
-fn message_is_blocked_parent_message(message: &MSG, parent: HWND) -> bool {
-    if message.hwnd != parent {
-        return false;
-    }
-    message.message == WM_CLOSE
-        || message.message == WM_COMMAND
-        || message.message == WM_TRAY_ICON
-        || (message.message == WM_SYSCOMMAND && system_command_closes_or_minimizes(message.wParam))
-}
-
-unsafe fn discard_stale_parent_messages(parent: HWND) {
-    let mut msg = MSG::default();
-    while unsafe { PeekMessageW(&mut msg, Some(parent), WM_CLOSE, WM_CLOSE, PM_REMOVE).as_bool() } {
-    }
-    while unsafe {
-        PeekMessageW(&mut msg, Some(parent), WM_COMMAND, WM_COMMAND, PM_REMOVE).as_bool()
-    } {}
-    while unsafe {
-        PeekMessageW(
-            &mut msg,
-            Some(parent),
-            WM_TRAY_ICON,
-            WM_TRAY_ICON,
-            PM_REMOVE,
-        )
-        .as_bool()
-    } {}
-    while unsafe {
-        PeekMessageW(
-            &mut msg,
-            Some(parent),
-            WM_SYSCOMMAND,
-            WM_SYSCOMMAND,
-            PM_REMOVE,
-        )
-        .as_bool()
-    } {}
-}
-
-unsafe fn restore_parent_if_minimized(parent: HWND) {
-    if unsafe { IsIconic(parent).as_bool() } {
-        let _ = unsafe { ShowWindow(parent, SW_RESTORE) };
-    }
 }
 
 unsafe extern "system" fn target_note_prompt_proc(
