@@ -1,6 +1,6 @@
 [package]
 name = "unfocusmute"
-version = "1.2.1"
+version = "1.2.2"
 edition = "2024"
 description = "Automatically mutes selected Windows app audio sessions while they are in the background."
 license = "Apache-2.0"
