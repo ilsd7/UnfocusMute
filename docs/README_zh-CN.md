@@ -72,7 +72,9 @@ UnfocusMute 是一款小巧轻量的 Windows 托盘应用，可在选定的游�
 | [UnfocusMute-windows-x64.zip](https://github.com/ilsd7/UnfocusMute/releases/latest/download/UnfocusMute-windows-x64.zip) |
 | [SHA-256 校验文件](https://github.com/ilsd7/UnfocusMute/releases/latest/download/UnfocusMute-windows-x64.zip.sha256) · [发行说明](https://github.com/ilsd7/UnfocusMute/releases/latest) |
 
-把解压后的 `UnfocusMute-windows-x64` 文件夹移动到你想保存的位置，再运行其中的 `UnfocusMute-v<version>.exe`。它是免安装的独立应用，也不需要 Rust、Visual Studio Build Tools、MinGW 等开发工具。
+解压后，将 `UnfocusMute-windows-x64` 文件夹移动到你想保存的位置，再运行其中的 `UnfocusMute-v<version>.exe`。
+
+UnfocusMute 是免安装的独立应用。你也无需安装 Rust、Visual Studio Build Tools、MinGW 等开发工具。
 
 > **提示：** 由于代码签名证书需要成本，目前发布文件未进行 Windows 代码签名。首次运行时，Windows SmartScreen 或“未知发布者”警告可能会出现。如果你想自行确认文件完整性，请参阅下面的发布文件验证部分。
 
@@ -125,14 +127,18 @@ UnfocusMute 依赖 Windows 提供的进程名、前台窗口信息和 CoreAudio 
 
 UnfocusMute 是完全在本地运行的应用。即使没有互联网连接也能正常工作，并且不会发起自动网络请求、使用遥测、发送崩溃报告、进行远程日志记录或收集数据。它也不需要管理员权限。
 
-作为例外，只有当你点击设置界面中的 GitHub 仓库按钮时，才会通过默认浏览器打开本项目的 GitHub 仓库。
+作为例外，只有当你在设置界面点击 `GitHub 仓库` 按钮时，才会在默认浏览器中打开本项目的 GitHub 仓库。
 
-**保存的内容：** 已注册的进程名、可选 PID、你写入的备注、选择的语言、窗口位置、启动选项，以及 UnfocusMute 静音过的应用恢复状态。
-这些应用设置会保存在 `%APPDATA%\UnfocusMute\config.json`，不会发送到任何外部位置。如果开启 Windows 登录时自动启动，当前可执行文件路径也会保存到 `HKEY_CURRENT_USER\Software\Microsoft\Windows\CurrentVersion\Run` 下的 `UnfocusMute` 值中。
+**保存的内容：** 已注册的进程名、手动注册的 PID、已注册应用最近一次的静音状态、你写入的备注、选择的语言和设置、窗口位置。
 
-如果想把应用痕迹彻底清除，请删除应用文件夹，然后删除 `%APPDATA%\UnfocusMute` 文件夹。如果曾经开启过自动启动，也请一并删除上面的注册表值。
+这些值会保存在 `%APPDATA%\UnfocusMute\config.json`，不会发送到任何外部位置。
 
-**不会保存的内容：** 不会创建应用日志文件，也不会保留跨会话的操作记录。
+不过，如果你开启 Windows 登录时自动启动，当前可执行文件路径也会保存到 `HKEY_CURRENT_USER\Software\Microsoft\Windows\CurrentVersion\Run` 下的 `UnfocusMute` 值中。
+
+要删除与应用相关的所有文件，请删除应用文件夹，然后删除 `%APPDATA%\UnfocusMute` 文件夹。
+如果曾经开启过自动启动，也请一并删除上面的注册表值。
+
+**不会保存的内容：** 使用记录、活动日志、音频数据、窗口标题、按键输入等上面“保存的内容”中未明确列出的任何信息。
 
 音频会话检测和静音控制只使用 Windows CoreAudio API，并且不会向游戏进程注入代码或读取其内存。
 

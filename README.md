@@ -72,7 +72,9 @@ On Windows 10/11, download the ZIP package and extract it to run the app.
 | [UnfocusMute-windows-x64.zip](https://github.com/ilsd7/UnfocusMute/releases/latest/download/UnfocusMute-windows-x64.zip) |
 | [SHA-256 checksum](https://github.com/ilsd7/UnfocusMute/releases/latest/download/UnfocusMute-windows-x64.zip.sha256) · [Release notes](https://github.com/ilsd7/UnfocusMute/releases/latest) |
 
-Move the extracted `UnfocusMute-windows-x64` folder wherever you want to keep the app, then run `UnfocusMute-v<version>.exe` inside that folder. It runs as a standalone executable with no installation required, and you do not need Rust, Visual Studio Build Tools, MinGW, or any other development tools.
+After extracting the ZIP, move the `UnfocusMute-windows-x64` folder wherever you want to keep the app, then run `UnfocusMute-v<version>.exe` inside that folder.
+
+UnfocusMute is a standalone app that does not need to be installed. You also do not need Rust, Visual Studio Build Tools, MinGW, or any other development tools.
 
 > **Note:** Because code-signing certificates have an ongoing cost, the app is currently distributed without Windows code signing. Windows SmartScreen or an "unknown publisher" warning may appear on first run. To verify the file integrity yourself, see [Verifying Release Files](#verifying-release-files).
 
@@ -125,14 +127,18 @@ If you are not sure what to register, check the `.exe` name in Task Manager.
 
 UnfocusMute runs fully locally. It works normally without an internet connection and does not make automatic network requests, use telemetry, send crash reports, perform remote logging, or collect data. It also does not require administrator rights.
 
-As an exception, when you click the GitHub repository button in Settings, this project's GitHub repository opens in your default browser.
+As an exception, this project's GitHub repository opens in your default browser only when you click the `GitHub repository` button in Settings.
 
-**What it stores:** Registered process names, optional PIDs, notes you write, selected language, window position, startup options, and restore state for apps muted by UnfocusMute.
-These app settings are stored in `%APPDATA%\UnfocusMute\config.json` and are not sent anywhere. If you enable auto-start at Windows sign-in, the current executable path is also stored in the `UnfocusMute` value under `HKEY_CURRENT_USER\Software\Microsoft\Windows\CurrentVersion\Run`.
+**What it stores:** Registered process names, PIDs you registered directly, the most recent mute state of registered apps, notes you write, selected language and settings, and window position.
 
-To remove every trace of the app, delete the app folder and then delete `%APPDATA%\UnfocusMute`. If you ever enabled auto-start, delete the registry value above as well.
+These values are stored in `%APPDATA%\UnfocusMute\config.json` and are not sent anywhere.
 
-**What it does not store:** It does not create app log files or retain behavior history between sessions.
+If you enable auto-start at Windows sign-in, the current executable path is also stored in the `UnfocusMute` value under `HKEY_CURRENT_USER\Software\Microsoft\Windows\CurrentVersion\Run`.
+
+To remove every app-related file, delete the app folder and then delete `%APPDATA%\UnfocusMute`.
+If you ever enabled auto-start, delete the registry value above as well.
+
+**What it does not store:** Usage history, activity logs, audio data, window titles, keystrokes, or anything else not listed under "What it stores" above.
 
 Audio session detection and mute control use only Windows CoreAudio APIs, and UnfocusMute does not inject code into game processes or read their memory.
 

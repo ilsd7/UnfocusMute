@@ -72,7 +72,9 @@ Sous Windows 10/11, téléchargez le paquet ZIP puis extrayez-le pour lancer l�
 | [UnfocusMute-windows-x64.zip](https://github.com/ilsd7/UnfocusMute/releases/latest/download/UnfocusMute-windows-x64.zip) |
 | [Fichier SHA-256](https://github.com/ilsd7/UnfocusMute/releases/latest/download/UnfocusMute-windows-x64.zip.sha256) · [Notes de version](https://github.com/ilsd7/UnfocusMute/releases/latest) |
 
-Déplacez le dossier extrait `UnfocusMute-windows-x64` à l’emplacement où vous souhaitez conserver l’application, puis lancez `UnfocusMute-v<version>.exe` depuis ce dossier. C’est une application autonome qui ne nécessite aucune installation, et vous n’avez pas besoin de Rust, Visual Studio Build Tools, MinGW ni d’autres outils de développement.
+Une fois le ZIP extrait, déplacez le dossier `UnfocusMute-windows-x64` à l’emplacement où vous souhaitez conserver l’application, puis lancez `UnfocusMute-v<version>.exe` depuis ce dossier.
+
+UnfocusMute est une application autonome qui ne nécessite aucune installation. Vous n’avez pas non plus besoin d’installer Rust, Visual Studio Build Tools, MinGW ni d’autres outils de développement.
 
 > **Remarque :** Comme les certificats de signature de code ont un coût, l’application est actuellement distribuée sans signature de code Windows. Windows SmartScreen ou un avertissement d’éditeur inconnu peut apparaître au premier lancement. Pour vérifier vous-même l’intégrité du fichier, consultez la section de vérification des fichiers de release ci-dessous.
 
@@ -125,14 +127,18 @@ Si vous ne savez pas quel nom enregistrer, vérifiez dans le Gestionnaire des t�
 
 UnfocusMute fonctionne entièrement en local. L’application marche normalement même sans connexion internet et n’effectue pas de requêtes réseau automatiques, n’utilise pas de télémétrie, n’envoie pas de rapports de crash, ne fait pas de journalisation distante et ne collecte pas de données. Elle ne demande pas non plus de droits administrateur.
 
-Par exception, lorsque vous cliquez sur le bouton Dépôt GitHub dans Paramètres, le dépôt GitHub du projet s’ouvre dans votre navigateur par défaut.
+Par exception, le dépôt GitHub du projet ne s’ouvre dans votre navigateur par défaut que lorsque vous cliquez sur le bouton `Dépôt GitHub` dans Paramètres.
 
-**Ce qui est stocké :** Les noms de processus enregistrés, les PID facultatifs, les notes que vous écrivez, la langue choisie, la position de la fenêtre, les options de démarrage et l’état de restauration des applications mises en sourdine par UnfocusMute.
-Ces réglages de l’application sont enregistrés dans `%APPDATA%\UnfocusMute\config.json` et ne sont envoyés nulle part. Si vous activez le démarrage automatique à l’ouverture de session Windows, le chemin de l’exécutable actuel est aussi enregistré dans la valeur `UnfocusMute` sous `HKEY_CURRENT_USER\Software\Microsoft\Windows\CurrentVersion\Run`.
+**Ce qui est stocké :** Les noms de processus enregistrés, les PID que vous avez enregistrés directement, le dernier état de mise en sourdine des applications enregistrées, les notes que vous écrivez, la langue et les réglages choisis, ainsi que la position de la fenêtre.
 
-Pour supprimer complètement toute trace de l’application, supprimez le dossier de l’application puis `%APPDATA%\UnfocusMute`. Si vous avez déjà activé le démarrage automatique, supprimez aussi la valeur de registre indiquée ci-dessus.
+Ces valeurs sont enregistrées dans `%APPDATA%\UnfocusMute\config.json` et ne sont envoyées nulle part.
 
-**Ce qui n’est pas stocké :** L’application ne crée pas de fichiers journaux et ne conserve aucun historique d’activité entre les sessions.
+Si vous activez le démarrage automatique à l’ouverture de session Windows, le chemin de l’exécutable actuel est aussi enregistré dans la valeur `UnfocusMute` sous `HKEY_CURRENT_USER\Software\Microsoft\Windows\CurrentVersion\Run`.
+
+Pour supprimer tous les fichiers liés à l’application, supprimez le dossier de l’application puis `%APPDATA%\UnfocusMute`.
+Si vous avez déjà activé le démarrage automatique, supprimez aussi la valeur de registre indiquée ci-dessus.
+
+**Ce qui n’est pas stocké :** Historique d’utilisation, journaux d’activité, données audio, titres de fenêtres, frappes au clavier ou toute autre information qui n’est pas indiquée ci-dessus dans « Ce qui est stocké ».
 
 La détection des sessions audio et le contrôle de la sourdine utilisent uniquement les API Windows CoreAudio, et UnfocusMute n’injecte pas de code dans les processus de jeux ni ne lit leur mémoire.
 

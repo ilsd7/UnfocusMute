@@ -72,7 +72,9 @@ Windows 10/11では、配布ZIPをダウンロードして展開すればすぐ�
 | [UnfocusMute-windows-x64.zip](https://github.com/ilsd7/UnfocusMute/releases/latest/download/UnfocusMute-windows-x64.zip) |
 | [SHA-256確認ファイル](https://github.com/ilsd7/UnfocusMute/releases/latest/download/UnfocusMute-windows-x64.zip.sha256) · [リリースノート](https://github.com/ilsd7/UnfocusMute/releases/latest) |
 
-展開した `UnfocusMute-windows-x64` フォルダーを好きな場所へ移動し、その中の `UnfocusMute-v<version>.exe` を実行します。インストール不要のスタンドアロンアプリで、Rust、Visual Studio Build Tools、MinGWなどの開発ツールも不要です。
+ZIPを展開したら、`UnfocusMute-windows-x64` フォルダーを好きな場所へ移動し、その中の `UnfocusMute-v<version>.exe` を実行します。
+
+UnfocusMuteはインストール不要のスタンドアロンアプリです。Rust、Visual Studio Build Tools、MinGWなどの開発ツールもインストールする必要はありません。
 
 > **参考:** コード署名証明書には費用がかかるため、現在はWindowsコード署名なしで配布しています。初回実行時にWindows SmartScreenや「不明な発行元」の警告が表示される場合があります。ファイルの整合性を自分で確認したい場合は、下のリリースファイル検証セクションを参照してください。
 
@@ -125,14 +127,18 @@ UnfocusMuteは、Windowsが提供するプロセス名、前面ウィンドウ�
 
 UnfocusMuteは完全にローカルで動作するアプリです。インターネット接続がなくても通常どおり動作し、自動的なネットワーク要求、テレメトリ、クラッシュレポート、リモートログ送信、データ収集は行いません。管理者権限も要求しません。
 
-例外として、設定画面のGitHubリポジトリボタンをユーザーが押した場合のみ、既定のブラウザーでこのプロジェクトのGitHubリポジトリを開きます。
+例外として、ユーザーが設定画面の `GitHubリポジトリ` ボタンを押した場合にのみ、このプロジェクトのGitHubリポジトリが既定のブラウザーで開きます。
 
-**保存するもの:** 登録したプロセス名、任意のPID、入力したメモ、選択した言語、ウィンドウ位置、起動オプション、登録アプリのミュート復元状態。
-このアプリ設定は `%APPDATA%\UnfocusMute\config.json` に保存され、外部へ送信されません。Windowsサインイン時の自動起動を有効にすると、現在の実行ファイルパスも `HKEY_CURRENT_USER\Software\Microsoft\Windows\CurrentVersion\Run` の `UnfocusMute` 値に保存されます。
+**保存するもの:** 登録したプロセス名、直接登録したPID、登録アプリの直近のミュート状態、入力したメモ、選択した言語と設定、ウィンドウ位置。
 
-アプリの痕跡まで完全に削除するには、アプリのフォルダーを削除したうえで `%APPDATA%\UnfocusMute` フォルダーを削除してください。自動起動を有効にしたことがある場合は、上記のレジストリ値も削除してください。
+これらの値は `%APPDATA%\UnfocusMute\config.json` に保存され、外部へ送信されません。
 
-**保存しないもの:** アプリのログファイルやセッションをまたいだ動作履歴は作成しません。
+ただし、Windowsサインイン時の自動起動を有効にすると、現在の実行ファイルパスも `HKEY_CURRENT_USER\Software\Microsoft\Windows\CurrentVersion\Run` の `UnfocusMute` 値に保存されます。
+
+アプリ関連のファイルをすべて削除するには、アプリのフォルダーを削除してから `%APPDATA%\UnfocusMute` フォルダーを削除してください。
+自動起動を有効にしたことがある場合は、上記のレジストリ値も削除してください。
+
+**保存しないもの:** 使用履歴、アクティビティログ、オーディオデータ、ウィンドウタイトル、キー入力など、上の「保存するもの」に明記されていないすべての情報。
 
 オーディオセッションの検出とミュート制御にはWindows CoreAudio APIだけを使用し、ゲームプロセスにコードを注入したりメモリを読んだりしません。
 

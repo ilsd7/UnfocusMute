@@ -72,7 +72,9 @@ En Windows 10/11, descarga el paquete ZIP y extráelo para ejecutar la app.
 | [UnfocusMute-windows-x64.zip](https://github.com/ilsd7/UnfocusMute/releases/latest/download/UnfocusMute-windows-x64.zip) |
 | [Archivo SHA-256](https://github.com/ilsd7/UnfocusMute/releases/latest/download/UnfocusMute-windows-x64.zip.sha256) · [Notas de la versión](https://github.com/ilsd7/UnfocusMute/releases/latest) |
 
-Mueve la carpeta extraída `UnfocusMute-windows-x64` a la ubicación donde quieras guardar la app y ejecuta `UnfocusMute-v<version>.exe` dentro de esa carpeta. Es una app independiente que no requiere instalación, y no necesitas Rust, Visual Studio Build Tools, MinGW ni otras herramientas de desarrollo.
+Después de extraer el ZIP, mueve la carpeta `UnfocusMute-windows-x64` a la ubicación donde quieras guardar la app y ejecuta `UnfocusMute-v<version>.exe` dentro de esa carpeta.
+
+UnfocusMute es una app independiente que no requiere instalación. Tampoco necesitas instalar Rust, Visual Studio Build Tools, MinGW ni otras herramientas de desarrollo.
 
 > **Nota:** Como los certificados de firma de código tienen coste, la app se distribuye actualmente sin firma de código de Windows. En el primer inicio puede aparecer Windows SmartScreen o un aviso de "editor desconocido". Si quieres comprobar la integridad del archivo por tu cuenta, consulta la sección de verificación de archivos de la versión más abajo.
 
@@ -125,14 +127,18 @@ Si no sabes qué nombre registrar, busca el ejecutable terminado en `.exe` en el
 
 UnfocusMute se ejecuta de forma completamente local. Funciona con normalidad aunque no tengas conexión a internet y no realiza solicitudes de red automáticas, no usa telemetría, no envía informes de fallos, no hace registro remoto ni recopila datos. Tampoco requiere permisos de administrador.
 
-Como excepción, si pulsas el botón Repositorio de GitHub en Configuración, se abre el repositorio de GitHub del proyecto en tu navegador predeterminado.
+Como excepción, el repositorio de GitHub del proyecto solo se abre en tu navegador predeterminado cuando pulsas el botón `Repositorio de GitHub` en Configuración.
 
-**Lo que guarda:** Nombres de procesos registrados, PID opcionales, las notas que escribas, el idioma elegido, la posición de la ventana, las opciones de inicio y el estado de restauración de las apps silenciadas por UnfocusMute.
-Estos ajustes de la app se guardan en `%APPDATA%\UnfocusMute\config.json` y no se envían a ningún sitio externo. Si activas el inicio automático al iniciar sesión en Windows, la ruta del ejecutable actual también se guarda en el valor `UnfocusMute` de `HKEY_CURRENT_USER\Software\Microsoft\Windows\CurrentVersion\Run`.
+**Lo que guarda:** Nombres de procesos registrados, los PID que registres directamente, el último estado de silencio de las apps registradas, las notas que escribas, el idioma y la configuración elegidos, y la posición de la ventana.
 
-Para eliminar por completo cualquier rastro de la app, borra la carpeta de la app y después borra `%APPDATA%\UnfocusMute`. Si alguna vez activaste el inicio automático, borra también el valor del registro indicado arriba.
+Estos valores se guardan en `%APPDATA%\UnfocusMute\config.json` y no se envían a ningún sitio externo.
 
-**Lo que no guarda:** No crea archivos de log de la app ni conserva historial de actividad entre sesiones.
+Si activas el inicio automático al iniciar sesión en Windows, la ruta del ejecutable actual también se guarda en el valor `UnfocusMute` de `HKEY_CURRENT_USER\Software\Microsoft\Windows\CurrentVersion\Run`.
+
+Para eliminar todos los archivos relacionados con la app, borra la carpeta de la app y después borra `%APPDATA%\UnfocusMute`.
+Si alguna vez activaste el inicio automático, borra también el valor del registro indicado arriba.
+
+**Lo que no guarda:** Historial de uso, registros de actividad, datos de audio, títulos de ventanas, pulsaciones de teclas o cualquier otra información que no aparezca arriba en «Lo que guarda».
 
 La detección de sesiones de audio y el control de silencio solo usan las API CoreAudio de Windows, y UnfocusMute no inyecta código en procesos de juegos ni lee su memoria.
 
