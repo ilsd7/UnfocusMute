@@ -1,11 +1,11 @@
 use super::constants::{WINDOW_HEIGHT, WINDOW_WIDTH};
 use super::theme::px;
 use crate::config::{AppConfig, WindowPosition};
-use windows::Win32::Foundation::RECT;
+use windows::Win32::Foundation::{HWND, RECT};
 use windows::Win32::UI::WindowsAndMessaging::{
-    GetSystemMetrics, SM_CXSCREEN, SM_CXVIRTUALSCREEN, SM_CYSCREEN, SM_CYVIRTUALSCREEN,
-    SM_XVIRTUALSCREEN, SM_YVIRTUALSCREEN, SPI_GETWORKAREA, SYSTEM_PARAMETERS_INFO_UPDATE_FLAGS,
-    SystemParametersInfoW,
+    GetSystemMetrics, GetWindowRect, SM_CXSCREEN, SM_CXVIRTUALSCREEN, SM_CYSCREEN,
+    SM_CYVIRTUALSCREEN, SM_XVIRTUALSCREEN, SM_YVIRTUALSCREEN, SPI_GETWORKAREA,
+    SYSTEM_PARAMETERS_INFO_UPDATE_FLAGS, SystemParametersInfoW,
 };
 
 pub(super) fn should_start_hidden(
@@ -35,6 +35,22 @@ pub(super) fn centered_position(width: i32, height: i32) -> WindowPosition {
         x: screen.left + ((screen.right - screen.left - width) / 2).max(0),
         y: screen.top + ((screen.bottom - screen.top - height) / 2).max(0),
     }
+}
+
+pub(super) fn centered_over_parent(parent: HWND, width: i32, height: i32) -> WindowPosition {
+    let mut rect = RECT::default();
+    if unsafe { GetWindowRect(parent, &mut rect) }.is_ok() && rect.right > rect.left {
+        let parent_width = rect.right - rect.left;
+        let parent_height = rect.bottom - rect.top;
+        if parent_height > 0 {
+            return WindowPosition {
+                x: rect.left + (parent_width - width) / 2,
+                y: rect.top + (parent_height - height) / 2,
+            };
+        }
+    }
+
+    centered_position(width, height)
 }
 
 pub(super) fn window_position_is_visible(

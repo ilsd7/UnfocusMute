@@ -4,6 +4,7 @@ use super::constants::{
     ID_SETTINGS_WINDOW_RESTORE_EXIT, ID_SETTINGS_WINDOW_START_MINIMIZED, PAGE_COLOR,
     PANEL_BORDER_COLOR, PANEL_COLOR, SETTINGS_WINDOW_CLASS_NAME, SS_CENTERIMAGE_STYLE,
     SS_ENDELLIPSIS_STYLE, SS_OWNERDRAW_STYLE, SS_RIGHT_STYLE, SUBTLE_TEXT_COLOR, TEXT_COLOR,
+    WM_TRAY_ICON,
 };
 use super::theme::{OwnedBrush, UiFont, px, ui_font_point_size};
 use super::win32::{
@@ -12,8 +13,8 @@ use super::win32::{
     move_window, reserve_combo_items, set_checkbox, set_text, system_command_closes_or_minimizes,
     to_wide,
 };
-use super::window_position::centered_position;
-use crate::config::{WindowPosition, cached_config_file_path};
+use super::window_position::centered_over_parent;
+use crate::config::cached_config_file_path;
 use crate::i18n::{Language, Strings};
 use crate::windows_app::error::{Context, Result};
 use std::ffi::c_void;
@@ -32,14 +33,14 @@ use windows::Win32::UI::WindowsAndMessaging::PM_REMOVE;
 use windows::Win32::UI::WindowsAndMessaging::{
     BringWindowToTop, CB_GETCURSEL, CB_SETCURSEL, CBN_SELCHANGE, CBN_SELENDOK, CBS_DROPDOWNLIST,
     CREATESTRUCTW, CreateWindowExW, DefWindowProcW, DestroyWindow, DispatchMessageW, GWLP_USERDATA,
-    GetWindowLongPtrW, GetWindowRect, HICON, IDC_ARROW, IDC_HAND, IsDialogMessageW, IsIconic,
-    LoadCursorW, MB_ICONWARNING, MB_OK, MSG, MessageBoxW, MoveWindow, PeekMessageW,
-    PostQuitMessage, RegisterClassW, SW_HIDE, SW_RESTORE, SW_SHOW, SW_SHOWNOACTIVATE, SendMessageW,
-    SetCursor, SetForegroundWindow, SetWindowLongPtrW, ShowWindow, TranslateMessage,
-    WINDOW_EX_STYLE, WINDOW_STYLE, WM_CLOSE, WM_COMMAND, WM_CREATE, WM_CTLCOLORSTATIC, WM_DRAWITEM,
-    WM_NCCREATE, WM_NCDESTROY, WM_PAINT, WM_SETCURSOR, WM_SETFONT, WM_SYSCOMMAND, WNDCLASSW,
-    WS_CAPTION, WS_CHILD, WS_EX_CLIENTEDGE, WS_EX_TOOLWINDOW, WS_OVERLAPPED, WS_POPUP, WS_SYSMENU,
-    WS_TABSTOP, WS_VISIBLE,
+    GetWindowLongPtrW, HICON, IDC_ARROW, IDC_HAND, IsDialogMessageW, IsIconic, LoadCursorW,
+    MB_ICONWARNING, MB_OK, MSG, MessageBoxW, MoveWindow, PeekMessageW, PostQuitMessage,
+    RegisterClassW, SW_HIDE, SW_RESTORE, SW_SHOW, SW_SHOWNOACTIVATE, SendMessageW, SetCursor,
+    SetForegroundWindow, SetWindowLongPtrW, ShowWindow, TranslateMessage, WINDOW_EX_STYLE,
+    WINDOW_STYLE, WM_CLOSE, WM_COMMAND, WM_CREATE, WM_CTLCOLORSTATIC, WM_DRAWITEM, WM_NCCREATE,
+    WM_NCDESTROY, WM_PAINT, WM_SETCURSOR, WM_SETFONT, WM_SYSCOMMAND, WNDCLASSW, WS_CAPTION,
+    WS_CHILD, WS_EX_CLIENTEDGE, WS_EX_TOOLWINDOW, WS_OVERLAPPED, WS_POPUP, WS_SYSMENU, WS_TABSTOP,
+    WS_VISIBLE,
 };
 use windows::core::{PCWSTR, w};
 
@@ -813,22 +814,6 @@ fn draw_text_line(
     }
 }
 
-fn centered_over_parent(parent: HWND, width: i32, height: i32) -> WindowPosition {
-    let mut rect = RECT::default();
-    if unsafe { GetWindowRect(parent, &mut rect) }.is_ok() && rect.right > rect.left {
-        let parent_width = rect.right - rect.left;
-        let parent_height = rect.bottom - rect.top;
-        if parent_height > 0 {
-            return WindowPosition {
-                x: rect.left + (parent_width - width) / 2,
-                y: rect.top + (parent_height - height) / 2,
-            };
-        }
-    }
-
-    centered_position(width, height)
-}
-
 pub(super) unsafe fn prompt_settings<F>(
     parent: HWND,
     instance: HINSTANCE,
@@ -920,6 +905,8 @@ fn message_is_blocked_parent_message(message: &MSG, parent: HWND) -> bool {
         return false;
     }
     message.message == WM_CLOSE
+        || message.message == WM_COMMAND
+        || message.message == WM_TRAY_ICON
         || (message.message == WM_SYSCOMMAND && system_command_closes_or_minimizes(message.wParam))
 }
 
@@ -927,6 +914,19 @@ unsafe fn discard_stale_parent_messages(parent: HWND) {
     let mut msg = MSG::default();
     while unsafe { PeekMessageW(&mut msg, Some(parent), WM_CLOSE, WM_CLOSE, PM_REMOVE).as_bool() } {
     }
+    while unsafe {
+        PeekMessageW(&mut msg, Some(parent), WM_COMMAND, WM_COMMAND, PM_REMOVE).as_bool()
+    } {}
+    while unsafe {
+        PeekMessageW(
+            &mut msg,
+            Some(parent),
+            WM_TRAY_ICON,
+            WM_TRAY_ICON,
+            PM_REMOVE,
+        )
+        .as_bool()
+    } {}
     while unsafe {
         PeekMessageW(
             &mut msg,

@@ -192,17 +192,25 @@ impl AudioController {
                         if lookup.may_include_pid(session.pid) {
                             apply_result
                                 .keep_active_sessions_for_pid(session.pid, managed_muted_sessions);
+                            apply_result.block_unmuted_target_states_for_unresolved_pid(
+                                session.pid,
+                                managed_muted_sessions,
+                                &target_lookup,
+                            );
                             apply_result.had_failures = true;
                         } else if unresolved_unmanaged_pid_is_failure(
                             needs_all_session_process_names,
                             matcher,
                             session.pid,
                         ) {
+                            apply_result
+                                .block_unmuted_pid_target_states(session.pid, &target_lookup);
                             apply_result.had_failures = true;
                         }
                     }
                     SessionVisit::Unreadable => {
                         apply_result.had_failures = true;
+                        apply_result.block_all_unmuted_target_states();
                         preserve_existing_managed_sessions = true;
                     }
                 },
@@ -329,6 +337,8 @@ fn session_muted(volume: &ISimpleAudioVolume) -> windows::core::Result<bool> {
 struct PlanApplyResult {
     active_managed_sessions: Vec<AudioSessionKey>,
     target_updates: Vec<TargetMuteStateUpdate>,
+    blocked_unmuted_target_updates: Vec<TargetMuteStateUpdate>,
+    block_all_unmuted_target_updates: bool,
     had_failures: bool,
 }
 
@@ -337,6 +347,8 @@ impl PlanApplyResult {
         Self {
             active_managed_sessions: Vec::with_capacity(managed_session_count),
             target_updates: Vec::new(),
+            blocked_unmuted_target_updates: Vec::new(),
+            block_all_unmuted_target_updates: false,
             had_failures: false,
         }
     }
@@ -373,7 +385,83 @@ impl PlanApplyResult {
             .extend(session_keys.iter().cloned());
     }
 
+    fn block_unmuted_target_states_for_unresolved_pid(
+        &mut self,
+        pid: u32,
+        session_keys: &HashSet<AudioSessionKey>,
+        target_lookup: &ManagedTargetLookup<'_>,
+    ) {
+        for key in session_keys.iter().filter(|key| key.pid == pid) {
+            self.block_unmuted_target_states(
+                target_lookup.matching_sessions(&key.process_name, pid),
+            );
+        }
+        self.block_unmuted_pid_target_states(pid, target_lookup);
+    }
+
+    fn block_unmuted_pid_target_states(
+        &mut self,
+        pid: u32,
+        target_lookup: &ManagedTargetLookup<'_>,
+    ) {
+        target_lookup.block_pid_target_states_for_pid(self, pid);
+    }
+
+    fn block_unmuted_target_states(&mut self, target_matches: TargetIdentityMatches<'_>) {
+        for identity in target_matches {
+            self.block_unmuted_target_state(identity);
+        }
+    }
+
+    fn block_unmuted_target_state(&mut self, identity: TargetMuteIdentity<'_>) {
+        if !self.block_all_unmuted_target_updates {
+            match self
+                .blocked_unmuted_target_updates
+                .binary_search_by(|update| compare_target_update_identity(update, identity))
+            {
+                Ok(_) => {}
+                Err(index) => self.blocked_unmuted_target_updates.insert(
+                    index,
+                    TargetMuteStateUpdate {
+                        process_name: identity.process_name.to_owned(),
+                        pid: identity.pid,
+                        muted: false,
+                    },
+                ),
+            }
+        }
+        self.remove_unmuted_target_update(identity);
+    }
+
+    fn block_all_unmuted_target_states(&mut self) {
+        self.block_all_unmuted_target_updates = true;
+        self.blocked_unmuted_target_updates.clear();
+        self.target_updates.retain(|update| update.muted);
+    }
+
+    fn remove_unmuted_target_update(&mut self, identity: TargetMuteIdentity<'_>) {
+        if let Ok(index) = self
+            .target_updates
+            .binary_search_by(|update| compare_target_update_identity(update, identity))
+            && !self.target_updates[index].muted
+        {
+            self.target_updates.remove(index);
+        }
+    }
+
+    fn unmuted_target_update_is_blocked(&self, identity: TargetMuteIdentity<'_>) -> bool {
+        self.block_all_unmuted_target_updates
+            || self
+                .blocked_unmuted_target_updates
+                .binary_search_by(|update| compare_target_update_identity(update, identity))
+                .is_ok()
+    }
+
     fn set_target_state(&mut self, identity: TargetMuteIdentity<'_>, muted: bool) {
+        if !muted && self.unmuted_target_update_is_blocked(identity) {
+            return;
+        }
+
         match self
             .target_updates
             .binary_search_by(|update| compare_target_update_identity(update, identity))
@@ -450,6 +538,14 @@ impl<'a> ManagedTargetLookup<'a> {
         pid: Option<u32>,
     ) -> Option<TargetMuteIdentity<'a>> {
         self.identities.find(process_name, pid)
+    }
+
+    fn block_pid_target_states_for_pid(&self, result: &mut PlanApplyResult, pid: u32) {
+        self.identities.for_each(|identity| {
+            if identity.pid == Some(pid) {
+                result.block_unmuted_target_state(identity);
+            }
+        });
     }
 }
 
@@ -568,6 +664,27 @@ impl<'a> ManagedTargetIdentities<'a> {
                 })
                 .ok()
                 .map(|index| identities[index]),
+        }
+    }
+
+    fn for_each(&self, mut visit: impl FnMut(TargetMuteIdentity<'a>)) {
+        match self {
+            Self::Empty => {}
+            Self::One(identity) => visit(*identity),
+            Self::Two(first, second) => {
+                visit(*first);
+                visit(*second);
+            }
+            Self::Few { identities, len } => {
+                for identity in &identities[..*len] {
+                    visit(*identity);
+                }
+            }
+            Self::Many(identities) => {
+                for identity in identities {
+                    visit(*identity);
+                }
+            }
         }
     }
 }
@@ -1043,11 +1160,9 @@ fn apply_unmute_to_unresolved_session(
     let matching_sessions =
         matching_unresolved_session_keys(session_keys, session.pid, instance_id.as_deref());
     if matching_sessions.is_empty() {
-        if instance_id.is_none()
-            && let Some(ambiguous_sessions) =
-                ambiguous_unresolved_session_keys(session_keys, session.pid)
+        if let Some(unmatched_sessions) = unresolved_session_keys_for_pid(session_keys, session.pid)
         {
-            return Err(ambiguous_sessions);
+            return Err(unmatched_sessions);
         }
         return Ok(matching_sessions);
     }
@@ -1090,7 +1205,7 @@ fn matching_unresolved_session_keys(
     matches
 }
 
-fn ambiguous_unresolved_session_keys(
+fn unresolved_session_keys_for_pid(
     session_keys: &HashSet<AudioSessionKey>,
     pid: u32,
 ) -> Option<Vec<AudioSessionKey>> {
@@ -1098,7 +1213,7 @@ fn ambiguous_unresolved_session_keys(
     for key in session_keys.iter().filter(|key| key.pid == pid) {
         matches.push(key.clone());
     }
-    (matches.len() > 1).then_some(matches)
+    (!matches.is_empty()).then_some(matches)
 }
 
 fn unresolved_unmanaged_pid_is_failure(
@@ -1381,9 +1496,22 @@ mod tests {
         let session_keys = HashSet::from([first.clone(), second.clone()]);
 
         assert!(matching_unresolved_session_keys(&session_keys, 7, None).is_empty());
-        let ambiguous = ambiguous_unresolved_session_keys(&session_keys, 7).unwrap();
-        assert!(ambiguous.contains(&first));
-        assert!(ambiguous.contains(&second));
+        let unresolved = unresolved_session_keys_for_pid(&session_keys, 7).unwrap();
+        assert!(unresolved.contains(&first));
+        assert!(unresolved.contains(&second));
+    }
+
+    #[test]
+    fn unresolved_session_instance_mismatch_retains_pid_key() {
+        let retained = AudioSessionKey::from_normalized(7, "game.exe".to_owned(), None);
+        let ignored = AudioSessionKey::from_normalized(8, "chat.exe".to_owned(), None);
+        let session_keys = HashSet::from([retained.clone(), ignored.clone()]);
+
+        assert!(matching_unresolved_session_keys(&session_keys, 7, Some("runtime")).is_empty());
+        let unresolved = unresolved_session_keys_for_pid(&session_keys, 7).unwrap();
+
+        assert!(unresolved.contains(&retained));
+        assert!(!unresolved.contains(&ignored));
     }
 
     #[test]
@@ -1586,6 +1714,121 @@ mod tests {
                 muted: true,
             }]
         );
+    }
+
+    #[test]
+    fn blocked_target_unmute_removes_existing_clear_update() {
+        let mut result = PlanApplyResult::new(0);
+        let identity = TargetMuteIdentity {
+            process_name: "game.exe",
+            pid: None,
+        };
+
+        result.set_target_state(identity, false);
+        result.block_unmuted_target_state(identity);
+        result.set_target_state(identity, false);
+
+        assert!(result.target_updates.is_empty());
+
+        result.set_target_state(identity, true);
+
+        assert_eq!(
+            result.target_updates,
+            vec![TargetMuteStateUpdate {
+                process_name: "game.exe".to_owned(),
+                pid: None,
+                muted: true,
+            }]
+        );
+    }
+
+    #[test]
+    fn unreadable_session_blocks_all_target_clear_updates() {
+        let mut result = PlanApplyResult::new(0);
+
+        result.set_target_state(
+            TargetMuteIdentity {
+                process_name: "game.exe",
+                pid: None,
+            },
+            false,
+        );
+        result.set_target_state(
+            TargetMuteIdentity {
+                process_name: "chat.exe",
+                pid: Some(7),
+            },
+            true,
+        );
+
+        result.block_all_unmuted_target_states();
+        result.set_target_state(
+            TargetMuteIdentity {
+                process_name: "other.exe",
+                pid: None,
+            },
+            false,
+        );
+
+        assert_eq!(
+            result.target_updates,
+            vec![TargetMuteStateUpdate {
+                process_name: "chat.exe".to_owned(),
+                pid: Some(7),
+                muted: true,
+            }]
+        );
+    }
+
+    #[test]
+    fn unresolved_managed_pid_blocks_target_clear_update() {
+        let mut target = crate::config::TargetProcess::new("game.exe").unwrap();
+        target.managed_muted = true;
+        let targets = [target];
+        let lookup = ManagedTargetLookup::new(&targets);
+        let session_keys = HashSet::from([AudioSessionKey::from_normalized(
+            42,
+            "game.exe".to_owned(),
+            Some("session".to_owned()),
+        )]);
+        let mut result = PlanApplyResult::new(0);
+
+        set_target_states_for_session(
+            &mut result,
+            lookup.matching_sessions("game.exe", 42),
+            Some(TargetMuteIdentity {
+                process_name: "game.exe",
+                pid: None,
+            }),
+            false,
+            true,
+        );
+        result.block_unmuted_target_states_for_unresolved_pid(42, &session_keys, &lookup);
+
+        assert!(result.target_updates.is_empty());
+    }
+
+    #[test]
+    fn unresolved_pid_target_failure_blocks_clear_without_session_key() {
+        let mut target = crate::config::TargetProcess::for_pid("game.exe", 42).unwrap();
+        target.managed_muted = true;
+        let targets = [target];
+        let lookup = ManagedTargetLookup::new(&targets);
+        let mut result = PlanApplyResult::new(0);
+
+        set_target_states_for_session(
+            &mut result,
+            lookup.matching_sessions("game.exe", 42),
+            Some(TargetMuteIdentity {
+                process_name: "game.exe",
+                pid: Some(42),
+            }),
+            false,
+            true,
+        );
+        result.block_unmuted_pid_target_states(42, &lookup);
+
+        assert!(result.target_updates.is_empty());
     }
 
     #[test]

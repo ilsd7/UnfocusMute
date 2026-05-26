@@ -207,14 +207,14 @@ impl AppConfig {
             fs::create_dir_all(parent)?;
         }
 
-        if validate_existing {
-            backup_invalid_existing_config(path)?;
-        }
-
         let mut config = self.clone();
         config.sanitize();
 
         let config_bytes = serialized_config_bytes(&config)?;
+        if validate_existing {
+            backup_invalid_existing_config(path)?;
+        }
+
         let (mut temp_file, temp_path) = create_temp_config_file(path)?;
         let write_result = {
             let mut writer = BufWriter::new(&mut temp_file);
@@ -732,14 +732,13 @@ fn backup_invalid_config(path: &Path) -> io::Result<PathBuf> {
 
 fn backup_invalid_config_with_timestamp(path: &Path, timestamp: u64) -> io::Result<PathBuf> {
     let parent = path.parent().unwrap_or_else(|| Path::new("."));
+    if path.metadata()?.len() > MAX_CONFIG_FILE_BYTES {
+        return move_invalid_config_with_timestamp(path, parent, timestamp);
+    }
+
     let mut source = fs::File::open(path)?;
     for index in 0..100 {
-        let file_name = if index == 0 {
-            format!("config.invalid-{timestamp}.json")
-        } else {
-            format!("config.invalid-{timestamp}-{index}.json")
-        };
-        let backup_path = parent.join(file_name);
+        let backup_path = invalid_config_backup_path(parent, timestamp, index);
         let mut backup = match fs::OpenOptions::new()
             .write(true)
             .create_new(true)
@@ -765,6 +764,38 @@ fn backup_invalid_config_with_timestamp(path: &Path, timestamp: u64) -> io::Resu
         io::ErrorKind::AlreadyExists,
         "could not create a unique invalid config backup path",
     ))
+}
+
+fn move_invalid_config_with_timestamp(
+    path: &Path,
+    parent: &Path,
+    timestamp: u64,
+) -> io::Result<PathBuf> {
+    for index in 0..100 {
+        let backup_path = invalid_config_backup_path(parent, timestamp, index);
+        if backup_path.exists() {
+            continue;
+        }
+        match fs::rename(path, &backup_path) {
+            Ok(()) => return Ok(backup_path),
+            Err(error) if error.kind() == io::ErrorKind::AlreadyExists => continue,
+            Err(error) => return Err(error),
+        }
+    }
+
+    Err(io::Error::new(
+        io::ErrorKind::AlreadyExists,
+        "could not create a unique invalid config backup path",
+    ))
+}
+
+fn invalid_config_backup_path(parent: &Path, timestamp: u64, index: usize) -> PathBuf {
+    let file_name = if index == 0 {
+        format!("config.invalid-{timestamp}.json")
+    } else {
+        format!("config.invalid-{timestamp}-{index}.json")
+    };
+    parent.join(file_name)
 }
 
 struct ProcessNameCandidate<'a> {
@@ -1629,6 +1660,32 @@ mod tests {
     }
 
     #[test]
+    fn oversized_save_does_not_move_existing_config_before_size_check() {
+        let dir = TestDir::new();
+        let path = dir.path().join("config.json");
+        let existing_len = MAX_CONFIG_FILE_BYTES + 1;
+        fs::write(&path, vec![b'x'; existing_len as usize]).unwrap();
+        let config = AppConfig {
+            targets: (0..2_000)
+                .map(|index| TargetProcess {
+                    name: format!("app{index}.exe"),
+                    pid: None,
+                    note: Some("x".repeat(MAX_TARGET_NOTE_CHARS)),
+                    enabled: true,
+                    managed_muted: false,
+                })
+                .collect(),
+            ..AppConfig::default()
+        };
+
+        let error = config.save_to_path(&path, true).unwrap_err();
+
+        assert_eq!(error.kind(), io::ErrorKind::InvalidData);
+        assert_eq!(fs::metadata(&path).unwrap().len(), existing_len);
+        assert_eq!(invalid_backup_count(dir.path()), 0);
+    }
+
+    #[test]
     fn oversized_config_files_skip_content_fingerprints() {
         let dir = TestDir::new();
         let path = dir.path().join("config.json");
@@ -2112,6 +2169,49 @@ mod tests {
         assert_ne!(backup_path, config_path);
         assert_eq!(fs::read_to_string(backup_path).unwrap(), "{not valid json");
         assert_eq!(fs::read_to_string(config_path).unwrap(), "{not valid json");
+    }
+
+    #[test]
+    fn invalid_config_backup_moves_oversized_original() {
+        let dir = TestDir::new();
+        let config_path = dir.path().join("config.json");
+        let original_len = MAX_CONFIG_FILE_BYTES + 1024;
+        fs::write(&config_path, vec![b'x'; original_len as usize]).unwrap();
+
+        let backup_path = backup_invalid_config(&config_path).unwrap();
+
+        assert_eq!(fs::metadata(backup_path).unwrap().len(), original_len);
+        assert!(!config_path.exists());
+    }
+
+    #[test]
+    fn oversized_invalid_config_load_preserves_full_backup() {
+        let dir = TestDir::new();
+        let config_path = dir.path().join("config.json");
+        let original_len = MAX_CONFIG_FILE_BYTES + 1024;
+        fs::write(&config_path, vec![b'x'; original_len as usize]).unwrap();
+
+        let loaded = load_or_default_from_path(&config_path).unwrap();
+
+        assert!(loaded.recovered_invalid_config);
+        assert_eq!(loaded.config, AppConfig::default());
+        assert!(
+            fs::read_to_string(&config_path)
+                .unwrap()
+                .contains("\"version\"")
+        );
+        let backups = fs::read_dir(dir.path())
+            .unwrap()
+            .filter_map(Result::ok)
+            .filter(|entry| {
+                entry
+                    .file_name()
+                    .to_string_lossy()
+                    .starts_with("config.invalid-")
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(backups.len(), 1);
+        assert_eq!(fs::metadata(backups[0].path()).unwrap().len(), original_len);
     }
 
     #[test]
