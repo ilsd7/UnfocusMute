@@ -47,7 +47,7 @@ O silenciamento e a restauração se aplicam apenas às sessões que o UnfocusMu
 
 - Você costuma usar Alt+Tab para sair de um jogo ou app enquanto ele continua aberto.
 - Um jogo ou app não oferece opção própria de silenciar em segundo plano.
-- Você quer silenciar só o áudio do jogo em segundo plano enquanto mantém navegador ou chamada audíveis.
+- Você quer silenciar só o áudio do jogo em segundo plano enquanto continua ouvindo o navegador ou uma chamada.
 - O mesmo `.exe` abre vários processos e você precisa alternar entre gerenciar o app como um todo e controlar um PID específico.
 
 ## Recursos
@@ -57,7 +57,7 @@ O silenciamento e a restauração se aplicam apenas às sessões que o UnfocusMu
 - Suporta entradas por `.exe`, entradas por PID da instância atual e `Ver PID`.
 - Notas por app, estado de silenciamento em tempo real e controles `Pausar` / `Retomar` por app.
 - Execução residente na bandeja, resumo de status na bandeja, pausa global, acesso à pasta de configuração e proteção contra instâncias duplicadas.
-- O botão de configurações no canto inferior esquerdo reúne opções de comportamento, idioma, pasta de configuração, Repositório GitHub e informações de versão.
+- O botão de configurações no canto inferior esquerdo reúne opções de comportamento, idioma, pasta de configuração, repositório GitHub e informações de versão.
 - Escolha de idioma na primeira execução e troca imediata dentro do app entre English/한국어/日本語/简体中文/Español/Français/Português/हिन्दी/العربية.
 - Configurações salvas localmente em `%APPDATA%\UnfocusMute\config.json`.
 
@@ -80,7 +80,7 @@ UnfocusMute é um app independente que não requer instalação. Você também n
 
 ## Antes de usar
 
-UnfocusMute funciona com base nos nomes de processo, nas informações da janela em primeiro plano e nas sessões CoreAudio fornecidas pelo Windows. Se um app ainda não criou uma sessão de áudio, ou se um driver, permissão ou ferramenta de segurança limitar o acesso à sessão, a listagem ou o controle de silenciamento pode ficar parcialmente limitado.
+UnfocusMute funciona com base nos nomes de processo, nas informações da janela em primeiro plano e nas sessões CoreAudio fornecidas pelo Windows. Se um app ainda não criou uma sessão de áudio, ou se um driver, permissão ou ferramenta de segurança limitar o acesso à sessão, a listagem ou o controle de silenciamento podem ficar limitados.
 
 **Comportamento ao registrar por PID:** O Windows nem sempre informa o mesmo PID para uma sessão de áudio e para a janela em primeiro plano. Para compensar isso, o UnfocusMute trata o app como tendo voltado ao primeiro plano quando o nome `.exe` do PID registrado corresponde ao nome `.exe` da janela atual em primeiro plano.
 

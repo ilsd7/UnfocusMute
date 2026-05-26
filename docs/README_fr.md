@@ -47,7 +47,7 @@ La mise en sourdine et la restauration du son ne s’appliquent qu’aux session
 
 - Vous laissez un jeu ou une application ouvert et passez souvent à une autre fenêtre avec Alt+Tab.
 - Un jeu ou une application ne propose pas sa propre option de sourdine en arrière-plan.
-- Vous voulez couper seulement le son d’un jeu en arrière-plan tout en gardant audible un navigateur ou une application d’appel.
+- Vous voulez couper seulement le son d’un jeu en arrière-plan tout en continuant d’entendre un navigateur ou une application d’appel.
 - Le même `.exe` lance plusieurs processus et vous devez passer d’une gestion de l’application entière à un PID précis.
 
 ## Fonctionnalités
@@ -57,7 +57,7 @@ La mise en sourdine et la restauration du son ne s’appliquent qu’aux session
 - Prend en charge l’enregistrement par `.exe`, l’enregistrement par PID de l’instance en cours et `Vue PID`.
 - Notes par application, état de mise en sourdine en temps réel et commandes `Pause` / `Reprendre` par application.
 - Fonctionnement dans la zone de notification, résumé d’état dans la zone de notification, pause globale, accès au dossier de configuration et protection contre les instances multiples.
-- Le bouton Paramètres en bas à gauche regroupe les options de comportement, la langue, le dossier de configuration, Dépôt GitHub et les informations de version.
+- Le bouton Paramètres en bas à gauche regroupe les options de comportement, la langue, le dossier de configuration, le dépôt GitHub et les informations de version.
 - Choix de la langue au premier démarrage, puis changement immédiat dans l’application entre English/한국어/日本語/简体中文/Español/Français/Português/हिन्दी/العربية.
 - Les réglages sont stockés localement dans `%APPDATA%\UnfocusMute\config.json`.
 
@@ -84,7 +84,7 @@ UnfocusMute s’appuie sur les noms de processus, les informations de fenêtre a
 
 **Comportement de l’enregistrement par PID :** Windows ne fournit pas toujours le même PID pour une session audio et pour la fenêtre au premier plan. Pour compenser cela, UnfocusMute considère que l’application est revenue au premier plan lorsque le nom `.exe` du PID enregistré correspond au nom `.exe` de la fenêtre actuellement active.
 
-Si plusieurs instances du même `.exe` sont ouvertes en même temps, un PID précis ne peut donc pas toujours être séparé parfaitement. Dans ce cas, le son peut être rétabli lorsqu’une autre instance est au premier plan.
+Si plusieurs instances du même `.exe` sont ouvertes en même temps, il n’est donc pas toujours possible d’isoler parfaitement un PID précis. Dans ce cas, le son peut être rétabli lorsqu’une autre instance est au premier plan.
 
 **Compatibilité anti-triche :** UnfocusMute n’injecte pas de code dans les jeux, ne lit pas la mémoire du jeu, n’intercepte pas les entrées et ne modifie pas les fichiers du jeu. Il utilise seulement les informations de processus/fenêtre au premier plan de Windows et les commandes de sourdine des sessions CoreAudio. Il devrait donc fonctionner sans problème avec la plupart des systèmes anti-triche, mais la compatibilité avec tous les systèmes anti-triche ne peut pas être garantie.
 
