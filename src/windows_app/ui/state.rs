@@ -60,7 +60,7 @@ impl IssueState {
     }
 }
 
-const STATUS_ISSUE_PRIORITY_ORDER: [StatusIssue; 8] = [
+const STATUS_ISSUE_PRIORITY_ORDER: [StatusIssue; 7] = [
     StatusIssue::ConfigSaveFailed,
     StatusIssue::ConfigLoadFailed,
     StatusIssue::StartupUpdateFailed,
@@ -68,7 +68,6 @@ const STATUS_ISSUE_PRIORITY_ORDER: [StatusIssue; 8] = [
     StatusIssue::TrayIconUnavailable,
     StatusIssue::AudioUnavailable,
     StatusIssue::AudioUpdateFailed,
-    StatusIssue::ProcessRefreshFailed,
 ];
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -81,7 +80,6 @@ pub(super) enum StatusIssue {
     StartupUpdateFailed,
     TimerSetupFailed,
     TrayIconUnavailable,
-    ProcessRefreshFailed,
 }
 
 impl StatusIssue {
@@ -157,7 +155,6 @@ mod tests {
 
         issues.set(StatusIssue::ConfigSaveFailed);
         issues.set(StatusIssue::AudioUnavailable);
-        issues.set(StatusIssue::ProcessRefreshFailed);
 
         assert_eq!(issues.visible(), Some(StatusIssue::ConfigSaveFailed));
     }

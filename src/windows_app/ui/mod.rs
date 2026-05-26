@@ -1833,14 +1833,12 @@ impl AppWindow {
             &mut self.running_process_refresh_buffer,
         ) {
             ProcessRefreshOutcome::Changed => {
-                self.clear_issue(StatusIssue::ProcessRefreshFailed);
                 self.clear_issue(StatusIssue::AudioUnavailable);
                 self.rebuild_process_choices();
                 self.apply_process_filter();
                 ProcessRefreshResult::Refreshed
             }
             ProcessRefreshOutcome::Unchanged => {
-                self.clear_issue(StatusIssue::ProcessRefreshFailed);
                 self.clear_issue(StatusIssue::AudioUnavailable);
                 ProcessRefreshResult::Unchanged
             }
@@ -2305,7 +2303,6 @@ impl AppWindow {
             StatusIssue::StartupUpdateFailed => self.strings.startup_update_failed,
             StatusIssue::TimerSetupFailed => self.strings.timer_setup_failed,
             StatusIssue::TrayIconUnavailable => self.strings.tray_icon_unavailable,
-            StatusIssue::ProcessRefreshFailed => self.strings.process_refresh_failed,
         }
     }
 

@@ -134,7 +134,6 @@ impl Language {
                 startup_update_failed: "자동 실행 설정을 변경하지 못했습니다",
                 timer_setup_failed: "타이머를 설정하지 못했습니다",
                 tray_icon_unavailable: "트레이 아이콘을 표시할 수 없습니다",
-                process_refresh_failed: "오디오 세션 앱 목록을 새로고칠 수 없습니다",
                 open_config_failed: "설정 폴더를 열지 못했습니다",
                 foreground_hook_failed: "전면 창 변경 알림을 등록하지 못했습니다.\n자동 음소거는 폴링 방식으로 계속 동작합니다.",
             },
@@ -204,7 +203,6 @@ impl Language {
                 startup_update_failed: "Could not update auto-start",
                 timer_setup_failed: "Could not set up app timer",
                 tray_icon_unavailable: "Could not show tray icon",
-                process_refresh_failed: "Could not refresh audio session apps",
                 open_config_failed: "Could not open config folder",
                 foreground_hook_failed: "Could not register foreground window notifications.\nAuto-mute will continue to work by polling.",
             },
@@ -274,7 +272,6 @@ impl Language {
                 startup_update_failed: "自動起動設定を変更できませんでした",
                 timer_setup_failed: "タイマーを設定できませんでした",
                 tray_icon_unavailable: "トレイアイコンを表示できません",
-                process_refresh_failed: "音声セッションのアプリ一覧を更新できません",
                 open_config_failed: "設定フォルダーを開けませんでした",
                 foreground_hook_failed: "前面ウィンドウ変更の通知を登録できませんでした。\n自動ミュートはポーリング方式で動作を続けます。",
             },
@@ -344,7 +341,6 @@ impl Language {
                 startup_update_failed: "无法更新自动启动",
                 timer_setup_failed: "无法设置计时器",
                 tray_icon_unavailable: "无法显示托盘图标",
-                process_refresh_failed: "无法刷新音频会话应用列表",
                 open_config_failed: "无法打开配置文件夹",
                 foreground_hook_failed: "无法注册前台窗口变化通知。\n自动静音会继续通过轮询方式工作。",
             },
@@ -414,7 +410,6 @@ impl Language {
                 startup_update_failed: "No se pudo cambiar el inicio automático",
                 timer_setup_failed: "No se pudo configurar el temporizador",
                 tray_icon_unavailable: "No se pudo mostrar el icono de bandeja",
-                process_refresh_failed: "No se pudo actualizar la lista de apps con sesión de audio",
                 open_config_failed: "No se pudo abrir la carpeta de configuración",
                 foreground_hook_failed: "No se pudieron registrar las notificaciones de ventana en primer plano.\nEl silencio automático seguirá funcionando mediante sondeo.",
             },
@@ -484,7 +479,6 @@ impl Language {
                 startup_update_failed: "Impossible de modifier le démarrage auto",
                 timer_setup_failed: "Impossible de configurer le minuteur",
                 tray_icon_unavailable: "Impossible d’afficher l’icône de notification",
-                process_refresh_failed: "Impossible d’actualiser la liste des applications avec session audio",
                 open_config_failed: "Impossible d’ouvrir le dossier de configuration",
                 foreground_hook_failed: "Impossible d’enregistrer les notifications de fenêtre au premier plan.\nLa mise en sourdine automatique continuera avec l’interrogation périodique.",
             },
@@ -554,7 +548,6 @@ impl Language {
                 startup_update_failed: "Não foi possível mudar o início automático",
                 timer_setup_failed: "Não foi possível configurar o temporizador",
                 tray_icon_unavailable: "Não foi possível mostrar o ícone da bandeja",
-                process_refresh_failed: "Não foi possível atualizar a lista de apps com sessão de áudio",
                 open_config_failed: "Não foi possível abrir a pasta de configuração",
                 foreground_hook_failed: "Não foi possível registrar notificações de janela em primeiro plano.\nO silenciamento automático continuará funcionando por verificação periódica.",
             },
@@ -624,7 +617,6 @@ impl Language {
                 startup_update_failed: "ऑटो-स्टार्ट सेटिंग बदली नहीं जा सकी",
                 timer_setup_failed: "टाइमर सेट नहीं हो सका",
                 tray_icon_unavailable: "ट्रे आइकन नहीं दिखाया जा सका",
-                process_refresh_failed: "ऑडियो सेशन वाले ऐप्स की सूची रीफ्रेश नहीं हो सकी",
                 open_config_failed: "कॉन्फिग फ़ोल्डर नहीं खुल सका",
                 foreground_hook_failed: "सामने वाली विंडो के बदलाव की सूचनाएँ रजिस्टर नहीं हो सकीं।\nऑटो-म्यूट पोलिंग के ज़रिए काम करता रहेगा।",
             },
@@ -694,7 +686,6 @@ impl Language {
                 startup_update_failed: "تعذر تغيير التشغيل التلقائي",
                 timer_setup_failed: "تعذر إعداد المؤقت",
                 tray_icon_unavailable: "تعذر عرض أيقونة علبة النظام",
-                process_refresh_failed: "تعذر تحديث قائمة التطبيقات التي لها جلسة صوت",
                 open_config_failed: "تعذر فتح مجلد الإعدادات",
                 foreground_hook_failed: "تعذر تسجيل إشعارات النافذة الأمامية.\nسيستمر الكتم التلقائي بالعمل عبر الفحص الدوري.",
             },
@@ -811,7 +802,6 @@ pub struct Strings {
     pub startup_update_failed: &'static str,
     pub timer_setup_failed: &'static str,
     pub tray_icon_unavailable: &'static str,
-    pub process_refresh_failed: &'static str,
     pub open_config_failed: &'static str,
     pub foreground_hook_failed: &'static str,
 }
@@ -892,7 +882,7 @@ mod tests {
     }
 
     impl Strings {
-        fn all_text(self) -> [&'static str; 70] {
+        fn all_text(self) -> [&'static str; 69] {
             [
                 self.app_title,
                 self.status_running,
@@ -961,7 +951,6 @@ mod tests {
                 self.startup_update_failed,
                 self.timer_setup_failed,
                 self.tray_icon_unavailable,
-                self.process_refresh_failed,
                 self.open_config_failed,
                 self.foreground_hook_failed,
             ]
