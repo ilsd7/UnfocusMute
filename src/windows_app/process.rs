@@ -1,5 +1,4 @@
 use crate::config::normalize_supported_process_name_utf16;
-use std::collections::HashMap;
 use std::mem::size_of;
 use windows::Win32::Foundation::{
     CloseHandle, ERROR_INSUFFICIENT_BUFFER, ERROR_NO_MORE_FILES, HANDLE, HWND,
@@ -58,7 +57,7 @@ impl ProcessNameResolver {
         &mut self,
         pid: u32,
         load_process_name: impl FnOnce(u32) -> Option<String>,
-        load_snapshot_names: impl FnOnce() -> Option<HashMap<u32, String>>,
+        load_snapshot_names: impl FnOnce() -> Option<ProcessNameSnapshot>,
     ) -> Option<&str> {
         if self.unresolved_pids.contains(pid) {
             return None;
@@ -67,7 +66,7 @@ impl ProcessNameResolver {
         if self.prefer_snapshot {
             {
                 let snapshot_names = self.snapshot_names.names(load_snapshot_names);
-                if let Some(name) = snapshot_names.and_then(|names| names.get(&pid)) {
+                if let Some(name) = snapshot_names.and_then(|names| names.get(pid)) {
                     return Some(name);
                 }
             }
@@ -87,7 +86,7 @@ impl ProcessNameResolver {
         let name = load_process_name(pid).or_else(|| {
             self.snapshot_names
                 .names(load_snapshot_names)
-                .and_then(|names| names.get(&pid).cloned())
+                .and_then(|names| names.get(pid).map(str::to_owned))
         });
         match name {
             Some(name) => Some(self.names.insert_absent(pid, name)),
@@ -104,14 +103,14 @@ enum SnapshotProcessNameCache {
     #[default]
     Unloaded,
     Unavailable,
-    Loaded(HashMap<u32, String>),
+    Loaded(ProcessNameSnapshot),
 }
 
 impl SnapshotProcessNameCache {
     fn names(
         &mut self,
-        load: impl FnOnce() -> Option<HashMap<u32, String>>,
-    ) -> Option<&HashMap<u32, String>> {
+        load: impl FnOnce() -> Option<ProcessNameSnapshot>,
+    ) -> Option<&ProcessNameSnapshot> {
         if matches!(self, Self::Unloaded) {
             *self = match load() {
                 Some(names) => Self::Loaded(names),
@@ -123,6 +122,51 @@ impl SnapshotProcessNameCache {
             Self::Loaded(names) => Some(names),
             Self::Unloaded | Self::Unavailable => None,
         }
+    }
+}
+
+#[derive(Default)]
+struct ProcessNameSnapshot {
+    names: Vec<(u32, String)>,
+}
+
+impl ProcessNameSnapshot {
+    fn new(mut names: Vec<(u32, String)>) -> Self {
+        names.sort_unstable_by_key(|(pid, _)| *pid);
+        names.dedup_by_key(|(pid, _)| *pid);
+        Self { names }
+    }
+
+    fn with_capacity(capacity: usize) -> Self {
+        Self {
+            names: Vec::with_capacity(capacity),
+        }
+    }
+
+    fn push(&mut self, pid: u32, name: String) {
+        self.names.push((pid, name));
+    }
+
+    fn get(&self, pid: u32) -> Option<&str> {
+        self.names
+            .binary_search_by_key(&pid, |(cached_pid, _)| *cached_pid)
+            .ok()
+            .map(|index| self.names[index].1.as_str())
+    }
+
+    #[cfg(test)]
+    fn empty() -> Self {
+        Self::default()
+    }
+
+    #[cfg(test)]
+    fn from_entries(entries: impl IntoIterator<Item = (u32, &'static str)>) -> Self {
+        Self::new(
+            entries
+                .into_iter()
+                .map(|(pid, name)| (pid, name.to_owned()))
+                .collect(),
+        )
     }
 }
 
@@ -327,13 +371,13 @@ fn sort_dedup_processes(processes: &mut Vec<ProcessInfo>) {
     processes.dedup();
 }
 
-fn process_names_from_snapshot() -> Option<HashMap<u32, String>> {
-    let mut processes = HashMap::with_capacity(EXPECTED_PROCESS_COUNT);
+fn process_names_from_snapshot() -> Option<ProcessNameSnapshot> {
+    let mut processes = ProcessNameSnapshot::with_capacity(EXPECTED_PROCESS_COUNT);
     if visit_process_snapshot(|pid, name| {
-        processes.insert(pid, name);
+        processes.push(pid, name);
         true
     }) {
-        Some(processes)
+        Some(ProcessNameSnapshot::new(processes.names))
     } else {
         None
     }
@@ -726,6 +770,20 @@ mod tests {
     }
 
     #[test]
+    fn process_name_snapshot_sorts_and_deduplicates_by_pid() {
+        let snapshot = ProcessNameSnapshot::from_entries([
+            (30, "third.exe"),
+            (10, "first.exe"),
+            (20, "second.exe"),
+            (10, "first.exe"),
+        ]);
+
+        assert_eq!(snapshot.get(10), Some("first.exe"));
+        assert_eq!(snapshot.get(20), Some("second.exe"));
+        assert_eq!(snapshot.get(99), None);
+    }
+
+    #[test]
     fn process_name_resolver_caches_direct_first_lookup_failures() {
         let mut resolver = ProcessNameResolver::new();
         let mut image_attempts = 0;
@@ -740,7 +798,7 @@ mod tests {
                 },
                 || {
                     snapshot_attempts += 1;
-                    Some(HashMap::new())
+                    Some(ProcessNameSnapshot::empty())
                 },
             ),
             None
@@ -754,7 +812,7 @@ mod tests {
                 },
                 || {
                     snapshot_attempts += 1;
-                    Some(HashMap::from([(42, "snapshot.exe".to_owned())]))
+                    Some(ProcessNameSnapshot::from_entries([(42, "snapshot.exe")]))
                 },
             ),
             None
@@ -779,7 +837,7 @@ mod tests {
                 },
                 || {
                     snapshot_attempts += 1;
-                    Some(HashMap::new())
+                    Some(ProcessNameSnapshot::empty())
                 },
             ),
             None
@@ -793,7 +851,7 @@ mod tests {
                 },
                 || {
                     snapshot_attempts += 1;
-                    Some(HashMap::from([(42, "snapshot.exe".to_owned())]))
+                    Some(ProcessNameSnapshot::from_entries([(42, "snapshot.exe")]))
                 },
             ),
             None
@@ -832,7 +890,7 @@ mod tests {
                 },
                 || {
                     snapshot_attempts += 1;
-                    Some(HashMap::from([(7, "snapshot.exe".to_owned())]))
+                    Some(ProcessNameSnapshot::from_entries([(7, "snapshot.exe")]))
                 },
             ),
             None
@@ -857,7 +915,7 @@ mod tests {
                 },
                 || {
                     snapshot_attempts += 1;
-                    Some(HashMap::from([(42, "game.exe".to_owned())]))
+                    Some(ProcessNameSnapshot::from_entries([(42, "game.exe")]))
                 },
             ),
             Some("game.exe")
@@ -871,7 +929,7 @@ mod tests {
                 },
                 || {
                     snapshot_attempts += 1;
-                    Some(HashMap::new())
+                    Some(ProcessNameSnapshot::empty())
                 },
             ),
             Some("game.exe")
