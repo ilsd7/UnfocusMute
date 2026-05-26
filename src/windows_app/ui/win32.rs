@@ -5,30 +5,32 @@ use std::ffi::c_void;
 use std::os::windows::ffi::OsStrExt;
 use std::path::Path;
 use windows::Win32::Foundation::{
-    COLORREF, HANDLE, HINSTANCE, HWND, LPARAM, LRESULT, SIZE, WPARAM,
+    COLORREF, HANDLE, HINSTANCE, HWND, LPARAM, LRESULT, POINT, RECT, SIZE, WPARAM,
 };
 use windows::Win32::Graphics::Gdi::{
     CreatePen, CreateSolidBrush, DT_CENTER, DT_NOPREFIX, DT_SINGLELINE, DT_VCENTER, DeleteObject,
     DrawFocusRect, DrawTextW, FillRect, GetDC, GetTextExtentPoint32W, HDC, HGDIOBJ, PS_SOLID,
-    RDW_INVALIDATE, RDW_UPDATENOW, RedrawWindow, ReleaseDC, RoundRect, SelectObject, SetBkMode,
-    SetTextColor, TRANSPARENT,
+    RDW_INVALIDATE, RDW_UPDATENOW, RedrawWindow, ReleaseDC, RoundRect, ScreenToClient,
+    SelectObject, SetBkMode, SetTextColor, TRANSPARENT,
 };
 use windows::Win32::UI::Controls::{
-    BST_CHECKED, BST_UNCHECKED, DRAWITEMSTRUCT, ODS_DISABLED, ODS_FOCUS, ODS_SELECTED,
+    BST_CHECKED, BST_UNCHECKED, COMBOBOXINFO, DRAWITEMSTRUCT, GetComboBoxInfo, ODS_DISABLED,
+    ODS_FOCUS, ODS_SELECTED,
 };
 use windows::Win32::UI::HiDpi::{GetDpiForSystem, GetSystemMetricsForDpi};
 use windows::Win32::UI::Input::KeyboardAndMouse::{
-    TRACKMOUSEEVENT, TRACKMOUSEEVENT_FLAGS, TrackMouseEvent,
+    IsWindowEnabled, TRACKMOUSEEVENT, TRACKMOUSEEVENT_FLAGS, TrackMouseEvent,
 };
 use windows::Win32::UI::Shell::{DefSubclassProc, RemoveWindowSubclass, SetWindowSubclass};
 use windows::Win32::UI::WindowsAndMessaging::{
     BM_GETCHECK, BM_SETCHECK, BS_AUTOCHECKBOX, BS_MULTILINE, BS_OWNERDRAW, CB_ADDSTRING,
-    CB_INITSTORAGE, CB_SETEDITSEL, CreateWindowExW, GetMessageW, GetPropW, GetSystemMetrics,
-    GetWindowTextLengthW, GetWindowTextW, HICON, HMENU, IDI_APPLICATION, IMAGE_ICON, LB_ADDSTRING,
-    LB_INITSTORAGE, LR_DEFAULTCOLOR, LR_SHARED, LoadIconW, LoadImageW, MSG, MoveWindow,
-    RemovePropW, SM_CXICON, SM_CXSMICON, SM_CYICON, SM_CYSMICON, SendMessageW, SetPropW,
+    CB_INITSTORAGE, CB_SETEDITSEL, CreateWindowExW, GA_ROOT, GetAncestor, GetCursorPos,
+    GetMessageW, GetPropW, GetSystemMetrics, GetWindowTextLengthW, GetWindowTextW, HICON, HMENU,
+    HTCLIENT, IDC_ARROW, IDC_HAND, IDI_APPLICATION, IMAGE_ICON, LB_ADDSTRING, LB_INITSTORAGE,
+    LR_DEFAULTCOLOR, LR_SHARED, LoadCursorW, LoadIconW, LoadImageW, MSG, MoveWindow, RemovePropW,
+    SM_CXICON, SM_CXSMICON, SM_CYICON, SM_CYSMICON, SendMessageW, SetCursor, SetPropW,
     SetWindowTextW, UnregisterClassW, WINDOW_EX_STYLE, WINDOW_STYLE, WM_MOUSEMOVE, WM_NCDESTROY,
-    WS_CHILD, WS_CLIPSIBLINGS, WS_TABSTOP, WS_VISIBLE,
+    WM_SETCURSOR, WS_CHILD, WS_CLIPSIBLINGS, WS_TABSTOP, WS_VISIBLE,
 };
 use windows::core::{PCWSTR, w};
 
@@ -45,6 +47,12 @@ const WINDOW_TEXT_STACK_BUFFER_LEN: usize = 256;
 const SYSTEM_COMMAND_MASK: usize = 0xfff0;
 const SC_CLOSE_COMMAND: usize = 0xf060;
 const SC_MINIMIZE_COMMAND: usize = 0xf020;
+const BUTTON_HOVER_SUBCLASS_ID: usize = 42;
+const COMBO_LIST_CURSOR_SUBCLASS_ID: usize = 43;
+const LB_ITEMFROMPOINT_MESSAGE: u32 = 0x01A9;
+const LB_ITEMFROMPOINT_OUTSIDE_MASK: isize = 0x0001_0000;
+const LB_GETITEMRECT_MESSAGE: u32 = 0x0198;
+const LB_ERR: isize = -1;
 
 pub(super) struct WindowClassRegistration {
     class_name: PCWSTR,
@@ -169,6 +177,29 @@ pub(super) unsafe fn create_primary_button(
     id: i32,
 ) -> Result<HWND> {
     unsafe { create_ownerdraw_button(parent, instance, text, x, y, width, height, id, true) }
+}
+
+unsafe fn combo_dropdown_list(hwnd: HWND) -> Option<HWND> {
+    let mut info = COMBOBOXINFO {
+        cbSize: std::mem::size_of::<COMBOBOXINFO>() as u32,
+        ..Default::default()
+    };
+    if unsafe { GetComboBoxInfo(hwnd, &mut info) }.is_err() || info.hwndList.0.is_null() {
+        return None;
+    }
+    Some(info.hwndList)
+}
+
+pub(super) unsafe fn install_combo_dropdown_list_hand_cursor(hwnd: HWND) {
+    if let Some(list) = unsafe { combo_dropdown_list(hwnd) } {
+        unsafe {
+            install_combo_list_cursor_subclass(list, list);
+            let root = GetAncestor(list, GA_ROOT);
+            if !root.0.is_null() && root != list {
+                install_combo_list_cursor_subclass(root, list);
+            }
+        }
+    }
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -698,6 +729,11 @@ unsafe extern "system" fn button_hover_subclass_proc(
     _ref_data: usize,
 ) -> LRESULT {
     match message {
+        WM_SETCURSOR
+            if loword(lparam.0 as u32) as u32 == HTCLIENT && set_hand_cursor_if_enabled(hwnd) =>
+        {
+            return LRESULT(1);
+        }
         WM_MOUSEMOVE => {
             let handle = unsafe { GetPropW(hwnd, w!("ButtonHovered")) };
             let hovered = !handle.0.is_null();
@@ -731,8 +767,133 @@ unsafe extern "system" fn button_hover_subclass_proc(
 
 pub(super) unsafe fn install_button_hover_subclass(hwnd: HWND) {
     unsafe {
-        let _ = SetWindowSubclass(hwnd, Some(button_hover_subclass_proc), 42, 0);
+        let _ = SetWindowSubclass(
+            hwnd,
+            Some(button_hover_subclass_proc),
+            BUTTON_HOVER_SUBCLASS_ID,
+            0,
+        );
     }
+}
+
+unsafe extern "system" fn combo_list_cursor_subclass_proc(
+    hwnd: HWND,
+    message: u32,
+    wparam: WPARAM,
+    lparam: LPARAM,
+    subclass_id: usize,
+    ref_data: usize,
+) -> LRESULT {
+    let list = HWND(ref_data as *mut c_void);
+    match message {
+        WM_SETCURSOR if loword(lparam.0 as u32) as u32 == HTCLIENT => {
+            set_combo_list_cursor(list);
+            return LRESULT(1);
+        }
+        WM_MOUSEMOVE => {
+            set_combo_list_cursor(list);
+        }
+        WM_NCDESTROY => unsafe {
+            let _ = RemoveWindowSubclass(hwnd, Some(combo_list_cursor_subclass_proc), subclass_id);
+        },
+        _ => {}
+    }
+    unsafe { DefSubclassProc(hwnd, message, wparam, lparam) }
+}
+
+unsafe fn install_combo_list_cursor_subclass(hwnd: HWND, list: HWND) {
+    unsafe {
+        let _ = SetWindowSubclass(
+            hwnd,
+            Some(combo_list_cursor_subclass_proc),
+            COMBO_LIST_CURSOR_SUBCLASS_ID,
+            list.0 as usize,
+        );
+    }
+}
+
+fn set_combo_list_cursor(list: HWND) -> bool {
+    if cursor_is_over_list_item(list) {
+        set_hand_cursor_if_enabled(list)
+    } else {
+        set_arrow_cursor()
+    }
+}
+
+fn cursor_is_over_list_item(list: HWND) -> bool {
+    if list.0.is_null() || unsafe { !IsWindowEnabled(list).as_bool() } {
+        return false;
+    }
+
+    let mut point = POINT::default();
+    if unsafe { GetCursorPos(&mut point) }.is_err()
+        || !unsafe { ScreenToClient(list, &mut point).as_bool() }
+    {
+        return false;
+    }
+
+    let result = unsafe {
+        SendMessageW(
+            list,
+            LB_ITEMFROMPOINT_MESSAGE,
+            Some(WPARAM(0)),
+            Some(point_lparam(point)),
+        )
+        .0
+    };
+    if result & LB_ITEMFROMPOINT_OUTSIDE_MASK != 0 {
+        return false;
+    }
+
+    let item_index = loword(result as u32) as usize;
+    let mut item_rect = RECT::default();
+    let rect_result = unsafe {
+        SendMessageW(
+            list,
+            LB_GETITEMRECT_MESSAGE,
+            Some(WPARAM(item_index)),
+            Some(LPARAM(
+                (&mut item_rect as *mut RECT).cast::<c_void>() as isize
+            )),
+        )
+        .0
+    };
+
+    rect_result != LB_ERR
+        && point.x >= item_rect.left
+        && point.x < item_rect.right
+        && point.y >= item_rect.top
+        && point.y < item_rect.bottom
+}
+
+fn point_lparam(point: POINT) -> LPARAM {
+    let x = point.x as i16 as u16 as u32;
+    let y = point.y as i16 as u16 as u32;
+    LPARAM(((y << 16) | x) as isize)
+}
+
+pub(super) fn set_hand_cursor_if_enabled(hwnd: HWND) -> bool {
+    if hwnd.0.is_null() || unsafe { !IsWindowEnabled(hwnd).as_bool() } {
+        return false;
+    }
+
+    let Ok(cursor) = (unsafe { LoadCursorW(None, IDC_HAND) }) else {
+        return false;
+    };
+    unsafe {
+        let _ = SetCursor(Some(cursor));
+    }
+    true
+}
+
+fn set_arrow_cursor() -> bool {
+    let Ok(cursor) = (unsafe { LoadCursorW(None, IDC_ARROW) }) else {
+        return false;
+    };
+    unsafe {
+        let _ = SetCursor(Some(cursor));
+    }
+    true
 }
 
 pub(super) fn default_button_message_result(

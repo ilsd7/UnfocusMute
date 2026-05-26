@@ -42,25 +42,24 @@ use windows::Win32::UI::Shell::{
 };
 use windows::Win32::UI::WindowsAndMessaging::{
     AppendMenuW, BS_OWNERDRAW, CB_GETCURSEL, CB_RESETCONTENT, CB_SETCURSEL, CB_SHOWDROPDOWN,
-    CBN_CLOSEUP, CBN_EDITCHANGE, CBN_SELCHANGE, CBN_SELENDOK, CBN_SETFOCUS, CBS_DROPDOWN,
-    CREATESTRUCTW, CreatePopupMenu, CreateWindowExW, DI_NORMAL, DefWindowProcW, DestroyMenu,
-    DestroyWindow, DispatchMessageW, DrawIconEx, EN_CHANGE, ES_AUTOHSCROLL,
+    CBN_CLOSEUP, CBN_DROPDOWN, CBN_EDITCHANGE, CBN_SELCHANGE, CBN_SELENDOK, CBN_SETFOCUS,
+    CBS_DROPDOWN, CREATESTRUCTW, CreatePopupMenu, CreateWindowExW, DI_NORMAL, DefWindowProcW,
+    DestroyMenu, DestroyWindow, DispatchMessageW, DrawIconEx, EN_CHANGE, ES_AUTOHSCROLL,
     EVENT_SYSTEM_FOREGROUND, FindWindowW, GWLP_USERDATA, GetCursorPos, GetSystemMetrics,
-    GetWindowRect, HICON, HMENU, ICON_BIG, ICON_SMALL, IDC_ARROW, IDC_HAND, IsDialogMessageW,
-    IsIconic, IsWindowVisible, KillTimer, LB_GETCURSEL, LB_RESETCONTENT, LB_SETCURSEL, LBN_DBLCLK,
+    GetWindowRect, HICON, HMENU, ICON_BIG, ICON_SMALL, IDC_ARROW, IsDialogMessageW, IsIconic,
+    IsWindowVisible, KillTimer, LB_GETCURSEL, LB_RESETCONTENT, LB_SETCURSEL, LBN_DBLCLK,
     LBN_SELCHANGE, LBS_HASSTRINGS, LBS_NOINTEGRALHEIGHT, LBS_NOTIFY, LBS_OWNERDRAWVARIABLE,
     LoadCursorW, MB_ICONINFORMATION, MB_ICONWARNING, MB_OK, MF_GRAYED, MF_SEPARATOR, MF_STRING,
     MSG, MessageBoxW, PostMessageW, PostQuitMessage, RegisterClassW, RegisterWindowMessageW,
-    SIZE_MINIMIZED, SM_CXVSCROLL, SW_HIDE, SW_RESTORE, SW_SHOW, SendMessageW, SetCursor,
-    SetForegroundWindow, SetTimer, SetWindowLongPtrW, ShowWindow, TPM_NONOTIFY, TPM_RETURNCMD,
-    TPM_RIGHTBUTTON, TRACK_POPUP_MENU_FLAGS, TrackPopupMenu, TranslateMessage, WINDOW_EX_STYLE,
-    WINDOW_STYLE, WINEVENT_OUTOFCONTEXT, WM_CLOSE, WM_COMMAND, WM_CONTEXTMENU, WM_CREATE,
-    WM_CTLCOLOREDIT, WM_CTLCOLORLISTBOX, WM_CTLCOLORSTATIC, WM_DESTROY, WM_DRAWITEM,
-    WM_EXITSIZEMOVE, WM_KEYDOWN, WM_LBUTTONDBLCLK, WM_LBUTTONDOWN, WM_MEASUREITEM, WM_MOVE,
-    WM_NCCREATE, WM_NCDESTROY, WM_PAINT, WM_RBUTTONUP, WM_SETCURSOR, WM_SETFONT, WM_SETICON,
-    WM_SETREDRAW, WM_SHOWWINDOW, WM_SIZE, WM_SYSCOMMAND, WM_TIMER, WNDCLASSW, WS_BORDER,
-    WS_CAPTION, WS_CHILD, WS_CLIPCHILDREN, WS_MINIMIZEBOX, WS_OVERLAPPED, WS_SYSMENU, WS_TABSTOP,
-    WS_VISIBLE, WS_VSCROLL,
+    SIZE_MINIMIZED, SM_CXVSCROLL, SW_HIDE, SW_RESTORE, SW_SHOW, SendMessageW, SetForegroundWindow,
+    SetTimer, SetWindowLongPtrW, ShowWindow, TPM_NONOTIFY, TPM_RETURNCMD, TPM_RIGHTBUTTON,
+    TRACK_POPUP_MENU_FLAGS, TrackPopupMenu, TranslateMessage, WINDOW_EX_STYLE, WINDOW_STYLE,
+    WINEVENT_OUTOFCONTEXT, WM_CLOSE, WM_COMMAND, WM_CONTEXTMENU, WM_CREATE, WM_CTLCOLOREDIT,
+    WM_CTLCOLORLISTBOX, WM_CTLCOLORSTATIC, WM_DESTROY, WM_DRAWITEM, WM_EXITSIZEMOVE, WM_KEYDOWN,
+    WM_LBUTTONDBLCLK, WM_LBUTTONDOWN, WM_MEASUREITEM, WM_MOVE, WM_NCCREATE, WM_NCDESTROY, WM_PAINT,
+    WM_RBUTTONUP, WM_SETCURSOR, WM_SETFONT, WM_SETICON, WM_SETREDRAW, WM_SHOWWINDOW, WM_SIZE,
+    WM_SYSCOMMAND, WM_TIMER, WNDCLASSW, WS_BORDER, WS_CAPTION, WS_CHILD, WS_CLIPCHILDREN,
+    WS_MINIMIZEBOX, WS_OVERLAPPED, WS_SYSMENU, WS_TABSTOP, WS_VISIBLE, WS_VSCROLL,
 };
 use windows::core::{PCWSTR, w};
 
@@ -120,8 +119,9 @@ use theme::{AppTheme, OwnedBrush, UiFont, px};
 use win32::{
     WindowClassRegistration, add_combo_item_with_buffer, add_list_item_with_buffer,
     copy_wide_fixed, create_button, create_control, default_button_message_result, get_message,
-    hiword, load_app_icon, load_settings_icon, load_tray_icon, loword, measure_text_width,
-    move_window, reserve_combo_items, reserve_list_items, set_combo_edit_caret, set_text,
+    hiword, install_combo_dropdown_list_hand_cursor, load_app_icon, load_settings_icon,
+    load_tray_icon, loword, measure_text_width, move_window, reserve_combo_items,
+    reserve_list_items, set_combo_edit_caret, set_hand_cursor_if_enabled, set_text,
     system_command_closes_or_minimizes, system_command_minimizes, to_wide, window_text_into,
     write_wide_buffer,
 };
@@ -1148,13 +1148,7 @@ impl AppWindow {
         }
 
         self.set_settings_button_hot(true);
-        let Ok(cursor) = (unsafe { LoadCursorW(None, IDC_HAND) }) else {
-            return false;
-        };
-        unsafe {
-            let _ = SetCursor(Some(cursor));
-        }
-        true
+        set_hand_cursor_if_enabled(child)
     }
 
     fn set_settings_button_hot(&mut self, hot: bool) {
@@ -2568,6 +2562,9 @@ impl AppWindow {
             ID_RUNNING if notification == CBN_SETFOCUS as u16 => {
                 self.focus_running_process_picker()
             }
+            ID_RUNNING if notification == CBN_DROPDOWN as u16 => {
+                self.schedule_running_process_list_cursor_install()
+            }
             ID_RUNNING
                 if notification == CBN_SELCHANGE as u16 || notification == CBN_SELENDOK as u16 =>
             {
@@ -2633,14 +2630,7 @@ impl AppWindow {
         }
         self.apply_process_filter();
         if !self.process_choice_indices.is_empty() {
-            unsafe {
-                SendMessageW(
-                    self.controls.running_combo,
-                    CB_SHOWDROPDOWN,
-                    Some(WPARAM(1)),
-                    None,
-                );
-            }
+            self.show_running_process_dropdown();
         }
     }
 
@@ -2673,6 +2663,24 @@ impl AppWindow {
                 Some(WPARAM(1)),
                 None,
             );
+            self.schedule_running_process_list_cursor_install();
+        }
+    }
+
+    fn schedule_running_process_list_cursor_install(&self) {
+        unsafe {
+            let _ = PostMessageW(
+                Some(self.hwnd),
+                WM_INSTALL_PROCESS_LIST_CURSOR,
+                WPARAM(0),
+                LPARAM(0),
+            );
+        }
+    }
+
+    fn install_running_process_list_cursor(&self) {
+        unsafe {
+            install_combo_dropdown_list_hand_cursor(self.controls.running_combo);
         }
     }
 
@@ -3901,6 +3909,10 @@ unsafe extern "system" fn window_proc(
             }
             WM_TIMER => {
                 app.timer_tick(wparam.0);
+                return LRESULT(0);
+            }
+            WM_INSTALL_PROCESS_LIST_CURSOR => {
+                app.install_running_process_list_cursor();
                 return LRESULT(0);
             }
             WM_FOREGROUND_CHANGED => {
