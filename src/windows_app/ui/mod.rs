@@ -96,8 +96,8 @@ use runtime_logic::{
     cached_foreground_process_name, desired_audio_fallback_timer_interval_ms,
     foreground_process_cache_needs_refresh, initial_managed_mute_fast_retry_count,
     initial_process_refresh_attempt, process_refresh_is_stale, replace_text_if_changed,
-    running_process_selection_has_input, should_hide_to_tray,
-    should_release_idle_audio_while_paused, should_retry_tray_icon_before_hide,
+    should_hide_to_tray, should_release_idle_audio_while_paused,
+    should_retry_tray_icon_before_hide,
 };
 use settings_window::{SettingsPreferences, prompt_settings};
 use startup_sync::{
@@ -611,6 +611,7 @@ struct AppWindow {
     foreground_process_name_cache: Option<(u32, Option<String>)>,
     last_process_refresh_attempt: Instant,
     updating_process_combo: bool,
+    running_process_choice_selected: bool,
     muted_by_app: HashSet<AudioSessionKey>,
     last_target_muted: Vec<bool>,
     muted_target_count: usize,
@@ -704,6 +705,7 @@ impl AppWindow {
             foreground_process_name_cache: None,
             last_process_refresh_attempt: initial_process_refresh_attempt(),
             updating_process_combo: false,
+            running_process_choice_selected: false,
             muted_by_app: HashSet::new(),
             last_target_muted: Vec::new(),
             muted_target_count: 0,
@@ -1792,6 +1794,7 @@ impl AppWindow {
 
     fn apply_process_filter(&mut self) {
         let terms = search_terms(&self.process_query);
+        self.running_process_choice_selected = false;
         self.process_choice_indices.clear();
         self.process_choice_indices
             .reserve(self.all_process_choices.len());
@@ -2558,16 +2561,24 @@ impl AppWindow {
             }
             ID_TOGGLE_PROCESS_DETAILS => self.toggle_process_details(),
             ID_PID_DETAILS_HELP => self.show_pid_details_help(),
-            ID_RUNNING if notification == CBN_EDITCHANGE as u16 => self.search_running_processes(),
+            ID_RUNNING if notification == CBN_EDITCHANGE as u16 => {
+                self.running_process_choice_selected = false;
+                self.search_running_processes();
+            }
             ID_RUNNING if notification == CBN_SETFOCUS as u16 => {
                 self.focus_running_process_picker()
             }
             ID_RUNNING
                 if notification == CBN_SELCHANGE as u16 || notification == CBN_SELENDOK as u16 =>
             {
+                self.update_running_process_choice_selected();
                 self.update_action_buttons()
             }
-            ID_RUNNING if notification == CBN_CLOSEUP as u16 => self.focus_main_window(),
+            ID_RUNNING if notification == CBN_CLOSEUP as u16 => {
+                self.focus_main_window();
+                self.update_running_process_choice_selected();
+                self.update_action_buttons();
+            }
             ID_MANUAL if notification == EN_CHANGE as u16 => self.update_manual_process_text(),
             ID_SETTINGS => self.open_settings_window(),
             ID_PAUSE => self.toggle_pause(),
@@ -2617,6 +2628,7 @@ impl AppWindow {
             window_text_into(self.controls.running_combo, &mut self.display_text_buffer);
         }
         if !replace_text_if_changed(&mut self.process_query, &mut self.display_text_buffer) {
+            self.update_action_buttons();
             return;
         }
         self.apply_process_filter();
@@ -2701,6 +2713,7 @@ impl AppWindow {
     }
 
     fn clear_running_process_selection(&mut self) {
+        self.running_process_choice_selected = false;
         unsafe {
             self.updating_process_combo = true;
             SendMessageW(
@@ -3087,28 +3100,28 @@ impl AppWindow {
     fn selected_process_choice_index(&mut self) -> Option<usize> {
         let index =
             unsafe { SendMessageW(self.controls.running_combo, CB_GETCURSEL, None, None).0 };
-        if index >= 0 {
-            if !self.running_process_selection_has_input() {
-                return None;
-            }
-            self.process_choice_indices.get(index as usize).copied()
-        } else {
-            self.single_filtered_process_choice_index()
+        if index >= 0 && self.running_process_choice_selected {
+            return self.process_choice_indices.get(index as usize).copied();
         }
-    }
-
-    fn running_process_selection_has_input(&mut self) -> bool {
         unsafe {
             window_text_into(self.controls.running_combo, &mut self.display_text_buffer);
         }
-        let has_input =
-            running_process_selection_has_input(&self.process_query, &self.display_text_buffer);
+        let selected = self.single_filtered_process_choice_index(&self.display_text_buffer);
         self.display_text_buffer.clear();
-        has_input
+        selected
     }
 
-    fn single_filtered_process_choice_index(&self) -> Option<usize> {
-        if self.process_query.trim().is_empty() || self.process_choice_indices.len() != 1 {
+    fn update_running_process_choice_selected(&mut self) {
+        let index =
+            unsafe { SendMessageW(self.controls.running_combo, CB_GETCURSEL, None, None).0 };
+        self.running_process_choice_selected = index >= 0;
+    }
+
+    fn single_filtered_process_choice_index(&self, picker_text: &str) -> Option<usize> {
+        if self.process_query.trim().is_empty()
+            || picker_text.trim().is_empty()
+            || self.process_choice_indices.len() != 1
+        {
             return None;
         }
         self.process_choice_indices.first().copied()
