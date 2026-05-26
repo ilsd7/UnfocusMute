@@ -1194,12 +1194,16 @@ impl AppWindow {
                 |language| self.apply_settings_language(language),
             )
         };
-        self.settings_window_open = false;
-        self.start_settings_close_minimize_guard();
+        self.finish_settings_window_modal();
         let Ok(Some(preferences)) = result else {
             return;
         };
         self.apply_settings_preferences(preferences);
+    }
+
+    fn finish_settings_window_modal(&mut self) {
+        self.settings_window_open = false;
+        self.start_settings_close_minimize_guard();
     }
 
     fn start_settings_close_minimize_guard(&mut self) {
