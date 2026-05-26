@@ -22,33 +22,28 @@ pub(super) fn target_has_managed_mute(
     target: &TargetProcess,
     muted_by_app: &HashSet<AudioSessionKey>,
 ) -> bool {
-    ManagedMuteLookup::new(muted_by_app).target_has_managed_mute(target)
+    target.enabled
+        && (target.managed_muted
+            || muted_by_app
+                .iter()
+                .any(|key| target_matches_session_key(target, key)))
 }
 
 pub(super) struct ManagedMuteLookup<'a> {
-    process_names: Vec<&'a str>,
-    process_names_by_pid: Vec<(&'a str, u32)>,
+    sessions: Vec<(&'a str, u32)>,
 }
 
 impl<'a> ManagedMuteLookup<'a> {
     pub(super) fn new(muted_by_app: &'a HashSet<AudioSessionKey>) -> Self {
-        let mut process_names = Vec::with_capacity(muted_by_app.len());
-        let mut process_names_by_pid = Vec::with_capacity(muted_by_app.len());
+        let mut sessions = Vec::with_capacity(muted_by_app.len());
         for key in muted_by_app {
-            let name = key.process_name.as_str();
-            process_names.push(name);
-            process_names_by_pid.push((name, key.pid));
+            sessions.push((key.process_name.as_str(), key.pid));
         }
 
-        process_names.sort_unstable();
-        process_names.dedup();
-        process_names_by_pid.sort_unstable_by(compare_managed_mute_pid_entry);
-        process_names_by_pid.dedup();
+        sessions.sort_unstable_by(compare_managed_mute_session_entry);
+        sessions.dedup();
 
-        Self {
-            process_names,
-            process_names_by_pid,
-        }
+        Self { sessions }
     }
 
     pub(super) fn target_has_managed_mute(&self, target: &TargetProcess) -> bool {
@@ -66,21 +61,23 @@ impl<'a> ManagedMuteLookup<'a> {
     }
 
     fn has_process_name(&self, name: &str) -> bool {
-        self.process_names.binary_search(&name).is_ok()
+        self.sessions
+            .binary_search_by(|entry| entry.0.cmp(name))
+            .is_ok()
     }
 
     fn has_process_pid(&self, name: &str, pid: u32) -> bool {
-        self.process_names_by_pid
-            .binary_search_by(|entry| compare_managed_mute_pid_key(*entry, name, pid))
+        self.sessions
+            .binary_search_by(|entry| compare_managed_mute_session_key(*entry, name, pid))
             .is_ok()
     }
 }
 
-fn compare_managed_mute_pid_entry(left: &(&str, u32), right: &(&str, u32)) -> CmpOrdering {
+fn compare_managed_mute_session_entry(left: &(&str, u32), right: &(&str, u32)) -> CmpOrdering {
     left.0.cmp(right.0).then_with(|| left.1.cmp(&right.1))
 }
 
-fn compare_managed_mute_pid_key(entry: (&str, u32), name: &str, pid: u32) -> CmpOrdering {
+fn compare_managed_mute_session_key(entry: (&str, u32), name: &str, pid: u32) -> CmpOrdering {
     entry.0.cmp(name).then_with(|| entry.1.cmp(&pid))
 }
 
