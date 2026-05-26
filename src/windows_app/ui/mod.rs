@@ -1556,14 +1556,15 @@ impl AppWindow {
             .max(combo_width)
             .min(add_manual_x - content_left - gap);
         let manual_edit_x = content_left;
-        let manual_label_width = manual_edit_width;
+        let manual_label_width = content_right - content_left;
+        let manual_label_height = (manual_button_y - manual_label_y).max(1);
         let _ = unsafe {
             move_window(
                 self.controls.manual_label,
                 content_left,
                 manual_label_y,
                 manual_label_width,
-                20,
+                manual_label_height,
                 true,
             )
         };
