@@ -53,7 +53,7 @@ O silenciamento e a restauração se aplicam apenas às sessões que o UnfocusMu
 ## Recursos
 
 - Silencia automaticamente apps registrados enquanto estão em segundo plano e restaura o áudio quando voltam ao primeiro plano.
-- Registra apps pela lista de apps com sessão de áudio ou digitando um nome como `game.exe`.
+- Escolha pela lista de sessões de áudio, alterne para todos os processos em execução quando necessário ou digite um nome como `game.exe`.
 - Suporta entradas por `.exe`, entradas por PID da instância atual e `Ver PID`.
 - Notas por app, estado de silenciamento em tempo real e controles `Pausar` / `Retomar` por app.
 - Execução residente na bandeja, resumo de status na bandeja, pausa global, acesso à pasta de configuração e proteção contra instâncias duplicadas.
@@ -80,7 +80,7 @@ UnfocusMute é um app independente que não requer instalação. Você também n
 
 ## Antes de usar
 
-UnfocusMute funciona com base nos nomes de processo, nas informações da janela em primeiro plano e nas sessões CoreAudio fornecidas pelo Windows. Se um app ainda não criou uma sessão de áudio, ou se um driver, permissão ou ferramenta de segurança limitar o acesso à sessão, a listagem ou o controle de silenciamento podem ficar limitados.
+UnfocusMute funciona com base nos nomes de processo, nas informações da janela em primeiro plano e nas sessões CoreAudio fornecidas pelo Windows. A lista padrão mostra apps com sessão de áudio; alterne para `Todos os processos` para escolher entre processos `.exe` em execução que ainda não criaram uma sessão de áudio. Se um driver, permissão ou ferramenta de segurança limitar o acesso à sessão, o controle de silenciamento ainda pode ficar limitado.
 
 **Comportamento ao registrar por PID:** O Windows nem sempre informa o mesmo PID para uma sessão de áudio e para a janela em primeiro plano. Para compensar isso, o UnfocusMute trata o app como tendo voltado ao primeiro plano quando o nome `.exe` do PID registrado corresponde ao nome `.exe` da janela atual em primeiro plano.
 
@@ -93,7 +93,7 @@ Assim, se houver várias instâncias do mesmo `.exe` em execução ao mesmo temp
 1. Abra o UnfocusMute.
 2. Escolha o idioma na tela exibida na primeira execução. O idioma padrão é inglês.
 3. Inicie o jogo ou app que você quer silenciar quando estiver em segundo plano.
-4. Abra a lista `Pesquisar processo` ou digite uma busca, escolha um app com sessão de áudio e clique em `Registrar`. Apps que ainda não criaram uma sessão de áudio podem não aparecer; nesse caso, digite o nome `.exe` manualmente.
+4. Abra a lista `Pesquisar processo` ou digite uma busca, escolha um app e clique em `Registrar`. Use `Todos os processos` se o app ainda não criou uma sessão de áudio; se ele ainda não aparecer, digite o nome `.exe` manualmente.
 5. Se precisar registrar apenas um PID específico, clique em `Ver PID` e escolha a entrada individual. Entradas por PID valem só para a instância em execução; se o app reiniciar com outro PID, selecione novamente.
 6. Clique com o botão direito em um app registrado para editar sua nota ou usar `Pausar`.
 7. Abra `Configurações` no canto inferior esquerdo para alterar opções de comportamento.

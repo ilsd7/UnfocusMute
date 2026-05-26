@@ -584,6 +584,21 @@ fn show_main_window(hwnd: HWND) {
     }
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum ProcessListSource {
+    AudioSessions,
+    AllProcesses,
+}
+
+impl ProcessListSource {
+    fn toggled(self) -> Self {
+        match self {
+            Self::AudioSessions => Self::AllProcesses,
+            Self::AllProcesses => Self::AudioSessions,
+        }
+    }
+}
+
 struct AppWindow {
     hwnd: HWND,
     controls: Controls,
@@ -610,6 +625,7 @@ struct AppWindow {
     settings_close_minimize_guard_until: Option<Instant>,
     foreground_process_name_cache: Option<(u32, Option<String>)>,
     last_process_refresh_attempt: Instant,
+    process_list_source: ProcessListSource,
     updating_process_combo: bool,
     running_process_choice_selected: bool,
     muted_by_app: HashSet<AudioSessionKey>,
@@ -704,6 +720,7 @@ impl AppWindow {
             settings_close_minimize_guard_until: None,
             foreground_process_name_cache: None,
             last_process_refresh_attempt: initial_process_refresh_attempt(),
+            process_list_source: ProcessListSource::AudioSessions,
             updating_process_combo: false,
             running_process_choice_selected: false,
             muted_by_app: HashSet::new(),
@@ -901,7 +918,7 @@ impl AppWindow {
                 ID_RUNNING,
             )?
         };
-        self.controls.refresh_button = unsafe {
+        self.controls.process_source_button = unsafe {
             create_button(
                 self.hwnd,
                 instance,
@@ -910,7 +927,7 @@ impl AppWindow {
                 PROCESS_PICKER_COMBO_Y + PROCESS_PICKER_BUTTON_Y_OFFSET,
                 122,
                 PROCESS_PICKER_BUTTON_HEIGHT,
-                ID_REFRESH,
+                ID_PROCESS_SOURCE,
             )?
         };
         self.controls.toggle_process_details_button = unsafe {
@@ -1092,7 +1109,6 @@ impl AppWindow {
             set_text(self.controls.manual_label, self.strings.manual_process);
             set_text(self.controls.add_selected_button, self.strings.add_selected);
             set_text(self.controls.add_manual_button, self.strings.add_manual);
-            set_text(self.controls.refresh_button, self.strings.refresh);
             self.update_pause_button_text();
             set_text(self.controls.hide_button, self.strings.hide);
             set_text(self.controls.quit_button, self.strings.quit);
@@ -1325,6 +1341,10 @@ impl AppWindow {
             self.set_process_picker_redraw(false);
             set_text(self.controls.running_hint, hint_text);
             set_text(
+                self.controls.process_source_button,
+                self.process_source_toggle_text(),
+            );
+            set_text(
                 self.controls.toggle_process_details_button,
                 detail_button_text,
             );
@@ -1340,13 +1360,20 @@ impl AppWindow {
         self.redraw_process_picker();
     }
 
+    fn process_source_toggle_text(&self) -> &'static str {
+        match self.process_list_source {
+            ProcessListSource::AudioSessions => self.strings.show_all_processes,
+            ProcessListSource::AllProcesses => self.strings.show_audio_sessions,
+        }
+    }
+
     unsafe fn set_process_picker_redraw(&self, enabled: bool) {
         let value = if enabled { 1 } else { 0 };
         for hwnd in [
             self.controls.running_hint,
             self.controls.running_combo,
             self.controls.add_selected_button,
-            self.controls.refresh_button,
+            self.controls.process_source_button,
             self.controls.toggle_process_details_button,
             self.controls.manual_label,
             self.controls.manual_edit,
@@ -1386,7 +1413,7 @@ impl AppWindow {
         let manual_label_y = MANUAL_PROCESS_ROW_Y;
 
         let add_selected_width = self.compact_button_width(self.strings.add_selected, 78, 150);
-        let refresh_width = self.button_width(self.strings.refresh, 116, 162);
+        let refresh_width = self.button_width(self.process_source_toggle_text(), 116, 178);
         let details_text = if self.show_process_details {
             self.strings.hide_pid_details
         } else {
@@ -1447,7 +1474,7 @@ impl AppWindow {
         };
         let _ = unsafe {
             move_window(
-                self.controls.refresh_button,
+                self.controls.process_source_button,
                 refresh_x,
                 button_y,
                 refresh_width,
@@ -1746,6 +1773,13 @@ impl AppWindow {
 
     fn refresh_processes(&mut self) -> ProcessRefreshResult {
         self.last_process_refresh_attempt = Instant::now();
+        match self.process_list_source {
+            ProcessListSource::AudioSessions => self.refresh_audio_session_processes(),
+            ProcessListSource::AllProcesses => self.refresh_all_processes(),
+        }
+    }
+
+    fn refresh_audio_session_processes(&mut self) -> ProcessRefreshResult {
         self.reset_audio_if_endpoint_changed();
         if !self.ensure_audio_controller(false) {
             self.set_issue(StatusIssue::AudioUnavailable);
@@ -1775,6 +1809,21 @@ impl AppWindow {
                 self.set_issue(StatusIssue::AudioUnavailable);
                 ProcessRefreshResult::Failed
             }
+        }
+    }
+
+    fn refresh_all_processes(&mut self) -> ProcessRefreshResult {
+        match process::refresh_snapshot_processes(
+            &mut self.running_processes,
+            &mut self.running_process_refresh_buffer,
+        ) {
+            ProcessRefreshOutcome::Changed => {
+                self.rebuild_process_choices();
+                self.apply_process_filter();
+                ProcessRefreshResult::Refreshed
+            }
+            ProcessRefreshOutcome::Unchanged => ProcessRefreshResult::Unchanged,
+            ProcessRefreshOutcome::Failed => ProcessRefreshResult::Failed,
         }
     }
 
@@ -2550,9 +2599,7 @@ impl AppWindow {
         match id {
             ID_ADD_SELECTED => self.add_selected_process(),
             ID_ADD_MANUAL => self.add_manual_target(),
-            ID_REFRESH => {
-                self.refresh_processes();
-            }
+            ID_PROCESS_SOURCE => self.toggle_process_list_source(),
             ID_TOGGLE_PROCESS_DETAILS => self.toggle_process_details(),
             ID_PID_DETAILS_HELP => self.show_pid_details_help(),
             ID_RUNNING if notification == CBN_EDITCHANGE as u16 => {
@@ -2734,6 +2781,14 @@ impl AppWindow {
             self.updating_process_combo = false;
         }
         self.update_action_buttons();
+    }
+
+    fn toggle_process_list_source(&mut self) {
+        self.process_list_source = self.process_list_source.toggled();
+        self.focus_main_window();
+        self.refresh_process_details_ui();
+        let _ = self.refresh_processes();
+        self.show_running_process_dropdown();
     }
 
     fn focus_main_window(&self) {
@@ -3508,7 +3563,7 @@ impl AppWindow {
 
         let draw = unsafe { &*(lparam.0 as *const DRAWITEMSTRUCT) };
         let ctl_id = draw.CtlID as i32;
-        if ctl_id == ID_REFRESH
+        if ctl_id == ID_PROCESS_SOURCE
             || ctl_id == ID_TOGGLE_PROCESS_DETAILS
             || ctl_id == ID_PID_DETAILS_HELP
             || ctl_id == ID_ADD_SELECTED

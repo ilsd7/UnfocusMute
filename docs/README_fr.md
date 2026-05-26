@@ -53,7 +53,7 @@ La mise en sourdine et la restauration du son ne s’appliquent qu’aux session
 ## Fonctionnalités
 
 - Met automatiquement en sourdine les applications enregistrées lorsqu’elles sont en arrière-plan et rétablit leur son à leur retour au premier plan.
-- Enregistrement depuis la liste des applications avec session audio ou en saisissant un nom comme `game.exe`.
+- Choix depuis la liste des sessions audio, passage à tous les processus en cours si nécessaire, ou saisie d’un nom comme `game.exe`.
 - Prend en charge l’enregistrement par `.exe`, l’enregistrement par PID de l’instance en cours et `Vue PID`.
 - Notes par application, état de mise en sourdine en temps réel et commandes `Pause` / `Reprendre` par application.
 - Fonctionnement dans la zone de notification, résumé d’état dans la zone de notification, pause globale, accès au dossier de configuration et protection contre les instances multiples.
@@ -80,7 +80,7 @@ UnfocusMute est une application autonome qui ne nécessite aucune installation. 
 
 ## À savoir avant utilisation
 
-UnfocusMute s’appuie sur les noms de processus, les informations de fenêtre au premier plan et les sessions CoreAudio fournies par Windows. Si une application n’a pas encore créé de session audio, ou si un pilote, un réglage d’autorisation ou un logiciel de sécurité limite l’accès aux sessions, l’affichage dans la liste ou le contrôle de sourdine peut être limité.
+UnfocusMute s’appuie sur les noms de processus, les informations de fenêtre au premier plan et les sessions CoreAudio fournies par Windows. La liste par défaut affiche les applications avec session audio ; passez à `Tous les processus` pour choisir parmi les processus `.exe` en cours qui n’ont pas encore créé de session audio. Si un pilote, un réglage d’autorisation ou un logiciel de sécurité limite l’accès aux sessions, le contrôle de sourdine peut rester limité.
 
 **Comportement de l’enregistrement par PID :** Windows ne fournit pas toujours le même PID pour une session audio et pour la fenêtre au premier plan. Pour compenser cela, UnfocusMute considère que l’application est revenue au premier plan lorsque le nom `.exe` du PID enregistré correspond au nom `.exe` de la fenêtre actuellement active.
 
@@ -93,7 +93,7 @@ Si plusieurs instances du même `.exe` sont ouvertes en même temps, il n’est 
 1. Lancez UnfocusMute.
 2. Choisissez la langue dans l’écran affiché au premier démarrage. La langue par défaut est l’anglais.
 3. Lancez le jeu ou l’application à mettre en sourdine lorsqu’il passe en arrière-plan.
-4. Ouvrez la liste `Rechercher un processus` ou saisissez un terme de recherche, choisissez une application avec session audio, puis cliquez sur `Enregistrer`. Les applications qui n’ont pas encore créé de session audio peuvent ne pas apparaître ; dans ce cas, saisissez le nom `.exe` manuellement.
+4. Ouvrez la liste `Rechercher un processus` ou saisissez un terme de recherche, choisissez une application, puis cliquez sur `Enregistrer`. Utilisez `Tous les processus` si l’application n’a pas encore créé de session audio ; si elle n’apparaît toujours pas, saisissez le nom `.exe` manuellement.
 5. Si vous devez enregistrer seulement un PID précis, cliquez sur `Vue PID` et choisissez l’entrée concernée. Une entrée par PID n’est valable que pour l’instance actuellement ouverte ; si l’application redémarre avec un autre PID, sélectionnez-la à nouveau.
 6. Faites un clic droit sur une application enregistrée pour modifier sa note ou utiliser `Pause`.
 7. Ouvrez `Paramètres` en bas à gauche pour modifier le comportement.

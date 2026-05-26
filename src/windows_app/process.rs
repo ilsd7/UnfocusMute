@@ -268,6 +268,20 @@ pub(crate) fn replace_processes(
     ProcessRefreshOutcome::Changed
 }
 
+pub(crate) fn refresh_snapshot_processes(
+    processes: &mut Vec<ProcessInfo>,
+    scratch: &mut Vec<ProcessInfo>,
+) -> ProcessRefreshOutcome {
+    replace_processes(processes, scratch, collect_process_snapshot)
+}
+
+fn collect_process_snapshot(processes: &mut Vec<ProcessInfo>) -> bool {
+    visit_process_snapshot(|pid, name| {
+        processes.push(ProcessInfo { pid, name });
+        true
+    })
+}
+
 fn sort_dedup_processes(processes: &mut Vec<ProcessInfo>) {
     processes.sort_unstable_by(|left, right| {
         left.name
