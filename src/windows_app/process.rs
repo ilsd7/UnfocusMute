@@ -293,14 +293,7 @@ pub fn foreground_pid() -> Option<u32> {
     }
 }
 
-pub fn refresh_running_processes(
-    processes: &mut Vec<ProcessInfo>,
-    scratch: &mut Vec<ProcessInfo>,
-) -> ProcessRefreshOutcome {
-    replace_running_processes(processes, scratch, collect_running_processes)
-}
-
-fn replace_running_processes(
+pub(crate) fn replace_processes(
     processes: &mut Vec<ProcessInfo>,
     scratch: &mut Vec<ProcessInfo>,
     collect: impl FnOnce(&mut Vec<ProcessInfo>) -> bool,
@@ -315,7 +308,7 @@ fn replace_running_processes(
         scratch.clear();
         return ProcessRefreshOutcome::Failed;
     }
-    sort_running_processes(scratch);
+    sort_dedup_processes(scratch);
     if *processes == *scratch {
         scratch.clear();
         return ProcessRefreshOutcome::Unchanged;
@@ -325,19 +318,13 @@ fn replace_running_processes(
     ProcessRefreshOutcome::Changed
 }
 
-fn collect_running_processes(processes: &mut Vec<ProcessInfo>) -> bool {
-    visit_process_snapshot(|pid, name| {
-        processes.push(ProcessInfo { pid, name });
-        true
-    })
-}
-
-fn sort_running_processes(processes: &mut [ProcessInfo]) {
+fn sort_dedup_processes(processes: &mut Vec<ProcessInfo>) {
     processes.sort_unstable_by(|left, right| {
         left.name
             .cmp(&right.name)
             .then_with(|| left.pid.cmp(&right.pid))
     });
+    processes.dedup();
 }
 
 fn process_names_from_snapshot() -> Option<HashMap<u32, String>> {
@@ -596,7 +583,7 @@ mod tests {
         let mut scratch = Vec::new();
 
         assert_eq!(
-            replace_running_processes(&mut processes, &mut scratch, |_| false),
+            replace_processes(&mut processes, &mut scratch, |_| false),
             ProcessRefreshOutcome::Failed
         );
         assert_eq!(
@@ -618,7 +605,7 @@ mod tests {
         let mut scratch = Vec::new();
 
         assert_eq!(
-            replace_running_processes(&mut processes, &mut scratch, |next| {
+            replace_processes(&mut processes, &mut scratch, |next| {
                 next.push(ProcessInfo {
                     pid: 30,
                     name: "zeta.exe".to_owned(),
@@ -670,7 +657,7 @@ mod tests {
         let mut scratch = Vec::new();
 
         assert_eq!(
-            replace_running_processes(&mut processes, &mut scratch, |next| {
+            replace_processes(&mut processes, &mut scratch, |next| {
                 next.push(ProcessInfo {
                     pid: 20,
                     name: "zeta.exe".to_owned(),
@@ -695,6 +682,35 @@ mod tests {
                     name: "zeta.exe".to_owned()
                 }
             ]
+        );
+        assert!(scratch.is_empty());
+    }
+
+    #[test]
+    fn process_refresh_deduplicates_collected_entries() {
+        let mut processes = Vec::new();
+        let mut scratch = Vec::new();
+
+        assert_eq!(
+            replace_processes(&mut processes, &mut scratch, |next| {
+                next.push(ProcessInfo {
+                    pid: 20,
+                    name: "alpha.exe".to_owned(),
+                });
+                next.push(ProcessInfo {
+                    pid: 20,
+                    name: "alpha.exe".to_owned(),
+                });
+                true
+            }),
+            ProcessRefreshOutcome::Changed
+        );
+        assert_eq!(
+            processes,
+            [ProcessInfo {
+                pid: 20,
+                name: "alpha.exe".to_owned()
+            }]
         );
         assert!(scratch.is_empty());
     }

@@ -537,10 +537,28 @@ fn compare_targets(left: &TargetProcess, right: &TargetProcess) -> Ordering {
 }
 
 fn compare_target_key(left: &TargetProcess, name: &str, pid: Option<u32>) -> Ordering {
-    left.name
-        .as_str()
-        .cmp(name)
-        .then_with(|| left.pid.cmp(&pid))
+    compare_target_identity(left.name.as_str(), left.pid, name, pid)
+}
+
+pub(crate) fn compare_target_identity(
+    left_name: &str,
+    left_pid: Option<u32>,
+    right_name: &str,
+    right_pid: Option<u32>,
+) -> Ordering {
+    left_name
+        .cmp(right_name)
+        .then_with(|| left_pid.cmp(&right_pid))
+}
+
+pub(crate) fn target_index_by_identity(
+    targets: &[TargetProcess],
+    name: &str,
+    pid: Option<u32>,
+) -> Option<usize> {
+    targets
+        .binary_search_by(|target| compare_target_identity(&target.name, target.pid, name, pid))
+        .ok()
 }
 
 fn load_or_default_from_path(path: &Path) -> io::Result<AppConfigLoad> {

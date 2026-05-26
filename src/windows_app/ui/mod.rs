@@ -2,7 +2,7 @@ use crate::config::{
     AppConfig, AppConfigLoad, ConfigFileStamp, TargetProcess, WindowPosition, config_dir,
     config_reload_needed, current_config_stamp, is_normalized_process_name,
     is_supported_normalized_target_process_name, merge_pending_config_changes,
-    normalize_manual_process_name, normalize_manual_process_name_cow,
+    normalize_manual_process_name, normalize_manual_process_name_cow, target_index_by_identity,
 };
 use crate::engine::{AudioSessionKey, TargetMatcher};
 use crate::i18n::{Language, Strings};
@@ -96,8 +96,7 @@ use runtime_logic::{
     foreground_process_cache_needs_refresh, initial_managed_mute_fast_retry_count,
     initial_process_refresh_attempt, process_refresh_is_stale, replace_text_if_changed,
     running_process_selection_has_input, should_hide_to_tray,
-    should_release_idle_audio_while_paused, should_reset_audio_controller_after_update,
-    should_retry_tray_icon_before_hide,
+    should_release_idle_audio_while_paused, should_retry_tray_icon_before_hide,
 };
 use settings_window::{SettingsPreferences, prompt_settings};
 use startup_sync::{
@@ -113,8 +112,7 @@ use status_text::{
     app_title_with_version_into, status_text, status_text_and_detail_into, tray_tip_text_into,
 };
 use target_model::{
-    grouped_process_choice_count, target_display_name_into, target_display_storage_bytes_hint,
-    target_index_by_identity, target_matcher_inputs_changed,
+    target_display_name_into, target_display_storage_bytes_hint, target_matcher_inputs_changed,
 };
 use target_note_prompt::prompt_target_note;
 use theme::{AppTheme, OwnedBrush, UiFont, px};
@@ -1820,22 +1818,35 @@ impl AppWindow {
 
     fn refresh_processes(&mut self) -> ProcessRefreshResult {
         self.last_process_refresh_attempt = Instant::now();
-        match process::refresh_running_processes(
+        self.reset_audio_if_endpoint_changed();
+        if !self.ensure_audio_controller(false) {
+            self.set_issue(StatusIssue::AudioUnavailable);
+            return ProcessRefreshResult::Failed;
+        }
+
+        let Some(audio) = &self.audio else {
+            self.set_issue(StatusIssue::AudioUnavailable);
+            return ProcessRefreshResult::Failed;
+        };
+        match audio.refresh_session_processes(
             &mut self.running_processes,
             &mut self.running_process_refresh_buffer,
         ) {
             ProcessRefreshOutcome::Changed => {
                 self.clear_issue(StatusIssue::ProcessRefreshFailed);
+                self.clear_issue(StatusIssue::AudioUnavailable);
                 self.rebuild_process_choices();
                 self.apply_process_filter();
                 ProcessRefreshResult::Refreshed
             }
             ProcessRefreshOutcome::Unchanged => {
                 self.clear_issue(StatusIssue::ProcessRefreshFailed);
+                self.clear_issue(StatusIssue::AudioUnavailable);
                 ProcessRefreshResult::Unchanged
             }
             ProcessRefreshOutcome::Failed => {
-                self.set_issue(StatusIssue::ProcessRefreshFailed);
+                self.audio = None;
+                self.set_issue(StatusIssue::AudioUnavailable);
                 ProcessRefreshResult::Failed
             }
         }
@@ -1923,7 +1934,7 @@ impl AppWindow {
         }
 
         self.all_process_choices
-            .reserve(grouped_process_choice_count(&self.running_processes));
+            .reserve(self.running_processes.len());
         let mut processes = self.running_processes.iter();
         let Some(first) = processes.next() else {
             return;
@@ -1985,13 +1996,7 @@ impl AppWindow {
         self.sync_audio_fallback_timer();
         self.ensure_foreground_hook();
 
-        if self
-            .audio
-            .as_ref()
-            .is_some_and(|audio| audio.take_endpoint_changed())
-        {
-            self.reset_audio_after_endpoint_change();
-        }
+        self.reset_audio_if_endpoint_changed();
 
         if !self.ensure_audio_controller(true) {
             return;
@@ -2034,9 +2039,6 @@ impl AppWindow {
             self.save_config();
         }
         self.apply_audio_update_result(apply_result.had_failures);
-        if should_reset_audio_controller_after_update(apply_result.had_failures) {
-            self.audio = None;
-        }
 
         self.sync_target_mute_indicators();
         self.sync_audio_fallback_timer();
@@ -2097,6 +2099,16 @@ impl AppWindow {
         }
         self.audio = None;
         self.sync_target_mute_indicators();
+    }
+
+    fn reset_audio_if_endpoint_changed(&mut self) {
+        if self
+            .audio
+            .as_ref()
+            .is_some_and(|audio| audio.take_endpoint_changed())
+        {
+            self.reset_audio_after_endpoint_change();
+        }
     }
 
     fn update_foreground_process_name_cache(&mut self, foreground_pid: Option<u32>) {

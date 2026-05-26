@@ -4,8 +4,6 @@ use crate::i18n::Strings;
 use std::cmp::Ordering as CmpOrdering;
 use std::collections::HashSet;
 
-const LINEAR_MANAGED_MUTE_LOOKUP_LIMIT: usize = 8;
-
 pub(super) fn target_status_text(
     target: &TargetProcess,
     muted_by_app: bool,
@@ -27,68 +25,16 @@ pub(super) fn target_has_managed_mute(
     ManagedMuteLookup::new(muted_by_app).target_has_managed_mute(target)
 }
 
-pub(super) enum ManagedMuteLookup<'a> {
-    Empty,
-    One {
-        pid: u32,
-        process_name: &'a str,
-    },
-    Two {
-        first_pid: u32,
-        first_process_name: &'a str,
-        second_pid: u32,
-        second_process_name: &'a str,
-    },
-    Few {
-        identities: [(u32, &'a str); LINEAR_MANAGED_MUTE_LOOKUP_LIMIT],
-        len: usize,
-    },
-    Many {
-        process_names: Vec<&'a str>,
-        process_names_by_pid: Vec<(&'a str, u32)>,
-    },
+pub(super) struct ManagedMuteLookup<'a> {
+    process_names: Vec<&'a str>,
+    process_names_by_pid: Vec<(&'a str, u32)>,
 }
 
 impl<'a> ManagedMuteLookup<'a> {
     pub(super) fn new(muted_by_app: &'a HashSet<AudioSessionKey>) -> Self {
-        let mut keys = muted_by_app.iter();
-        let Some(first) = keys.next() else {
-            return Self::Empty;
-        };
-        let Some(second) = keys.next() else {
-            return Self::One {
-                pid: first.pid,
-                process_name: first.process_name.as_str(),
-            };
-        };
-        if muted_by_app.len() == 2 {
-            return Self::Two {
-                first_pid: first.pid,
-                first_process_name: first.process_name.as_str(),
-                second_pid: second.pid,
-                second_process_name: second.process_name.as_str(),
-            };
-        }
-
-        if muted_by_app.len() <= LINEAR_MANAGED_MUTE_LOOKUP_LIMIT {
-            let mut identities = [(0, ""); LINEAR_MANAGED_MUTE_LOOKUP_LIMIT];
-            identities[0] = (first.pid, first.process_name.as_str());
-            identities[1] = (second.pid, second.process_name.as_str());
-            let mut len = 2;
-            for key in keys {
-                identities[len] = (key.pid, key.process_name.as_str());
-                len += 1;
-            }
-            return Self::Few { identities, len };
-        }
-
         let mut process_names = Vec::with_capacity(muted_by_app.len());
         let mut process_names_by_pid = Vec::with_capacity(muted_by_app.len());
-        process_names.push(first.process_name.as_str());
-        process_names.push(second.process_name.as_str());
-        process_names_by_pid.push((first.process_name.as_str(), first.pid));
-        process_names_by_pid.push((second.process_name.as_str(), second.pid));
-        for key in keys {
+        for key in muted_by_app {
             let name = key.process_name.as_str();
             process_names.push(name);
             process_names_by_pid.push((name, key.pid));
@@ -99,7 +45,7 @@ impl<'a> ManagedMuteLookup<'a> {
         process_names_by_pid.sort_unstable_by(compare_managed_mute_pid_entry);
         process_names_by_pid.dedup();
 
-        Self::Many {
+        Self {
             process_names,
             process_names_by_pid,
         }
@@ -120,47 +66,13 @@ impl<'a> ManagedMuteLookup<'a> {
     }
 
     fn has_process_name(&self, name: &str) -> bool {
-        match self {
-            Self::Empty => false,
-            Self::One { process_name, .. } => *process_name == name,
-            Self::Two {
-                first_process_name,
-                second_process_name,
-                ..
-            } => *first_process_name == name || *second_process_name == name,
-            Self::Few { identities, len } => identities[..*len]
-                .iter()
-                .any(|(_, process_name)| *process_name == name),
-            Self::Many { process_names, .. } => process_names.binary_search(&name).is_ok(),
-        }
+        self.process_names.binary_search(&name).is_ok()
     }
 
     fn has_process_pid(&self, name: &str, pid: u32) -> bool {
-        match self {
-            Self::Empty => false,
-            Self::One {
-                pid: managed_pid,
-                process_name,
-            } => *managed_pid == pid && *process_name == name,
-            Self::Two {
-                first_pid,
-                first_process_name,
-                second_pid,
-                second_process_name,
-            } => {
-                (*first_pid == pid && *first_process_name == name)
-                    || (*second_pid == pid && *second_process_name == name)
-            }
-            Self::Few { identities, len } => identities[..*len]
-                .iter()
-                .any(|(managed_pid, process_name)| *managed_pid == pid && *process_name == name),
-            Self::Many {
-                process_names_by_pid,
-                ..
-            } => process_names_by_pid
-                .binary_search_by(|entry| compare_managed_mute_pid_key(*entry, name, pid))
-                .is_ok(),
-        }
+        self.process_names_by_pid
+            .binary_search_by(|entry| compare_managed_mute_pid_key(*entry, name, pid))
+            .is_ok()
     }
 }
 
@@ -282,8 +194,8 @@ mod tests {
     }
 
     #[test]
-    fn managed_mute_lookup_uses_many_lookup_after_inline_limit() {
-        let muted_by_app = (1..=LINEAR_MANAGED_MUTE_LOOKUP_LIMIT + 1)
+    fn managed_mute_lookup_matches_after_deduplication() {
+        let muted_by_app = (1..=9)
             .map(|pid| AudioSessionKey::new(pid as u32, format!("app{pid}.exe"), None).unwrap())
             .collect::<HashSet<_>>();
         let lookup = ManagedMuteLookup::new(&muted_by_app);

@@ -53,7 +53,7 @@ Muting and restoring apply only to audio sessions that UnfocusMute changed itsel
 ## Features
 
 - Automatically mutes registered apps while they are in the background and restores their audio when they return to the foreground.
-- Register apps from the running app list or by typing a name such as `game.exe`.
+- Register apps from the audio-session app list or by typing a name such as `game.exe`.
 - Supports `.exe` app entries, current-instance PID entries, and `PID view`.
 - Per-app notes, live mute state for each registered app, and per-app `Pause` / `Resume` controls.
 - Tray-resident operation, tray status summaries, global pause, config folder access, and duplicate-instance protection.
@@ -93,7 +93,7 @@ If several instances of the same `.exe` are running at the same time, a specific
 1. Launch UnfocusMute.
 2. Choose a language on the language screen shown on first launch. The default is English.
 3. Start the game or app you want to mute when it is in the background.
-4. Open the `Search process` list or type a search term, choose an item, and click `Register`.
+4. Open the `Search process` list or type a search term, choose an audio-session app, and click `Register`. Apps that have not created an audio session yet may not appear; type the `.exe` name manually in that case.
 5. If you need to register only one specific PID, click `PID view` and choose the individual entry. PID entries apply only to the currently running instance, so choose it again if the app restarts and receives a different PID.
 6. Right-click a registered app to edit its note or use `Pause`.
 7. Open `Settings` from the lower-left corner to change behavior options.

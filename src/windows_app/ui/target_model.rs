@@ -1,7 +1,6 @@
 use super::win32::storage_bytes_hint;
 use crate::config::TargetProcess;
 use crate::i18n::Strings;
-use crate::windows_app::process::ProcessInfo;
 use std::mem::size_of;
 
 const PID_DISPLAY_DECORATION_UTF16_UNITS: usize = " (PID )".len();
@@ -30,23 +29,6 @@ pub(super) fn target_display_name_into(
     }
 }
 
-pub(super) fn grouped_process_choice_count(processes: &[ProcessInfo]) -> usize {
-    let mut processes = processes.iter();
-    let Some(first) = processes.next() else {
-        return 0;
-    };
-
-    let mut count = 1;
-    let mut current_name = first.name.as_str();
-    for process in processes {
-        if process.name != current_name {
-            count += 1;
-            current_name = process.name.as_str();
-        }
-    }
-    count
-}
-
 pub(super) fn target_matcher_inputs_changed(
     left: &[TargetProcess],
     right: &[TargetProcess],
@@ -55,22 +37,6 @@ pub(super) fn target_matcher_inputs_changed(
         || left.iter().zip(right).any(|(left, right)| {
             left.name != right.name || left.pid != right.pid || left.enabled != right.enabled
         })
-}
-
-pub(super) fn target_index_by_identity(
-    targets: &[TargetProcess],
-    name: &str,
-    pid: Option<u32>,
-) -> Option<usize> {
-    targets
-        .binary_search_by(|target| {
-            target
-                .name
-                .as_str()
-                .cmp(name)
-                .then_with(|| target.pid.cmp(&pid))
-        })
-        .ok()
 }
 
 pub(super) fn target_display_storage_bytes_hint(
@@ -168,27 +134,6 @@ mod tests {
     }
 
     #[test]
-    fn grouped_process_choice_count_counts_name_runs() {
-        let processes = [
-            ProcessInfo {
-                pid: 1,
-                name: "alpha.exe".to_owned(),
-            },
-            ProcessInfo {
-                pid: 2,
-                name: "alpha.exe".to_owned(),
-            },
-            ProcessInfo {
-                pid: 3,
-                name: "beta.exe".to_owned(),
-            },
-        ];
-
-        assert_eq!(grouped_process_choice_count(&[]), 0);
-        assert_eq!(grouped_process_choice_count(&processes), 2);
-    }
-
-    #[test]
     fn target_matcher_inputs_ignore_note_only_changes() {
         let mut left = TargetProcess::new("abc.exe").unwrap();
         let mut right = left.clone();
@@ -217,20 +162,5 @@ mod tests {
             &[pid_target]
         ));
         assert!(target_matcher_inputs_changed(&[base], &[disabled]));
-    }
-
-    #[test]
-    fn target_index_by_identity_uses_sorted_target_identity() {
-        let targets = [
-            TargetProcess::new("alpha.exe").unwrap(),
-            TargetProcess::for_pid("beta.exe", 10).unwrap(),
-            TargetProcess::new("gamma.exe").unwrap(),
-        ];
-
-        assert_eq!(
-            target_index_by_identity(&targets, "beta.exe", Some(10)),
-            Some(1)
-        );
-        assert_eq!(target_index_by_identity(&targets, "beta.exe", None), None);
     }
 }

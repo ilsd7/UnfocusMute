@@ -53,7 +53,7 @@ La mise en sourdine et la restauration du son ne s’appliquent qu’aux session
 ## Fonctionnalités
 
 - Met automatiquement en sourdine les applications enregistrées lorsqu’elles sont en arrière-plan et rétablit leur son à leur retour au premier plan.
-- Enregistrement depuis la liste des applications en cours d’exécution ou en saisissant un nom comme `game.exe`.
+- Enregistrement depuis la liste des applications avec session audio ou en saisissant un nom comme `game.exe`.
 - Prend en charge l’enregistrement par `.exe`, l’enregistrement par PID de l’instance en cours et `Vue PID`.
 - Notes par application, état de mise en sourdine en temps réel et commandes `Pause` / `Reprendre` par application.
 - Fonctionnement dans la zone de notification, résumé d’état dans la zone de notification, pause globale, accès au dossier de configuration et protection contre les instances multiples.
@@ -93,7 +93,7 @@ Si plusieurs instances du même `.exe` sont ouvertes en même temps, un PID pré
 1. Lancez UnfocusMute.
 2. Choisissez la langue dans l’écran affiché au premier démarrage. La langue par défaut est l’anglais.
 3. Lancez le jeu ou l’application à mettre en sourdine lorsqu’il passe en arrière-plan.
-4. Ouvrez la liste `Rechercher un processus` ou saisissez un terme de recherche, choisissez un élément, puis cliquez sur `Enregistrer`.
+4. Ouvrez la liste `Rechercher un processus` ou saisissez un terme de recherche, choisissez une application avec session audio, puis cliquez sur `Enregistrer`. Les applications qui n’ont pas encore créé de session audio peuvent ne pas apparaître ; dans ce cas, saisissez le nom `.exe` manuellement.
 5. Si vous devez enregistrer seulement un PID précis, cliquez sur `Vue PID` et choisissez l’entrée concernée. Une entrée par PID n’est valable que pour l’instance actuellement ouverte ; si l’application redémarre avec un autre PID, sélectionnez-la à nouveau.
 6. Faites un clic droit sur une application enregistrée pour modifier sa note ou utiliser `Pause`.
 7. Ouvrez `Paramètres` en bas à gauche pour modifier le comportement.
