@@ -2164,19 +2164,19 @@ impl AppWindow {
         self.sync_target_mute_indicators();
     }
 
-    fn restore_target_mute_before_removal(&mut self, target: &TargetProcess) {
+    fn restore_target_mute_before_removal(&mut self, target: &TargetProcess) -> bool {
         let target_sessions = if target.managed_muted {
             None
         } else {
             let target_sessions = matching_session_keys_for_target(target, &self.muted_by_app);
             if target_sessions.is_empty() {
-                return;
+                return true;
             }
             Some(target_sessions)
         };
 
         if !self.ensure_audio_controller(true) {
-            return;
+            return false;
         }
 
         let mut target_sessions = target_sessions
@@ -2186,7 +2186,7 @@ impl AppWindow {
         let restore_targets = [restore_target];
         let restore_matcher = TargetMatcher::default();
         let Some(audio) = self.audio.take() else {
-            return;
+            return false;
         };
         let result = audio.apply_mute_plan(
             &restore_matcher,
@@ -2202,10 +2202,12 @@ impl AppWindow {
                     .retain(|key| !target_matches_session_key(target, key));
                 self.muted_by_app.extend(target_sessions);
                 self.apply_audio_update_result(result.had_failures);
+                !result.had_failures
             }
             Err(_) => {
                 self.audio = None;
                 self.set_issue(StatusIssue::AudioUnavailable);
+                false
             }
         }
     }
@@ -2907,7 +2909,9 @@ impl AppWindow {
             return;
         };
         let target = self.config.targets[index].clone();
-        self.restore_target_mute_before_removal(&target);
+        if !self.restore_target_mute_before_removal(&target) {
+            return;
+        }
         self.reload_config_if_changed();
         let Some(index) = target_index_by_identity(&self.config.targets, name, pid) else {
             return;

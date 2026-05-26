@@ -20,6 +20,7 @@ use windows_core::BOOL;
 
 const EXPECTED_MANAGED_SESSION_COUNT: usize = 8;
 const LINEAR_MANAGED_SESSION_LIMIT: usize = 8;
+const LINEAR_MANAGED_TARGET_LIMIT: usize = 8;
 const LINEAR_PID_PREFILTER_LIMIT: usize = 8;
 
 pub struct AudioController {
@@ -397,13 +398,13 @@ struct TargetMuteIdentity<'a> {
 }
 
 struct ManagedTargetLookup<'a> {
-    identities: Vec<TargetMuteIdentity<'a>>,
+    identities: ManagedTargetIdentities<'a>,
     pid_lookup: PidPrefilter,
 }
 
 impl<'a> ManagedTargetLookup<'a> {
     fn new(targets: &'a [TargetProcess]) -> Self {
-        let mut identities = Vec::new();
+        let mut identities = ManagedTargetIdentities::Empty;
         let mut pid_lookup = PidPrefilter::None;
 
         for target in targets.iter().filter(|target| target.managed_muted) {
@@ -417,15 +418,8 @@ impl<'a> ManagedTargetLookup<'a> {
                 pid_lookup = PidPrefilter::Any;
             }
         }
-        if identities.len() > 1 {
-            identities.sort_unstable_by(|left, right| {
-                compare_target_identity_key(*left, right.process_name, right.pid)
-            });
-            identities.dedup();
-        }
-
         Self {
-            identities,
+            identities: identities.finalized(),
             pid_lookup: pid_lookup.finalized(),
         }
     }
@@ -455,12 +449,120 @@ impl<'a> ManagedTargetLookup<'a> {
         process_name: &str,
         pid: Option<u32>,
     ) -> Option<TargetMuteIdentity<'a>> {
-        match self.identities.as_slice() {
-            [] => None,
-            [identity] => {
-                (identity.process_name == process_name && identity.pid == pid).then_some(*identity)
+        self.identities.find(process_name, pid)
+    }
+}
+
+#[derive(Debug, Eq, PartialEq)]
+enum ManagedTargetIdentities<'a> {
+    Empty,
+    One(TargetMuteIdentity<'a>),
+    Two(TargetMuteIdentity<'a>, TargetMuteIdentity<'a>),
+    Few {
+        identities: [TargetMuteIdentity<'a>; LINEAR_MANAGED_TARGET_LIMIT],
+        len: usize,
+    },
+    Many(Vec<TargetMuteIdentity<'a>>),
+}
+
+impl<'a> ManagedTargetIdentities<'a> {
+    const EMPTY_IDENTITY: TargetMuteIdentity<'static> = TargetMuteIdentity {
+        process_name: "",
+        pid: None,
+    };
+
+    fn push(&mut self, identity: TargetMuteIdentity<'a>) {
+        match self {
+            Self::Empty => *self = Self::One(identity),
+            Self::One(existing) => *self = Self::Two(*existing, identity),
+            Self::Two(first, second) => {
+                let mut identities = [Self::EMPTY_IDENTITY; LINEAR_MANAGED_TARGET_LIMIT];
+                identities[0] = *first;
+                identities[1] = *second;
+                identities[2] = identity;
+                *self = Self::Few { identities, len: 3 };
             }
-            identities => identities
+            Self::Few { identities, len } if *len < LINEAR_MANAGED_TARGET_LIMIT => {
+                identities[*len] = identity;
+                *len += 1;
+            }
+            Self::Few { identities, len } => {
+                let mut many = Vec::with_capacity(*len + 1);
+                many.extend_from_slice(&identities[..*len]);
+                many.push(identity);
+                *self = Self::Many(many);
+            }
+            Self::Many(identities) => identities.push(identity),
+        }
+    }
+
+    fn finalized(self) -> Self {
+        match self {
+            Self::Two(first, second) => {
+                if compare_target_identities(first, second).is_eq() {
+                    Self::One(first)
+                } else if compare_target_identities(first, second).is_le() {
+                    Self::Two(first, second)
+                } else {
+                    Self::Two(second, first)
+                }
+            }
+            Self::Few {
+                mut identities,
+                len,
+            } => {
+                identities[..len]
+                    .sort_unstable_by(|left, right| compare_target_identities(*left, *right));
+                let len = dedup_sorted_target_identities(&mut identities, len);
+                match len {
+                    0 => Self::Empty,
+                    1 => Self::One(identities[0]),
+                    2 => Self::Two(identities[0], identities[1]),
+                    _ => Self::Few { identities, len },
+                }
+            }
+            Self::Many(mut identities) => {
+                identities.sort_unstable_by(|left, right| compare_target_identities(*left, *right));
+                identities.dedup();
+                match identities.len() {
+                    0 => Self::Empty,
+                    1 => Self::One(identities[0]),
+                    2 => Self::Two(identities[0], identities[1]),
+                    len if len <= LINEAR_MANAGED_TARGET_LIMIT => {
+                        let mut inline = [Self::EMPTY_IDENTITY; LINEAR_MANAGED_TARGET_LIMIT];
+                        inline[..len].copy_from_slice(&identities);
+                        Self::Few {
+                            identities: inline,
+                            len,
+                        }
+                    }
+                    _ => Self::Many(identities),
+                }
+            }
+            other => other,
+        }
+    }
+
+    fn find(&self, process_name: &str, pid: Option<u32>) -> Option<TargetMuteIdentity<'a>> {
+        match self {
+            Self::Empty => None,
+            Self::One(identity) => {
+                target_identity_matches(*identity, process_name, pid).then_some(*identity)
+            }
+            Self::Two(first, second) => {
+                if target_identity_matches(*first, process_name, pid) {
+                    Some(*first)
+                } else {
+                    target_identity_matches(*second, process_name, pid).then_some(*second)
+                }
+            }
+            Self::Few { identities, len } => identities[..*len]
+                .binary_search_by(|identity| {
+                    compare_target_identity_key(*identity, process_name, pid)
+                })
+                .ok()
+                .map(|index| identities[index]),
+            Self::Many(identities) => identities
                 .binary_search_by(|identity| {
                     compare_target_identity_key(*identity, process_name, pid)
                 })
@@ -468,6 +570,32 @@ impl<'a> ManagedTargetLookup<'a> {
                 .map(|index| identities[index]),
         }
     }
+}
+
+fn target_identity_matches(
+    identity: TargetMuteIdentity<'_>,
+    process_name: &str,
+    pid: Option<u32>,
+) -> bool {
+    identity.process_name == process_name && identity.pid == pid
+}
+
+fn dedup_sorted_target_identities(
+    identities: &mut [TargetMuteIdentity<'_>; LINEAR_MANAGED_TARGET_LIMIT],
+    len: usize,
+) -> usize {
+    if len < 2 {
+        return len;
+    }
+
+    let mut write = 1;
+    for read in 1..len {
+        if compare_target_identities(identities[read], identities[write - 1]).is_ne() {
+            identities[write] = identities[read];
+            write += 1;
+        }
+    }
+    write
 }
 
 #[derive(Debug, Eq, PartialEq)]
@@ -614,6 +742,13 @@ fn compare_target_identity_key(
     pid: Option<u32>,
 ) -> CmpOrdering {
     compare_target_identity(identity.process_name, identity.pid, process_name, pid)
+}
+
+fn compare_target_identities(
+    left: TargetMuteIdentity<'_>,
+    right: TargetMuteIdentity<'_>,
+) -> CmpOrdering {
+    compare_target_identity(left.process_name, left.pid, right.process_name, right.pid)
 }
 
 fn compare_target_update_identity(
