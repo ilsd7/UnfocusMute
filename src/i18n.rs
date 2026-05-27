@@ -3,6 +3,8 @@
 #[cfg(any(windows, test))]
 use serde::{Deserialize, Serialize};
 
+pub const APP_TITLE: &str = "UnfocusMute";
+
 macro_rules! label_first_count {
     ($label:literal) => {
         CountText {
@@ -69,7 +71,6 @@ impl Language {
     pub fn strings(self) -> &'static Strings {
         match self {
             Language::Ko => &Strings {
-                app_title: "UnfocusMute",
                 status_running: "모니터링 중",
                 status_paused: "일시 중지됨",
                 app_subtitle: "등록한 앱이 전면에 있지 않을 때 자동으로 음소거합니다.",
@@ -135,7 +136,6 @@ impl Language {
                 foreground_hook_failed: "전면 창 변경 알림을 등록하지 못했습니다.\n자동 음소거는 폴링 방식으로 계속 동작합니다.",
             },
             Language::En => &Strings {
-                app_title: "UnfocusMute",
                 status_running: "Monitoring",
                 status_paused: "Paused",
                 app_subtitle: "Automatically mutes registered apps when they are not in the foreground.",
@@ -201,7 +201,6 @@ impl Language {
                 foreground_hook_failed: "Could not register foreground window notifications.\nAuto-mute will continue to work by polling.",
             },
             Language::Ja => &Strings {
-                app_title: "UnfocusMute",
                 status_running: "監視中",
                 status_paused: "一時停止中",
                 app_subtitle: "登録したアプリが前面にないときに自動でミュートします。",
@@ -267,7 +266,6 @@ impl Language {
                 foreground_hook_failed: "前面ウィンドウ変更の通知を登録できませんでした。\n自動ミュートはポーリングで引き続き動作します。",
             },
             Language::ZhHans => &Strings {
-                app_title: "UnfocusMute",
                 status_running: "监控中",
                 status_paused: "已暂停",
                 app_subtitle: "已注册应用不在前台时自动将其静音。",
@@ -333,7 +331,6 @@ impl Language {
                 foreground_hook_failed: "无法注册前台窗口变化通知。\n自动静音将通过轮询继续工作。",
             },
             Language::Es => &Strings {
-                app_title: "UnfocusMute",
                 status_running: "Supervisando",
                 status_paused: "En pausa",
                 app_subtitle: "Silencia automáticamente las aplicaciones registradas cuando no están en primer plano.",
@@ -399,7 +396,6 @@ impl Language {
                 foreground_hook_failed: "No se pudieron registrar las notificaciones de ventana en primer plano.\nEl silencio automático seguirá funcionando mediante comprobaciones periódicas.",
             },
             Language::Fr => &Strings {
-                app_title: "UnfocusMute",
                 status_running: "Suivi en cours",
                 status_paused: "En pause",
                 app_subtitle: "Met automatiquement en sourdine les applications enregistrées lorsqu’elles ne sont pas au premier plan.",
@@ -465,7 +461,6 @@ impl Language {
                 foreground_hook_failed: "Impossible d’enregistrer les notifications de fenêtre au premier plan.\nLa mise en sourdine automatique continuera de fonctionner par vérification périodique.",
             },
             Language::Pt => &Strings {
-                app_title: "UnfocusMute",
                 status_running: "Monitorando",
                 status_paused: "Pausado",
                 app_subtitle: "Silencia automaticamente os apps registrados quando não estão em primeiro plano.",
@@ -531,7 +526,6 @@ impl Language {
                 foreground_hook_failed: "Não foi possível registrar notificações de janela em primeiro plano.\nO silenciamento automático continuará funcionando por verificação periódica.",
             },
             Language::Hi => &Strings {
-                app_title: "UnfocusMute",
                 status_running: "निगरानी जारी",
                 status_paused: "विराम पर",
                 app_subtitle: "रजिस्टर किए गए ऐप्स सामने न होने पर अपने आप म्यूट हो जाते हैं।",
@@ -597,7 +591,6 @@ impl Language {
                 foreground_hook_failed: "सामने वाली विंडो के बदलाव की सूचनाएँ रजिस्टर नहीं हो सकीं।\nऑटो-म्यूट पोलिंग के ज़रिए काम करता रहेगा।",
             },
             Language::Ar => &Strings {
-                app_title: "UnfocusMute",
                 status_running: "قيد المراقبة",
                 status_paused: "متوقف مؤقتًا",
                 app_subtitle: "يكتم التطبيقات المسجلة تلقائيًا عندما لا تكون في المقدمة.",
@@ -710,7 +703,6 @@ impl CountText {
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct Strings {
-    pub app_title: &'static str,
     pub status_running: &'static str,
     pub status_paused: &'static str,
     pub app_subtitle: &'static str,
@@ -852,9 +844,8 @@ mod tests {
     }
 
     impl Strings {
-        fn all_text(self) -> [&'static str; 66] {
+        fn all_text(self) -> [&'static str; 65] {
             [
-                self.app_title,
                 self.status_running,
                 self.status_paused,
                 self.app_subtitle,

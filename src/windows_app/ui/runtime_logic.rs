@@ -37,14 +37,6 @@ pub(super) fn initial_managed_mute_fast_retry_count(targets: &[TargetProcess]) -
     }
 }
 
-fn audio_fallback_timer_needed(
-    paused: bool,
-    target_matcher_empty: bool,
-    has_managed_mutes: bool,
-) -> bool {
-    has_managed_mutes || (!paused && !target_matcher_empty)
-}
-
 pub(super) fn desired_audio_fallback_timer_interval_ms(
     paused: bool,
     target_matcher_empty: bool,
@@ -52,20 +44,13 @@ pub(super) fn desired_audio_fallback_timer_interval_ms(
     managed_mute_fast_retry_remaining: u8,
     polling_interval_ms: u64,
 ) -> Option<u32> {
-    if !audio_fallback_timer_needed(paused, target_matcher_empty, has_managed_mutes) {
+    if !has_managed_mutes && (paused || target_matcher_empty) {
         return None;
     }
     if has_managed_mutes && managed_mute_fast_retry_remaining > 0 {
         return Some(MANAGED_MUTE_FOREGROUND_RETRY_INTERVAL_MS);
     }
     Some(polling_interval_ms as u32)
-}
-
-pub(super) fn audio_fallback_timer_matches_desired(
-    desired_interval: Option<u32>,
-    active_interval: Option<u32>,
-) -> bool {
-    desired_interval == active_interval
 }
 
 pub(super) fn replace_text_if_changed(current: &mut String, next: &mut String) -> bool {
@@ -77,21 +62,6 @@ pub(super) fn replace_text_if_changed(current: &mut String, next: &mut String) -
         next.clear();
         true
     }
-}
-
-pub(super) fn should_hide_to_tray(tray_added: bool) -> bool {
-    tray_added
-}
-
-pub(super) fn should_retry_tray_icon_before_hide(tray_added: bool) -> bool {
-    !tray_added
-}
-
-pub(super) fn should_release_idle_audio_while_paused(
-    paused: bool,
-    has_managed_mutes: bool,
-) -> bool {
-    paused && !has_managed_mutes
 }
 
 #[cfg(test)]
@@ -178,39 +148,5 @@ mod tests {
             desired_audio_fallback_timer_interval_ms(true, true, false, 1, 3_000),
             None
         );
-    }
-
-    #[test]
-    fn audio_fallback_timer_is_ready_only_at_desired_interval() {
-        assert!(audio_fallback_timer_matches_desired(
-            Some(3_000),
-            Some(3_000)
-        ));
-        assert!(audio_fallback_timer_matches_desired(None, None));
-        assert!(!audio_fallback_timer_matches_desired(
-            Some(3_000),
-            Some(MANAGED_MUTE_FOREGROUND_RETRY_INTERVAL_MS)
-        ));
-        assert!(!audio_fallback_timer_matches_desired(Some(3_000), None));
-        assert!(!audio_fallback_timer_matches_desired(None, Some(3_000)));
-    }
-
-    #[test]
-    fn window_hides_only_when_tray_icon_is_available() {
-        assert!(should_hide_to_tray(true));
-        assert!(!should_hide_to_tray(false));
-    }
-
-    #[test]
-    fn missing_tray_icon_is_retried_before_hiding() {
-        assert!(should_retry_tray_icon_before_hide(false));
-        assert!(!should_retry_tray_icon_before_hide(true));
-    }
-
-    #[test]
-    fn paused_idle_audio_is_released_only_after_mutes_are_restored() {
-        assert!(should_release_idle_audio_while_paused(true, false));
-        assert!(!should_release_idle_audio_while_paused(true, true));
-        assert!(!should_release_idle_audio_while_paused(false, false));
     }
 }

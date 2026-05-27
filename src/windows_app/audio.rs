@@ -533,10 +533,17 @@ impl<'a> ManagedTargetLookup<'a> {
         process_name: &str,
         pid: Option<u32>,
     ) -> Option<TargetMuteIdentity<'a>> {
-        self.identities
-            .binary_search_by(|identity| compare_target_identity_key(*identity, process_name, pid))
-            .ok()
-            .map(|index| self.identities[index])
+        match self.identities.as_slice() {
+            [] => None,
+            [identity] => (compare_target_identity_key(*identity, process_name, pid).is_eq())
+                .then_some(*identity),
+            identities => identities
+                .binary_search_by(|identity| {
+                    compare_target_identity_key(*identity, process_name, pid)
+                })
+                .ok()
+                .map(|index| identities[index]),
+        }
     }
 
     fn block_pid_target_states_for_pid(&self, result: &mut PlanApplyResult, pid: u32) {
@@ -600,7 +607,14 @@ impl PidPrefilter {
     }
 
     fn may_include_pid(&self, pid: u32) -> bool {
-        self.any || self.pids.binary_search(&pid).is_ok()
+        if self.any {
+            return true;
+        }
+        match self.pids.as_slice() {
+            [] => false,
+            [managed_pid] => *managed_pid == pid,
+            pids => pids.binary_search(&pid).is_ok(),
+        }
     }
 }
 
@@ -683,11 +697,17 @@ impl<'a> ManagedSessionLookup<'a> {
     }
 
     fn may_include(&self, pid: u32, process_name: &str) -> bool {
-        self.identities
-            .binary_search_by(|identity| {
-                compare_managed_session_identity(*identity, pid, process_name)
-            })
-            .is_ok()
+        match self.identities.as_slice() {
+            [] => false,
+            [(managed_pid, managed_process_name)] => {
+                *managed_pid == pid && *managed_process_name == process_name
+            }
+            identities => identities
+                .binary_search_by(|identity| {
+                    compare_managed_session_identity(*identity, pid, process_name)
+                })
+                .is_ok(),
+        }
     }
 }
 

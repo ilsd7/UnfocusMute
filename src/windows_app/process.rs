@@ -177,7 +177,11 @@ struct ProcessIdCache {
 
 impl ProcessIdCache {
     fn contains(&self, pid: u32) -> bool {
-        self.pids.binary_search(&pid).is_ok()
+        match self.pids.as_slice() {
+            [] => false,
+            [cached_pid] => *cached_pid == pid,
+            pids => pids.binary_search(&pid).is_ok(),
+        }
     }
 
     fn insert(&mut self, pid: u32) {
@@ -251,7 +255,7 @@ pub(crate) fn replace_processes(
     scratch.clear();
     let min_capacity = processes.capacity().max(EXPECTED_PROCESS_COUNT);
     if scratch.capacity() < min_capacity {
-        scratch.reserve(min_capacity - scratch.capacity());
+        scratch.reserve_exact(min_capacity);
     }
 
     if !collect(scratch) {
@@ -646,6 +650,20 @@ mod tests {
             ]
         );
         assert!(scratch.is_empty());
+    }
+
+    #[test]
+    fn process_refresh_reserves_scratch_for_existing_capacity_before_collecting() {
+        let mut processes = Vec::with_capacity(EXPECTED_PROCESS_COUNT + 16);
+        let mut scratch = Vec::with_capacity(1);
+
+        assert_eq!(
+            replace_processes(&mut processes, &mut scratch, |next| {
+                assert!(next.capacity() >= EXPECTED_PROCESS_COUNT + 16);
+                true
+            }),
+            ProcessRefreshOutcome::Unchanged
+        );
     }
 
     #[test]

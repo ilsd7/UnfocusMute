@@ -9,13 +9,17 @@ pub fn run() -> error::Result<()> {
 }
 
 pub fn show_startup_error(message: &str) {
+    use crate::i18n::APP_TITLE;
     use windows::Win32::UI::WindowsAndMessaging::{MB_ICONERROR, MB_OK, MessageBoxW};
     use windows::core::PCWSTR;
 
-    let mut body = String::from("UnfocusMute failed to start.\n\n");
+    let suffix = " failed to start.\n\n";
+    let mut body = String::with_capacity(APP_TITLE.len() + suffix.len() + message.len());
+    body.push_str(APP_TITLE);
+    body.push_str(suffix);
     body.push_str(message);
     let body = wide_null_terminated(&body);
-    let title = wide_null_terminated("UnfocusMute");
+    let title = wide_null_terminated(APP_TITLE);
     unsafe {
         let _ = MessageBoxW(
             None,

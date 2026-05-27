@@ -1,4 +1,4 @@
-use crate::i18n::{CountText, CountTextOrder, Strings};
+use crate::i18n::{APP_TITLE, CountText, CountTextOrder, Strings};
 
 const APP_VERSION: &str = env!("CARGO_PKG_VERSION");
 
@@ -43,15 +43,10 @@ pub(super) fn status_detail_text_into(
     push_count_text(output, strings.muted_count, muted_count);
 }
 
-pub(super) fn tray_tip_text_into(
-    strings: &Strings,
-    status: &str,
-    detail: &str,
-    output: &mut String,
-) {
+pub(super) fn tray_tip_text_into(status: &str, detail: &str, output: &mut String) {
     output.clear();
-    output.reserve(strings.app_title.len() + APP_VERSION.len() + status.len() + detail.len() + 8);
-    output.push_str(strings.app_title);
+    output.reserve(APP_TITLE.len() + status.len() + detail.len() + 8);
+    output.push_str(APP_TITLE);
     output.push_str(" - ");
     output.push_str(status);
     if !detail.is_empty() {
@@ -60,9 +55,9 @@ pub(super) fn tray_tip_text_into(
     }
 }
 
-pub(super) fn app_title_with_version_into(strings: &Strings, output: &mut String) {
+pub(super) fn app_title_with_version_into(output: &mut String) {
     output.clear();
-    output.push_str(strings.app_title);
+    output.push_str(APP_TITLE);
     output.push_str(" v");
     output.push_str(APP_VERSION);
 }
@@ -199,22 +194,16 @@ mod tests {
         let strings = Language::En.strings();
         let mut tip = String::new();
 
-        tray_tip_text_into(
-            strings,
-            strings.status_running,
-            "Apps 2 · Muted 1",
-            &mut tip,
-        );
+        tray_tip_text_into(strings.status_running, "Apps 2 · Muted 1", &mut tip);
 
         assert_eq!(tip, "UnfocusMute - Monitoring | Apps 2 · Muted 1");
     }
 
     #[test]
     fn app_title_includes_package_version() {
-        let strings = Language::Ko.strings();
         let mut title = String::new();
 
-        app_title_with_version_into(strings, &mut title);
+        app_title_with_version_into(&mut title);
 
         assert_eq!(title, format!("UnfocusMute v{APP_VERSION}"));
     }

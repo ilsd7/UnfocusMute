@@ -5,7 +5,7 @@ use crate::config::{
     normalize_manual_process_name, normalize_manual_process_name_cow, target_index_by_identity,
 };
 use crate::engine::{AudioSessionKey, TargetMatcher};
-use crate::i18n::{Language, Strings};
+use crate::i18n::{APP_TITLE, Language, Strings};
 use crate::windows_app::audio::{AudioController, TargetMuteStateUpdate};
 use crate::windows_app::error::{Context, Result, message_error};
 use crate::windows_app::process::{self, ProcessInfo, ProcessRefreshOutcome};
@@ -91,12 +91,10 @@ use managed_mute::{
 };
 use process_choice::{ProcessChoice, search_terms};
 use runtime_logic::{
-    MANAGED_MUTE_FOREGROUND_RETRY_TICKS, audio_fallback_timer_matches_desired,
-    cached_foreground_process_name, desired_audio_fallback_timer_interval_ms,
-    foreground_process_cache_needs_refresh, initial_managed_mute_fast_retry_count,
-    initial_process_refresh_attempt, process_refresh_is_stale, replace_text_if_changed,
-    should_hide_to_tray, should_release_idle_audio_while_paused,
-    should_retry_tray_icon_before_hide,
+    MANAGED_MUTE_FOREGROUND_RETRY_TICKS, cached_foreground_process_name,
+    desired_audio_fallback_timer_interval_ms, foreground_process_cache_needs_refresh,
+    initial_managed_mute_fast_retry_count, initial_process_refresh_attempt,
+    process_refresh_is_stale, replace_text_if_changed,
 };
 use settings_window::{SettingsPreferences, prompt_settings};
 use startup_sync::{
@@ -307,7 +305,7 @@ unsafe fn run_window() -> Result<()> {
     let window_width = px(WINDOW_WIDTH);
     let window_height = px(WINDOW_HEIGHT);
 
-    let title = to_wide(config.language.strings().app_title);
+    let title = to_wide(APP_TITLE);
     let taskbar_created_message = unsafe { RegisterWindowMessageW(w!("TaskbarCreated")) };
     let icons = AppIcons {
         main: icon,
@@ -1093,9 +1091,9 @@ impl AppWindow {
         self.strings = self.config.language.strings();
         self.refresh_target_status_width();
         unsafe {
-            app_title_with_version_into(self.strings, &mut self.display_text_buffer);
+            app_title_with_version_into(&mut self.display_text_buffer);
             set_text(self.controls.title_label, &self.display_text_buffer);
-            set_text(self.hwnd, self.strings.app_title);
+            set_text(self.hwnd, APP_TITLE);
             set_text(self.controls.subtitle_label, self.strings.app_subtitle);
             set_text(
                 self.controls.target_empty_title,
@@ -2050,7 +2048,6 @@ impl AppWindow {
             &mut self.status_detail_text,
         );
         tray_tip_text_into(
-            self.strings,
             status,
             &self.status_detail_text,
             &mut self.tray_tip_text_buffer,
@@ -2191,7 +2188,7 @@ impl AppWindow {
     }
 
     fn release_idle_audio_while_paused(&mut self) {
-        if should_release_idle_audio_while_paused(self.paused, self.has_managed_mutes()) {
+        if self.paused && !self.has_managed_mutes() {
             self.audio = None;
             self.clear_audio_issues();
         }
@@ -2467,10 +2464,8 @@ impl AppWindow {
     }
 
     fn update_timer_setup_issue(&mut self, desired_audio_interval: Option<u32>) {
-        let audio_fallback_timer_ready = audio_fallback_timer_matches_desired(
-            desired_audio_interval,
-            self.audio_fallback_timer_interval_ms,
-        );
+        let audio_fallback_timer_ready =
+            desired_audio_interval == self.audio_fallback_timer_interval_ms;
         if self.config_reload_timer_ready && audio_fallback_timer_ready {
             self.clear_issue(StatusIssue::TimerSetupFailed);
         } else {
@@ -3284,10 +3279,10 @@ impl AppWindow {
     }
 
     fn hide_to_tray(&mut self) {
-        if should_retry_tray_icon_before_hide(self.tray_added) {
+        if !self.tray_added {
             self.add_tray_icon();
         }
-        if !should_hide_to_tray(self.tray_added) {
+        if !self.tray_added {
             return;
         }
 
@@ -3304,7 +3299,7 @@ impl AppWindow {
             self.restore_managed_mutes();
         }
         if self.tray_added {
-            let data = self.tray_data(self.strings.app_title);
+            let data = self.tray_data(APP_TITLE);
             unsafe {
                 let _ = Shell_NotifyIconW(NIM_DELETE, &data);
             }
@@ -3322,7 +3317,6 @@ impl AppWindow {
             &mut self.status_detail_text,
         );
         tray_tip_text_into(
-            self.strings,
             status,
             &self.status_detail_text,
             &mut self.tray_tip_text_buffer,
