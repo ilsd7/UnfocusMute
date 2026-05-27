@@ -365,7 +365,8 @@ impl Language {
                 version: "Versión",
                 target_count: count_first_count!("registrada", "registradas"),
                 muted_count: count_first_count!("silenciada", "silenciadas"),
-                open_config: "Abrir carpeta de configuración",
+                // 스페인어 전체 문구는 설정 창 버튼 폭에서 잘려 짧은 표현을 사용합니다.
+                open_config: "Abrir configuración",
                 github_repository: "Repositorio de GitHub",
                 open_github_failed: "No se pudo abrir la página de GitHub",
                 target_note_window_title: "Nota de la aplicación",
