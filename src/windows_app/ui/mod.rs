@@ -2824,11 +2824,15 @@ impl AppWindow {
             ID_RUNNING
                 if notification == CBN_SELCHANGE as u16 || notification == CBN_SELENDOK as u16 =>
             {
+                // 검색 콤보의 edit text는 선택 알림 시점에 아직 검색어일 수 있다.
+                // 실제 목록 선택 여부는 이 알림에서만 플래그로 기록한다.
                 self.update_running_process_choice_selected();
                 self.update_action_buttons();
             }
             ID_RUNNING if notification == CBN_CLOSEUP as u16 => {
                 self.focus_main_window();
+                // closeup에는 입력 삭제 후 남은 stale CB_GETCURSEL도 들어올 수 있으므로
+                // 선택 플래그를 새로 세우지 않는다.
                 self.update_action_buttons();
             }
             ID_MANUAL if notification == EN_CHANGE as u16 => self.update_manual_process_text(),
