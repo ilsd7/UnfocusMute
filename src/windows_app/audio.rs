@@ -723,42 +723,54 @@ fn compare_target_update_identity(
     )
 }
 
-struct ManagedSessionLookup<'a> {
-    identities: Vec<(u32, &'a str)>,
-    pid_lookup: PidPrefilter,
+#[cfg_attr(test, derive(Debug, Eq, PartialEq))]
+enum ManagedSessionLookup<'a> {
+    One { pid: u32, process_name: &'a str },
+    Many(Vec<(u32, &'a str)>),
 }
 
 impl<'a> ManagedSessionLookup<'a> {
     fn new(session_keys: &'a HashSet<AudioSessionKey>) -> Self {
+        let mut keys = session_keys.iter();
+        let Some(first) = keys.next() else {
+            return Self::Many(Vec::new());
+        };
+        if session_keys.len() == 1 {
+            return Self::One {
+                pid: first.pid,
+                process_name: first.process_name.as_str(),
+            };
+        }
+
         let mut identities = Vec::with_capacity(session_keys.len());
-        let mut pid_lookup = PidPrefilter::default();
-
-        for key in session_keys {
+        identities.push((first.pid, first.process_name.as_str()));
+        for key in keys {
             identities.push((key.pid, key.process_name.as_str()));
-            pid_lookup.push_pid(key.pid);
         }
-        if identities.len() > 1 {
-            identities.sort_unstable();
-            identities.dedup();
-        }
+        identities.sort_unstable();
+        identities.dedup();
 
-        Self {
-            identities,
-            pid_lookup: pid_lookup.finalized(),
-        }
+        Self::Many(identities)
     }
 
     fn may_include_pid(&self, pid: u32) -> bool {
-        self.pid_lookup.may_include_pid(pid)
+        match self {
+            Self::One {
+                pid: managed_pid, ..
+            } => *managed_pid == pid,
+            Self::Many(identities) => identities
+                .binary_search_by(|(managed_pid, _)| managed_pid.cmp(&pid))
+                .is_ok(),
+        }
     }
 
     fn may_include(&self, pid: u32, process_name: &str) -> bool {
-        match self.identities.as_slice() {
-            [] => false,
-            [(managed_pid, managed_process_name)] => {
-                *managed_pid == pid && *managed_process_name == process_name
-            }
-            identities => identities
+        match self {
+            Self::One {
+                pid: managed_pid,
+                process_name: managed_process_name,
+            } => *managed_pid == pid && *managed_process_name == process_name,
+            Self::Many(identities) => identities
                 .binary_search_by(|identity| {
                     compare_managed_session_identity(*identity, pid, process_name)
                 })
@@ -1338,8 +1350,7 @@ mod tests {
             .collect::<HashSet<_>>();
         let lookup = ManagedSessionLookup::new(&session_keys);
 
-        assert_eq!(lookup.pid_lookup.pids, vec![7]);
-        assert_eq!(lookup.identities, vec![(7, "game.exe")]);
+        assert_eq!(lookup, ManagedSessionLookup::Many(vec![(7, "game.exe")]));
     }
 
     #[test]

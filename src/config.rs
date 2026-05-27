@@ -290,24 +290,6 @@ impl AppConfig {
                 .iter()
                 .all(|target| is_supported_target_process_name(&target.name))
         );
-        match self.targets.len() {
-            0 => {
-                self.targets.push(target);
-                return true;
-            }
-            1 => match compare_targets(&self.targets[0], &target) {
-                Ordering::Equal => return false,
-                Ordering::Less => {
-                    self.targets.push(target);
-                    return true;
-                }
-                Ordering::Greater => {
-                    self.targets.insert(0, target);
-                    return true;
-                }
-            },
-            _ => {}
-        }
         match self
             .targets
             .binary_search_by(|existing| compare_targets(existing, &target))
@@ -368,13 +350,9 @@ impl AppConfig {
 
     pub(crate) fn contains_normalized_target(&self, name: &str, pid: Option<u32>) -> bool {
         debug_assert!(is_normalized_process_name(name));
-        match self.targets.as_slice() {
-            [] => false,
-            [target] => compare_target_key(target, name, pid).is_eq(),
-            targets => targets
-                .binary_search_by(|target| compare_target_key(target, name, pid))
-                .is_ok(),
-        }
+        self.targets
+            .binary_search_by(|target| compare_target_key(target, name, pid))
+            .is_ok()
     }
 
     pub fn deduplicate_targets(&mut self) {
@@ -482,7 +460,7 @@ fn merge_pending_target_changes(
             target_index_by_key(base, &target.name, target.pid).map(|index| &base[index]);
         match base_target {
             None => upsert_target(disk, target.clone()),
-            Some(base_target) if target_differs_ignoring_managed_muted(base_target, target) => {
+            Some(base_target) if target_edit_fields_differ(base_target, target) => {
                 upsert_target_preserving_external_managed_mute(disk, base_target, target);
             }
             Some(base_target) if base_target.managed_muted != target.managed_muted => {
@@ -498,11 +476,8 @@ fn merge_pending_target_changes(
     }
 }
 
-fn target_differs_ignoring_managed_muted(left: &TargetProcess, right: &TargetProcess) -> bool {
-    left.name != right.name
-        || left.pid != right.pid
-        || left.note != right.note
-        || left.enabled != right.enabled
+fn target_edit_fields_differ(left: &TargetProcess, right: &TargetProcess) -> bool {
+    left.note != right.note || left.enabled != right.enabled
 }
 
 fn upsert_target_preserving_external_managed_mute(
