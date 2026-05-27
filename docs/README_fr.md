@@ -81,7 +81,7 @@ UnfocusMute est une application autonome qui ne nécessite aucune installation. 
 UnfocusMute s’appuie sur les noms de processus, les informations de fenêtre au premier plan et les sessions CoreAudio fournies par Windows.
 Si un pilote, un réglage d’autorisation ou un logiciel de sécurité limite l’accès aux sessions, le contrôle de sourdine peut être partiellement limité.
 
-La liste par défaut affiche uniquement les applications qui disposent déjà d’une session audio. Si une application n’a pas encore créé de session audio, passez à `Tous les processus` pour la retrouver parmi les processus `.exe` en cours.
+La liste par défaut affiche uniquement les applications qui disposent déjà d’une session audio. Si une application n’a pas encore créé de session audio, passez à `Tous les processus` pour la retrouver parmi les processus `.exe` en cours. Utilisez `Sessions audio uniquement` pour revenir à la liste filtrée.
 
 **Comportement de l’enregistrement par PID :** Windows ne fournit pas toujours le même PID pour une session audio et pour la fenêtre au premier plan. Pour compenser cela, UnfocusMute considère que l’application est revenue au premier plan lorsque le nom `.exe` du PID enregistré correspond au nom `.exe` de la fenêtre actuellement active.
 
@@ -94,7 +94,7 @@ Si plusieurs instances du même `.exe` sont ouvertes en même temps, il n’est 
 1. Lancez UnfocusMute.
 2. Choisissez la langue dans l’écran affiché au premier démarrage. La langue par défaut est l’anglais.
 3. Lancez le jeu ou l’application à mettre en sourdine lorsqu’il passe en arrière-plan.
-4. Choisissez une application dans `Rechercher un processus` ou retrouvez-la avec un terme de recherche, puis cliquez sur `Enregistrer`. Si l’application n’a pas encore créé de session audio, passez à `Tous les processus` pour parcourir la liste de tous les processus en cours. Si elle n’est pas dans la liste, saisissez le nom `.exe` manuellement.
+4. Choisissez une application dans `Rechercher un processus` ou retrouvez-la avec un terme de recherche, puis cliquez sur `Enregistrer`. Si l’application n’a pas encore créé de session audio, passez à `Tous les processus` pour parcourir la liste de tous les processus en cours. Utilisez `Sessions audio uniquement` pour revenir à la liste filtrée. Si elle n’est pas dans la liste, saisissez le nom `.exe` manuellement.
 5. Si vous devez enregistrer seulement un PID précis, cliquez sur `Vue PID` et choisissez l’entrée concernée. Une entrée par PID n’est valable que pour l’instance actuellement ouverte ; si l’application redémarre avec un autre PID, sélectionnez-la à nouveau.
 6. Faites un clic droit sur une application enregistrée pour modifier sa note ou utiliser `Pause`.
 7. Ouvrez `Paramètres` en bas à gauche pour modifier le comportement.

@@ -81,7 +81,7 @@ UnfocusMute es una app independiente que no requiere instalación. Tampoco neces
 UnfocusMute funciona con los nombres de proceso, la información de la ventana en primer plano y las sesiones CoreAudio que proporciona Windows.
 Por eso, si un controlador, un ajuste de permisos o una herramienta de seguridad limita el acceso a las sesiones, el control de silencio puede quedar parcialmente limitado.
 
-La lista predeterminada muestra solo las aplicaciones que tienen una sesión de audio en ese momento. Si una aplicación aún no ha creado una sesión de audio, cambia a `Todos los procesos` para buscarla entre los procesos `.exe` en ejecución.
+La lista predeterminada muestra solo las aplicaciones que tienen una sesión de audio en ese momento. Si una aplicación aún no ha creado una sesión de audio, cambia a `Todos los procesos` para buscarla entre los procesos `.exe` en ejecución. Usa `Solo sesiones de audio` para volver a la lista filtrada.
 
 **Comportamiento al registrar por PID:** Windows no siempre proporciona el mismo PID para una sesión de audio y para la ventana en primer plano. Para compensarlo, UnfocusMute considera que la app volvió al primer plano cuando el nombre `.exe` del PID registrado coincide con el nombre `.exe` de la ventana activa.
 
@@ -94,7 +94,7 @@ Por eso, si hay varias instancias del mismo `.exe` ejecutándose a la vez, un PI
 1. Abre UnfocusMute.
 2. Elige un idioma en la pantalla que aparece en el primer inicio. El idioma predeterminado es inglés.
 3. Inicia el juego o la app que quieres silenciar cuando esté en segundo plano.
-4. Elige una aplicación en `Buscar proceso` o encuéntrala escribiendo una búsqueda, y luego pulsa `Registrar`. Si la aplicación aún no ha creado una sesión de audio, cambia a `Todos los procesos` para revisar la lista de todos los procesos en ejecución. Si no aparece en la lista, escribe manualmente el nombre `.exe`.
+4. Elige una aplicación en `Buscar proceso` o encuéntrala escribiendo una búsqueda, y luego pulsa `Registrar`. Si la aplicación aún no ha creado una sesión de audio, cambia a `Todos los procesos` para revisar la lista de todos los procesos en ejecución. Usa `Solo sesiones de audio` para volver a la lista filtrada. Si no aparece en la lista, escribe manualmente el nombre `.exe`.
 5. Si necesitas registrar solo un PID concreto, pulsa `Vista PID` y elige el elemento individual. Las entradas por PID solo se aplican a la instancia que está en ejecución; si la app se reinicia con otro PID, selecciónala de nuevo.
 6. Haz clic derecho en una app registrada para editar su nota o usar `Pausar`.
 7. Abre `Configuración` desde la esquina inferior izquierda para cambiar opciones de comportamiento.
