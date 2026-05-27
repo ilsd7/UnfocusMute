@@ -48,16 +48,14 @@ Muting and restoring apply only to audio sessions that UnfocusMute changed itsel
 - You often Alt+Tab away from a game or app while leaving it open.
 - A game or app has no built-in option to mute itself in the background.
 - You want to mute only background game audio while keeping a browser or call app audible.
-- The same `.exe` launches multiple processes and you need to switch between whole-app management and a specific PID.
 
 ## Features
 
 - Automatically mutes registered apps while they are in the background and restores their audio when they return to the foreground.
-- Choose from the audio-session list, switch to all running processes when needed, or type a name such as `game.exe`.
+- Pick an app from the default list of apps with audio sessions; when needed, switch to `All processes` or type a name such as `game.exe`.
 - Supports `.exe` app entries, current-instance PID entries, and `PID view`.
 - Per-app notes, live mute state for each registered app, and per-app `Pause` / `Resume` controls.
 - Tray-resident operation, tray status summaries, global pause, config folder access, and duplicate-instance protection.
-- The lower-left Settings button groups behavior options, language selection, config-folder access, GitHub repository, and version information.
 - Choose a language on first run, then switch languages in-app between English/한국어/日本語/简体中文/Español/Français/Português/हिन्दी/العربية.
 - Settings are stored locally at `%APPDATA%\UnfocusMute\config.json`.
 
@@ -80,7 +78,10 @@ UnfocusMute is a standalone app that does not need to be installed. You also do 
 
 ## Before You Use
 
-UnfocusMute uses the process names, foreground window information, and CoreAudio sessions provided by Windows. The default picker shows apps with audio sessions; switch to `All processes` to choose from running `.exe` processes that have not created an audio session yet. If a driver, permission setting, or security tool limits session access, mute controls may still be limited.
+UnfocusMute uses the process names, foreground window information, and CoreAudio sessions provided by Windows.
+If a driver, permission setting, or security tool limits session access, mute controls may be partially limited.
+
+The default picker shows only apps that currently have audio sessions. If an app has not created an audio session yet, switch to `All processes` to find it in the running `.exe` process list.
 
 **PID registration behavior:** Windows does not always report the same PID for an audio session and the foreground window. To compensate for this, UnfocusMute treats the app as back in the foreground when the registered PID's `.exe` name matches the current foreground window's `.exe` name.
 
@@ -93,7 +94,7 @@ If several instances of the same `.exe` are running at the same time, a specific
 1. Launch UnfocusMute.
 2. Choose a language on the language screen shown on first launch. The default is English.
 3. Start the game or app you want to mute when it is in the background.
-4. Open the `Search process` list or type a search term, choose an app, and click `Register`. Use `All processes` if the app has not created an audio session yet; type the `.exe` name manually if it still does not appear.
+4. Choose an app in `Search process` or find it by typing a search term, then click `Register`. If the app has not created an audio session yet, switch to `All processes` to browse all running processes. If it is not listed, type the `.exe` name manually.
 5. If you need to register only one specific PID, click `PID view` and choose the individual entry. PID entries apply only to the currently running instance, so choose it again if the app restarts and receives a different PID.
 6. Right-click a registered app to edit its note or use `Pause`.
 7. Open `Settings` from the lower-left corner to change behavior options.

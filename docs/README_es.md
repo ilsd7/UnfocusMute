@@ -48,16 +48,14 @@ El silenciamiento y la restauración solo se aplican a las sesiones que UnfocusM
 - Sueles usar Alt+Tab para salir de un juego o aplicación mientras sigue abierta.
 - Un juego o app no ofrece su propia opción de silenciarse en segundo plano.
 - Quieres silenciar solo el juego en segundo plano mientras sigues oyendo el navegador o una llamada.
-- Un mismo `.exe` abre varios procesos y necesitas alternar entre gestionar la aplicación completa y controlar un PID concreto.
 
 ## Funciones
 
 - Silencia automáticamente las aplicaciones registradas mientras están en segundo plano y restaura el audio al volver al primer plano.
-- Elige desde la lista de sesiones de audio, cambia a todos los procesos en ejecución cuando haga falta, o escribe un nombre como `game.exe`.
+- Elige una aplicación de la lista predeterminada de aplicaciones con sesión de audio; si hace falta, cambia a `Todos los procesos` o escribe un nombre como `game.exe`.
 - Admite entradas por `.exe`, entradas por PID de la instancia actual y `Vista PID`.
 - Notas por aplicación, estado de silencio en tiempo real y controles `Pausar` / `Reanudar` por aplicación.
 - Funcionamiento residente en bandeja, resumen de estado en bandeja, pausa global, acceso a la carpeta de configuración y protección contra instancias duplicadas.
-- El botón de configuración en la esquina inferior izquierda reúne opciones de comportamiento, idioma, carpeta de configuración, Repositorio de GitHub e información de versión.
 - Permite elegir idioma en el primer inicio y cambiar después dentro de la app entre English/한국어/日本語/简体中文/Español/Français/Português/हिन्दी/العربية.
 - La configuración se guarda localmente en `%APPDATA%\UnfocusMute\config.json`.
 
@@ -80,7 +78,10 @@ UnfocusMute es una app independiente que no requiere instalación. Tampoco neces
 
 ## Antes de usar
 
-UnfocusMute funciona con los nombres de proceso, la información de la ventana en primer plano y las sesiones CoreAudio que proporciona Windows. La lista predeterminada muestra apps con sesión de audio; cambia a `Todos los procesos` para elegir entre los procesos `.exe` en ejecución que aún no hayan creado una sesión de audio. Si un controlador, permiso o herramienta de seguridad limita el acceso a la sesión, el control de silencio puede seguir estando limitado.
+UnfocusMute funciona con los nombres de proceso, la información de la ventana en primer plano y las sesiones CoreAudio que proporciona Windows.
+Por eso, si un controlador, un ajuste de permisos o una herramienta de seguridad limita el acceso a las sesiones, el control de silencio puede quedar parcialmente limitado.
+
+La lista predeterminada muestra solo las aplicaciones que tienen una sesión de audio en ese momento. Si una aplicación aún no ha creado una sesión de audio, cambia a `Todos los procesos` para buscarla entre los procesos `.exe` en ejecución.
 
 **Comportamiento al registrar por PID:** Windows no siempre proporciona el mismo PID para una sesión de audio y para la ventana en primer plano. Para compensarlo, UnfocusMute considera que la app volvió al primer plano cuando el nombre `.exe` del PID registrado coincide con el nombre `.exe` de la ventana activa.
 
@@ -93,7 +94,7 @@ Por eso, si hay varias instancias del mismo `.exe` ejecutándose a la vez, un PI
 1. Abre UnfocusMute.
 2. Elige un idioma en la pantalla que aparece en el primer inicio. El idioma predeterminado es inglés.
 3. Inicia el juego o la app que quieres silenciar cuando esté en segundo plano.
-4. Abre la lista `Buscar proceso` o escribe una búsqueda, selecciona una app y pulsa `Registrar`. Usa `Todos los procesos` si la app aún no ha creado una sesión de audio; si sigue sin aparecer, escribe manualmente el nombre `.exe`.
+4. Elige una aplicación en `Buscar proceso` o encuéntrala escribiendo una búsqueda, y luego pulsa `Registrar`. Si la aplicación aún no ha creado una sesión de audio, cambia a `Todos los procesos` para revisar la lista de todos los procesos en ejecución. Si no aparece en la lista, escribe manualmente el nombre `.exe`.
 5. Si necesitas registrar solo un PID concreto, pulsa `Vista PID` y elige el elemento individual. Las entradas por PID solo se aplican a la instancia que está en ejecución; si la app se reinicia con otro PID, selecciónala de nuevo.
 6. Haz clic derecho en una app registrada para editar su nota o usar `Pausar`.
 7. Abre `Configuración` desde la esquina inferior izquierda para cambiar opciones de comportamiento.
@@ -148,7 +149,7 @@ La detección de sesiones de audio y el control de silencio solo usan las API Co
 
 No debes asumir que los archivos subidos a GitHub Releases siempre coinciden con el código fuente publicado en el repositorio.
 
-Si se abusa de los permisos de publicación o una cuenta se ve comprometida, podrían subirse a una release archivos compilados desde otro código o archivos modificados.
+Si se abusa de los permisos de publicación o una cuenta se ve comprometida, podrían subirse archivos compilados desde otro código o archivos modificados a una versión publicada.
 
 Por transparencia, UnfocusMute ofrece una forma de verificar que los archivos subidos a GitHub Releases son artefactos oficiales generados por GitHub Actions a partir del código fuente de este repositorio en la etiqueta correspondiente.
 
@@ -165,7 +166,7 @@ gh attestation verify .\UnfocusMute-windows-x64.zip.sha256 -R ilsd7/UnfocusMute
 
 ## Compilar desde el código fuente
 
-El objetivo de release recomendado es `x86_64-pc-windows-msvc`.
+El objetivo recomendado para las versiones publicadas es `x86_64-pc-windows-msvc`.
 
 Requisitos:
 
@@ -178,7 +179,7 @@ rustup target add x86_64-pc-windows-msvc
 cargo build --release --target x86_64-pc-windows-msvc --locked
 ```
 
-La compilación de release está configurada para reducir el tamaño del binario. El perfil de release de `Cargo.toml` elimina símbolos, activa LTO, usa una sola codegen unit, establece `panic = "abort"` y optimiza por tamaño.
+La compilación de las versiones publicadas está configurada para reducir el tamaño del binario. El perfil de release de `Cargo.toml` elimina símbolos, activa LTO, usa una sola codegen unit, establece `panic = "abort"` y optimiza por tamaño.
 
 Ejecutable:
 
