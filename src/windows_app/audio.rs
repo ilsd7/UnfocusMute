@@ -37,6 +37,11 @@ pub struct PlannedMuteApplyResult {
     pub target_updates: Vec<TargetMuteStateUpdate>,
 }
 
+pub struct AudioProcessRefreshResult {
+    pub outcome: ProcessRefreshOutcome,
+    pub failure_detail: Option<String>,
+}
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct TargetMuteStateUpdate {
     pub process_name: String,
@@ -76,10 +81,21 @@ impl AudioController {
         &self,
         processes: &mut Vec<ProcessInfo>,
         scratch: &mut Vec<ProcessInfo>,
-    ) -> ProcessRefreshOutcome {
-        process::replace_processes(processes, scratch, |next| {
-            self.collect_session_processes(next).is_ok()
-        })
+    ) -> AudioProcessRefreshResult {
+        let mut failure_detail = None;
+        let outcome = process::replace_processes(processes, scratch, |next| {
+            match self.collect_session_processes(next) {
+                Ok(()) => true,
+                Err(error) => {
+                    failure_detail = Some(error.to_string());
+                    false
+                }
+            }
+        });
+        AudioProcessRefreshResult {
+            outcome,
+            failure_detail,
+        }
     }
 
     fn collect_session_processes(&self, processes: &mut Vec<ProcessInfo>) -> Result<()> {

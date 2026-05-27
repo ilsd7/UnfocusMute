@@ -346,7 +346,7 @@ unsafe fn run_window() -> Result<()> {
         initial_issue_diagnostics,
     )?);
     let app_ptr = app.as_mut() as *mut AppWindow;
-    let hwnd = unsafe {
+    let hwnd = match unsafe {
         CreateWindowExW(
             WINDOW_EX_STYLE(0),
             class_name,
@@ -361,7 +361,12 @@ unsafe fn run_window() -> Result<()> {
             Some(instance),
             Some(app_ptr.cast()),
         )
-        .context("create main window")?
+    } {
+        Ok(hwnd) => hwnd,
+        Err(error) => {
+            let detail = app.create_error.take().unwrap_or_else(|| error.to_string());
+            return Err(message_error(format!("create main window: {detail}")));
+        }
     };
 
     if !start_hidden || !app.tray_added {
@@ -691,6 +696,7 @@ struct AppWindow {
     theme: AppTheme,
     taskbar_created_message: u32,
     default_button_id: i32,
+    create_error: Option<String>,
 }
 
 #[derive(Clone, Copy)]
@@ -788,6 +794,7 @@ impl AppWindow {
             theme: AppTheme::new(),
             taskbar_created_message,
             default_button_id: ID_ADD_SELECTED,
+            create_error: None,
         })
     }
 
@@ -1892,10 +1899,11 @@ impl AppWindow {
             self.set_issue(StatusIssue::AudioUnavailable);
             return ProcessRefreshResult::Failed;
         };
-        match audio.refresh_session_processes(
+        let refresh = audio.refresh_session_processes(
             &mut self.running_processes,
             &mut self.running_process_refresh_buffer,
-        ) {
+        );
+        match refresh.outcome {
             ProcessRefreshOutcome::Changed => {
                 self.clear_issue(StatusIssue::AudioUnavailable);
                 self.rebuild_process_choices();
@@ -1910,7 +1918,9 @@ impl AppWindow {
                 self.audio = None;
                 self.set_issue_with_detail(
                     StatusIssue::AudioUnavailable,
-                    "refresh audio session process list failed",
+                    refresh
+                        .failure_detail
+                        .unwrap_or_else(|| "refresh audio session process list failed".to_owned()),
                 );
                 ProcessRefreshResult::Failed
             }
@@ -2058,7 +2068,7 @@ impl AppWindow {
 
         if self.paused {
             self.foreground_hook = None;
-            self.restore_managed_mutes();
+            let _ = self.restore_managed_mutes();
             self.release_idle_audio_while_paused();
             self.sync_audio_fallback_timer();
             self.update_status();
@@ -2219,17 +2229,21 @@ impl AppWindow {
         self.foreground_process_name_cache = None;
     }
 
-    fn restore_managed_mutes(&mut self) {
+    fn restore_managed_mutes(&mut self) -> Option<StatusIssue> {
         if !self.has_managed_mutes() {
-            return;
+            return None;
         }
 
         if !self.ensure_audio_controller(true) {
-            return;
+            return Some(StatusIssue::AudioUnavailable);
         }
 
         let Some(audio) = self.audio.take() else {
-            return;
+            self.set_issue_with_detail(
+                StatusIssue::AudioUnavailable,
+                "audio controller unavailable while restoring mute state",
+            );
+            return Some(StatusIssue::AudioUnavailable);
         };
         let restore_matcher = TargetMatcher::default();
         let result = audio.apply_mute_plan(
@@ -2240,20 +2254,27 @@ impl AppWindow {
             &self.config.targets,
         );
         self.audio = Some(audio);
-        match result {
+        let restore_issue = match result {
             Ok(result) => {
                 if self.apply_target_mute_updates(&result.target_updates) {
                     self.save_config();
                 }
-                self.apply_audio_update_result(result.had_failures, result.failure_detail);
+                let had_failures = result.had_failures;
+                self.apply_audio_update_result(had_failures, result.failure_detail);
+                if had_failures {
+                    Some(StatusIssue::AudioUpdateFailed)
+                } else {
+                    None
+                }
             }
             Err(error) => {
                 self.audio = None;
                 self.set_issue_with_detail(StatusIssue::AudioUnavailable, error.to_string());
-                return;
+                Some(StatusIssue::AudioUnavailable)
             }
-        }
+        };
         self.sync_target_mute_indicators();
+        restore_issue
     }
 
     fn restore_target_mute_before_removal(&mut self, target: &TargetProcess) -> bool {
@@ -2438,12 +2459,12 @@ impl AppWindow {
             return;
         };
 
-        let mut body = String::with_capacity(self.issue_text(issue).len() + detail.len() + 2);
-        body.push_str(self.issue_text(issue));
-        body.push_str("\n\n");
-        body.push_str(detail);
+        self.show_issue_message(issue, Some(detail));
+    }
 
+    fn show_issue_message(&self, issue: StatusIssue, detail: Option<&str>) {
         let title = to_wide(self.strings.status_issue);
+        let body = issue_message_body(self.issue_text(issue), detail);
         let body = to_wide(&body);
         unsafe {
             let _ = MessageBoxW(
@@ -3402,7 +3423,7 @@ impl AppWindow {
         self.update_pause_button_text();
         self.layout_footer_buttons(WINDOW_WIDTH - 36);
         if self.paused {
-            self.restore_managed_mutes();
+            let _ = self.restore_managed_mutes();
             self.foreground_hook = None;
             self.release_idle_audio_while_paused();
         } else {
@@ -3481,8 +3502,13 @@ impl AppWindow {
     fn cleanup(&mut self) {
         self.foreground_hook = None;
         self.save_window_position();
-        if self.config.restore_muted_on_exit && self.has_managed_mutes() {
-            self.restore_managed_mutes();
+        let restore_issue = if self.config.restore_muted_on_exit && self.has_managed_mutes() {
+            self.restore_managed_mutes()
+        } else {
+            None
+        };
+        if let Some(issue) = restore_issue {
+            self.show_issue_message(issue, self.issue_diagnostics.detail(issue));
         }
         if self.tray_added {
             let data = self.tray_data(APP_TITLE);
@@ -4131,6 +4157,18 @@ fn last_win32_error_detail(action: &str) -> String {
     format!("{action} failed with WIN32 error {}", error.0)
 }
 
+fn issue_message_body(issue_text: &str, detail: Option<&str>) -> String {
+    let Some(detail) = detail.filter(|detail| !detail.trim().is_empty()) else {
+        return issue_text.to_owned();
+    };
+
+    let mut body = String::with_capacity(issue_text.len() + detail.len() + 2);
+    body.push_str(issue_text);
+    body.push_str("\n\n");
+    body.push_str(detail);
+    body
+}
+
 fn selected_process_choice_index_from_picker_state(
     combo_index: isize,
     running_process_choice_selected: bool,
@@ -4200,7 +4238,8 @@ unsafe extern "system" fn window_proc(
         }
         match message {
             WM_CREATE => {
-                if unsafe { app.on_create(hwnd) }.is_err() {
+                if let Err(error) = unsafe { app.on_create(hwnd) } {
+                    app.create_error = Some(error.to_string());
                     return LRESULT(-1);
                 }
                 return LRESULT(0);
@@ -4392,6 +4431,18 @@ mod target_list_tests {
                 -1, false, "zen", "zen", &indices, &choices
             ),
             Some(0)
+        );
+    }
+
+    #[test]
+    fn issue_message_body_includes_detail_when_available() {
+        assert_eq!(
+            issue_message_body("Could not change mute state", Some("SetMute failed")),
+            "Could not change mute state\n\nSetMute failed"
+        );
+        assert_eq!(
+            issue_message_body("Could not change mute state", Some("  ")),
+            "Could not change mute state"
         );
     }
 
