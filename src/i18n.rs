@@ -144,7 +144,7 @@ impl Language {
                 pid_details_help_title: "About PID registration",
                 pid_details_help: "When you register by PID, only that currently running process instance is registered for automatic muting.\nIf you close and reopen the app, its PID changes, so register it again.\nSome apps use different PIDs for the window and audio session. To avoid incorrect muting, audio may be restored when the same exe comes to the foreground.\nUse exe view to monitor the whole app.",
                 process_search_hint: "Search for an app or choose one from the list.",
-                process_search_placeholder: "Search process",
+                process_search_placeholder: "Search processes",
                 show_pid_details: "PID view",
                 hide_pid_details: "exe view",
                 show_all_processes: "All processes",
@@ -623,8 +623,8 @@ impl Language {
                 settings_general: "اللغة",
                 settings_file_info: "الملفات والمعلومات",
                 version: "الإصدار",
-                target_count: label_first_count!("التطبيقات المسجلة"),
-                muted_count: label_first_count!("المكتومة"),
+                target_count: label_first_count!("التطبيقات المسجلة:"),
+                muted_count: label_first_count!("المكتومة:"),
                 open_config: "فتح مجلد الإعدادات",
                 github_repository: "مستودع GitHub",
                 open_github_failed: "تعذر فتح صفحة GitHub",
@@ -832,8 +832,8 @@ mod tests {
             ),
             (
                 Language::Ar,
-                CountText::label_first("التطبيقات المسجلة"),
-                CountText::label_first("المكتومة"),
+                CountText::label_first("التطبيقات المسجلة:"),
+                CountText::label_first("المكتومة:"),
             ),
         ];
 

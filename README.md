@@ -94,7 +94,7 @@ If several instances of the same `.exe` are running at the same time, a specific
 1. Launch UnfocusMute.
 2. Choose a language on the language screen shown on first launch. The default is English.
 3. Start the game or app you want to mute when it is in the background.
-4. Choose an app in `Search process` or find it by typing a search term, then click `Register`. If the app has not created an audio session yet, switch to `All processes` to browse all running processes. If it is not listed, type the `.exe` name manually.
+4. Choose an app in `Search processes` or find it by typing a search term, then click `Register`. If the app has not created an audio session yet, switch to `All processes` to browse all running processes. If it is not listed, type the `.exe` name manually.
 5. If you need to register only one specific PID, click `PID view` and choose the individual entry. PID entries apply only to the currently running instance, so choose it again if the app restarts and receives a different PID.
 6. Right-click a registered app to edit its note or use `Pause`.
 7. Open `Settings` from the lower-left corner to change behavior options.

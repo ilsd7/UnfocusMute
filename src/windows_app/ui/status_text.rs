@@ -129,7 +129,7 @@ mod tests {
             (Language::Fr, "12 enregistrées · 3 en sourdine"),
             (Language::Pt, "12 registrados · 3 silenciados"),
             (Language::Hi, "12 रजिस्टर किए गए ऐप · 3 म्यूट"),
-            (Language::Ar, "التطبيقات المسجلة 12 · المكتومة 3"),
+            (Language::Ar, "التطبيقات المسجلة: 12 · المكتومة: 3"),
         ];
 
         let mut detail = String::new();
