@@ -3158,13 +3158,17 @@ impl AppWindow {
     fn selected_process_choice_index(&mut self) -> Option<usize> {
         let index =
             unsafe { SendMessageW(self.controls.running_combo, CB_GETCURSEL, None, None).0 };
-        if index >= 0 && self.running_process_choice_selected {
-            return self.process_choice_indices.get(index as usize).copied();
-        }
         unsafe {
             window_text_into(self.controls.running_combo, &mut self.display_text_buffer);
         }
-        let selected = self.single_filtered_process_choice_index(&self.display_text_buffer);
+        let selected = selected_process_choice_index_from_picker_state(
+            index,
+            self.running_process_choice_selected,
+            &self.process_query,
+            &self.display_text_buffer,
+            &self.process_choice_indices,
+            &self.all_process_choices,
+        );
         self.display_text_buffer.clear();
         selected
     }
@@ -3173,16 +3177,6 @@ impl AppWindow {
         let index =
             unsafe { SendMessageW(self.controls.running_combo, CB_GETCURSEL, None, None).0 };
         self.running_process_choice_selected = index >= 0;
-    }
-
-    fn single_filtered_process_choice_index(&self, picker_text: &str) -> Option<usize> {
-        if self.process_query.trim().is_empty()
-            || picker_text.trim().is_empty()
-            || self.process_choice_indices.len() != 1
-        {
-            return None;
-        }
-        self.process_choice_indices.first().copied()
     }
 
     fn can_add_process_choice(&self, choice: &ProcessChoice) -> bool {
@@ -3907,6 +3901,41 @@ fn restore_mute_set(audio: &AudioController, muted_by_app: &mut HashSet<AudioSes
     result.had_failures
 }
 
+fn selected_process_choice_index_from_picker_state(
+    combo_index: isize,
+    running_process_choice_selected: bool,
+    process_query: &str,
+    picker_text: &str,
+    process_choice_indices: &[usize],
+    all_process_choices: &[ProcessChoice],
+) -> Option<usize> {
+    if combo_index >= 0
+        && running_process_choice_selected
+        && let Some(choice_index) = process_choice_indices.get(combo_index as usize).copied()
+        && all_process_choices
+            .get(choice_index)
+            .is_some_and(|choice| picker_text == choice.display_name())
+    {
+        return Some(choice_index);
+    }
+
+    single_filtered_process_choice_index(process_query, picker_text, process_choice_indices)
+}
+
+fn single_filtered_process_choice_index(
+    process_query: &str,
+    picker_text: &str,
+    process_choice_indices: &[usize],
+) -> Option<usize> {
+    if process_query.trim().is_empty()
+        || picker_text.trim().is_empty()
+        || process_choice_indices.len() != 1
+    {
+        return None;
+    }
+    process_choice_indices.first().copied()
+}
+
 unsafe extern "system" fn window_proc(
     hwnd: HWND,
     message: u32,
@@ -4087,6 +4116,52 @@ mod target_list_tests {
         assert_eq!(
             wide_to_string(&main_window_class_name(scope)),
             "UnfocusMuteWindow.0123456789abcdef"
+        );
+    }
+
+    #[test]
+    fn committed_process_picker_selection_requires_matching_text() {
+        let choices = vec![ProcessChoice::new("zen.exe".to_owned(), None, 1)];
+        let indices = vec![0];
+
+        assert_eq!(
+            selected_process_choice_index_from_picker_state(
+                0, true, "", "zen.exe", &indices, &choices
+            ),
+            Some(0)
+        );
+        assert_eq!(
+            selected_process_choice_index_from_picker_state(0, true, "", "", &indices, &choices),
+            None
+        );
+    }
+
+    #[test]
+    fn stale_process_picker_selection_does_not_override_search_text() {
+        let choices = vec![
+            ProcessChoice::new("chat.exe".to_owned(), None, 1),
+            ProcessChoice::new("zen.exe".to_owned(), None, 1),
+        ];
+        let indices = vec![0, 1];
+
+        assert_eq!(
+            selected_process_choice_index_from_picker_state(
+                0, true, "zen", "zen", &indices, &choices
+            ),
+            None
+        );
+    }
+
+    #[test]
+    fn single_filtered_process_picker_result_stays_selectable() {
+        let choices = vec![ProcessChoice::new("zen.exe".to_owned(), None, 1)];
+        let indices = vec![0];
+
+        assert_eq!(
+            selected_process_choice_index_from_picker_state(
+                -1, false, "zen", "zen", &indices, &choices
+            ),
+            Some(0)
         );
     }
 
