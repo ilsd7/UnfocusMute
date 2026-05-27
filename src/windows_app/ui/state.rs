@@ -92,6 +92,7 @@ impl StatusIssue {
 pub(super) struct StatusSnapshot {
     pub(super) paused: bool,
     pub(super) issue: Option<StatusIssue>,
+    pub(super) issue_detail_visible: bool,
     pub(super) target_count: usize,
     pub(super) muted_count: usize,
 }

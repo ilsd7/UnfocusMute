@@ -66,6 +66,7 @@ use windows::core::{PCWSTR, w};
 mod constants;
 mod controls;
 mod drawing;
+mod issue_diagnostics;
 mod language_prompt;
 mod managed_mute;
 mod modal_window;
@@ -84,6 +85,7 @@ mod window_position;
 use constants::*;
 use controls::Controls;
 use drawing::{draw_target_identity_line, draw_text_line};
+use issue_diagnostics::IssueDiagnostics;
 use language_prompt::prompt_initial_language;
 use managed_mute::{
     ManagedMuteLookup, matching_session_keys_for_target, target_has_managed_mute,
@@ -141,6 +143,9 @@ const HEADER_FULL_WIDTH: i32 = HEADER_CONTENT_RIGHT - HEADER_LEFT_X;
 const HEADER_TITLE_Y: i32 = 24;
 const HEADER_SUBTITLE_Y: i32 = 56;
 const HEADER_DETAIL_Y: i32 = 82;
+const ISSUE_DETAILS_BUTTON_WIDTH: i32 = 100;
+const ISSUE_DETAILS_BUTTON_HEIGHT: i32 = 28;
+const ISSUE_DETAILS_BUTTON_GAP: i32 = 10;
 const TARGET_PANEL_LEFT: i32 = 14;
 const TARGET_PANEL_RIGHT: i32 = HEADER_CONTENT_RIGHT + (HEADER_LEFT_X - TARGET_PANEL_LEFT);
 const HEADER_STATUS_WIDTH: i32 = 180;
@@ -253,12 +258,14 @@ unsafe fn run_window() -> Result<()> {
     let _class_registration = (unsafe { RegisterClassW(&class) } != 0)
         .then(|| WindowClassRegistration::new(class_name, instance));
 
+    let mut initial_issue_diagnostics = IssueDiagnostics::default();
     let (config_load, mut initial_issues, can_sync_startup) =
         match AppConfig::load_or_default_with_status() {
             Ok(config_load) => (config_load, IssueState::default(), true),
-            Err(_) => {
+            Err(error) => {
                 let mut issues = IssueState::default();
                 issues.set(StatusIssue::ConfigLoadFailed);
+                initial_issue_diagnostics.set(StatusIssue::ConfigLoadFailed, error.to_string());
                 (
                     AppConfigLoad {
                         config: AppConfig::default(),
@@ -293,10 +300,14 @@ unsafe fn run_window() -> Result<()> {
         StartupSyncResult::default()
     };
     initial_issues.merge(startup_sync.issues);
+    if let Some(detail) = &startup_sync.issue_detail {
+        initial_issue_diagnostics.set(StatusIssue::StartupUpdateFailed, detail.clone());
+    }
     if should_save_startup_config(accepted_initial_preferences, startup_sync.config_changed)
-        && config.save().is_err()
+        && let Err(error) = config.save()
     {
         initial_issues.set(StatusIssue::ConfigSaveFailed);
+        initial_issue_diagnostics.set(StatusIssue::ConfigSaveFailed, error.to_string());
     }
 
     let forced_minimized = std::env::args_os().any(|arg| arg == "--minimized");
@@ -317,6 +328,7 @@ unsafe fn run_window() -> Result<()> {
         icons,
         taskbar_created_message,
         initial_issues,
+        initial_issue_diagnostics,
     )?);
     let app_ptr = app.as_mut() as *mut AppWindow;
     let hwnd = unsafe {
@@ -636,6 +648,7 @@ struct AppWindow {
     audio_fallback_timer_interval_ms: Option<u32>,
     managed_mute_fast_retry_remaining: u8,
     issues: IssueState,
+    issue_diagnostics: IssueDiagnostics,
     last_status: Option<StatusSnapshot>,
     last_action_buttons: Option<ActionButtonState>,
     target_status_width: i32,
@@ -687,6 +700,7 @@ impl AppWindow {
         icons: AppIcons,
         taskbar_created_message: u32,
         initial_issues: IssueState,
+        initial_issue_diagnostics: IssueDiagnostics,
     ) -> Result<Self> {
         let strings = config.language.strings();
         let managed_mute_fast_retry_remaining =
@@ -731,6 +745,7 @@ impl AppWindow {
             audio_fallback_timer_interval_ms: None,
             managed_mute_fast_retry_remaining,
             issues: initial_issues,
+            issue_diagnostics: initial_issue_diagnostics,
             last_status: None,
             last_action_buttons: None,
             target_status_width: 0,
@@ -835,6 +850,21 @@ impl AppWindow {
                 0,
             )?
         };
+        self.controls.issue_details_button = unsafe {
+            create_button(
+                self.hwnd,
+                instance,
+                "",
+                HEADER_CONTENT_RIGHT - ISSUE_DETAILS_BUTTON_WIDTH,
+                HEADER_DETAIL_Y - 2,
+                ISSUE_DETAILS_BUTTON_WIDTH,
+                ISSUE_DETAILS_BUTTON_HEIGHT,
+                ID_ISSUE_DETAILS,
+            )?
+        };
+        unsafe {
+            let _ = ShowWindow(self.controls.issue_details_button, SW_HIDE);
+        }
 
         self.controls.target_list = unsafe {
             create_control(
@@ -1104,6 +1134,10 @@ impl AppWindow {
                 self.strings.process_search_hint,
             );
             set_text(self.controls.settings_button, self.strings.settings_title);
+            set_text(
+                self.controls.issue_details_button,
+                self.strings.issue_details,
+            );
             set_text(self.controls.manual_label, self.strings.manual_process);
             set_text(self.controls.add_selected_button, self.strings.add_selected);
             set_text(self.controls.add_manual_button, self.strings.add_manual);
@@ -1277,17 +1311,19 @@ impl AppWindow {
             changed = true;
         }
         if self.config.launch_on_startup != preferences.launch_on_startup {
-            if apply_startup_preference(&mut self.config, preferences.launch_on_startup) {
+            if let Err(error) =
+                apply_startup_preference(&mut self.config, preferences.launch_on_startup)
+            {
+                self.set_issue_with_detail(StatusIssue::StartupUpdateFailed, error);
+            } else {
                 self.clear_issue(StatusIssue::StartupUpdateFailed);
                 changed = true;
-            } else {
-                self.set_issue(StatusIssue::StartupUpdateFailed);
             }
         } else if start_minimized_changed && self.config.launch_on_startup {
-            if apply_startup_command_preference(&self.config) {
-                self.clear_issue(StatusIssue::StartupUpdateFailed);
+            if let Err(error) = apply_startup_command_preference(&self.config) {
+                self.set_issue_with_detail(StatusIssue::StartupUpdateFailed, error);
             } else {
-                self.set_issue(StatusIssue::StartupUpdateFailed);
+                self.clear_issue(StatusIssue::StartupUpdateFailed);
             }
         }
         if self.config.restore_muted_on_exit != preferences.restore_on_exit {
@@ -1585,7 +1621,7 @@ impl AppWindow {
         };
     }
 
-    fn layout_header(&self, issue_visible: bool) {
+    fn layout_header(&self, issue_visible: bool, issue_detail_visible: bool) {
         let _ = unsafe {
             move_window(
                 self.controls.title_label,
@@ -1617,7 +1653,12 @@ impl AppWindow {
                 true,
             )
         };
-        let (detail_x, detail_width) = if issue_visible {
+        let (detail_x, detail_width) = if issue_visible && issue_detail_visible {
+            (
+                HEADER_LEFT_X,
+                HEADER_FULL_WIDTH - ISSUE_DETAILS_BUTTON_WIDTH - ISSUE_DETAILS_BUTTON_GAP,
+            )
+        } else if issue_visible {
             (HEADER_LEFT_X, HEADER_FULL_WIDTH)
         } else {
             (HEADER_RIGHT_X, HEADER_RIGHT_WIDTH)
@@ -1632,6 +1673,26 @@ impl AppWindow {
                 true,
             )
         };
+        let _ = unsafe {
+            move_window(
+                self.controls.issue_details_button,
+                HEADER_CONTENT_RIGHT - ISSUE_DETAILS_BUTTON_WIDTH,
+                HEADER_DETAIL_Y - 2,
+                ISSUE_DETAILS_BUTTON_WIDTH,
+                ISSUE_DETAILS_BUTTON_HEIGHT,
+                true,
+            )
+        };
+        unsafe {
+            let _ = ShowWindow(
+                self.controls.issue_details_button,
+                if issue_detail_visible {
+                    SW_SHOW
+                } else {
+                    SW_HIDE
+                },
+            );
+        }
     }
 
     fn redraw_header(&self) {
@@ -1804,7 +1865,10 @@ impl AppWindow {
             }
             ProcessRefreshOutcome::Failed => {
                 self.audio = None;
-                self.set_issue(StatusIssue::AudioUnavailable);
+                self.set_issue_with_detail(
+                    StatusIssue::AudioUnavailable,
+                    "refresh audio session process list failed",
+                );
                 ProcessRefreshResult::Failed
             }
         }
@@ -2002,9 +2066,9 @@ impl AppWindow {
                 self.clear_issue(StatusIssue::AudioUnavailable);
                 result
             }
-            Err(_) => {
+            Err(error) => {
                 self.audio = None;
-                self.set_issue(StatusIssue::AudioUnavailable);
+                self.set_issue_with_detail(StatusIssue::AudioUnavailable, error.to_string());
                 return;
             }
         };
@@ -2012,7 +2076,7 @@ impl AppWindow {
         if self.apply_target_mute_updates(&apply_result.target_updates) {
             self.save_config();
         }
-        self.apply_audio_update_result(apply_result.had_failures);
+        self.apply_audio_update_result(apply_result.had_failures, apply_result.failure_detail);
 
         self.sync_target_mute_indicators();
         self.sync_audio_fallback_timer();
@@ -2020,9 +2084,11 @@ impl AppWindow {
     }
 
     fn update_status(&mut self) {
+        let issue = self.issues.visible();
         let snapshot = StatusSnapshot {
             paused: self.paused,
-            issue: self.issues.visible(),
+            issue,
+            issue_detail_visible: self.issue_detail_available(issue),
             target_count: self.config.targets.len(),
             muted_count: self.muted_target_count,
         };
@@ -2036,7 +2102,10 @@ impl AppWindow {
         let header_layout_changed = self
             .last_status
             .as_ref()
-            .map(|last_snapshot| last_snapshot.issue.is_some() != snapshot.issue.is_some())
+            .map(|last_snapshot| {
+                last_snapshot.issue.is_some() != snapshot.issue.is_some()
+                    || last_snapshot.issue_detail_visible != snapshot.issue_detail_visible
+            })
             .unwrap_or(true);
 
         let status = status_text_and_detail_into(
@@ -2057,7 +2126,7 @@ impl AppWindow {
             set_text(self.controls.status_detail, &self.status_detail_text);
         }
         if header_layout_changed {
-            self.layout_header(snapshot.issue.is_some());
+            self.layout_header(snapshot.issue.is_some(), snapshot.issue_detail_visible);
             self.redraw_header();
         }
         self.last_status = Some(snapshot);
@@ -2067,8 +2136,8 @@ impl AppWindow {
 
     fn reset_audio_after_endpoint_change(&mut self) {
         if let Some(audio) = &self.audio {
-            let had_failures = restore_mute_set(audio, &mut self.muted_by_app);
-            self.apply_audio_update_result(had_failures);
+            let result = restore_mute_set(audio, &mut self.muted_by_app);
+            self.apply_audio_update_result(result.had_failures, result.failure_detail);
         }
         self.audio = None;
         self.sync_target_mute_indicators();
@@ -2128,11 +2197,11 @@ impl AppWindow {
                 if self.apply_target_mute_updates(&result.target_updates) {
                     self.save_config();
                 }
-                self.apply_audio_update_result(result.had_failures);
+                self.apply_audio_update_result(result.had_failures, result.failure_detail);
             }
-            Err(_) => {
+            Err(error) => {
                 self.audio = None;
-                self.set_issue(StatusIssue::AudioUnavailable);
+                self.set_issue_with_detail(StatusIssue::AudioUnavailable, error.to_string());
                 return;
             }
         }
@@ -2176,12 +2245,12 @@ impl AppWindow {
                 self.muted_by_app
                     .retain(|key| !target_matches_session_key(target, key));
                 self.muted_by_app.extend(target_sessions);
-                self.apply_audio_update_result(result.had_failures);
+                self.apply_audio_update_result(result.had_failures, result.failure_detail);
                 !result.had_failures
             }
-            Err(_) => {
+            Err(error) => {
                 self.audio = None;
-                self.set_issue(StatusIssue::AudioUnavailable);
+                self.set_issue_with_detail(StatusIssue::AudioUnavailable, error.to_string());
                 false
             }
         }
@@ -2207,7 +2276,8 @@ impl AppWindow {
                 }
                 true
             }
-            Err(_) => {
+            Err(error) => {
+                self.record_issue_detail(StatusIssue::AudioUnavailable, error.to_string());
                 if report_issue {
                     self.set_issue(StatusIssue::AudioUnavailable);
                 }
@@ -2216,9 +2286,13 @@ impl AppWindow {
         }
     }
 
-    fn apply_audio_update_result(&mut self, had_failures: bool) {
+    fn apply_audio_update_result(&mut self, had_failures: bool, failure_detail: Option<String>) {
         if had_failures {
-            self.set_issue(StatusIssue::AudioUpdateFailed);
+            if let Some(detail) = failure_detail {
+                self.set_issue_with_detail(StatusIssue::AudioUpdateFailed, detail);
+            } else {
+                self.set_issue(StatusIssue::AudioUpdateFailed);
+            }
         } else {
             self.clear_issue(StatusIssue::AudioUpdateFailed);
         }
@@ -2251,7 +2325,7 @@ impl AppWindow {
 
     fn clear_audio_issues(&mut self) {
         let mask = StatusIssue::AudioUnavailable.bit() | StatusIssue::AudioUpdateFailed.bit();
-        if self.issues.clear_mask(mask) {
+        if self.clear_issue_mask(mask) {
             self.last_status = None;
             self.update_status();
         }
@@ -2264,10 +2338,72 @@ impl AppWindow {
         }
     }
 
-    fn clear_issue(&mut self, issue: StatusIssue) {
-        if self.issues.clear(issue) {
+    fn set_issue_with_detail(&mut self, issue: StatusIssue, detail: impl Into<String>) {
+        self.record_issue_detail(issue, detail);
+        self.set_issue(issue);
+    }
+
+    fn record_issue_detail(&mut self, issue: StatusIssue, detail: impl Into<String>) {
+        let detail_visible_before = self.current_issue_detail_visible();
+        let changed = self.issue_diagnostics.set(issue, detail);
+        if changed && detail_visible_before != self.current_issue_detail_visible() {
             self.last_status = None;
             self.update_status();
+        }
+    }
+
+    fn clear_issue(&mut self, issue: StatusIssue) {
+        let detail_visible_before = self.current_issue_detail_visible();
+        let issue_changed = self.issues.clear(issue);
+        let detail_changed = self.issue_diagnostics.clear(issue);
+        if issue_changed
+            || (detail_changed && detail_visible_before != self.current_issue_detail_visible())
+        {
+            self.last_status = None;
+            self.update_status();
+        }
+    }
+
+    fn clear_issue_mask(&mut self, mask: u8) -> bool {
+        let detail_visible_before = self.current_issue_detail_visible();
+        let issue_changed = self.issues.clear_mask(mask);
+        let detail_changed = self.issue_diagnostics.clear_mask(mask);
+        issue_changed
+            || (detail_changed && detail_visible_before != self.current_issue_detail_visible())
+    }
+
+    fn current_issue_detail_visible(&self) -> bool {
+        self.issue_detail_available(self.issues.visible())
+    }
+
+    fn issue_detail_available(&self, issue: Option<StatusIssue>) -> bool {
+        issue
+            .and_then(|issue| self.issue_diagnostics.detail(issue))
+            .is_some()
+    }
+
+    fn show_issue_details(&self) {
+        let Some(issue) = self.issues.visible() else {
+            return;
+        };
+        let Some(detail) = self.issue_diagnostics.detail(issue) else {
+            return;
+        };
+
+        let mut body = String::with_capacity(self.issue_text(issue).len() + detail.len() + 2);
+        body.push_str(self.issue_text(issue));
+        body.push_str("\n\n");
+        body.push_str(detail);
+
+        let title = to_wide(self.strings.status_issue);
+        let body = to_wide(&body);
+        unsafe {
+            let _ = MessageBoxW(
+                Some(self.hwnd),
+                PCWSTR(body.as_ptr()),
+                PCWSTR(title.as_ptr()),
+                MB_OK | MB_ICONWARNING,
+            );
         }
     }
 
@@ -2317,9 +2453,9 @@ impl AppWindow {
                 self.clear_issue(StatusIssue::ConfigLoadFailed);
                 ConfigReloadResult::UNCHANGED
             }
-            Err(_) => {
+            Err(error) => {
                 self.config_stamp = stamp;
-                self.set_issue(StatusIssue::ConfigLoadFailed);
+                self.set_issue_with_detail(StatusIssue::ConfigLoadFailed, error.to_string());
                 ConfigReloadResult::UNCHANGED
             }
         }
@@ -2328,9 +2464,9 @@ impl AppWindow {
     fn apply_external_config(&mut self, mut config: AppConfig) -> bool {
         let previous_config = self.config.clone();
         if startup_setting_changed(&previous_config, &config) {
-            let startup_synced =
+            let startup_sync =
                 sync_external_startup_config(&mut config, previous_config.launch_on_startup);
-            self.update_startup_sync_issue(startup_synced);
+            self.update_startup_sync_issue(startup_sync);
         }
 
         let effects = ConfigChangeEffects::between(&previous_config, &config);
@@ -2453,8 +2589,16 @@ impl AppWindow {
         self.audio_fallback_timer_interval_ms = None;
     }
 
-    fn set_timer(&self, timer_id: usize, interval_ms: u32) -> bool {
-        (unsafe { SetTimer(Some(self.hwnd), timer_id, interval_ms, None) }) != 0
+    fn set_timer(&mut self, timer_id: usize, interval_ms: u32) -> bool {
+        if (unsafe { SetTimer(Some(self.hwnd), timer_id, interval_ms, None) }) != 0 {
+            return true;
+        }
+
+        self.record_issue_detail(
+            StatusIssue::TimerSetupFailed,
+            last_win32_error_detail("set timer"),
+        );
+        false
     }
 
     fn clear_timer(&self, timer_id: usize) {
@@ -2494,8 +2638,8 @@ impl AppWindow {
                 self.clear_config_issues();
                 true
             }
-            Err(_) => {
-                self.set_issue(StatusIssue::ConfigSaveFailed);
+            Err(error) => {
+                self.set_issue_with_detail(StatusIssue::ConfigSaveFailed, error.to_string());
                 false
             }
         }
@@ -2525,20 +2669,19 @@ impl AppWindow {
 
     fn refresh_after_external_save_merge(&mut self, previous_config: &AppConfig) {
         if startup_setting_changed(previous_config, &self.config) {
-            let startup_synced =
+            let startup_sync =
                 sync_external_startup_config(&mut self.config, previous_config.launch_on_startup);
-            self.update_startup_sync_issue(startup_synced);
+            self.update_startup_sync_issue(startup_sync);
         }
 
         let effects = ConfigChangeEffects::between(previous_config, &self.config);
         self.apply_config_change_effects(effects);
     }
 
-    fn update_startup_sync_issue(&mut self, startup_synced: bool) {
-        if startup_synced {
-            self.clear_issue(StatusIssue::StartupUpdateFailed);
-        } else {
-            self.set_issue(StatusIssue::StartupUpdateFailed);
+    fn update_startup_sync_issue(&mut self, startup_sync: std::result::Result<(), String>) {
+        match startup_sync {
+            Ok(()) => self.clear_issue(StatusIssue::StartupUpdateFailed),
+            Err(error) => self.set_issue_with_detail(StatusIssue::StartupUpdateFailed, error),
         }
     }
 
@@ -2566,7 +2709,7 @@ impl AppWindow {
 
     fn clear_config_issues(&mut self) {
         let mask = StatusIssue::ConfigLoadFailed.bit() | StatusIssue::ConfigSaveFailed.bit();
-        if self.issues.clear_mask(mask) {
+        if self.clear_issue_mask(mask) {
             self.last_status = None;
             self.update_status();
         }
@@ -2620,6 +2763,7 @@ impl AppWindow {
             }
             ID_MANUAL if notification == EN_CHANGE as u16 => self.update_manual_process_text(),
             ID_SETTINGS => self.open_settings_window(),
+            ID_ISSUE_DETAILS => self.show_issue_details(),
             ID_PAUSE => self.toggle_pause(),
             ID_HIDE => self.hide_to_tray(),
             ID_QUIT => unsafe {
@@ -3329,7 +3473,10 @@ impl AppWindow {
             self.tray_added = true;
             self.clear_issue(StatusIssue::TrayIconUnavailable);
         } else {
-            self.set_issue(StatusIssue::TrayIconUnavailable);
+            self.set_issue_with_detail(
+                StatusIssue::TrayIconUnavailable,
+                last_win32_error_detail("add tray icon"),
+            );
         }
     }
 
@@ -3554,6 +3701,7 @@ impl AppWindow {
         if ctl_id == ID_PROCESS_SOURCE
             || ctl_id == ID_TOGGLE_PROCESS_DETAILS
             || ctl_id == ID_PID_DETAILS_HELP
+            || ctl_id == ID_ISSUE_DETAILS
             || ctl_id == ID_ADD_SELECTED
             || ctl_id == ID_ADD_MANUAL
             || ctl_id == ID_PAUSE
@@ -3893,12 +4041,34 @@ unsafe extern "system" fn target_list_subclass_proc(
     unsafe { DefSubclassProc(hwnd, message, wparam, lparam) }
 }
 
-fn restore_mute_set(audio: &AudioController, muted_by_app: &mut HashSet<AudioSessionKey>) -> bool {
-    let Ok(result) = audio.unmute_sessions(muted_by_app) else {
-        return true;
+struct AudioUpdateResult {
+    had_failures: bool,
+    failure_detail: Option<String>,
+}
+
+fn restore_mute_set(
+    audio: &AudioController,
+    muted_by_app: &mut HashSet<AudioSessionKey>,
+) -> AudioUpdateResult {
+    let result = match audio.unmute_sessions(muted_by_app) {
+        Ok(result) => result,
+        Err(error) => {
+            return AudioUpdateResult {
+                had_failures: true,
+                failure_detail: Some(error.to_string()),
+            };
+        }
     };
 
-    result.had_failures
+    AudioUpdateResult {
+        had_failures: result.had_failures,
+        failure_detail: result.failure_detail,
+    }
+}
+
+fn last_win32_error_detail(action: &str) -> String {
+    let error = unsafe { GetLastError() };
+    format!("{action} failed with WIN32 error {}", error.0)
 }
 
 fn selected_process_choice_index_from_picker_state(

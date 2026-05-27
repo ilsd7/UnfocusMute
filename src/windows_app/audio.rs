@@ -28,10 +28,12 @@ pub struct AudioController {
 
 pub struct MuteApplyResult {
     pub had_failures: bool,
+    pub failure_detail: Option<String>,
 }
 
 pub struct PlannedMuteApplyResult {
     pub had_failures: bool,
+    pub failure_detail: Option<String>,
     pub target_updates: Vec<TargetMuteStateUpdate>,
 }
 
@@ -102,18 +104,27 @@ impl AudioController {
         if session_keys.is_empty() {
             return Ok(MuteApplyResult {
                 had_failures: false,
+                failure_detail: None,
             });
         }
 
-        let failed_sessions = {
+        let (failed_sessions, failure_detail) = {
             let lookup = ManagedSessionLookup::new(session_keys);
             let mut failed_sessions = None;
+            let mut failure_detail = None;
             self.visit_sessions_matching(
                 false,
                 |pid| lookup.may_include_pid(pid),
                 |visit| match visit {
                     SessionVisit::Resolved(session) => {
                         if let Err(key) = apply_unmute_to_session(&session, session_keys, &lookup) {
+                            record_failure_detail(
+                                &mut failure_detail,
+                                format!(
+                                    "restore mute state failed for {} (PID {})",
+                                    session.process_name, session.pid
+                                ),
+                            );
                             failed_sessions
                                 .get_or_insert_with(|| HashSet::with_capacity(session_keys.len()))
                                 .insert(key);
@@ -123,18 +134,29 @@ impl AudioController {
                         if let Err(keys) =
                             apply_unmute_to_unresolved_session(&session, session_keys)
                         {
+                            record_failure_detail(
+                                &mut failure_detail,
+                                format!(
+                                    "restore mute state failed for unresolved audio session PID {}",
+                                    session.pid
+                                ),
+                            );
                             failed_sessions
                                 .get_or_insert_with(|| HashSet::with_capacity(session_keys.len()))
                                 .extend(keys);
                         }
                     }
                     SessionVisit::Unreadable => {
+                        record_failure_detail(
+                            &mut failure_detail,
+                            "restore mute state failed because an audio session was unreadable",
+                        );
                         failed_sessions
                             .get_or_insert_with(|| session_keys.iter().cloned().collect());
                     }
                 },
             )?;
-            failed_sessions
+            (failed_sessions, failure_detail)
         };
 
         let had_failures = failed_sessions.is_some();
@@ -143,7 +165,10 @@ impl AudioController {
         } else {
             session_keys.clear();
         }
-        Ok(MuteApplyResult { had_failures })
+        Ok(MuteApplyResult {
+            had_failures,
+            failure_detail,
+        })
     }
 
     pub fn apply_mute_plan(
@@ -193,7 +218,10 @@ impl AudioController {
                                 managed_muted_sessions,
                                 &target_lookup,
                             );
-                            apply_result.had_failures = true;
+                            apply_result.mark_failure(format!(
+                                "audio session process name unavailable for managed PID {}",
+                                session.pid
+                            ));
                         } else if unresolved_unmanaged_pid_is_failure(
                             needs_all_session_process_names,
                             matcher,
@@ -201,11 +229,15 @@ impl AudioController {
                         ) {
                             apply_result
                                 .block_unmuted_pid_target_states(session.pid, &target_lookup);
-                            apply_result.had_failures = true;
+                            apply_result.mark_failure(format!(
+                                "audio session process name unavailable for PID {}",
+                                session.pid
+                            ));
                         }
                     }
                     SessionVisit::Unreadable => {
-                        apply_result.had_failures = true;
+                        apply_result
+                            .mark_failure("audio session unavailable while applying mute plan");
                         apply_result.block_all_unmuted_target_states();
                         preserve_existing_managed_sessions = true;
                     }
@@ -220,6 +252,7 @@ impl AudioController {
 
         Ok(PlannedMuteApplyResult {
             had_failures: apply_result.had_failures,
+            failure_detail: apply_result.failure_detail,
             target_updates: apply_result.target_updates,
         })
     }
@@ -336,6 +369,7 @@ struct PlanApplyResult {
     blocked_unmuted_target_updates: Vec<TargetMuteStateUpdate>,
     block_all_unmuted_target_updates: bool,
     had_failures: bool,
+    failure_detail: Option<String>,
 }
 
 impl PlanApplyResult {
@@ -346,7 +380,13 @@ impl PlanApplyResult {
             blocked_unmuted_target_updates: Vec::new(),
             block_all_unmuted_target_updates: false,
             had_failures: false,
+            failure_detail: None,
         }
+    }
+
+    fn mark_failure(&mut self, detail: impl Into<String>) {
+        self.had_failures = true;
+        record_failure_detail(&mut self.failure_detail, detail);
     }
 
     fn keep_active_session(
@@ -762,7 +802,10 @@ fn apply_plan_to_session(
         return;
     };
     let Some(volume) = session.volume() else {
-        result.had_failures = true;
+        result.mark_failure(format!(
+            "audio session mute control unavailable for {} (PID {})",
+            session.process_name, session.pid
+        ));
         if managed_session {
             result.keep_active_session(session, key);
             set_target_states_for_session(result, target_matches, target_identity, true, true);
@@ -793,8 +836,11 @@ fn apply_plan_to_session(
         Err(_) => desired_mute,
     };
 
-    if unsafe { volume.SetMute(mute, std::ptr::null()) }.is_err() {
-        result.had_failures = true;
+    if let Err(error) = unsafe { volume.SetMute(mute, std::ptr::null()) } {
+        result.mark_failure(format!(
+            "set mute state failed for {} (PID {}): {error}",
+            session.process_name, session.pid
+        ));
         if managed {
             result.keep_active_session(session, key);
             set_target_states_for_session(result, target_matches, target_identity, true, true);
@@ -952,6 +998,12 @@ fn unresolved_unmanaged_pid_is_failure(
     pid: u32,
 ) -> bool {
     !needs_all_session_process_names || matcher.has_pid_target(pid)
+}
+
+fn record_failure_detail(target: &mut Option<String>, detail: impl Into<String>) {
+    if target.is_none() {
+        *target = Some(detail.into());
+    }
 }
 
 struct EndpointNotification {

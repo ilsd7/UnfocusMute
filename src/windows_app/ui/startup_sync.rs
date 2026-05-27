@@ -5,47 +5,59 @@ use crate::windows_app::startup;
 #[derive(Default)]
 pub(super) struct StartupSyncResult {
     pub(super) issues: IssueState,
+    pub(super) issue_detail: Option<String>,
     pub(super) config_changed: bool,
 }
 
 pub(super) fn sync_startup_setting(config: &mut AppConfig) -> StartupSyncResult {
-    apply_startup_sync_result(
-        config,
-        startup::set_launch_on_startup(config.launch_on_startup, config.start_minimized).is_err(),
-    )
+    let update_error =
+        startup::set_launch_on_startup(config.launch_on_startup, config.start_minimized)
+            .err()
+            .map(|error| error.to_string());
+    apply_startup_sync_result(config, update_error)
 }
 
-pub(super) fn apply_startup_preference(config: &mut AppConfig, launch_on_startup: bool) -> bool {
-    if startup::set_launch_on_startup(launch_on_startup, config.start_minimized).is_err() {
-        return false;
-    }
+pub(super) fn apply_startup_preference(
+    config: &mut AppConfig,
+    launch_on_startup: bool,
+) -> std::result::Result<(), String> {
+    startup::set_launch_on_startup(launch_on_startup, config.start_minimized)
+        .map_err(|error| error.to_string())?;
 
     config.launch_on_startup = launch_on_startup;
-    true
+    Ok(())
 }
 
-pub(super) fn apply_startup_command_preference(config: &AppConfig) -> bool {
-    !config.launch_on_startup
-        || startup::set_launch_on_startup(true, config.start_minimized).is_ok()
+pub(super) fn apply_startup_command_preference(
+    config: &AppConfig,
+) -> std::result::Result<(), String> {
+    if !config.launch_on_startup {
+        return Ok(());
+    }
+    startup::set_launch_on_startup(true, config.start_minimized).map_err(|error| error.to_string())
 }
 
 pub(super) fn apply_external_startup_config(
     config: &mut AppConfig,
     previous_launch_on_startup: bool,
-) -> bool {
-    if startup::set_launch_on_startup(config.launch_on_startup, config.start_minimized).is_ok() {
-        return true;
+) -> std::result::Result<(), String> {
+    match startup::set_launch_on_startup(config.launch_on_startup, config.start_minimized) {
+        Ok(()) => Ok(()),
+        Err(error) => {
+            config.launch_on_startup = previous_launch_on_startup;
+            Err(error.to_string())
+        }
     }
-
-    config.launch_on_startup = previous_launch_on_startup;
-    false
 }
 
-fn apply_startup_sync_result(config: &mut AppConfig, update_failed: bool) -> StartupSyncResult {
+fn apply_startup_sync_result(
+    config: &mut AppConfig,
+    update_error: Option<String>,
+) -> StartupSyncResult {
     let mut issues = IssueState::default();
     let mut config_changed = false;
 
-    if update_failed {
+    if update_error.is_some() {
         issues.set(StatusIssue::StartupUpdateFailed);
         if config.launch_on_startup {
             config.launch_on_startup = false;
@@ -55,6 +67,7 @@ fn apply_startup_sync_result(config: &mut AppConfig, update_failed: bool) -> Sta
 
     StartupSyncResult {
         issues,
+        issue_detail: update_error,
         config_changed,
     }
 }
@@ -84,11 +97,12 @@ mod tests {
             ..AppConfig::default()
         };
 
-        let result = apply_startup_sync_result(&mut config, true);
+        let result = apply_startup_sync_result(&mut config, Some("registry failed".to_owned()));
 
         assert!(!config.launch_on_startup);
         assert!(result.config_changed);
         assert!(result.issues.contains(StatusIssue::StartupUpdateFailed));
+        assert_eq!(result.issue_detail.as_deref(), Some("registry failed"));
     }
 
     #[test]
@@ -98,11 +112,12 @@ mod tests {
             ..AppConfig::default()
         };
 
-        let result = apply_startup_sync_result(&mut config, true);
+        let result = apply_startup_sync_result(&mut config, Some("registry failed".to_owned()));
 
         assert!(!config.launch_on_startup);
         assert!(!result.config_changed);
         assert!(result.issues.contains(StatusIssue::StartupUpdateFailed));
+        assert_eq!(result.issue_detail.as_deref(), Some("registry failed"));
     }
 
     #[test]
@@ -112,11 +127,12 @@ mod tests {
             ..AppConfig::default()
         };
 
-        let result = apply_startup_sync_result(&mut config, false);
+        let result = apply_startup_sync_result(&mut config, None);
 
         assert!(config.launch_on_startup);
         assert!(!result.config_changed);
         assert!(!result.issues.contains(StatusIssue::StartupUpdateFailed));
+        assert_eq!(result.issue_detail, None);
     }
 
     #[test]
@@ -141,6 +157,6 @@ mod tests {
             ..AppConfig::default()
         };
 
-        assert!(apply_startup_command_preference(&config));
+        assert!(apply_startup_command_preference(&config).is_ok());
     }
 }

@@ -33,6 +33,7 @@ pub(super) const ID_SHOW: i32 = 1016;
 pub(super) const ID_TOGGLE_PROCESS_DETAILS: i32 = 1018;
 pub(super) const ID_PID_DETAILS_HELP: i32 = 1019;
 pub(super) const ID_SETTINGS: i32 = 1021;
+pub(super) const ID_ISSUE_DETAILS: i32 = 1022;
 pub(super) const ID_LANGUAGE_PROMPT_COMBO: i32 = 2001;
 pub(super) const ID_LANGUAGE_PROMPT_OK: i32 = 2002;
 pub(super) const ID_LANGUAGE_PROMPT_STARTUP: i32 = 2003;
