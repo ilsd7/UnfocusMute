@@ -229,11 +229,13 @@ impl Drop for ComApartment {
 }
 
 unsafe fn run_window() -> Result<()> {
-    let mut instance_scope = single_instance_scope();
+    let instance_scope = single_instance_scope();
     #[cfg(debug_assertions)]
-    if preview_issue_requested() {
-        instance_scope ^= hash_text_for_mutex_scope("preview-issue");
-    }
+    let instance_scope = if preview_issue_requested() {
+        instance_scope ^ hash_text_for_mutex_scope("preview-issue")
+    } else {
+        instance_scope
+    };
     let Some(_single_instance) = (unsafe { acquire_single_instance(instance_scope)? }) else {
         return Ok(());
     };
