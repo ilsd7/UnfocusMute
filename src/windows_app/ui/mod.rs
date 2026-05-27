@@ -2825,11 +2825,10 @@ impl AppWindow {
                 if notification == CBN_SELCHANGE as u16 || notification == CBN_SELENDOK as u16 =>
             {
                 self.update_running_process_choice_selected();
-                self.update_action_buttons()
+                self.update_action_buttons();
             }
             ID_RUNNING if notification == CBN_CLOSEUP as u16 => {
                 self.focus_main_window();
-                self.update_running_process_choice_selected();
                 self.update_action_buttons();
             }
             ID_MANUAL if notification == EN_CHANGE as u16 => self.update_manual_process_text(),
@@ -3382,7 +3381,6 @@ impl AppWindow {
             &self.process_query,
             &self.display_text_buffer,
             &self.process_choice_indices,
-            &self.all_process_choices,
         );
         self.display_text_buffer.clear();
         selected
@@ -4177,16 +4175,9 @@ fn selected_process_choice_index_from_picker_state(
     process_query: &str,
     picker_text: &str,
     process_choice_indices: &[usize],
-    all_process_choices: &[ProcessChoice],
 ) -> Option<usize> {
-    if combo_index >= 0
-        && running_process_choice_selected
-        && let Some(choice_index) = process_choice_indices.get(combo_index as usize).copied()
-        && all_process_choices
-            .get(choice_index)
-            .is_some_and(|choice| picker_text == choice.display_name())
-    {
-        return Some(choice_index);
+    if combo_index >= 0 && running_process_choice_selected {
+        return process_choice_indices.get(combo_index as usize).copied();
     }
 
     single_filtered_process_choice_index(process_query, picker_text, process_choice_indices)
@@ -4391,47 +4382,41 @@ mod target_list_tests {
     }
 
     #[test]
-    fn committed_process_picker_selection_requires_matching_text() {
-        let choices = vec![ProcessChoice::new("zen.exe".to_owned(), None, 1)];
-        let indices = vec![0];
+    fn committed_process_picker_selection_trusts_combo_index() {
+        let indices = vec![0, 1];
 
         assert_eq!(
-            selected_process_choice_index_from_picker_state(
-                0, true, "", "zen.exe", &indices, &choices
-            ),
-            Some(0)
-        );
-        assert_eq!(
-            selected_process_choice_index_from_picker_state(0, true, "", "", &indices, &choices),
-            None
+            selected_process_choice_index_from_picker_state(1, true, "zen", "zen", &indices),
+            Some(1)
         );
     }
 
     #[test]
-    fn stale_process_picker_selection_does_not_override_search_text() {
-        let choices = vec![
-            ProcessChoice::new("chat.exe".to_owned(), None, 1),
-            ProcessChoice::new("zen.exe".to_owned(), None, 1),
-        ];
+    fn committed_process_picker_selection_allows_empty_picker_text() {
+        let indices = vec![0];
+
+        assert_eq!(
+            selected_process_choice_index_from_picker_state(0, true, "", "", &indices),
+            Some(0)
+        );
+    }
+
+    #[test]
+    fn uncommitted_process_picker_selection_does_not_trust_stale_combo_index() {
         let indices = vec![0, 1];
 
         assert_eq!(
-            selected_process_choice_index_from_picker_state(
-                0, true, "zen", "zen", &indices, &choices
-            ),
+            selected_process_choice_index_from_picker_state(0, false, "zen", "zen", &indices),
             None
         );
     }
 
     #[test]
     fn single_filtered_process_picker_result_stays_selectable() {
-        let choices = vec![ProcessChoice::new("zen.exe".to_owned(), None, 1)];
         let indices = vec![0];
 
         assert_eq!(
-            selected_process_choice_index_from_picker_state(
-                -1, false, "zen", "zen", &indices, &choices
-            ),
+            selected_process_choice_index_from_picker_state(-1, false, "zen", "zen", &indices),
             Some(0)
         );
     }
