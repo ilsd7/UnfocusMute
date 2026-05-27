@@ -143,12 +143,17 @@ const HEADER_FULL_WIDTH: i32 = HEADER_CONTENT_RIGHT - HEADER_LEFT_X;
 const HEADER_TITLE_Y: i32 = 24;
 const HEADER_SUBTITLE_Y: i32 = 56;
 const HEADER_DETAIL_Y: i32 = 82;
-const ISSUE_DETAILS_BUTTON_WIDTH: i32 = 100;
+const ISSUE_DETAILS_BUTTON_MIN_WIDTH: i32 = 74;
+const ISSUE_DETAILS_BUTTON_MAX_WIDTH: i32 = 160;
 const ISSUE_DETAILS_BUTTON_HEIGHT: i32 = 28;
 const ISSUE_DETAILS_BUTTON_GAP: i32 = 10;
+const ISSUE_DETAILS_BUTTON_RIGHT: i32 = HEADER_CONTENT_RIGHT + 5;
+const ISSUE_DETAILS_BUTTON_Y: i32 = HEADER_DETAIL_Y - 4;
+const RECOVERED_INVALID_CONFIG_DETAIL: &str =
+    "invalid config file was backed up and replaced with defaults";
 const TARGET_PANEL_LEFT: i32 = 14;
 const TARGET_PANEL_RIGHT: i32 = HEADER_CONTENT_RIGHT + (HEADER_LEFT_X - TARGET_PANEL_LEFT);
-const HEADER_STATUS_WIDTH: i32 = 180;
+const HEADER_STATUS_WIDTH: i32 = HEADER_RIGHT_WIDTH;
 const HEADER_STATUS_X: i32 = HEADER_CONTENT_RIGHT - HEADER_STATUS_WIDTH + 2;
 const TARGET_PANEL_TOP: i32 = 112;
 const TARGET_PANEL_BOTTOM: i32 = 432;
@@ -224,7 +229,11 @@ impl Drop for ComApartment {
 }
 
 unsafe fn run_window() -> Result<()> {
-    let instance_scope = single_instance_scope();
+    let mut instance_scope = single_instance_scope();
+    #[cfg(debug_assertions)]
+    if preview_issue_requested() {
+        instance_scope ^= hash_text_for_mutex_scope("preview-issue");
+    }
     let Some(_single_instance) = (unsafe { acquire_single_instance(instance_scope)? }) else {
         return Ok(());
     };
@@ -279,6 +288,10 @@ unsafe fn run_window() -> Result<()> {
         };
     if config_load.recovered_invalid_config {
         initial_issues.set(StatusIssue::ConfigLoadFailed);
+        initial_issue_diagnostics.set(
+            StatusIssue::ConfigLoadFailed,
+            RECOVERED_INVALID_CONFIG_DETAIL,
+        );
     }
     let first_run = config_load.first_run;
     let mut config = config_load.config;
@@ -309,6 +322,8 @@ unsafe fn run_window() -> Result<()> {
         initial_issues.set(StatusIssue::ConfigSaveFailed);
         initial_issue_diagnostics.set(StatusIssue::ConfigSaveFailed, error.to_string());
     }
+    #[cfg(debug_assertions)]
+    inject_preview_issue(&mut initial_issues, &mut initial_issue_diagnostics);
 
     let forced_minimized = std::env::args_os().any(|arg| arg == "--minimized");
     let start_hidden = should_start_hidden(first_run, forced_minimized, config.start_minimized);
@@ -454,6 +469,24 @@ unsafe fn acquire_single_instance(scope: u64) -> Result<Option<SingleInstance>> 
     }
 
     Ok(Some(instance))
+}
+
+#[cfg(debug_assertions)]
+fn preview_issue_requested() -> bool {
+    std::env::args_os().any(|arg| arg == "--preview-issue")
+}
+
+#[cfg(debug_assertions)]
+fn inject_preview_issue(issues: &mut IssueState, diagnostics: &mut IssueDiagnostics) {
+    if !preview_issue_requested() {
+        return;
+    }
+
+    issues.set(StatusIssue::StartupUpdateFailed);
+    diagnostics.set(
+        StatusIssue::StartupUpdateFailed,
+        "테스트용 진단 정보입니다. 세부 정보 버튼과 팝업 표시를 확인하세요.",
+    );
 }
 
 fn single_instance_scope() -> u64 {
@@ -855,9 +888,9 @@ impl AppWindow {
                 self.hwnd,
                 instance,
                 "",
-                HEADER_CONTENT_RIGHT - ISSUE_DETAILS_BUTTON_WIDTH,
-                HEADER_DETAIL_Y - 2,
-                ISSUE_DETAILS_BUTTON_WIDTH,
+                ISSUE_DETAILS_BUTTON_RIGHT - ISSUE_DETAILS_BUTTON_MIN_WIDTH,
+                ISSUE_DETAILS_BUTTON_Y,
+                ISSUE_DETAILS_BUTTON_MIN_WIDTH,
                 ISSUE_DETAILS_BUTTON_HEIGHT,
                 ID_ISSUE_DETAILS,
             )?
@@ -1653,10 +1686,12 @@ impl AppWindow {
                 true,
             )
         };
+        let issue_details_button_width = self.issue_details_button_width();
+        let issue_details_button_x = ISSUE_DETAILS_BUTTON_RIGHT - issue_details_button_width;
         let (detail_x, detail_width) = if issue_visible && issue_detail_visible {
             (
                 HEADER_LEFT_X,
-                HEADER_FULL_WIDTH - ISSUE_DETAILS_BUTTON_WIDTH - ISSUE_DETAILS_BUTTON_GAP,
+                (issue_details_button_x - ISSUE_DETAILS_BUTTON_GAP - HEADER_LEFT_X).max(1),
             )
         } else if issue_visible {
             (HEADER_LEFT_X, HEADER_FULL_WIDTH)
@@ -1676,9 +1711,9 @@ impl AppWindow {
         let _ = unsafe {
             move_window(
                 self.controls.issue_details_button,
-                HEADER_CONTENT_RIGHT - ISSUE_DETAILS_BUTTON_WIDTH,
-                HEADER_DETAIL_Y - 2,
-                ISSUE_DETAILS_BUTTON_WIDTH,
+                issue_details_button_x,
+                ISSUE_DETAILS_BUTTON_Y,
+                issue_details_button_width,
                 ISSUE_DETAILS_BUTTON_HEIGHT,
                 true,
             )
@@ -1714,6 +1749,14 @@ impl AppWindow {
 
     fn button_width(&self, text: &str, min_width: i32, max_width: i32) -> i32 {
         (self.text_width(text) + 44).clamp(min_width, max_width)
+    }
+
+    fn issue_details_button_width(&self) -> i32 {
+        self.compact_button_width(
+            self.strings.issue_details,
+            ISSUE_DETAILS_BUTTON_MIN_WIDTH,
+            ISSUE_DETAILS_BUTTON_MAX_WIDTH,
+        )
     }
 
     fn footer_button_width(&self, text: &str, min_width: i32, max_width: i32) -> i32 {
@@ -2123,7 +2166,12 @@ impl AppWindow {
         );
         unsafe {
             set_text(self.controls.status, status);
-            set_text(self.controls.status_detail, &self.status_detail_text);
+            let header_detail_text = if snapshot.issue.is_some() {
+                ""
+            } else {
+                &self.status_detail_text
+            };
+            set_text(self.controls.status_detail, header_detail_text);
         }
         if header_layout_changed {
             self.layout_header(snapshot.issue.is_some(), snapshot.issue_detail_visible);
@@ -3643,8 +3691,16 @@ impl AppWindow {
     }
 
     fn draw_status_badge(&self, draw: &DRAWITEMSTRUCT) -> bool {
-        let issue_visible = self.issues.visible().is_some();
-        let status = status_text(self.strings, self.paused, issue_visible);
+        let issue = self.issues.visible();
+        let issue_visible = issue.is_some();
+        let base_status = status_text(self.strings, self.paused, issue_visible);
+        let issue_status;
+        let status = if let Some(issue) = issue {
+            issue_status = format!("{base_status} · {}", self.issue_text(issue));
+            issue_status.as_str()
+        } else {
+            base_status
+        };
         let text_color = if issue_visible || self.paused {
             WARNING_COLOR
         } else {
@@ -3655,19 +3711,23 @@ impl AppWindow {
             let _ = FillRect(draw.hDC, &draw.rcItem, self.theme.page_brush.handle());
         }
 
-        let text_width = self.text_width(status);
         let status_height = 22;
+        let status_left = draw.rcItem.left + px(1);
         let status_right = draw.rcItem.right - px(1);
+        let dot_width = px(10);
+        let dot_gap = px(5);
+        let text_left_bound = (status_left + dot_width + dot_gap).min(status_right);
+        let text_left = (status_right - px(self.text_width(status))).max(text_left_bound);
         let text_rect = RECT {
-            left: status_right - px(text_width),
+            left: text_left,
             top: draw.rcItem.top,
             right: status_right,
             bottom: draw.rcItem.top + px(status_height),
         };
         let dot_rect = RECT {
-            left: text_rect.left - px(15),
+            left: text_rect.left - dot_gap - dot_width,
             top: text_rect.top,
-            right: text_rect.left - px(5),
+            right: text_rect.left - dot_gap,
             bottom: text_rect.bottom,
         };
 
