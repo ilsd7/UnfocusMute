@@ -6,8 +6,9 @@ body:
   - type: markdown
     attributes:
       value: |
-        Before reporting, please check whether the issue also happens on the latest GitHub Releases build.
-        Do not attach secrets, full process lists, or screenshots containing personal information. Include only the app names needed to understand the issue.
+        Before reporting, please test the latest GitHub Releases build.
+        Please also check the README usage notes and troubleshooting section.
+        Do not attach secrets, full process lists, or screenshots containing personal information.
 
   - type: input
     id: version
@@ -78,6 +79,13 @@ body:
     validations:
       required: true
 
+  - type: textarea
+    id: app_status
+    attributes:
+      label: Error message
+      description: If UnfocusMute showed a warning or Details error message, copy and paste it here.
+      placeholder: "Example: Audio device unavailable / Could not update auto-start"
+
   - type: input
     id: target_app
     attributes:
@@ -109,7 +117,9 @@ body:
     attributes:
       label: Checklist
       options:
-        - label: I tested this with the latest release.
+        - label: I tested the latest release.
+          required: true
+        - label: I checked the README usage notes and troubleshooting section.
           required: true
         - label: I did not include secrets, personal information, or a full process list.
           required: true

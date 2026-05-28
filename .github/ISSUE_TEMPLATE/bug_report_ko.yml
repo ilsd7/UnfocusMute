@@ -6,8 +6,9 @@ body:
   - type: markdown
     attributes:
       value: |
-        제보 전에 최신 GitHub Releases 빌드에서도 같은 문제가 재현되는지 확인해 주세요.
-        비밀값, 전체 프로세스 목록, 개인 정보가 들어간 스크린샷은 첨부하지 말고, 문제와 관련된 앱 이름만 적어 주세요.
+        제보 전에 최신 GitHub Releases 빌드에서도 재현되는지 확인해 주세요.
+        README의 사용 전 참고 사항과 문제 해결 섹션도 먼저 확인해 주세요.
+        비밀값, 전체 프로세스 목록, 개인 정보가 보이는 스크린샷은 첨부하지 마세요.
 
   - type: input
     id: version
@@ -78,11 +79,18 @@ body:
     validations:
       required: true
 
+  - type: textarea
+    id: app_status
+    attributes:
+      label: 오류 메시지
+      description: 상단에 `주의`가 표시되었거나 `세부 정보`에 오류 메시지가 있었다면, 그대로 복사해서 적어 주세요.
+      placeholder: "예: 오디오 장치를 사용할 수 없습니다 / 자동 실행 설정을 변경하지 못했습니다"
+
   - type: input
     id: target_app
     attributes:
       label: 등록한 앱 / 프로세스
-      description: 문제가 발생한 대상 앱 이름만 적어 주세요. PID를 사용했다면 PID 모드였다고 함께 적어 주세요.
+      description: 문제가 발생한 대상 앱 이름만 적어 주세요. PID 등록을 사용했다면 함께 적어 주세요.
       placeholder: "예: game.exe, PID 모드 사용"
 
   - type: textarea
@@ -109,7 +117,9 @@ body:
     attributes:
       label: 확인 사항
       options:
-        - label: 최신 릴리스 버전에서 재현되는지 확인했습니다.
+        - label: 최신 릴리스에서도 재현되는지 확인했습니다.
           required: true
-        - label: 민감한 정보나 전체 프로세스 목록을 포함하지 않았습니다.
+        - label: README의 사용 전 참고 사항과 문제 해결 섹션을 확인했습니다.
+          required: true
+        - label: 민감한 정보, 전체 프로세스 목록, 개인 정보가 보이는 스크린샷을 포함하지 않았습니다.
           required: true
