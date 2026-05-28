@@ -567,7 +567,7 @@ impl Language {
                 settings_file_info: "फ़ाइलें और जानकारी",
                 version: "वर्ज़न",
                 target_count: count_first_count!("रजिस्टर किया गया ऐप", "रजिस्टर किए गए ऐप"),
-                muted_count: count_first_count!("म्यूट किया गया", "म्यूट किए गए"),
+                muted_count: count_first_count!("ऐप म्यूट है", "ऐप म्यूट हैं"),
                 open_config: "कॉन्फिग फ़ोल्डर खोलें",
                 github_repository: "GitHub रिपॉज़िटरी",
                 open_github_failed: "GitHub पेज नहीं खुल सका",
@@ -839,7 +839,7 @@ mod tests {
             (
                 Language::Hi,
                 CountText::count_first("रजिस्टर किया गया ऐप", "रजिस्टर किए गए ऐप"),
-                CountText::count_first("म्यूट किया गया", "म्यूट किए गए"),
+                CountText::count_first("ऐप म्यूट है", "ऐप म्यूट हैं"),
             ),
             (
                 Language::Ar,
