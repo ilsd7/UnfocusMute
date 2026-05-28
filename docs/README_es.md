@@ -32,10 +32,9 @@
 UnfocusMute es una aplicación pequeña y ligera para la bandeja de Windows que silencia automáticamente juegos y aplicaciones seleccionados cuando pasan a segundo plano, y restaura el audio cuando vuelven al primer plano.
 
 - Está compilada como aplicación nativa en Rust, así que se ejecuta sin un entorno de ejecución adicional.
-- El ejecutable ocupa actualmente unos 500 KB.
+- El ejecutable ocupa unos 500 KB.
+- No se limita a juegos: también puedes registrar aplicaciones normales como navegadores, aplicaciones de mensajería, lanzadores y reproductores multimedia.
 - El silenciamiento y la restauración solo se aplican a las sesiones que UnfocusMute cambió directamente; las sesiones que tú ya habías silenciado no se tocan.
-
-No se limita a juegos: también puedes registrar aplicaciones normales como navegadores, aplicaciones de mensajería, lanzadores y reproductores multimedia.
 
 <p align="center">
   <img src="../assets/screenshot_es.png" width="600" alt="Ventana principal de UnfocusMute">
@@ -79,6 +78,7 @@ UnfocusMute es una aplicación independiente que no requiere instalación. Tampo
 ## Antes de usar
 
 UnfocusMute funciona con los nombres de proceso, la información de la ventana en primer plano y las sesiones CoreAudio que proporciona Windows.
+
 Por eso, si un controlador, un ajuste de permisos o una herramienta de seguridad limita el acceso a las sesiones, el control de silencio puede quedar parcialmente limitado.
 
 La lista predeterminada muestra solo las aplicaciones que tienen una sesión de audio en ese momento. Si una aplicación aún no ha creado una sesión de audio, cambia a `Todos los procesos` para buscarla entre los procesos `.exe` en ejecución. Usa `Solo sesiones de audio` para volver a la lista filtrada.
@@ -126,9 +126,19 @@ Si no sabes qué nombre registrar, busca el ejecutable terminado en `.exe` en el
 
 Si una aplicación no aparece en la lista, o si el registro por PID no se comporta como esperabas, revisa primero [Antes de usar](#antes-de-usar) y [Encontrar el nombre del ejecutable](#encontrar-el-nombre-del-ejecutable).
 
-Si el indicador de estado de la parte superior cambia a `Revisar`, pulsa `Detalles` para ver la causa. Algunas funciones pueden quedar limitadas por el dispositivo de audio, el software de seguridad, las políticas de permisos o las restricciones de escritura en el registro para el inicio automático. Aunque no se puedan registrar las notificaciones de cambio de ventana en primer plano, el silencio automático sigue funcionando mediante comprobaciones periódicas.
+Si el indicador de estado de la parte superior cambia a `Revisar`, pulsa `Detalles` para ver el mensaje de error detallado.
 
-Si el problema continúa, incluye en GitHub Issues la versión de UnfocusMute, la versión de Windows, el nombre `.exe` registrado, si usaste registro por PID, el dispositivo de audio y el mensaje de `Detalles`.
+Si el problema continúa, repórtalo en GitHub Issues.
+
+Si sospechas que el problema es una vulnerabilidad de seguridad, no publiques los detalles en un Issue público. Usa el proceso de reporte privado y consulta [SECURITY.md](../SECURITY.md) para más información.
+
+## Archivo de configuración
+
+Si necesitas revisar directamente el archivo de configuración o hacer una copia de seguridad, haz clic en `Abrir configuración` en Configuración.
+
+El Explorador de archivos abrirá la carpeta `%APPDATA%\UnfocusMute`, donde se guarda la configuración.
+
+Puedes editar el archivo de configuración directamente, pero si su formato no es válido y no se puede leer, se respalda como `config.invalid-<timestamp>.json`. Si el problema se detecta durante el inicio de la aplicación, la configuración se restaura a los valores predeterminados; si se detecta mientras la aplicación está en ejecución, se crea un nuevo archivo de configuración a partir de los ajustes actuales.
 
 ---
 
@@ -164,14 +174,6 @@ UnfocusMute no guarda historial de uso, registros de actividad, registros de err
 Para eliminar todos los archivos relacionados con la aplicación, borra la carpeta `UnfocusMute-windows-x64` y después borra `%APPDATA%\UnfocusMute`.
 
 Si alguna vez activaste el inicio automático, borra también el valor `UnfocusMute` en `HKEY_CURRENT_USER\Software\Microsoft\Windows\CurrentVersion\Run`.
-
----
-
-## Archivo de configuración
-
-Si necesitas revisar directamente el archivo de configuración o hacer una copia de seguridad, usa `Abrir configuración` en Configuración. La ruta del archivo es `%APPDATA%\UnfocusMute\config.json`.
-
-Puedes editarlo directamente, pero mientras la aplicación esté en ejecución se recomienda cambiar los ajustes desde la propia aplicación. Al guardar, UnfocusMute escribe primero en un archivo temporal y luego reemplaza el archivo actual; si la configuración no se puede leer, se respalda como `config.invalid-<timestamp>.json` y después se restablecen los valores predeterminados.
 
 ---
 

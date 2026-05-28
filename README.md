@@ -32,10 +32,9 @@
 UnfocusMute is a small, lightweight Windows tray app that automatically mutes selected games and apps when they move into the background, then restores their audio when they return to the foreground.
 
 - Built as a native Rust app, it runs without a separate runtime.
-- The executable is currently about 500 KB.
+- The executable is about 500 KB.
+- It is not limited to games; you can also register regular apps such as browsers, messengers, launchers, and media players.
 - Muting and restoring apply only to sessions that UnfocusMute changed itself; sessions you muted manually are left alone.
-
-It is not limited to games — you can also register regular apps such as browsers, messengers, launchers, and media players.
 
 <p align="center">
   <img src="assets/screenshot_en.png" width="600" alt="UnfocusMute main window">
@@ -56,7 +55,7 @@ It is not limited to games — you can also register regular apps such as browse
 - Register an entire app by `.exe`, or register only one currently running instance by PID.
 - Per-app notes, live status, and per-app `Pause` / `Resume`.
 - Keeps monitoring from the tray after the window is closed, with tray actions for `Open` / `Hide to tray` / global pause / `Quit`.
-- Settings for `Start minimized to tray`, `Auto-start at Windows sign-in`, and `Restore audio muted by UnfocusMute on exit`.
+- Configurable settings for `Start minimized to tray`, `Auto-start at Windows sign-in`, and `Restore audio muted by UnfocusMute on exit`.
 - Choose a language on first run, then switch instantly in-app between 9 languages.
 
 ---
@@ -79,6 +78,7 @@ UnfocusMute is a standalone app that does not need to be installed. You also do 
 ## Before You Use
 
 UnfocusMute uses the process names, foreground window information, and CoreAudio sessions provided by Windows.
+
 If a driver, permission setting, or security tool limits session access, muting may not work correctly.
 
 The default picker shows only apps that currently have audio sessions. If an app has not created an audio session yet, switch to `All processes` to find it in the running `.exe` process list. Use `Audio sessions only` to return to the filtered list.
@@ -126,9 +126,19 @@ If you are not sure what to register, check the `.exe` name in Task Manager.
 
 If an app does not appear in the list, or PID entries do not behave as expected, first check [Before You Use](#before-you-use) and [Finding an Executable Name](#finding-an-executable-name).
 
-If the status at the top changes to `Needs attention`, click `Details` to see why. Some features may be limited by the audio device, security software, permission policy, or auto-start registry write restrictions. If foreground window notifications cannot be registered, auto-mute still continues to work by polling.
+If the status at the top changes to `Needs attention`, click `Details` to see the detailed error message.
 
-If the issue continues, include the UnfocusMute version, Windows version, registered `.exe` name, whether you used PID registration, audio device, and `Details` message in GitHub Issues.
+If the issue continues, report it in GitHub Issues.
+
+Do not post details publicly if you suspect a security vulnerability. Use the private reporting process instead, and see [SECURITY.md](SECURITY.md) for details.
+
+## Settings File
+
+To inspect or back up the settings file directly, click `Open config folder` in `Settings`.
+
+File Explorer opens the `%APPDATA%\UnfocusMute` folder where settings are stored.
+
+You can edit the settings file directly, but if its format is invalid and cannot be read, it is backed up as `config.invalid-<timestamp>.json`. If the problem is found during app startup, settings are restored to defaults; if the problem is found while the app is running, a new settings file is created from the current app settings.
 
 ---
 
@@ -164,14 +174,6 @@ UnfocusMute does not store usage history, activity logs, error logs, audio data,
 To remove every app-related file, delete the `UnfocusMute-windows-x64` folder, then delete `%APPDATA%\UnfocusMute`.
 
 If you ever enabled auto-start, also delete the `UnfocusMute` value under `HKEY_CURRENT_USER\Software\Microsoft\Windows\CurrentVersion\Run`.
-
----
-
-## Settings File
-
-If you need to inspect or back up the settings file directly, use `Open config folder` in `Settings`. The file name is `%APPDATA%\UnfocusMute\config.json`.
-
-You can edit it directly, but while the app is running, changing settings inside the app is recommended. When saving, UnfocusMute writes to a temporary file first and then replaces the current file; unreadable settings are backed up as `config.invalid-<timestamp>.json` and then reset to defaults.
 
 ---
 

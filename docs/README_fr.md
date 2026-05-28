@@ -32,10 +32,9 @@
 UnfocusMute est une petite application légère pour la zone de notification Windows qui met automatiquement en sourdine les jeux et applications choisis lorsqu’ils passent en arrière-plan, puis rétablit leur son lorsqu’ils reviennent au premier plan.
 
 - Compilée comme application native Rust, elle s’exécute sans environnement d’exécution séparé.
-- L’exécutable fait actuellement environ 500 Ko.
+- L’exécutable fait environ 500 Ko.
+- Elle ne se limite pas aux jeux : vous pouvez aussi enregistrer des applications classiques comme des navigateurs, des messageries, des lanceurs et des lecteurs multimédias.
 - La mise en sourdine et le rétablissement du son ne s’appliquent qu’aux sessions qu’UnfocusMute a modifiées lui-même ; les sessions que vous aviez déjà mises en sourdine ne sont pas touchées.
-
-Elle ne se limite pas aux jeux : vous pouvez aussi enregistrer des applications classiques comme des navigateurs, des messageries, des lanceurs et des lecteurs multimédias.
 
 <p align="center">
   <img src="../assets/screenshot_fr.png" width="600" alt="Fenêtre principale d’UnfocusMute">
@@ -79,6 +78,7 @@ UnfocusMute est une application autonome qui ne nécessite aucune installation. 
 ## À savoir avant utilisation
 
 UnfocusMute s’appuie sur les noms de processus, les informations de fenêtre au premier plan et les sessions CoreAudio fournies par Windows.
+
 Si un pilote, un réglage d’autorisation ou un logiciel de sécurité limite l’accès aux sessions, le contrôle de sourdine peut être partiellement limité.
 
 La liste par défaut affiche uniquement les applications qui disposent déjà d’une session audio. Si une application n’a pas encore créé de session audio, passez à `Tous les processus` pour la retrouver parmi les processus `.exe` en cours. Utilisez `Sessions audio uniquement` pour revenir à la liste filtrée.
@@ -126,9 +126,19 @@ Si vous ne savez pas quel nom enregistrer, vérifiez dans le Gestionnaire des t�
 
 Si une application n’apparaît pas dans la liste, ou si l’enregistrement par PID ne se comporte pas comme prévu, consultez d’abord [À savoir avant utilisation](#à-savoir-avant-utilisation) et [Trouver le nom de l’exécutable](#trouver-le-nom-de-lexécutable).
 
-Si l’état en haut de la fenêtre passe à `À vérifier`, cliquez sur `Détails` pour en voir la cause. Certaines fonctionnalités peuvent être limitées par le périphérique audio, un logiciel de sécurité, une stratégie d’autorisation ou une restriction d’écriture dans le registre pour le démarrage automatique. Même si les notifications de fenêtre au premier plan ne peuvent pas être enregistrées, la mise en sourdine automatique continue de fonctionner par vérification périodique.
+Si l’état en haut de la fenêtre passe à `À vérifier`, cliquez sur `Détails` pour consulter le message d’erreur détaillé.
 
-Si le problème persiste, indiquez dans GitHub Issues la version d’UnfocusMute, la version de Windows, le nom `.exe` enregistré, si vous avez utilisé l’enregistrement par PID, le périphérique audio et le message affiché dans `Détails`.
+Si le problème persiste, signalez-le dans GitHub Issues.
+
+Si vous pensez qu’il s’agit d’une faille de sécurité, ne publiez pas les détails dans une Issue publique. Utilisez la procédure de signalement privé et consultez [SECURITY.md](../SECURITY.md) pour plus d’informations.
+
+## Fichier de configuration
+
+Pour consulter ou sauvegarder directement le fichier de configuration, cliquez sur `Ouvrir le dossier de configuration` dans Paramètres.
+
+L’Explorateur de fichiers ouvre le dossier `%APPDATA%\UnfocusMute`, où les paramètres sont enregistrés.
+
+Vous pouvez modifier directement le fichier de configuration, mais si son format est invalide et qu’il ne peut pas être lu, il est sauvegardé sous `config.invalid-<timestamp>.json`. Si le problème est détecté au démarrage de l’application, les paramètres sont restaurés aux valeurs par défaut ; s’il est détecté pendant l’exécution, un nouveau fichier de configuration est créé à partir des paramètres actuels de l’application.
 
 ---
 
@@ -164,14 +174,6 @@ UnfocusMute ne stocke pas l’historique d’utilisation, les journaux d’activ
 Pour supprimer tous les fichiers liés à l’application, supprimez le dossier `UnfocusMute-windows-x64`, puis le dossier `%APPDATA%\UnfocusMute`.
 
 Si vous avez déjà activé le démarrage automatique, supprimez aussi la valeur `UnfocusMute` sous `HKEY_CURRENT_USER\Software\Microsoft\Windows\CurrentVersion\Run`.
-
----
-
-## Fichier de configuration
-
-Si vous devez consulter ou sauvegarder directement le fichier de configuration, utilisez `Ouvrir le dossier de configuration` dans Paramètres. Il se trouve à l’emplacement `%APPDATA%\UnfocusMute\config.json`.
-
-Vous pouvez le modifier directement, mais lorsque l’application est ouverte, il est recommandé de changer les paramètres depuis l’application. Lors de l’enregistrement, UnfocusMute écrit d’abord dans un fichier temporaire puis remplace le fichier actuel ; les paramètres illisibles sont sauvegardés sous `config.invalid-<timestamp>.json`, puis les valeurs par défaut sont restaurées.
 
 ---
 
