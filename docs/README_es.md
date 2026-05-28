@@ -3,7 +3,7 @@
 
   <h1>UnfocusMute</h1>
 
-  <p><strong>App ligera para la bandeja de Windows que silencia automáticamente juegos y aplicaciones seleccionados cuando pierden el foco.</strong></p>
+  <p><strong>Aplicación ligera para la bandeja de Windows que silencia automáticamente juegos y aplicaciones seleccionados cuando pierden el foco.</strong></p>
 
   <p>
     <a href="../README.md">English</a> · <a href="README_ko.md">한국어</a> · <a href="README_ja.md">日本語</a> · <a href="README_zh-CN.md">简体中文</a> · Español · <a href="README_fr.md">Français</a> · <a href="README_pt.md">Português</a> · <a href="README_hi.md">हिन्दी</a> · <a href="README_ar.md">العربية</a>
@@ -29,52 +29,52 @@
 
 ---
 
-UnfocusMute es una app pequeña y ligera para la bandeja de Windows que silencia automáticamente juegos y aplicaciones seleccionados cuando pasan a segundo plano.
+UnfocusMute es una aplicación pequeña y ligera para la bandeja de Windows que silencia automáticamente juegos y aplicaciones seleccionados cuando pasan a segundo plano, y restaura el audio cuando vuelven al primer plano.
 
-No se limita a juegos: también puedes registrar aplicaciones normales como navegadores, apps de mensajería, lanzadores y reproductores multimedia.
+- Está compilada como aplicación nativa en Rust, así que se ejecuta sin un entorno de ejecución adicional.
+- El ejecutable ocupa actualmente unos 500 KB.
+- El silenciamiento y la restauración solo se aplican a las sesiones que UnfocusMute cambió directamente; las sesiones que tú ya habías silenciado no se tocan.
+
+No se limita a juegos: también puedes registrar aplicaciones normales como navegadores, aplicaciones de mensajería, lanzadores y reproductores multimedia.
 
 <p align="center">
   <img src="../assets/screenshot_es.png" width="600" alt="Ventana principal de UnfocusMute">
 </p>
-
-Al estar compilada como app nativa en Rust, se ejecuta sin un runtime adicional. El ejecutable ocupa unos 500 KB.
-
-El silenciamiento y la restauración solo se aplican a las sesiones que UnfocusMute cambió directamente. Las sesiones que ya habías silenciado no se modifican.
 
 ---
 
 ## Útil cuando
 
 - Sueles usar Alt+Tab para salir de un juego o aplicación mientras sigue abierta.
-- Un juego o app no ofrece su propia opción de silenciarse en segundo plano.
-- Quieres silenciar solo el juego en segundo plano mientras sigues oyendo el navegador o una llamada.
+- Quieres mantener en silencio una aplicación que no tiene opción de silencio en segundo plano.
+- Quieres silenciar solo el audio en segundo plano de una aplicación concreta mientras haces otras cosas.
 
 ## Funciones
 
-- Silencia automáticamente las aplicaciones registradas mientras están en segundo plano y restaura el audio al volver al primer plano.
-- Elige una aplicación de la lista predeterminada de aplicaciones con sesión de audio; si hace falta, cambia a `Todos los procesos` o escribe un nombre como `game.exe`.
-- Admite entradas por `.exe`, entradas por PID de la instancia actual y `Vista PID`.
-- Notas por aplicación, estado de silencio en tiempo real y controles `Pausar` / `Reanudar` por aplicación.
-- Funcionamiento residente en bandeja, resumen de estado en bandeja, pausa global, acceso a la carpeta de configuración y protección contra instancias duplicadas.
-- Permite elegir idioma en el primer inicio y cambiar después dentro de la app entre English/한국어/日本語/简体中文/Español/Français/Português/हिन्दी/العربية.
-- La configuración se guarda localmente en `%APPDATA%\UnfocusMute\config.json`.
+- Silencia automáticamente las aplicaciones registradas al pasar a segundo plano y restaura el audio cuando vuelven al primer plano.
+- Permite elegir una aplicación con sesión de audio, buscarla en `Todos los procesos` o escribir un nombre como `game.exe`.
+- Registra una aplicación completa por `.exe`, o solo la instancia en ejecución mediante PID.
+- Notas por aplicación, estado en tiempo real y pausa / reanudación individual.
+- Sigue supervisando desde la bandeja al cerrar la ventana, y ofrece acciones en la bandeja para abrir, ocultar, pausar globalmente o salir.
+- Opciones para `Iniciar minimizado en bandeja`, `Inicio automático al iniciar sesión en Windows` y `Al salir, restaurar el audio silenciado por UnfocusMute`.
+- Permite elegir idioma en el primer inicio y cambiar al instante entre 9 idiomas dentro de la aplicación.
 
 ---
 
 ## Descargar y ejecutar
 
-En Windows 10/11, descarga el paquete ZIP y extráelo para ejecutar la app.
+En Windows 10/11, descarga el paquete ZIP y extráelo para ejecutar la aplicación.
 
 | Paquete más reciente |
 | --- |
 | [UnfocusMute-windows-x64.zip](https://github.com/ilsd7/UnfocusMute/releases/latest/download/UnfocusMute-windows-x64.zip) |
 | [Archivo SHA-256](https://github.com/ilsd7/UnfocusMute/releases/latest/download/UnfocusMute-windows-x64.zip.sha256) · [Notas de la versión](https://github.com/ilsd7/UnfocusMute/releases/latest) |
 
-Después de extraer el ZIP, mueve la carpeta `UnfocusMute-windows-x64` a la ubicación donde quieras guardar la app y ejecuta `UnfocusMute-v<version>.exe` dentro de esa carpeta.
+Después de extraer el ZIP, mueve la carpeta `UnfocusMute-windows-x64` a la ubicación donde quieras guardar la aplicación y ejecuta `UnfocusMute-v<version>.exe` dentro de esa carpeta.
 
-UnfocusMute es una app independiente que no requiere instalación. Tampoco necesitas instalar Rust, Visual Studio Build Tools, MinGW ni otras herramientas de desarrollo.
+UnfocusMute es una aplicación independiente que no requiere instalación. Tampoco necesitas instalar Rust, Visual Studio Build Tools, MinGW ni otras herramientas de desarrollo.
 
-> **Nota:** Como los certificados de firma de código tienen coste, la app se distribuye actualmente sin firma de código de Windows. En el primer inicio puede aparecer Windows SmartScreen o un aviso de "editor desconocido". Si quieres comprobar la integridad del archivo por tu cuenta, consulta la sección de verificación de archivos de la versión más abajo.
+> **Nota:** Como los certificados de firma de código tienen coste, la aplicación se distribuye actualmente sin firma de código de Windows. En el primer inicio puede aparecer Windows SmartScreen o un aviso de "editor desconocido". Si quieres comprobar la integridad del archivo por tu cuenta, consulta [Verificar archivos de la versión](#verificar-archivos-de-la-versión).
 
 ## Antes de usar
 
@@ -83,7 +83,7 @@ Por eso, si un controlador, un ajuste de permisos o una herramienta de seguridad
 
 La lista predeterminada muestra solo las aplicaciones que tienen una sesión de audio en ese momento. Si una aplicación aún no ha creado una sesión de audio, cambia a `Todos los procesos` para buscarla entre los procesos `.exe` en ejecución. Usa `Solo sesiones de audio` para volver a la lista filtrada.
 
-**Comportamiento al registrar por PID:** Windows no siempre proporciona el mismo PID para una sesión de audio y para la ventana en primer plano. Para compensarlo, UnfocusMute considera que la app volvió al primer plano cuando el nombre `.exe` del PID registrado coincide con el nombre `.exe` de la ventana activa.
+**Comportamiento al registrar por PID:** Windows no siempre proporciona el mismo PID para una sesión de audio y para la ventana en primer plano. Para compensarlo, UnfocusMute considera que la aplicación volvió al primer plano cuando el nombre `.exe` del PID registrado coincide con el nombre `.exe` de la ventana activa.
 
 Por eso, si hay varias instancias del mismo `.exe` ejecutándose a la vez, un PID concreto no siempre puede separarse perfectamente. En ese caso, el sonido puede restaurarse aunque otra instancia esté en primer plano.
 
@@ -93,16 +93,16 @@ Por eso, si hay varias instancias del mismo `.exe` ejecutándose a la vez, un PI
 
 1. Abre UnfocusMute.
 2. Elige un idioma en la pantalla que aparece en el primer inicio. El idioma predeterminado es inglés.
-3. Inicia el juego o la app que quieres silenciar cuando esté en segundo plano.
-4. Elige una aplicación en `Buscar proceso` o encuéntrala escribiendo una búsqueda, y luego pulsa `Registrar`. Si la aplicación aún no ha creado una sesión de audio, cambia a `Todos los procesos` para revisar la lista de todos los procesos en ejecución. Usa `Solo sesiones de audio` para volver a la lista filtrada. Si no aparece en la lista, escribe manualmente el nombre `.exe`.
-5. Si necesitas registrar solo un PID concreto, pulsa `Vista PID` y elige el elemento individual. Las entradas por PID solo se aplican a la instancia que está en ejecución; si la app se reinicia con otro PID, selecciónala de nuevo.
-6. Haz clic derecho en una app registrada para editar su nota o usar `Pausar`.
+3. Inicia el juego o la aplicación que quieres silenciar cuando esté en segundo plano.
+4. Busca una aplicación en el campo `Buscar proceso` o selecciónala en la lista, y luego pulsa `Registrar`. Si la aplicación aún no ha creado una sesión de audio, cambia a `Todos los procesos` para revisar la lista de todos los procesos en ejecución. Usa `Solo sesiones de audio` para volver a la lista filtrada. Si no aparece en la lista, escribe manualmente el nombre `.exe`.
+5. Si necesitas registrar solo un PID concreto, pulsa `Vista PID` y elige la entrada correspondiente. Las entradas por PID solo se aplican a la instancia que está en ejecución; si la aplicación se reinicia con otro PID, selecciónala de nuevo.
+6. Haz clic derecho en una aplicación registrada para editar su nota o usar `Pausar`.
 7. Abre `Configuración` desde la esquina inferior izquierda para cambiar opciones de comportamiento.
-8. Al cerrar la ventana, la app permanece en la bandeja y sigue supervisando las aplicaciones registradas. Usa `Salir` para cerrarla por completo.
+8. Al cerrar la ventana, la aplicación permanece en la bandeja y sigue supervisando las aplicaciones registradas. Usa `Salir` para cerrarla por completo.
 
-## Usar notas en apps registradas
+## Notas para aplicaciones registradas
 
-Si el nombre del proceso no basta para recordar qué app es, haz clic derecho en la app registrada y elige `Editar nota`. La nota aparece encima del nombre del proceso en la lista de apps registradas y no afecta a la detección de apps.
+Si el nombre del proceso no basta para recordar qué aplicación es, haz clic derecho en la aplicación registrada y elige `Editar nota`. La nota aparece encima del nombre del proceso en la lista de aplicaciones registradas y no afecta a la detección.
 
 Es útil cuando un mismo lanzador de juegos abre varios procesos, o cuando el nombre del ejecutable no deja claro para qué sirve.
 
@@ -115,33 +115,63 @@ Las notas se guardan localmente junto con el resto de la configuración en `%APP
 
 Si no sabes qué nombre registrar, busca el ejecutable terminado en `.exe` en el Administrador de tareas.
 
-1. Inicia primero la app que quieres registrar.
+1. Inicia primero la aplicación que quieres registrar.
 2. Usa `Alt`+`Tab` o `Windows`+`Tab` para salir de la pantalla del juego y volver a Windows.
 3. Pulsa `Ctrl`+`Shift`+`Esc` para abrir el Administrador de tareas.
-4. Ordena la lista de procesos por `CPU` y busca la app que acabas de iniciar.
+4. Ordena la lista de procesos por `CPU` y busca la aplicación que acabas de iniciar.
 5. Haz clic derecho en ese elemento y abre `Propiedades`.
 6. Busca el nombre del ejecutable terminado en `.exe`, como `game.exe`, y añádelo a UnfocusMute.
+
+## Solución de problemas
+
+Si una aplicación no aparece en la lista, o si el registro por PID no se comporta como esperabas, revisa primero [Antes de usar](#antes-de-usar) y [Encontrar el nombre del ejecutable](#encontrar-el-nombre-del-ejecutable).
+
+Si el indicador de estado de la parte superior cambia a `Revisar`, pulsa `Detalles` para ver la causa. Algunas funciones pueden quedar limitadas por el dispositivo de audio, el software de seguridad, las políticas de permisos o las restricciones de escritura en el registro para el inicio automático. Aunque no se puedan registrar las notificaciones de cambio de ventana en primer plano, el silencio automático sigue funcionando mediante comprobaciones periódicas.
+
+Si el problema continúa, incluye en GitHub Issues la versión de UnfocusMute, la versión de Windows, el nombre `.exe` registrado, si usaste registro por PID, el dispositivo de audio y el mensaje de `Detalles`.
 
 ---
 
 ## Seguridad y privacidad
 
-UnfocusMute se ejecuta de forma completamente local. Funciona con normalidad aunque no tengas conexión a internet y no realiza solicitudes de red automáticas, no usa telemetría, no envía informes de fallos, no hace registro remoto ni recopila datos. Tampoco requiere permisos de administrador.
+UnfocusMute se ejecuta de forma completamente local. Funciona con normalidad aunque no tengas conexión a internet y no requiere permisos de administrador. Tampoco realiza solicitudes de red automáticas, ni usa telemetría, ni envía informes de fallos o registros remotos, ni recopila datos.
 
 Como excepción, el repositorio de GitHub del proyecto solo se abre en tu navegador predeterminado cuando pulsas el botón `Repositorio de GitHub` en Configuración.
 
-**Lo que guarda:** Nombres de procesos registrados, los PID que registres directamente, el último estado de silencio de las apps registradas, las notas que escribas, el idioma y la configuración elegidos, y la posición de la ventana.
+La detección de sesiones de audio y el control de silencio solo usan las API CoreAudio de Windows. UnfocusMute no inyecta código en los procesos de destino, no lee su memoria ni intercepta entradas.
 
-Estos valores se guardan en `%APPDATA%\UnfocusMute\config.json` y no se envían a ningún sitio externo.
+### Información que guarda
+
+UnfocusMute solo guarda en `%APPDATA%\UnfocusMute\config.json` la configuración necesaria para funcionar.
+
+- Nombres de procesos registrados
+- PID registrados directamente
+- Último estado de silencio de las aplicaciones registradas
+- Notas que escribas
+- Idioma y configuración elegidos
+- Posición de la ventana
+
+Esta información no se envía a ningún sitio.
 
 Si activas el inicio automático al iniciar sesión en Windows, la ruta del ejecutable actual también se guarda en el valor `UnfocusMute` de `HKEY_CURRENT_USER\Software\Microsoft\Windows\CurrentVersion\Run`.
 
-Para eliminar todos los archivos relacionados con la app, borra la carpeta de la app y después borra `%APPDATA%\UnfocusMute`.
-Si alguna vez activaste el inicio automático, borra también el valor del registro indicado arriba.
+### Información que no guarda
 
-**Lo que no guarda:** Historial de uso, registros de actividad, datos de audio, títulos de ventanas, pulsaciones de teclas o cualquier otra información que no aparezca arriba en «Lo que guarda».
+UnfocusMute no guarda historial de uso, registros de actividad, registros de errores, datos de audio, títulos de ventanas, pulsaciones de teclas ni ninguna información que no aparezca arriba en "Información que guarda".
 
-La detección de sesiones de audio y el control de silencio solo usan las API CoreAudio de Windows, y UnfocusMute no inyecta código en procesos de juegos ni lee su memoria.
+### Cómo eliminar la aplicación y sus datos
+
+Para eliminar todos los archivos relacionados con la aplicación, borra la carpeta `UnfocusMute-windows-x64` y después borra `%APPDATA%\UnfocusMute`.
+
+Si alguna vez activaste el inicio automático, borra también el valor `UnfocusMute` en `HKEY_CURRENT_USER\Software\Microsoft\Windows\CurrentVersion\Run`.
+
+---
+
+## Archivo de configuración
+
+Si necesitas revisar directamente el archivo de configuración o hacer una copia de seguridad, usa `Abrir configuración` en Configuración. La ruta del archivo es `%APPDATA%\UnfocusMute\config.json`.
+
+Puedes editarlo directamente, pero mientras la aplicación esté en ejecución se recomienda cambiar los ajustes desde la propia aplicación. Al guardar, UnfocusMute escribe primero en un archivo temporal y luego reemplaza el archivo actual; si la configuración no se puede leer, se respalda como `config.invalid-<timestamp>.json` y después se restablecen los valores predeterminados.
 
 ---
 
@@ -151,7 +181,7 @@ No debes asumir que los archivos subidos a GitHub Releases siempre coinciden con
 
 Si se abusa de los permisos de publicación o una cuenta se ve comprometida, podrían subirse archivos compilados desde otro código o archivos modificados a una versión publicada.
 
-Por transparencia, UnfocusMute ofrece una forma de verificar que los archivos subidos a GitHub Releases son artefactos oficiales generados por GitHub Actions a partir del código fuente de este repositorio en la etiqueta correspondiente.
+Por transparencia, UnfocusMute ofrece una forma de verificar que los archivos subidos a GitHub Releases son artefactos oficiales generados por GitHub Actions a partir del código fuente de la etiqueta correspondiente en este repositorio.
 
 El ZIP de la versión y el archivo de suma SHA-256 se generan automáticamente con GitHub Actions, y cada archivo se entrega con una atestación de procedencia de compilación (attestation).
 

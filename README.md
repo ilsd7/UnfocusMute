@@ -29,7 +29,11 @@
 
 ---
 
-UnfocusMute is a small, lightweight Windows tray app that automatically mutes selected games and apps when they move into the background.
+UnfocusMute is a small, lightweight Windows tray app that automatically mutes selected games and apps when they move into the background, then restores their audio when they return to the foreground.
+
+- Built as a native Rust app, it runs without a separate runtime.
+- The executable is currently about 500 KB.
+- Muting and restoring apply only to sessions that UnfocusMute changed itself; sessions you muted manually are left alone.
 
 It is not limited to games — you can also register regular apps such as browsers, messengers, launchers, and media players.
 
@@ -37,27 +41,23 @@ It is not limited to games — you can also register regular apps such as browse
   <img src="assets/screenshot_en.png" width="600" alt="UnfocusMute main window">
 </p>
 
-Built as a native Rust app, UnfocusMute runs without a separate runtime. The executable is about 500 KB.
-
-Muting and restoring apply only to audio sessions that UnfocusMute changed itself. Sessions you had already muted are left unchanged.
-
 ---
 
 ## When It Helps
 
 - You often Alt+Tab away from a game or app while leaving it open.
-- A game or app has no built-in option to mute itself in the background.
-- You want to mute only background game audio while keeping a browser or call app audible.
+- You want to silence an app that does not have a background mute option.
+- You want to mute only a specific app's background audio while multitasking.
 
 ## Features
 
-- Automatically mutes registered apps while they are in the background and restores their audio when they return to the foreground.
-- Pick an app from the default list of apps with audio sessions; when needed, switch to `All processes` or type a name such as `game.exe`.
-- Supports `.exe` app entries, current-instance PID entries, and `PID view`.
-- Per-app notes, live mute state for each registered app, and per-app `Pause` / `Resume` controls.
-- Tray-resident operation, tray status summaries, global pause, config folder access, and duplicate-instance protection.
-- Choose a language on first run, then switch languages in-app between English/한국어/日本語/简体中文/Español/Français/Português/हिन्दी/العربية.
-- Settings are stored locally at `%APPDATA%\UnfocusMute\config.json`.
+- Automatically mutes registered apps when they move into the background, then restores their audio when they return to the foreground.
+- Select an app with an audio session, find it under `All processes`, or type a name such as `game.exe`.
+- Register an entire app by `.exe`, or register only one currently running instance by PID.
+- Per-app notes, live status, and per-app `Pause` / `Resume`.
+- Keeps monitoring from the tray after the window is closed, with tray actions for `Open` / `Hide to tray` / global pause / `Quit`.
+- Settings for `Start minimized to tray`, `Auto-start at Windows sign-in`, and `Restore audio muted by UnfocusMute on exit`.
+- Choose a language on first run, then switch instantly in-app between 9 languages.
 
 ---
 
@@ -79,13 +79,13 @@ UnfocusMute is a standalone app that does not need to be installed. You also do 
 ## Before You Use
 
 UnfocusMute uses the process names, foreground window information, and CoreAudio sessions provided by Windows.
-If a driver, permission setting, or security tool limits session access, mute controls may be partially limited.
+If a driver, permission setting, or security tool limits session access, muting may not work correctly.
 
 The default picker shows only apps that currently have audio sessions. If an app has not created an audio session yet, switch to `All processes` to find it in the running `.exe` process list. Use `Audio sessions only` to return to the filtered list.
 
 **PID registration behavior:** Windows does not always report the same PID for an audio session and the foreground window. To compensate for this, UnfocusMute treats the app as back in the foreground when the registered PID's `.exe` name matches the current foreground window's `.exe` name.
 
-If several instances of the same `.exe` are running at the same time, a specific PID cannot always be separated perfectly. In that case, audio may be restored when another instance is in the foreground.
+If several instances of the same `.exe` are running at the same time, UnfocusMute may not always be able to distinguish a specific PID perfectly. In that case, audio may be restored when another instance is in the foreground.
 
 **Anti-cheat compatibility:** UnfocusMute does not inject code into games, read game memory, hook input, or modify game files. It only uses Windows process/foreground window information and CoreAudio session mute controls, so it is expected to work with most anti-cheat systems, but compatibility with every anti-cheat system cannot be guaranteed.
 
@@ -94,7 +94,7 @@ If several instances of the same `.exe` are running at the same time, a specific
 1. Launch UnfocusMute.
 2. Choose a language on the language screen shown on first launch. The default is English.
 3. Start the game or app you want to mute when it is in the background.
-4. Choose an app in `Search processes` or find it by typing a search term, then click `Register`. If the app has not created an audio session yet, switch to `All processes` to browse all running processes. Use `Audio sessions only` to return to the filtered list. If it is not listed, type the `.exe` name manually.
+4. Select an app from the list, or type a search term in `Search processes`, then click `Register`. If the app has not created an audio session yet, switch to `All processes` to browse all running processes. Use `Audio sessions only` to return to the filtered list. If it is not listed, type the `.exe` name manually.
 5. If you need to register only one specific PID, click `PID view` and choose the individual entry. PID entries apply only to the currently running instance, so choose it again if the app restarts and receives a different PID.
 6. Right-click a registered app to edit its note or use `Pause`.
 7. Open `Settings` from the lower-left corner to change behavior options.
@@ -122,26 +122,56 @@ If you are not sure what to register, check the `.exe` name in Task Manager.
 5. Right-click that item and open `Properties`.
 6. Find the executable name ending in `.exe`, such as `game.exe`, and add it to UnfocusMute.
 
+## Troubleshooting
+
+If an app does not appear in the list, or PID entries do not behave as expected, first check [Before You Use](#before-you-use) and [Finding an Executable Name](#finding-an-executable-name).
+
+If the status at the top changes to `Needs attention`, click `Details` to see why. Some features may be limited by the audio device, security software, permission policy, or auto-start registry write restrictions. If foreground window notifications cannot be registered, auto-mute still continues to work by polling.
+
+If the issue continues, include the UnfocusMute version, Windows version, registered `.exe` name, whether you used PID registration, audio device, and `Details` message in GitHub Issues.
+
 ---
 
 ## Security and Privacy
 
-UnfocusMute runs fully locally. It works normally without an internet connection and does not make automatic network requests, use telemetry, send crash reports, perform remote logging, or collect data. It also does not require administrator rights.
+UnfocusMute runs entirely locally. It works normally without an internet connection and does not require administrator rights. It also does not make automatic network requests, use telemetry, send crash reports, perform remote logging, or collect data.
 
-As an exception, this project's GitHub repository opens in your default browser only when you click the `GitHub repository` button in Settings.
+The only exception is when you click the `GitHub repository` button in Settings; then this project's GitHub repository opens in your default browser.
 
-**What it stores:** Registered process names, PIDs you registered directly, the most recent mute state of registered apps, notes you write, selected language and settings, and window position.
+Audio session detection and mute control use only Windows CoreAudio APIs. UnfocusMute does not inject code into target processes, read their memory, or hook input.
 
-These values are stored in `%APPDATA%\UnfocusMute\config.json` and are not sent anywhere.
+### What It Stores
+
+UnfocusMute stores only the settings it needs to operate in `%APPDATA%\UnfocusMute\config.json`.
+
+- Registered process names
+- PIDs you registered directly
+- The most recent mute state of registered apps
+- Notes you write
+- Selected language and settings
+- Window position
+
+This information is not sent anywhere.
 
 If you enable auto-start at Windows sign-in, the current executable path is also stored in the `UnfocusMute` value under `HKEY_CURRENT_USER\Software\Microsoft\Windows\CurrentVersion\Run`.
 
-To remove every app-related file, delete the app folder and then delete `%APPDATA%\UnfocusMute`.
-If you ever enabled auto-start, delete the registry value above as well.
+### What It Does Not Store
 
-**What it does not store:** Usage history, activity logs, audio data, window titles, keystrokes, or anything else not listed under "What it stores" above.
+UnfocusMute does not store usage history, activity logs, error logs, audio data, window titles, keystrokes, or any information not listed above under "What It Stores".
 
-Audio session detection and mute control use only Windows CoreAudio APIs, and UnfocusMute does not inject code into game processes or read their memory.
+### How to Delete
+
+To remove every app-related file, delete the `UnfocusMute-windows-x64` folder, then delete `%APPDATA%\UnfocusMute`.
+
+If you ever enabled auto-start, also delete the `UnfocusMute` value under `HKEY_CURRENT_USER\Software\Microsoft\Windows\CurrentVersion\Run`.
+
+---
+
+## Settings File
+
+If you need to inspect or back up the settings file directly, use `Open config folder` in `Settings`. The file name is `%APPDATA%\UnfocusMute\config.json`.
+
+You can edit it directly, but while the app is running, changing settings inside the app is recommended. When saving, UnfocusMute writes to a temporary file first and then replaces the current file; unreadable settings are backed up as `config.invalid-<timestamp>.json` and then reset to defaults.
 
 ---
 
@@ -151,9 +181,9 @@ Do not assume that files uploaded to GitHub Releases always match the source cod
 
 If release permissions are abused or an account is compromised, files built from different code, or files modified after building, could be uploaded to a release.
 
-For transparency, UnfocusMute provides a way for users to verify that files uploaded to GitHub Releases are official build artifacts generated by GitHub Actions from this repository's source code at the corresponding tag.
+For transparency, UnfocusMute provides a way for users to verify that files uploaded to GitHub Releases are official build artifacts generated by GitHub Actions from the source code for the corresponding tag in this repository.
 
-The release ZIP and SHA-256 checksum file are generated automatically by GitHub Actions, and each file includes a build-provenance attestation.
+The release ZIP and SHA-256 checksum file are generated automatically by GitHub Actions, and each file is accompanied by a build-provenance attestation.
 
 Use the commands below to check that the downloaded ZIP file was generated by this repository's official build.
 

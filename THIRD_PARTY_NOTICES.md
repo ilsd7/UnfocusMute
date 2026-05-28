@@ -236,11 +236,10 @@ Used by:
    limitations under the License.
 
 </pre>
-
 ### Apache License 2.0 (`Apache-2.0`)
 
 Used by:
-- unfocusmute 1.3.3
+- unfocusmute 1.3.4
 
 <pre>
                                  Apache License
