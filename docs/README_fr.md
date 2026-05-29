@@ -48,8 +48,6 @@ UnfocusMute est une petite application légère qui s’exécute dans la zone de
 - Vous voulez qu’une application reste silencieuse lorsqu’elle ne propose pas d’option pour couper le son en arrière-plan.
 - Vous voulez couper uniquement le son d’une application précise lorsqu’elle est en arrière-plan pendant que vous faites autre chose.
 
----
-
 ## Fonctionnalités
 
 - Coupe automatiquement le son des applications ajoutées lorsqu’elles passent en arrière-plan, puis le rétablit à leur retour au premier plan.
@@ -59,8 +57,6 @@ UnfocusMute est une petite application légère qui s’exécute dans la zone de
 - Continue à surveiller les applications depuis la zone de notification après la fermeture de la fenêtre, avec des actions pour `Ouvrir` / `Masquer dans la zone de notification` / `Mettre en pause` / `Quitter`.
 - Paramètres pour `Démarrer réduit dans la zone de notification`, `Lancer à l’ouverture de session Windows` et `Rétablir le son coupé par UnfocusMute en quittant`.
 - Choix de la langue au premier démarrage, puis changement immédiat vers l’une des 9 langues disponibles dans l’application.
-
----
 
 ## Télécharger et lancer
 

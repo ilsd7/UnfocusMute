@@ -48,8 +48,6 @@ UnfocusMute é um app pequeno e leve que fica na bandeja do sistema do Windows, 
 - Você quer manter um app sem som quando ele não tem opção de silenciar em segundo plano.
 - Você quer silenciar apenas o áudio em segundo plano de um app específico enquanto faz outras coisas.
 
----
-
 ## Recursos
 
 - Silencia automaticamente apps registrados quando ficam em segundo plano e restaura o áudio quando voltam ao primeiro plano.
@@ -59,8 +57,6 @@ UnfocusMute é um app pequeno e leve que fica na bandeja do sistema do Windows, 
 - Continua monitorando na bandeja depois que a janela é fechada, com ações para `Abrir` / `Ocultar na bandeja do sistema` / `Pausar` / `Sair`.
 - Opções para `Iniciar minimizado na bandeja`, `Iniciar automaticamente ao fazer login no Windows` e `Restaurar o áudio silenciado pelo UnfocusMute ao sair`.
 - Escolha de idioma na primeira execução e troca imediata entre 9 idiomas dentro do app.
-
----
 
 ## Baixar e executar
 

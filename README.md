@@ -48,8 +48,6 @@ UnfocusMute is a compact Windows tray app that automatically mutes selected game
 - You want to silence an app that does not have a built-in background mute option.
 - You want to mute only a specific app's background audio while multitasking.
 
----
-
 ## Features
 
 - Automatically mutes registered apps when they go into the background, then restores their audio when they return to the foreground.
@@ -59,8 +57,6 @@ UnfocusMute is a compact Windows tray app that automatically mutes selected game
 - Keeps monitoring from the tray after the window is closed, with tray actions for `Open` / `Hide to tray` / `Pause` / `Quit`.
 - Configurable settings for `Start minimized to the tray`, `Auto-start at Windows sign-in`, and `Restore audio muted by UnfocusMute on exit`.
 - Choose a language on first run, then switch instantly among 9 supported languages in-app.
-
----
 
 ## Download and Run
 
