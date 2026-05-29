@@ -83,8 +83,8 @@ body:
     id: app_status
     attributes:
       label: 오류 메시지
-      description: 상단에 `주의`가 표시되었거나 `세부 정보`에 오류 메시지가 있었다면, 그대로 복사해서 적어 주세요.
-      placeholder: "예: 오디오 장치를 사용할 수 없습니다 / 자동 실행 설정을 변경하지 못했습니다"
+      description: 상단에 `주의`가 표시되면 `세부 정보`를 눌러 팝업의 오류 메시지를 붙여 넣거나 스크린샷을 첨부해 주세요.
+      placeholder: "팝업 오류 메시지를 붙여 넣거나 스크린샷을 첨부해 주세요."
 
   - type: input
     id: target_app

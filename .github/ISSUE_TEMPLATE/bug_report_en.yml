@@ -83,8 +83,8 @@ body:
     id: app_status
     attributes:
       label: Error message
-      description: If UnfocusMute showed a warning or Details error message, copy and paste it here.
-      placeholder: "Example: Audio device unavailable / Could not update auto-start"
+      description: If UnfocusMute shows `Needs attention`, click `Details`, then paste the error message from the popup here or attach a screenshot.
+      placeholder: "Paste the popup error message, or attach a screenshot."
 
   - type: input
     id: target_app

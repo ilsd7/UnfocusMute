@@ -239,7 +239,7 @@ Used by:
 ### Apache License 2.0 (`Apache-2.0`)
 
 Used by:
-- unfocusmute 1.3.4
+- unfocusmute 1.3.5
 
 <pre>
                                  Apache License

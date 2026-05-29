@@ -96,6 +96,10 @@ fn push_count_text(output: &mut String, text: CountText, count: usize) {
             output.push(' ');
             push_decimal(output, count);
         }
+        CountTextOrder::LabelFirstTight => {
+            output.push_str(text.label(count));
+            push_decimal(output, count);
+        }
         CountTextOrder::CountFirst => {
             push_decimal(output, count);
             output.push(' ');
@@ -122,14 +126,20 @@ mod tests {
     #[test]
     fn localized_status_detail_labels_read_naturally() {
         let cases = [
-            (Language::En, "Apps 12 · Muted 3"),
+            (Language::En, "Registered apps: 12 · Muted: 3"),
             (Language::Ja, "登録アプリ 12 · ミュート中 3"),
-            (Language::ZhHans, "已注册应用 12 · 静音中 3"),
-            (Language::Es, "12 registradas · 3 silenciadas"),
-            (Language::Fr, "12 enregistrées · 3 en sourdine"),
-            (Language::Pt, "12 registrados · 3 silenciados"),
-            (Language::Hi, "12 रजिस्टर किए गए ऐप · 3 ऐप म्यूट हैं"),
-            (Language::Ar, "التطبيقات المسجلة: 12 · المكتومة: 3"),
+            (Language::ZhHans, "已添加应用：12 · 已静音：3"),
+            (Language::Es, "12 apps registradas · 3 apps silenciadas"),
+            (
+                Language::Fr,
+                "12 applications ajoutées · 3 applications au son coupé",
+            ),
+            (Language::Pt, "12 apps registrados · 3 apps silenciados"),
+            (Language::Hi, "12 रजिस्टर किए गए ऐप · 3 म्यूट किए गए ऐप"),
+            (
+                Language::Ar,
+                "التطبيقات المسجلة: 12 · التطبيقات المكتومة: 3",
+            ),
         ];
 
         let mut detail = String::new();
@@ -142,10 +152,13 @@ mod tests {
     #[test]
     fn localized_status_detail_uses_singular_count_labels() {
         let cases = [
-            (Language::Es, "1 registrada · 1 silenciada"),
-            (Language::Fr, "1 enregistrée · 1 en sourdine"),
-            (Language::Pt, "1 registrado · 1 silenciado"),
-            (Language::Hi, "1 रजिस्टर किया गया ऐप · 1 ऐप म्यूट है"),
+            (Language::Es, "1 app registrada · 1 app silenciada"),
+            (
+                Language::Fr,
+                "1 application ajoutée · 1 application au son coupé",
+            ),
+            (Language::Pt, "1 app registrado · 1 app silenciado"),
+            (Language::Hi, "1 रजिस्टर किया गया ऐप · 1 म्यूट किया गया ऐप"),
         ];
 
         let mut detail = String::new();
@@ -194,9 +207,16 @@ mod tests {
         let strings = Language::En.strings();
         let mut tip = String::new();
 
-        tray_tip_text_into(strings.status_running, "Apps 2 · Muted 1", &mut tip);
+        tray_tip_text_into(
+            strings.status_running,
+            "Registered apps: 2 · Muted: 1",
+            &mut tip,
+        );
 
-        assert_eq!(tip, "UnfocusMute - Monitoring | Apps 2 · Muted 1");
+        assert_eq!(
+            tip,
+            "UnfocusMute - Monitoring | Registered apps: 2 · Muted: 1"
+        );
     }
 
     #[test]
