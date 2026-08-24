@@ -18,7 +18,7 @@ use windows::Win32::Storage::FileSystem::{
 #[cfg(windows)]
 use windows::core::PCWSTR;
 
-const CONFIG_VERSION: u32 = 4;
+const CONFIG_VERSION: u32 = 6;
 const LEGACY_DEFAULT_POLLING_INTERVAL_MS: u64 = 350;
 const EVENT_FALLBACK_DEFAULT_POLLING_INTERVAL_MS: u64 = 5_000;
 const DEFAULT_POLLING_INTERVAL_MS: u64 = 3_000;
@@ -116,15 +116,23 @@ pub struct WindowPosition {
     pub y: i32,
 }
 
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct WindowSize {
+    pub width: i32,
+    pub height: i32,
+}
+
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(default)]
 pub struct AppConfig {
     pub version: u32,
     pub language: Language,
     pub window_position: Option<WindowPosition>,
+    pub window_size: Option<WindowSize>,
     pub polling_interval_ms: u64,
     pub launch_on_startup: bool,
     pub start_minimized: bool,
+    pub hide_to_tray_on_close: bool,
     pub restore_muted_on_exit: bool,
     pub targets: Vec<TargetProcess>,
 }
@@ -162,9 +170,11 @@ impl Default for AppConfig {
             version: CONFIG_VERSION,
             language: Language::default(),
             window_position: None,
+            window_size: None,
             polling_interval_ms: DEFAULT_POLLING_INTERVAL_MS,
             launch_on_startup: false,
             start_minimized: true,
+            hide_to_tray_on_close: true,
             restore_muted_on_exit: true,
             targets: Vec::new(),
         }
@@ -391,6 +401,12 @@ impl AppConfig {
         self.polling_interval_ms = self
             .polling_interval_ms
             .clamp(MIN_POLLING_INTERVAL_MS, MAX_POLLING_INTERVAL_MS);
+        if self
+            .window_size
+            .is_some_and(|size| size.width <= 0 || size.height <= 0)
+        {
+            self.window_size = None;
+        }
         self.deduplicate_targets();
     }
 
@@ -428,6 +444,9 @@ pub(crate) fn merge_pending_config_changes(
     if local.window_position != base.window_position {
         disk.window_position = local.window_position;
     }
+    if local.window_size != base.window_size {
+        disk.window_size = local.window_size;
+    }
     if local.polling_interval_ms != base.polling_interval_ms {
         disk.polling_interval_ms = local.polling_interval_ms;
     }
@@ -436,6 +455,9 @@ pub(crate) fn merge_pending_config_changes(
     }
     if local.start_minimized != base.start_minimized {
         disk.start_minimized = local.start_minimized;
+    }
+    if local.hide_to_tray_on_close != base.hide_to_tray_on_close {
+        disk.hide_to_tray_on_close = local.hide_to_tray_on_close;
     }
     if local.restore_muted_on_exit != base.restore_muted_on_exit {
         disk.restore_muted_on_exit = local.restore_muted_on_exit;
@@ -2045,7 +2067,15 @@ mod tests {
 
         assert!(!config.launch_on_startup);
         assert!(config.start_minimized);
+        assert!(config.hide_to_tray_on_close);
         assert!(config.restore_muted_on_exit);
+    }
+
+    #[test]
+    fn legacy_config_defaults_to_hiding_on_close() {
+        let config: AppConfig = serde_json::from_str(r#"{"version":5}"#).unwrap();
+
+        assert!(config.hide_to_tray_on_close);
     }
 
     #[test]
@@ -2071,6 +2101,28 @@ mod tests {
         config.sanitize();
 
         assert_eq!(config.polling_interval_ms, 400);
+    }
+
+    #[test]
+    fn legacy_config_without_window_size_uses_default_size() {
+        let config: AppConfig = serde_json::from_str(r#"{"version":4}"#).unwrap();
+
+        assert_eq!(config.window_size, None);
+    }
+
+    #[test]
+    fn sanitize_discards_non_positive_window_sizes() {
+        let mut config = AppConfig {
+            window_size: Some(WindowSize {
+                width: 660,
+                height: 0,
+            }),
+            ..AppConfig::default()
+        };
+
+        config.sanitize();
+
+        assert_eq!(config.window_size, None);
     }
 
     #[test]
@@ -2348,6 +2400,23 @@ mod tests {
         assert_eq!(disk.targets[0].name, "chat.exe");
         assert_eq!(disk.targets[1].name, "game.exe");
         assert!(disk.targets[1].managed_muted);
+    }
+
+    #[test]
+    fn merge_pending_config_changes_keeps_local_window_size() {
+        let base = AppConfig::default();
+        let mut local = base.clone();
+        local.window_size = Some(WindowSize {
+            width: 825,
+            height: 875,
+        });
+        let mut disk = base.clone();
+        disk.language = Language::Ko;
+
+        merge_pending_config_changes(&base, &local, &mut disk);
+
+        assert_eq!(disk.window_size, local.window_size);
+        assert_eq!(disk.language, Language::Ko);
     }
 
     #[test]
