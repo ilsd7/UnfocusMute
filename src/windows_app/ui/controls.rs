@@ -2,7 +2,6 @@ use windows::Win32::Foundation::HWND;
 
 #[derive(Clone, Copy, Default)]
 pub(super) struct Controls {
-    pub(super) title_label: HWND,
     pub(super) status: HWND,
     pub(super) status_detail: HWND,
     pub(super) issue_details_button: HWND,
@@ -17,9 +16,8 @@ pub(super) struct Controls {
 }
 
 impl Controls {
-    pub(super) fn all(self) -> [HWND; 12] {
+    pub(super) fn all(self) -> [HWND; 11] {
         [
-            self.title_label,
             self.status,
             self.status_detail,
             self.issue_details_button,

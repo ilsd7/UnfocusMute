@@ -17,7 +17,7 @@ pub(super) const WM_TRAY_ICON: u32 = WM_APP + 1;
 pub(super) const WM_FOREGROUND_CHANGED: u32 = WM_APP + 2;
 pub(super) const WM_PROCESS_SEARCH_RESULT_CHOSEN: u32 = WM_APP + 3;
 pub(super) const WINDOW_WIDTH: i32 = 660;
-pub(super) const WINDOW_HEIGHT: i32 = 590;
+pub(super) const WINDOW_HEIGHT: i32 = 550;
 pub(super) const MAIN_WINDOW_STYLE: WINDOW_STYLE = WINDOW_STYLE(
     WS_OVERLAPPED.0
         | WS_CAPTION.0

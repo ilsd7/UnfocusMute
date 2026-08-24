@@ -1,7 +1,5 @@
 use crate::i18n::{APP_TITLE, CountText, CountTextOrder, Strings};
 
-const APP_VERSION: &str = env!("CARGO_PKG_VERSION");
-
 pub(super) fn status_text(strings: &Strings, paused: bool, has_issue: bool) -> &'static str {
     if has_issue {
         strings.status_issue
@@ -53,13 +51,6 @@ pub(super) fn tray_tip_text_into(status: &str, detail: &str, output: &mut String
         output.push_str(" | ");
         output.push_str(detail);
     }
-}
-
-pub(super) fn app_title_with_version_into(output: &mut String) {
-    output.clear();
-    output.push_str(APP_TITLE);
-    output.push_str(" v");
-    output.push_str(APP_VERSION);
 }
 
 #[cfg(test)]
@@ -217,15 +208,6 @@ mod tests {
             tip,
             "UnfocusMute - Monitoring | Registered apps: 2 · Muted: 1"
         );
-    }
-
-    #[test]
-    fn app_title_includes_package_version() {
-        let mut title = String::new();
-
-        app_title_with_version_into(&mut title);
-
-        assert_eq!(title, format!("UnfocusMute v{APP_VERSION}"));
     }
 
     #[test]

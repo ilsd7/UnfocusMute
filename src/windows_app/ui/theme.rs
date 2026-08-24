@@ -48,44 +48,33 @@ pub(super) struct AppTheme {
     pub(super) border_brush: OwnedBrush,
     pub(super) selected_row_brush: OwnedBrush,
     pub(super) font: UiFont,
-    pub(super) title_font: UiFont,
 }
 
 impl AppTheme {
     pub(super) fn new() -> Self {
-        let (font, title_font) = Self::scaled_fonts();
         Self {
             page_brush: OwnedBrush::solid(PAGE_COLOR),
             panel_brush: OwnedBrush::solid(PANEL_COLOR),
             border_brush: OwnedBrush::solid(PANEL_BORDER_COLOR),
             selected_row_brush: OwnedBrush::solid(SELECTED_ROW_COLOR),
-            font,
-            title_font,
+            font: Self::scaled_font(),
         }
     }
 
     pub(super) fn fonts_match_current_scale(&self) -> bool {
         let font_point_size = ui_font_point_size();
         self.font.pixel_height() == font_pixel_height(font_point_size)
-            && self.title_font.pixel_height() == font_pixel_height(font_point_size + 2)
     }
 
-    pub(super) fn scaled_fonts() -> (UiFont, UiFont) {
-        let font_point_size = ui_font_point_size();
-        (
-            UiFont::new(font_point_size),
-            UiFont::new_with_face(font_point_size + 2, 600, w!("Segoe UI Variable Display")),
-        )
+    pub(super) fn scaled_font() -> UiFont {
+        UiFont::new(ui_font_point_size())
     }
 
-    /// Returns the previous fonts so their handles can remain valid until every
-    /// child control has received the replacement handles.
+    /// Returns the previous font so its handle remains valid until every child
+    /// control has received the replacement handle.
     #[must_use]
-    pub(super) fn replace_fonts(&mut self, font: UiFont, title_font: UiFont) -> (UiFont, UiFont) {
-        (
-            std::mem::replace(&mut self.font, font),
-            std::mem::replace(&mut self.title_font, title_font),
-        )
+    pub(super) fn replace_font(&mut self, font: UiFont) -> UiFont {
+        std::mem::replace(&mut self.font, font)
     }
 }
 

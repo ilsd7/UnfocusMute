@@ -50,8 +50,8 @@ use windows::Win32::UI::WindowsAndMessaging::{
     KillTimer, LB_GETCOUNT, LB_GETCURSEL, LB_RESETCONTENT, LB_SETCURSEL, LBN_DBLCLK, LBN_SELCHANGE,
     LBS_HASSTRINGS, LBS_NOINTEGRALHEIGHT, LBS_NOTIFY, LBS_OWNERDRAWVARIABLE, LoadCursorW,
     MB_ICONINFORMATION, MB_ICONWARNING, MB_OK, MF_GRAYED, MF_SEPARATOR, MF_STRING, MINMAXINFO, MSG,
-    MessageBoxW, MoveWindow, PostMessageW, PostQuitMessage, RegisterClassW, RegisterWindowMessageW,
-    SW_HIDE, SW_RESTORE, SW_SHOW, SendMessageW, SetForegroundWindow, SetTimer, SetWindowLongPtrW,
+    MessageBoxW, PostMessageW, PostQuitMessage, RegisterClassW, RegisterWindowMessageW, SW_HIDE,
+    SW_RESTORE, SW_SHOW, SendMessageW, SetForegroundWindow, SetTimer, SetWindowLongPtrW,
     ShowWindow, TPM_NONOTIFY, TPM_RETURNCMD, TPM_RIGHTBUTTON, TRACK_POPUP_MENU_FLAGS,
     TrackPopupMenu, TranslateMessage, WA_INACTIVE, WINDOW_EX_STYLE, WINDOW_STYLE,
     WINEVENT_OUTOFCONTEXT, WM_ACTIVATE, WM_CLOSE, WM_COMMAND, WM_CONTEXTMENU, WM_CREATE,
@@ -111,9 +111,7 @@ use state::{
     ActionButtonState, ConfigReloadResult, IssueState, ProcessRefreshResult, StatusIssue,
     StatusSnapshot,
 };
-use status_text::{
-    app_title_with_version_into, status_text, status_text_and_detail_into, tray_tip_text_into,
-};
+use status_text::{status_text, status_text_and_detail_into, tray_tip_text_into};
 use target_model::{
     target_display_name_into, target_display_storage_bytes_hint, target_matcher_inputs_changed,
 };
@@ -138,28 +136,17 @@ const LEFT_EDGE_TRIM: i32 = 16;
 const HEADER_LEFT_X: i32 = 36 - LEFT_EDGE_TRIM;
 const HEADER_RIGHT_MARGIN: i32 = 36;
 const HEADER_CONTENT_RIGHT: i32 = WINDOW_WIDTH - HEADER_RIGHT_MARGIN;
-const HEADER_RIGHT_WIDTH: i32 = 320;
-const HEADER_RIGHT_X: i32 = HEADER_CONTENT_RIGHT - HEADER_RIGHT_WIDTH;
-const HEADER_TITLE_WIDTH: i32 = HEADER_RIGHT_X - HEADER_LEFT_X - 24;
-const HEADER_FULL_WIDTH: i32 = HEADER_CONTENT_RIGHT - HEADER_LEFT_X;
-const HEADER_TITLE_Y: i32 = 13;
-const HEADER_PRIMARY_HEIGHT: i32 = 28;
-const HEADER_PRIMARY_TO_DETAIL_GAP: i32 = 8;
-const HEADER_DETAIL_HEIGHT: i32 = 24;
-const HEADER_DETAIL_Y: i32 = HEADER_TITLE_Y + HEADER_PRIMARY_HEIGHT + HEADER_PRIMARY_TO_DETAIL_GAP;
-const HEADER_DETAIL_TO_PANEL_GAP: i32 = 10;
+const HEADER_ROW_Y: i32 = 13;
+const HEADER_ROW_HEIGHT: i32 = 28;
+const HEADER_ITEM_GAP: i32 = 14;
+const HEADER_TO_PANEL_GAP: i32 = 12;
 const ISSUE_DETAILS_BUTTON_MIN_WIDTH: i32 = 74;
 const ISSUE_DETAILS_BUTTON_MAX_WIDTH: i32 = 160;
-const ISSUE_DETAILS_BUTTON_HEIGHT: i32 = 28;
-const ISSUE_DETAILS_BUTTON_GAP: i32 = 10;
-const ISSUE_DETAILS_BUTTON_RIGHT: i32 = HEADER_CONTENT_RIGHT + 5;
-const ISSUE_DETAILS_BUTTON_Y: i32 = HEADER_DETAIL_Y - 4;
 const RECOVERED_INVALID_CONFIG_DETAIL: &str =
     "invalid config file was backed up and replaced with defaults";
 const TARGET_PANEL_LEFT: i32 = 14;
 const TARGET_PANEL_RIGHT: i32 = HEADER_CONTENT_RIGHT + (HEADER_LEFT_X - TARGET_PANEL_LEFT);
-const HEADER_STATUS_MAX_WIDTH: i32 = HEADER_RIGHT_WIDTH;
-const HEADER_STATUS_RIGHT: i32 = HEADER_CONTENT_RIGHT + 2;
+const HEADER_STATUS_MAX_WIDTH: i32 = 320;
 const HEADER_STATUS_ICON_WIDTH: i32 = 12;
 const HEADER_STATUS_ICON_GAP: i32 = 5;
 const HEADER_STATUS_HORIZONTAL_PADDING: i32 = 1;
@@ -167,7 +154,7 @@ const HEADER_STATUS_BASE_WIDTH: i32 =
     HEADER_STATUS_HORIZONTAL_PADDING * 2 + HEADER_STATUS_ICON_WIDTH + HEADER_STATUS_ICON_GAP;
 const HEADER_STATUS_PAUSE_ICON_OPTICAL_OFFSET_Y: i32 = -1;
 const HEADER_STATUS_PLAY_ICON_OPTICAL_OFFSET_Y: i32 = -1;
-const TARGET_PANEL_TOP: i32 = HEADER_DETAIL_Y + HEADER_DETAIL_HEIGHT + HEADER_DETAIL_TO_PANEL_GAP;
+const TARGET_PANEL_TOP: i32 = HEADER_ROW_Y + HEADER_ROW_HEIGHT + HEADER_TO_PANEL_GAP;
 const TARGET_PANEL_BOTTOM: i32 = 432;
 const TARGET_LIST_Y: i32 = TARGET_PANEL_TOP + 2;
 const TARGET_LIST_X: i32 = TARGET_PANEL_LEFT + 10;
@@ -190,9 +177,6 @@ const PROCESS_PICKER_ROW_HEIGHT: i32 = SEARCH_PICKER_HEIGHT;
 const PROCESS_PICKER_REDRAW_TOP: i32 = PROCESS_PICKER_ROW_Y - 8;
 const GITHUB_PAGE_URL: &str = "https://github.com/ilsd7/UnfocusMute";
 const SETTINGS_ICON_SIZE: i32 = 16;
-const SETTINGS_BUTTON_X: i32 = HEADER_LEFT_X;
-const SETTINGS_BUTTON_Y: i32 = 514;
-const SETTINGS_BUTTON_HEIGHT: i32 = 18;
 const SETTINGS_BUTTON_TEXT_GAP: i32 = 6;
 const SETTINGS_BUTTON_TEXT_SLACK: i32 = 12;
 const TARGET_LIST_SUBCLASS_ID: usize = 1;
@@ -726,6 +710,18 @@ struct ProcessPickerWidths {
     details: i32,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+struct HeaderRowLayout {
+    status_x: i32,
+    status_width: i32,
+    detail_x: i32,
+    detail_width: i32,
+    issue_x: i32,
+    issue_width: i32,
+    settings_x: i32,
+    settings_width: i32,
+}
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 enum RegistrationCandidate {
     ProcessChoice(usize),
@@ -742,6 +738,49 @@ fn status_control_width_for_text(text_width: i32) -> i32 {
     HEADER_STATUS_BASE_WIDTH
         .saturating_add(text_width.max(0))
         .min(HEADER_STATUS_MAX_WIDTH)
+}
+
+fn fit_header_row(
+    status_width: i32,
+    settings_width: i32,
+    issue_width: Option<i32>,
+) -> HeaderRowLayout {
+    let has_issue_button = issue_width.is_some();
+    let content_width = HEADER_CONTENT_RIGHT - HEADER_LEFT_X;
+    let settings_width = settings_width.clamp(1, content_width);
+    let settings_x = HEADER_CONTENT_RIGHT - settings_width;
+    let trailing_right = (settings_x - HEADER_ITEM_GAP).max(HEADER_LEFT_X + 1);
+
+    let (issue_x, issue_width, status_right) = if let Some(issue_width) = issue_width {
+        let issue_width = issue_width.clamp(1, (trailing_right - HEADER_LEFT_X).max(1));
+        let issue_x = trailing_right - issue_width;
+        (
+            issue_x,
+            issue_width,
+            (issue_x - HEADER_ITEM_GAP).max(HEADER_LEFT_X + 1),
+        )
+    } else {
+        (trailing_right, 1, trailing_right)
+    };
+
+    let status_width = status_width.clamp(1, (status_right - HEADER_LEFT_X).max(1));
+    let detail_x = (HEADER_LEFT_X + status_width + HEADER_ITEM_GAP).min(trailing_right);
+    let detail_width = if has_issue_button {
+        1
+    } else {
+        (trailing_right - detail_x).max(1)
+    };
+
+    HeaderRowLayout {
+        status_x: HEADER_LEFT_X,
+        status_width,
+        detail_x,
+        detail_width,
+        issue_x,
+        issue_width,
+        settings_x,
+        settings_width,
+    }
 }
 
 fn fit_process_picker_widths(
@@ -910,30 +949,15 @@ impl AppWindow {
         let child = WS_CHILD | WS_VISIBLE;
         let tab_child = child | WS_TABSTOP;
 
-        self.controls.title_label = unsafe {
-            create_control(
-                self.hwnd,
-                instance,
-                w!("STATIC"),
-                "",
-                child | SS_CENTERIMAGE_STYLE | SS_ENDELLIPSIS_STYLE,
-                WINDOW_EX_STYLE(0),
-                HEADER_LEFT_X,
-                HEADER_TITLE_Y,
-                HEADER_TITLE_WIDTH,
-                HEADER_PRIMARY_HEIGHT,
-                0,
-            )?
-        };
         self.controls.status = unsafe {
             create_button(
                 self.hwnd,
                 instance,
                 "",
-                HEADER_STATUS_RIGHT - HEADER_STATUS_MAX_WIDTH,
-                HEADER_TITLE_Y,
+                HEADER_LEFT_X,
+                HEADER_ROW_Y,
                 HEADER_STATUS_MAX_WIDTH,
-                HEADER_PRIMARY_HEIGHT,
+                HEADER_ROW_HEIGHT,
                 ID_STATUS,
             )?
         };
@@ -943,12 +967,12 @@ impl AppWindow {
                 instance,
                 w!("STATIC"),
                 "",
-                child | SS_RIGHT_STYLE | SS_ENDELLIPSIS_STYLE,
+                child | SS_CENTERIMAGE_STYLE | SS_ENDELLIPSIS_STYLE,
                 WINDOW_EX_STYLE(0),
-                HEADER_RIGHT_X,
-                HEADER_DETAIL_Y,
-                HEADER_RIGHT_WIDTH,
-                HEADER_DETAIL_HEIGHT,
+                HEADER_LEFT_X,
+                HEADER_ROW_Y,
+                1,
+                HEADER_ROW_HEIGHT,
                 0,
             )?
         };
@@ -957,10 +981,10 @@ impl AppWindow {
                 self.hwnd,
                 instance,
                 "",
-                ISSUE_DETAILS_BUTTON_RIGHT - ISSUE_DETAILS_BUTTON_MIN_WIDTH,
-                ISSUE_DETAILS_BUTTON_Y,
+                HEADER_LEFT_X,
+                HEADER_ROW_Y,
                 ISSUE_DETAILS_BUTTON_MIN_WIDTH,
-                ISSUE_DETAILS_BUTTON_HEIGHT,
+                HEADER_ROW_HEIGHT,
                 ID_ISSUE_DETAILS,
             )?
         };
@@ -1091,10 +1115,10 @@ impl AppWindow {
                 "",
                 tab_child | WINDOW_STYLE(BS_OWNERDRAW as u32),
                 WINDOW_EX_STYLE(0),
-                SETTINGS_BUTTON_X,
-                SETTINGS_BUTTON_Y,
+                HEADER_CONTENT_RIGHT - self.settings_button_width(),
+                HEADER_ROW_Y,
                 self.settings_button_width(),
-                SETTINGS_BUTTON_HEIGHT,
+                HEADER_ROW_HEIGHT,
                 ID_SETTINGS,
             )?
         };
@@ -1120,14 +1144,12 @@ impl AppWindow {
             }
         }
         let font = self.theme.font.handle();
-        let title_font = self.theme.title_font.handle();
-        self.apply_font_set_to_controls(font, title_font, true);
+        self.apply_font_set_to_controls(font, true);
         Ok(())
     }
 
     fn rescale_ui_to_window(&mut self, finalize_visuals: bool) {
-        if self.controls.title_label == HWND::default() || unsafe { IsIconic(self.hwnd).as_bool() }
-        {
+        if self.controls.status == HWND::default() || unsafe { IsIconic(self.hwnd).as_bool() } {
             return;
         }
         let scale_changed = update_user_scale_from_window(self.hwnd);
@@ -1136,12 +1158,11 @@ impl AppWindow {
         }
 
         if finalize_visuals && !self.theme.fonts_match_current_scale() {
-            let (font, title_font) = AppTheme::scaled_fonts();
-            let previous_fonts = self.theme.replace_fonts(font, title_font);
+            let font = AppTheme::scaled_font();
+            let previous_font = self.theme.replace_font(font);
             let font = self.theme.font.handle();
-            let title_font = self.theme.title_font.handle();
-            self.apply_font_set_to_controls(font, title_font, false);
-            drop(previous_fonts);
+            self.apply_font_set_to_controls(font, false);
+            drop(previous_font);
         }
         if finalize_visuals {
             self.refresh_settings_icon();
@@ -1203,16 +1224,12 @@ impl AppWindow {
             );
         }
         self.layout_localized_controls_with_pid_help(self.show_process_details);
-        self.layout_settings_button();
     }
 
     fn refresh_text(&mut self) {
         self.strings = self.config.language.strings();
         self.refresh_target_status_width();
-        self.layout_settings_button();
         unsafe {
-            app_title_with_version_into(&mut self.display_text_buffer);
-            set_text(self.controls.title_label, &self.display_text_buffer);
             set_text(self.hwnd, APP_TITLE);
             set_text(
                 self.controls.target_empty_title,
@@ -1238,33 +1255,6 @@ impl AppWindow {
         self.last_status = None;
         self.update_status();
         self.invalidate_all_controls();
-    }
-
-    fn layout_settings_button(&self) {
-        if self.controls.settings_button.0.is_null() {
-            return;
-        }
-
-        unsafe {
-            let _ = MoveWindow(
-                self.controls.settings_button,
-                px(SETTINGS_BUTTON_X),
-                px(SETTINGS_BUTTON_Y),
-                self.settings_button_width_px(),
-                px(SETTINGS_BUTTON_HEIGHT),
-                false,
-            );
-        }
-    }
-
-    fn settings_button_width_px(&self) -> i32 {
-        // During interactive resizing, the layout scale changes before fonts do.
-        // Keep this text-dependent width in the same physical-pixel snapshot as
-        // the owner-drawn font so intermediate frames cannot clip the label.
-        let chrome_width =
-            px(SETTINGS_ICON_SIZE + SETTINGS_BUTTON_TEXT_GAP + SETTINGS_BUTTON_TEXT_SLACK);
-        let text_width = px(self.text_width(self.strings.settings_title));
-        chrome_width.saturating_add(text_width).max(1)
     }
 
     fn settings_button_width(&self) -> i32 {
@@ -1570,60 +1560,47 @@ impl AppWindow {
     }
 
     fn layout_header(&self, issue_visible: bool, issue_detail_visible: bool) {
-        let _ = unsafe {
-            move_window(
-                self.controls.title_label,
-                HEADER_LEFT_X,
-                HEADER_TITLE_Y,
-                HEADER_TITLE_WIDTH,
-                HEADER_PRIMARY_HEIGHT,
-                false,
-            )
-        };
-        let status_width = self.status_control_width();
-        let _ = unsafe {
-            move_window(
+        let issue_width =
+            (issue_visible && issue_detail_visible).then(|| self.issue_details_button_width());
+        let layout = fit_header_row(
+            self.status_control_width(),
+            self.settings_button_width(),
+            issue_width,
+        );
+        unsafe {
+            let _ = move_window(
                 self.controls.status,
-                HEADER_STATUS_RIGHT - status_width,
-                HEADER_TITLE_Y,
-                status_width,
-                HEADER_PRIMARY_HEIGHT,
+                layout.status_x,
+                HEADER_ROW_Y,
+                layout.status_width,
+                HEADER_ROW_HEIGHT,
                 false,
-            )
-        };
-
-        let issue_details_button_width = self.issue_details_button_width();
-        let issue_details_button_x = ISSUE_DETAILS_BUTTON_RIGHT - issue_details_button_width;
-        let (detail_x, detail_width) = if issue_visible && issue_detail_visible {
-            (
-                HEADER_LEFT_X,
-                (issue_details_button_x - ISSUE_DETAILS_BUTTON_GAP - HEADER_LEFT_X).max(1),
-            )
-        } else if issue_visible {
-            (HEADER_LEFT_X, HEADER_FULL_WIDTH)
-        } else {
-            (HEADER_RIGHT_X, HEADER_RIGHT_WIDTH)
-        };
-        let _ = unsafe {
-            move_window(
+            );
+            let _ = move_window(
                 self.controls.status_detail,
-                detail_x,
-                HEADER_DETAIL_Y,
-                detail_width,
-                HEADER_DETAIL_HEIGHT,
+                layout.detail_x,
+                HEADER_ROW_Y,
+                layout.detail_width,
+                HEADER_ROW_HEIGHT,
                 false,
-            )
-        };
-        let _ = unsafe {
-            move_window(
+            );
+            let _ = move_window(
                 self.controls.issue_details_button,
-                issue_details_button_x,
-                ISSUE_DETAILS_BUTTON_Y,
-                issue_details_button_width,
-                ISSUE_DETAILS_BUTTON_HEIGHT,
+                layout.issue_x,
+                HEADER_ROW_Y,
+                layout.issue_width,
+                HEADER_ROW_HEIGHT,
                 false,
-            )
-        };
+            );
+            let _ = move_window(
+                self.controls.settings_button,
+                layout.settings_x,
+                HEADER_ROW_Y,
+                layout.settings_width,
+                HEADER_ROW_HEIGHT,
+                false,
+            );
+        }
         unsafe {
             let _ = ShowWindow(
                 self.controls.issue_details_button,
@@ -3552,22 +3529,18 @@ impl AppWindow {
                         } else {
                             ACCENT_COLOR
                         }
-                    } else if child == self.controls.title_label
-                        || child == self.controls.target_empty_title
-                    {
+                    } else if child == self.controls.target_empty_title {
                         TEXT_COLOR
                     } else {
                         SUBTLE_TEXT_COLOR
                     };
                     let _ = SetTextColor(hdc, color);
-                    let (brush, background_color) = if child == self.controls.title_label
-                        || child == self.controls.status
-                        || child == self.controls.status_detail
-                    {
-                        (self.theme.page_brush.handle(), PAGE_COLOR)
-                    } else {
-                        (self.theme.panel_brush.handle(), PANEL_COLOR)
-                    };
+                    let (brush, background_color) =
+                        if child == self.controls.status || child == self.controls.status_detail {
+                            (self.theme.page_brush.handle(), PAGE_COLOR)
+                        } else {
+                            (self.theme.panel_brush.handle(), PANEL_COLOR)
+                        };
                     let _ = SetBkMode(hdc, OPAQUE);
                     let _ = SetBkColor(hdc, background_color);
                     LRESULT(brush.0 as isize)
@@ -3609,23 +3582,20 @@ impl AppWindow {
             let _ = FillRect(draw.hDC, &draw.rcItem, self.theme.page_brush.handle());
         }
 
-        let status_left = draw.rcItem.left + px(1);
-        let status_right = draw.rcItem.right - px(1);
-        let icon_width = px(12);
-        let icon_gap = px(5);
-        let text_right = status_right;
-        let text_left_bound = (status_left + icon_width + icon_gap).min(text_right);
-        let text_left = (text_right - px(self.text_width(status))).max(text_left_bound);
-        let text_rect = RECT {
-            left: text_left,
+        let status_left = draw.rcItem.left + px(HEADER_STATUS_HORIZONTAL_PADDING);
+        let status_right = draw.rcItem.right - px(HEADER_STATUS_HORIZONTAL_PADDING);
+        let icon_width = px(HEADER_STATUS_ICON_WIDTH);
+        let icon_gap = px(HEADER_STATUS_ICON_GAP);
+        let icon_rect = RECT {
+            left: status_left,
             top: draw.rcItem.top,
-            right: text_right,
+            right: (status_left + icon_width).min(status_right),
             bottom: draw.rcItem.bottom,
         };
-        let icon_rect = RECT {
-            left: text_rect.left - icon_gap - icon_width,
+        let text_rect = RECT {
+            left: (icon_rect.right + icon_gap).min(status_right),
             top: draw.rcItem.top,
-            right: text_rect.left - icon_gap,
+            right: status_right,
             bottom: draw.rcItem.bottom,
         };
 
@@ -3957,22 +3927,11 @@ impl AppWindow {
         }
     }
 
-    fn apply_font_set_to_controls(&mut self, font: HGDIOBJ, title_font: HGDIOBJ, redraw: bool) {
+    fn apply_font_set_to_controls(&mut self, font: HGDIOBJ, redraw: bool) {
         self.apply_font_to_controls(font, redraw);
         if let Some(process_picker) = &mut self.process_picker {
             unsafe {
                 process_picker.set_font(font);
-            }
-        }
-        let redraw = LPARAM(if redraw { 1 } else { 0 });
-        unsafe {
-            if self.controls.title_label != HWND::default() {
-                SendMessageW(
-                    self.controls.title_label,
-                    WM_SETFONT,
-                    Some(WPARAM(title_font.0 as usize)),
-                    Some(redraw),
-                );
             }
         }
     }
@@ -4447,14 +4406,41 @@ mod target_list_tests {
     }
 
     #[test]
-    fn header_rows_are_derived_from_explicit_gaps() {
-        assert_eq!(
-            HEADER_DETAIL_Y,
-            HEADER_TITLE_Y + HEADER_PRIMARY_HEIGHT + HEADER_PRIMARY_TO_DETAIL_GAP
-        );
+    fn header_and_target_panel_are_separated_by_the_declared_gap() {
         assert_eq!(
             TARGET_PANEL_TOP,
-            HEADER_DETAIL_Y + HEADER_DETAIL_HEIGHT + HEADER_DETAIL_TO_PANEL_GAP
+            HEADER_ROW_Y + HEADER_ROW_HEIGHT + HEADER_TO_PANEL_GAP
+        );
+    }
+
+    #[test]
+    fn normal_header_row_keeps_status_summary_and_settings_separate() {
+        let layout = fit_header_row(104, 92, None);
+
+        assert_eq!(layout.status_x, HEADER_LEFT_X);
+        assert_eq!(
+            layout.detail_x,
+            layout.status_x + layout.status_width + HEADER_ITEM_GAP
+        );
+        assert_eq!(
+            layout.detail_x + layout.detail_width,
+            layout.settings_x - HEADER_ITEM_GAP
+        );
+        assert_eq!(
+            layout.settings_x + layout.settings_width,
+            HEADER_CONTENT_RIGHT
+        );
+    }
+
+    #[test]
+    fn issue_header_row_places_details_before_settings_without_overlap() {
+        let layout = fit_header_row(HEADER_STATUS_MAX_WIDTH, 112, Some(150));
+
+        assert!(layout.status_x + layout.status_width + HEADER_ITEM_GAP <= layout.issue_x);
+        assert!(layout.issue_x + layout.issue_width + HEADER_ITEM_GAP <= layout.settings_x);
+        assert_eq!(
+            layout.settings_x + layout.settings_width,
+            HEADER_CONTENT_RIGHT
         );
     }
 
