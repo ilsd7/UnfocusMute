@@ -103,7 +103,7 @@ pub(super) fn update_user_scale_from_window(hwnd: HWND) -> bool {
 }
 
 pub(super) fn constrain_sizing_rect(hwnd: HWND, edge: usize, rect: &mut RECT) {
-    let work_area = monitor_work_area_rect(hwnd).unwrap_or_else(primary_work_area_rect);
+    let work_area = work_area_rect(hwnd);
     let canvas = main_client_canvas();
     let (max_width, max_height) = largest_fitting_window_size(work_area, canvas);
     let (default_width, default_height) = canvas.outer_size(DEFAULT_USER_UI_SCALE);
@@ -119,7 +119,7 @@ pub(super) fn constrain_sizing_rect(hwnd: HWND, edge: usize, rect: &mut RECT) {
 }
 
 pub(super) fn apply_window_minmax_info(hwnd: HWND, info: &mut MINMAXINFO) {
-    let work_area = monitor_work_area_rect(hwnd).unwrap_or_else(primary_work_area_rect);
+    let work_area = work_area_rect(hwnd);
     let canvas = main_client_canvas();
     let (max_width, max_height) = largest_fitting_window_size(work_area, canvas);
     let (default_width, default_height) = canvas.outer_size(DEFAULT_USER_UI_SCALE);
@@ -344,6 +344,10 @@ fn primary_work_area_rect() -> RECT {
         right: unsafe { GetSystemMetrics(SM_CXSCREEN) },
         bottom: unsafe { GetSystemMetrics(SM_CYSCREEN) },
     }
+}
+
+pub(super) fn work_area_rect(hwnd: HWND) -> RECT {
+    monitor_work_area_rect(hwnd).unwrap_or_else(primary_work_area_rect)
 }
 
 fn monitor_work_area_rect(hwnd: HWND) -> Option<RECT> {

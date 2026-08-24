@@ -14,9 +14,9 @@ use windows::Win32::UI::Controls::{DRAWITEMSTRUCT, ODS_DISABLED, ODS_SELECTED};
 use windows::Win32::UI::Input::KeyboardAndMouse::SetFocus;
 use windows::Win32::UI::Shell::{DefSubclassProc, RemoveWindowSubclass, SetWindowSubclass};
 use windows::Win32::UI::WindowsAndMessaging::{
-    AW_SLIDE, AW_VER_POSITIVE, AnimateWindow, BS_OWNERDRAW, CreateWindowExW, ES_AUTOHSCROLL,
-    GetCursorPos, HTCLIENT, HWND_BOTTOM, HWND_TOP, IsWindowVisible, LB_ADDSTRING, LB_GETCOUNT,
-    LB_GETCURSEL, LB_GETITEMHEIGHT, LB_RESETCONTENT, LB_SETCURSEL, LBS_HASSTRINGS,
+    AW_SLIDE, AW_VER_NEGATIVE, AW_VER_POSITIVE, AnimateWindow, BS_OWNERDRAW, CreateWindowExW,
+    ES_AUTOHSCROLL, GetCursorPos, HTCLIENT, HWND_BOTTOM, HWND_TOP, IsWindowVisible, LB_ADDSTRING,
+    LB_GETCOUNT, LB_GETCURSEL, LB_GETITEMHEIGHT, LB_RESETCONTENT, LB_SETCURSEL, LBS_HASSTRINGS,
     LBS_NOINTEGRALHEIGHT, LBS_NOTIFY, MoveWindow, PostMessageW, SPI_GETCLIENTAREAANIMATION,
     SPI_GETCOMBOBOXANIMATION, SW_HIDE, SW_SHOWNOACTIVATE, SWP_NOACTIVATE, SWP_NOOWNERZORDER,
     SYSTEM_PARAMETERS_INFO_ACTION, SYSTEM_PARAMETERS_INFO_UPDATE_FLAGS, SendMessageW, SetWindowPos,
@@ -38,6 +38,15 @@ const EM_SETCUEBANNER_MESSAGE: u32 = 0x1501;
 const LB_ITEMFROMPOINT_MESSAGE: u32 = 0x01A9;
 const LB_ITEMFROMPOINT_OUTSIDE_MASK: isize = 0x0001_0000;
 const RESULTS_SUBCLASS_ID: usize = 1;
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+struct PopupLayout {
+    x: i32,
+    y: i32,
+    width: i32,
+    height: i32,
+    opens_upward: bool,
+}
 
 #[derive(Clone, Copy)]
 pub(super) struct SearchPickerIds {
@@ -314,7 +323,7 @@ impl SearchPicker {
         };
 
         let popup_positioned = if self.popup_visible() {
-            unsafe { self.position_popup() }
+            unsafe { self.position_popup().is_some() }
         } else {
             true
         };
@@ -430,18 +439,23 @@ impl SearchPicker {
             return false;
         }
         if self.popup_visible() {
-            return unsafe { self.position_popup() };
+            return unsafe { self.position_popup().is_some() };
         }
-        if !unsafe { self.position_popup() } {
+        let Some(opens_upward) = (unsafe { self.position_popup() }) else {
             return false;
-        }
+        };
 
         let shown = if unsafe { client_area_animations_enabled() } {
+            let direction = if opens_upward {
+                AW_VER_NEGATIVE
+            } else {
+                AW_VER_POSITIVE
+            };
             unsafe {
                 AnimateWindow(
                     self.handles.results,
                     POPUP_SHOW_ANIMATION_MS,
-                    AW_SLIDE | AW_VER_POSITIVE,
+                    AW_SLIDE | direction,
                 )
                 .is_ok()
             }
@@ -567,10 +581,10 @@ impl SearchPicker {
         true
     }
 
-    unsafe fn position_popup(&self) -> bool {
+    unsafe fn position_popup(&self) -> Option<bool> {
         let count = self.result_count().min(MAX_POPUP_ROWS);
         if count == 0 {
-            return false;
+            return None;
         }
 
         let mut frame_rect = RECT::default();
@@ -582,24 +596,22 @@ impl SearchPicker {
         }
         .is_err()
         {
-            return false;
+            return None;
         }
-        let width = frame_rect.right.saturating_sub(frame_rect.left).max(1);
-        let height = self
-            .result_row_height
-            .saturating_mul(count as i32)
-            .saturating_add(px(2));
+        let work_area = super::window_position::work_area_rect(self.parent);
+        let layout = popup_layout(frame_rect, work_area, self.result_row_height, count)?;
         unsafe {
             SetWindowPos(
                 self.handles.results,
                 Some(HWND_TOP),
-                frame_rect.left,
-                frame_rect.bottom,
-                width,
-                height,
+                layout.x,
+                layout.y,
+                layout.width,
+                layout.height,
                 SWP_NOACTIVATE | SWP_NOOWNERZORDER,
             )
             .is_ok()
+            .then_some(layout.opens_upward)
         }
     }
 
@@ -610,6 +622,59 @@ impl SearchPicker {
             }
         }
     }
+}
+
+fn popup_layout(
+    frame: RECT,
+    work_area: RECT,
+    row_height: i32,
+    row_count: usize,
+) -> Option<PopupLayout> {
+    let work_width = work_area.right.saturating_sub(work_area.left);
+    let work_height = work_area.bottom.saturating_sub(work_area.top);
+    if work_width <= 0 || work_height <= 0 || row_height <= 0 || row_count == 0 {
+        return None;
+    }
+
+    let width = frame
+        .right
+        .saturating_sub(frame.left)
+        .max(1)
+        .min(work_width);
+    let x = frame
+        .left
+        .clamp(work_area.left, work_area.right.saturating_sub(width));
+    let desired_height = row_height
+        .saturating_mul(i32::try_from(row_count).unwrap_or(i32::MAX))
+        .saturating_add(px(2));
+
+    let below_anchor = frame.bottom.clamp(work_area.top, work_area.bottom);
+    let above_anchor = frame.top.clamp(work_area.top, work_area.bottom);
+    let available_below = work_area.bottom.saturating_sub(below_anchor);
+    let available_above = above_anchor.saturating_sub(work_area.top);
+    let opens_upward = available_below < desired_height && available_above > available_below;
+    let available_height = if opens_upward {
+        available_above
+    } else {
+        available_below
+    };
+    if available_height <= 0 {
+        return None;
+    }
+
+    let height = desired_height.min(available_height).max(1);
+    let y = if opens_upward {
+        above_anchor.saturating_sub(height)
+    } else {
+        below_anchor
+    };
+    Some(PopupLayout {
+        x,
+        y,
+        width,
+        height,
+        opens_upward,
+    })
 }
 
 unsafe fn client_area_animations_enabled() -> bool {
@@ -744,6 +809,15 @@ fn loword(value: u32) -> u16 {
 mod tests {
     use super::*;
 
+    fn rect(left: i32, top: i32, right: i32, bottom: i32) -> RECT {
+        RECT {
+            left,
+            top,
+            right,
+            bottom,
+        }
+    }
+
     #[test]
     fn item_from_point_rejects_coordinates_outside_results() {
         assert_eq!(result_index_from_item_from_point(3), Some(3));
@@ -751,5 +825,39 @@ mod tests {
             result_index_from_item_from_point(LB_ITEMFROMPOINT_OUTSIDE_MASK | 3),
             None
         );
+    }
+
+    #[test]
+    fn popup_uses_full_height_below_when_space_is_available() {
+        let layout = popup_layout(rect(100, 100, 400, 132), rect(0, 0, 800, 600), 24, 12)
+            .expect("popup layout");
+
+        assert_eq!(layout.x, 100);
+        assert_eq!(layout.y, 132);
+        assert_eq!(layout.width, 300);
+        assert_eq!(layout.height, 24 * 12 + px(2));
+        assert!(!layout.opens_upward);
+    }
+
+    #[test]
+    fn popup_opens_above_when_below_cannot_fit() {
+        let layout = popup_layout(rect(100, 500, 400, 532), rect(0, 0, 800, 600), 24, 12)
+            .expect("popup layout");
+
+        assert_eq!(layout.y, 500 - (24 * 12 + px(2)));
+        assert_eq!(layout.height, 24 * 12 + px(2));
+        assert!(layout.opens_upward);
+    }
+
+    #[test]
+    fn popup_is_capped_and_clamped_to_the_work_area() {
+        let layout = popup_layout(rect(750, 250, 950, 282), rect(0, 0, 800, 400), 40, 12)
+            .expect("popup layout");
+
+        assert_eq!(layout.x, 600);
+        assert_eq!(layout.y, 0);
+        assert_eq!(layout.width, 200);
+        assert_eq!(layout.height, 250);
+        assert!(layout.opens_upward);
     }
 }
