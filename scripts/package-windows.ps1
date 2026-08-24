@@ -57,6 +57,7 @@ function Convert-ReadmeForPackage {
     $Content = Remove-ReadmeLanguageLinks $Content
     $Content = Remove-ReadmeScreenshotBlock $Content
     $Content = Remove-ReadmeLatestDownloadTable $Content
+    $Content = Remove-ReadmeHtmlBreaks $Content
     return $Content.TrimStart()
 }
 
@@ -124,43 +125,76 @@ function Remove-ReadmeLatestDownloadTable {
     )
 }
 
-function Replace-PackageZip {
+function Remove-ReadmeHtmlBreaks {
     param(
         [Parameter(Mandatory = $true)]
-        [string]$Source,
-        [Parameter(Mandatory = $true)]
-        [string]$Destination
+        [string]$Content
     )
 
-    $SourcePath = [System.IO.Path]::GetFullPath($Source)
-    $DestinationPath = [System.IO.Path]::GetFullPath($Destination)
+    return [System.Text.RegularExpressions.Regex]::Replace(
+        $Content,
+        '(?im)^[ \t]*<br\s*/?>[ \t]*(?:\r?\n|$)',
+        ''
+    )
+}
 
-    if (-not (Test-Path -LiteralPath $DestinationPath -PathType Leaf)) {
-        Move-Item -LiteralPath $SourcePath -Destination $DestinationPath
-        return
+function Assert-ThirdPartyNoticesVersion {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$Path,
+        [Parameter(Mandatory = $true)]
+        [string]$ExpectedVersion
+    )
+
+    $Content = [System.IO.File]::ReadAllText($Path, [System.Text.Encoding]::UTF8)
+    $NoticeMatches = [System.Text.RegularExpressions.Regex]::Matches(
+        $Content,
+        '(?m)^- unfocusmute ([^\r\n]+)$'
+    )
+    if ($NoticeMatches.Count -ne 1 -or $NoticeMatches[0].Groups[1].Value -cne $ExpectedVersion) {
+        throw "THIRD_PARTY_NOTICES.md is stale. Run cargo about generate about.hbs -c about.toml --locked --offline -o THIRD_PARTY_NOTICES.md and commit the result."
     }
+}
 
-    $DestinationDirectory = [System.IO.Path]::GetDirectoryName($DestinationPath)
-    $DestinationFileName = [System.IO.Path]::GetFileName($DestinationPath)
-    $BackupPath = Join-Path $DestinationDirectory ".$DestinationFileName.$([System.Guid]::NewGuid().ToString('N')).bak"
+function Replace-PackageOutputs {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$SourceZip,
+        [Parameter(Mandatory = $true)]
+        [string]$DestinationZip,
+        [Parameter(Mandatory = $true)]
+        [string]$SourceChecksum,
+        [Parameter(Mandatory = $true)]
+        [string]$DestinationChecksum,
+        [Parameter(Mandatory = $true)]
+        [string]$ZipFileName
+    )
 
-    Move-Item -LiteralPath $DestinationPath -Destination $BackupPath
+    $ZipInstalled = $false
+    $ChecksumInstalled = $false
     try {
-        Move-Item -LiteralPath $SourcePath -Destination $DestinationPath
-        Remove-Item -LiteralPath $BackupPath -Force -ErrorAction SilentlyContinue
+        if (Test-Path -LiteralPath $DestinationZip -PathType Leaf) {
+            Remove-Item -LiteralPath $DestinationZip -Force
+        }
+        Move-Item -LiteralPath $SourceZip -Destination $DestinationZip
+        $ZipInstalled = $true
+        if (Test-Path -LiteralPath $DestinationChecksum -PathType Leaf) {
+            Remove-Item -LiteralPath $DestinationChecksum -Force
+        }
+        Move-Item -LiteralPath $SourceChecksum -Destination $DestinationChecksum
+        $ChecksumInstalled = $true
+
+        Assert-ZipChecksum $DestinationZip $DestinationChecksum $ZipFileName
     }
     catch {
-        $MoveError = $_
-        try {
-            if ((Test-Path -LiteralPath $BackupPath -PathType Leaf) -and -not (Test-Path -LiteralPath $DestinationPath -PathType Leaf)) {
-                Move-Item -LiteralPath $BackupPath -Destination $DestinationPath
-            }
+        $ReplaceError = $_
+        if ($ChecksumInstalled -and (Test-Path -LiteralPath $DestinationChecksum -PathType Leaf)) {
+            Remove-Item -LiteralPath $DestinationChecksum -Force -ErrorAction SilentlyContinue
         }
-        catch {
-            throw "Could not move package output into place and could not restore the previous output. New output: $SourcePath. Previous output: $BackupPath. Original error: $($MoveError.Exception.Message). Restore error: $($_.Exception.Message)"
+        if ($ZipInstalled -and (Test-Path -LiteralPath $DestinationZip -PathType Leaf)) {
+            Remove-Item -LiteralPath $DestinationZip -Force -ErrorAction SilentlyContinue
         }
-
-        throw $MoveError
+        throw $ReplaceError
     }
 }
 
@@ -317,6 +351,10 @@ function Assert-PackageZip {
             if ($Content.Contains("releases/latest/download/UnfocusMute-windows-x64.zip")) {
                 throw "Package README $($Entry.FullName) still references the latest ZIP download"
             }
+            if ($Entry.FullName.EndsWith(".txt", [System.StringComparison]::OrdinalIgnoreCase) -and
+                [System.Text.RegularExpressions.Regex]::IsMatch($Content, '<br\s*/?>', [System.Text.RegularExpressions.RegexOptions]::IgnoreCase)) {
+                throw "Package README $($Entry.FullName) still contains an HTML line break"
+            }
         }
     }
     finally {
@@ -375,6 +413,7 @@ function Remove-PackageOutputs {
 Push-Location $RepoRoot
 try {
     Remove-PackageOutputs $Dist $PackageName
+    Assert-ThirdPartyNoticesVersion (Join-Path $RepoRoot "THIRD_PARTY_NOTICES.md") $Version
 
     cargo build --release --target $Target --locked
     if ($LASTEXITCODE -ne 0) {
@@ -431,9 +470,7 @@ try {
     Assert-ZipChecksum $TempZip $TempChecksum $ZipFileName
 
     try {
-        Replace-PackageZip $TempZip $Zip
-        Replace-PackageZip $TempChecksum $Checksum
-        Assert-ZipChecksum $Zip $Checksum $ZipFileName
+        Replace-PackageOutputs $TempZip $Zip $TempChecksum $Checksum $ZipFileName
     }
     catch {
         throw "Could not replace package outputs. Close File Explorer preview, archive tools, or any process using the existing ZIP/checksum, then try again. Original error: $($_.Exception.Message)"
