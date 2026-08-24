@@ -27,7 +27,7 @@
   </p>
 </div>
 
----
+<br>
 
 UnfocusMute는 선택한 게임이나 앱이 백그라운드로 전환되면 자동으로 음소거하고, 다시 전면으로 돌아오면 소리를 복원하는 작고 가벼운 Windows 트레이 앱입니다.
 
@@ -40,23 +40,13 @@ UnfocusMute는 선택한 게임이나 앱이 백그라운드로 전환되면 자
   <img src="../assets/screenshot_ko.png" width="600" alt="UnfocusMute 메인 창">
 </p>
 
----
+<br>
 
 ## 이럴 때 유용합니다
 
 - 게임이나 앱을 켜 둔 채 Alt+Tab으로 다른 창을 자주 오갈 때
 - 백그라운드 음소거 옵션이 없는 앱을 조용히 유지하고 싶을 때
 - 여러 작업을 하면서 특정 앱의 백그라운드 소리만 끄고 싶을 때
-
-## 주요 기능
-
-- 등록한 앱이 백그라운드로 전환되면 자동으로 음소거하고, 다시 전면으로 돌아오면 복원
-- 오디오 세션이 있는 앱을 바로 고르거나, `모든 프로세스`에서 찾거나, `game.exe`처럼 직접 입력 가능
-- 앱 전체를 `.exe` 단위로 등록하거나, 현재 실행 중인 인스턴스를 PID로 따로 등록
-- 앱별 메모, 실시간 상태 표시, 개별 일시 중지 / 재개
-- 창을 닫아도 트레이에서 계속 모니터링하며, 트레이에서 `열기` / `트레이로 숨기기` / `일시 중지` / `종료` 가능
-- `시작 시 트레이로 최소화`, `Windows 로그인 시 자동 실행`, `종료 시 UnfocusMute가 음소거한 소리 복원` 설정 가능
-- 첫 실행 시 언어 선택, 이후 앱 안에서 9개 언어 즉시 전환
 
 ## 다운로드 및 실행
 
@@ -71,15 +61,15 @@ Windows 10/11에서는 배포 ZIP을 다운로드해 압축을 풀면 바로 사
 
 별도 설치가 필요 없는 독립 실행형 앱이며, Rust, Visual Studio Build Tools, MinGW 같은 개발 도구도 설치할 필요가 없습니다.
 
-> **참고:** 코드 서명 인증서에는 비용이 들기 때문에 현재 앱은 Windows 코드 서명 없이 배포됩니다. 처음 실행할 때 Windows SmartScreen 또는 "알 수 없는 게시자" 경고가 표시될 수 있습니다. 파일의 무결성을 직접 확인하고 싶다면 [배포 파일 검증](#배포-파일-검증) 섹션을 참고하세요.
+> **참고:** 코드 서명 인증서에는 비용이 들기 때문에 현재 앱은 Windows 코드 서명 없이 배포됩니다. 처음 실행할 때 Windows SmartScreen 또는 "알 수 없는 게시자" 경고가 표시될 수 있습니다. 파일의 무결성을 직접 확인하고 싶다면 [투명성 및 배포 파일 검증](#투명성-및-배포-파일-검증) 섹션을 참고하세요.
 
----
+<br>
 
 ## 사용 전 참고 사항
 
 UnfocusMute는 Windows가 제공하는 프로세스 이름, 전면 창 정보, CoreAudio 세션을 기준으로 동작합니다. 따라서 드라이버, 권한 설정, 보안 프로그램이 세션 접근을 제한하는 경우에는 음소거 제어가 정상적으로 작동하지 않을 수 있습니다.
 
-기본 선택 목록에는 현재 오디오 세션이 있는 앱만 표시됩니다. 아직 오디오 세션이 없는 앱은 `모든 프로세스`로 전환하면 실행 중인 `.exe` 목록에서 찾을 수 있습니다. 다시 오디오 세션 목록으로 돌아가려면 `오디오 세션만`을 누르세요.
+UnfocusMute는 종료하지 않고 트레이에서 계속 실행해 두는 것을 권장합니다. 등록한 앱이 음소거된 상태에서 종료되면 마지막 음소거 상태가 남을 수 있습니다. UnfocusMute가 계속 실행 중이면 앱을 다시 실행해 전면으로 가져왔을 때 소리를 자동으로 복원하지만, UnfocusMute까지 종료한 경우에는 앱에서 소리가 나지 않을 수 있습니다. 이때는 Windows `볼륨 믹서`에서 직접 음소거를 해제하세요.
 
 **PID 등록 시 동작 방식:** Windows는 오디오 세션 PID와 전면 창 PID를 항상 같은 값으로 제공하지 않습니다. 이를 보정하기 위해 UnfocusMute는 등록한 PID의 `.exe` 이름과 현재 전면 창의 `.exe` 이름이 같으면 해당 앱이 전면으로 돌아온 것으로 간주합니다.
 
@@ -87,20 +77,21 @@ UnfocusMute는 Windows가 제공하는 프로세스 이름, 전면 창 정보, C
 
 **안티치트 호환성:** UnfocusMute는 게임에 코드를 주입하거나, 게임 메모리를 읽거나, 입력을 후킹하거나, 게임 파일을 수정하지 않습니다. Windows의 프로세스·전면 창 정보와 CoreAudio 세션 음소거 기능만 사용하므로 대부분의 안티치트 시스템과 충돌하지 않도록 설계되어 있으나, 모든 안티치트와의 호환성을 보장하지는 않습니다.
 
----
+<br>
 
 ## 사용 방법
 
 1. UnfocusMute를 실행하세요.
-2. 첫 실행 시 표시되는 언어 선택 창에서 원하는 언어를 고르세요. 기본값은 영어입니다.
+2. 사용할 언어를 선택하세요. 옵션은 기본값 사용을 권장합니다.
 3. 등록할 게임이나 앱을 실행하세요.
-4. `프로세스 검색`에서 앱을 고르거나 검색어로 찾은 뒤 `등록`을 누르세요. 앱이 아직 오디오 세션을 생성하지 않았다면 `모든 프로세스`로 전환하여 실행 중인 모든 프로세스 목록을 살펴볼 수 있습니다. 다시 오디오 세션 목록으로 돌아가려면 `오디오 세션만`을 누르세요. 목록에 없다면 `.exe` 이름을 직접 입력하세요.
+4. 목록에서 앱을 선택하거나 정확한 `.exe` 이름을 입력한 뒤 `등록`을 누르세요. 앱이 아직 오디오 세션을 생성하지 않았다면 `모든 프로세스`로 전환하여 실행 중인 모든 프로세스 목록을 살펴볼 수 있습니다.
 5. 특정 PID만 등록하려면 `PID 보기`를 눌러 개별 항목을 선택하세요. PID 등록은 현재 실행 중인 인스턴스에만 유효하므로, 앱을 다시 실행해 PID가 바뀌면 새로 등록해야 합니다.
 6. 등록된 앱을 마우스 오른쪽 버튼으로 클릭해 메모를 편집하거나 해당 앱만 `일시 중지`할 수 있습니다.
-7. 왼쪽 아래의 `설정`을 열면 동작 옵션을 바꿀 수 있습니다.
-8. 창을 닫아도 UnfocusMute는 트레이에 남아 등록된 앱을 계속 모니터링합니다. 완전히 종료하려면 `종료`를 누르세요.
+7. 위쪽의 `모니터링 중` 상태를 누르면 전체 모니터링을 일시 중지하거나 재개할 수 있습니다.
+8. `설정`에서 창을 닫을 때의 동작을 비롯한 옵션을 바꿀 수 있습니다.
+9. 기본값에서는 창을 닫아도 UnfocusMute가 트레이에서 계속 실행됩니다. 완전히 종료하려면 트레이 아이콘을 마우스 오른쪽 버튼으로 클릭해 `종료`를 선택하세요. 닫기 버튼의 동작은 `설정`에서 바꿀 수 있습니다.
 
----
+<br>
 
 ## 등록 앱 메모 활용하기
 
@@ -113,7 +104,7 @@ UnfocusMute는 Windows가 제공하는 프로세스 이름, 전면 창 정보, C
 
 메모는 다른 설정과 함께 `%APPDATA%\UnfocusMute\config.json`에 로컬로 저장됩니다.
 
----
+<br>
 
 ## 실행 파일 이름 확인하기
 
@@ -126,7 +117,7 @@ UnfocusMute는 Windows가 제공하는 프로세스 이름, 전면 창 정보, C
 5. 해당 항목을 마우스 오른쪽 버튼으로 클릭하고 `속성`을 선택합니다.
 6. `game.exe`처럼 `.exe`로 끝나는 실행 파일 이름을 확인한 뒤 UnfocusMute에 등록합니다.
 
----
+<br>
 
 ## 문제 해결
 
@@ -138,7 +129,7 @@ UnfocusMute는 Windows가 제공하는 프로세스 이름, 전면 창 정보, C
 
 보안 취약점이 의심되는 문제는 공개 이슈에 세부 정보를 올리지 마세요. 비공개 제보 절차를 이용해 신고해 주시고, 자세한 방법은 [SECURITY.md](../SECURITY.md)를 참고하세요.
 
----
+<br>
 
 ## 설정 파일
 
@@ -146,7 +137,7 @@ UnfocusMute는 Windows가 제공하는 프로세스 이름, 전면 창 정보, C
 
 설정 파일은 직접 편집할 수 있지만, 형식이 잘못되어 읽을 수 없는 경우 `config.invalid-<timestamp>.json`으로 백업됩니다. 이때 앱 시작 중 문제가 발견되면 설정이 기본값으로 복구되고, 실행 중 문제가 발견되면 현재 앱의 설정을 기반으로 새 설정 파일이 생성됩니다.
 
----
+<br>
 
 ## 보안 및 개인정보
 
@@ -165,7 +156,7 @@ UnfocusMute는 동작에 필요한 설정만 `%APPDATA%\UnfocusMute\config.json`
 - 등록한 앱의 마지막 음소거 상태
 - 작성한 메모
 - 선택한 언어 및 설정
-- 창 위치
+- 창 위치 및 크기
 
 위 정보는 어디로도 전송되지 않습니다.
 
@@ -181,26 +172,58 @@ UnfocusMute는 동작에 필요한 설정만 `%APPDATA%\UnfocusMute\config.json`
 
 자동 실행을 켠 적이 있다면 `HKEY_CURRENT_USER\Software\Microsoft\Windows\CurrentVersion\Run`의 `UnfocusMute` 값도 함께 삭제하세요.
 
----
+<br>
 
-## 배포 파일 검증
+## 투명성 및 배포 파일 검증
 
-GitHub 릴리스에 올라온 배포 파일이 저장소에 공개된 소스 코드와 항상 일치한다고 가정해서는 안 됩니다.
+UnfocusMute는 일반적인 환경에서 안전하게 사용할 수 있도록 설계되었으므로, 대부분의 사용자는 아래 검증 절차를 별도로 수행하지 않아도 됩니다. 개발자를 신뢰하기 어렵거나 소프트웨어 공급망 보안을 중요하게 고려한다면, 공개된 절차를 통해 다운로드한 파일의 출처와 무결성을 확인할 수 있습니다.
 
-릴리스 배포 권한이 악용되거나 계정이 탈취될 경우, 공개된 코드와 다른 코드로 빌드된 파일 또는 변조된 파일이 업로드될 수 있습니다.
+### 왜 별도 검증이 필요한가
 
-투명성을 위해 UnfocusMute는 GitHub 릴리스에 업로드된 파일이 이 저장소에서 해당 태그가 가리키는 소스 코드를 기준으로 GitHub Actions가 생성한 공식 빌드 산출물인지 사용자가 직접 검증할 수 있는 방법을 제공합니다.
+저장소의 소스 코드를 직접 검토해 안전하다고 판단했더라도, GitHub 릴리스에 게시된 파일이 실제로 그 소스에서 만들어졌다고 단정할 수는 없습니다. 개발자 계정이 탈취되거나 릴리스 권한이 악용되면 공개된 소스 코드와 무관한 파일이 배포될 수 있기 때문입니다.
 
-릴리스 ZIP 파일과 SHA-256 체크섬 파일은 GitHub Actions에서 자동으로 생성되며, 각 파일에는 빌드 출처를 확인할 수 있는 빌드 증명(attestation)이 함께 제공됩니다.
+SHA-256 해시 비교는 다운로드한 파일이 게시된 체크섬과 일치하는지는 확인할 수 있지만, 어떤 소스 코드와 빌드 환경에서 생성되었는지까지 증명하지는 못합니다.
 
-아래 명령을 사용하면 다운로드한 ZIP 파일이 이 저장소의 공식 빌드에서 생성된 파일인지 확인할 수 있습니다.
+이러한 공급망 위험을 투명하게 다루기 위해 UnfocusMute는 GitHub 릴리스의 파일이 해당 릴리스 태그가 가리키는 커밋을 바탕으로 GitHub Actions에서 생성된 공식 빌드 산출물인지 직접 검증하는 방법을 공개합니다.
+
+<details>
+<summary>배포 파일 검증 절차 보기</summary>
+
+먼저 [GitHub CLI](https://cli.github.com/)를 설치하고 실제 버전을 입력한 뒤 PowerShell에서 실행합니다.
 
 ```powershell
-gh attestation verify .\UnfocusMute-windows-x64.zip -R ilsd7/UnfocusMute
-gh attestation verify .\UnfocusMute-windows-x64.zip.sha256 -R ilsd7/UnfocusMute
+$version = Read-Host "릴리스 버전을 입력하세요 (예: v1.3.5)"
+$sourceRef = "refs/tags/$version"
+$workflow = "ilsd7/UnfocusMute/.github/workflows/release.yml"
+
+gh attestation verify .\UnfocusMute-windows-x64.zip `
+  -R ilsd7/UnfocusMute `
+  --source-ref $sourceRef `
+  --signer-workflow $workflow
 ```
 
----
+이 명령은 GitHub attestation 서비스에 접속해 로컬 ZIP의 SHA-256이 GitHub Actions가 서명한 빌드 출처에 기록된 값과 일치하는지 확인합니다.
+
+릴리스의 SHA-256 해시와도 비교할 수 있습니다.
+
+```powershell
+$expectedHash = ((Get-Content .\UnfocusMute-windows-x64.zip.sha256 -TotalCount 1) -split '\s+')[0]
+$actualHash = (Get-FileHash .\UnfocusMute-windows-x64.zip -Algorithm SHA256).Hash
+
+if ($actualHash -ne $expectedHash) {
+  throw "SHA-256 검증에 실패했습니다."
+}
+
+"SHA-256 검증 성공: $actualHash"
+```
+
+검증에 성공하면 다운로드한 ZIP이 지정한 릴리스 태그를 바탕으로 해당 GitHub Actions 워크플로에서 생성되었으며, attestation에 기록된 해시와 일치한다는 점을 확인할 수 있습니다.
+
+다만 이는 소스 코드 자체의 안전성이나 GitHub 전체 환경의 무결성, 다른 컴퓨터에서도 바이트 단위로 같은 결과가 나오는 재현 가능 빌드까지 증명하지는 않습니다.
+
+</details>
+
+<br>
 
 ## 직접 빌드하기
 
@@ -211,6 +234,9 @@ gh attestation verify .\UnfocusMute-windows-x64.zip.sha256 -R ilsd7/UnfocusMute
 - Rust stable
 - Visual Studio Build Tools 2022 또는 Visual Studio 2022
 - Windows 10/11 SDK
+
+<details>
+<summary>빌드 및 패키징 명령어 보기</summary>
 
 ```powershell
 rustup target add x86_64-pc-windows-msvc
@@ -239,7 +265,9 @@ cargo about generate about.hbs -c about.toml --locked --offline -o THIRD_PARTY_N
 
 결과물은 `dist\UnfocusMute-windows-x64.zip`에 생성되며, 같은 위치에 SHA-256 확인용 `dist\UnfocusMute-windows-x64.zip.sha256`도 함께 만들어집니다. ZIP에는 버전명이 포함된 실행 파일(`UnfocusMute-v<version>.exe`), `LICENSE`, `THIRD_PARTY_NOTICES.md`, `docs` 폴더의 언어별 README `.txt` 문서가 들어 있습니다.
 
----
+</details>
+
+<br>
 
 ## 라이선스
 

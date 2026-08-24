@@ -27,7 +27,7 @@
   </p>
 </div>
 
----
+<br>
 
 UnfocusMute é um app pequeno e leve que fica na bandeja do sistema do Windows, silencia automaticamente jogos e apps selecionados quando ficam em segundo plano e restaura o áudio quando voltam ao primeiro plano.
 
@@ -40,23 +40,13 @@ UnfocusMute é um app pequeno e leve que fica na bandeja do sistema do Windows, 
   <img src="../assets/screenshot_pt.png" width="600" alt="Janela principal do UnfocusMute">
 </p>
 
----
+<br>
 
 ## Útil quando
 
 - Você alterna com frequência para outras janelas com Alt+Tab enquanto um jogo ou app continua aberto.
 - Você quer manter um app sem som quando ele não tem opção de silenciar em segundo plano.
 - Você quer silenciar apenas o áudio em segundo plano de um app específico enquanto faz outras coisas.
-
-## Recursos
-
-- Silencia automaticamente apps registrados quando ficam em segundo plano e restaura o áudio quando voltam ao primeiro plano.
-- Permite escolher um app com sessão de áudio, encontrá-lo em `Todos os processos` ou digitar um nome como `game.exe`.
-- Registra o app inteiro pelo `.exe` ou apenas a instância em execução pelo PID.
-- Notas por app, status em tempo real e pausa/retomada por app.
-- Continua monitorando na bandeja depois que a janela é fechada, com ações para `Abrir` / `Ocultar na bandeja do sistema` / `Pausar` / `Sair`.
-- Opções para `Iniciar minimizado na bandeja`, `Iniciar automaticamente ao fazer login no Windows` e `Restaurar o áudio silenciado pelo UnfocusMute ao sair`.
-- Escolha de idioma na primeira execução e troca imediata entre 9 idiomas dentro do app.
 
 ## Baixar e executar
 
@@ -71,15 +61,15 @@ Depois de extrair o ZIP, mova a pasta `UnfocusMute-windows-x64` para o local ond
 
 UnfocusMute é um app independente que não requer instalação. Você também não precisa instalar Rust, Visual Studio Build Tools, MinGW nem outras ferramentas de desenvolvimento.
 
-> **Observação:** Como certificados de assinatura de código têm custo, o app atualmente é distribuído sem assinatura de código do Windows. No primeiro uso, podem aparecer avisos do Windows SmartScreen ou de "editor desconhecido". Se quiser verificar a integridade do arquivo por conta própria, consulte [Verificar arquivos de distribuição](#verificar-arquivos-de-distribuição).
+> **Observação:** Como certificados de assinatura de código têm custo, o app atualmente é distribuído sem assinatura de código do Windows. No primeiro uso, podem aparecer avisos do Windows SmartScreen ou de "editor desconhecido". Se quiser verificar a integridade do arquivo por conta própria, consulte [Transparência e verificação dos arquivos de distribuição](#transparência-e-verificação-dos-arquivos-de-distribuição).
 
----
+<br>
 
 ## Antes de usar
 
 UnfocusMute funciona com base nos nomes dos processos, nas informações da janela em primeiro plano e nas sessões CoreAudio fornecidas pelo Windows. Por isso, se um driver, uma configuração de permissão ou uma ferramenta de segurança limitar o acesso às sessões, o controle de silenciamento pode não funcionar corretamente.
 
-A lista padrão mostra apenas apps que já têm uma sessão de áudio naquele momento. Se o app ainda não criou uma sessão de áudio, alterne para `Todos os processos` para procurá-lo entre os processos `.exe` em execução. Use `Apenas sessões de áudio` para voltar à lista filtrada.
+Recomendamos manter o UnfocusMute em execução na bandeja do sistema, em vez de encerrá-lo. Se um app registrado for fechado enquanto estiver silenciado, o último estado de silenciamento poderá permanecer. Enquanto o UnfocusMute estiver em execução, ele restaurará o áudio automaticamente quando você abrir o app novamente e colocá-lo em primeiro plano. Se você também encerrar o UnfocusMute, o app poderá ficar sem som; nesse caso, reative o áudio manualmente no `Mixer de volume` do Windows.
 
 **Comportamento ao registrar por PID:** O Windows nem sempre informa o mesmo PID para uma sessão de áudio e para a janela em primeiro plano. Para compensar isso, o UnfocusMute considera que o app voltou ao primeiro plano quando o nome `.exe` do PID registrado corresponde ao nome `.exe` da janela atual em primeiro plano.
 
@@ -87,20 +77,21 @@ Assim, se houver várias instâncias do mesmo `.exe` em execução ao mesmo temp
 
 **Compatibilidade com anti-cheat:** UnfocusMute não injeta código em jogos, não lê memória do jogo, não intercepta entradas do usuário nem modifica arquivos do jogo. Ele usa apenas informações de processo/janela em primeiro plano do Windows e controles de silenciamento de sessões CoreAudio, então foi projetado para evitar conflitos com a maioria dos sistemas anti-cheat, mas não é possível garantir compatibilidade com todos eles.
 
----
+<br>
 
 ## Uso
 
 1. Abra o UnfocusMute.
-2. Escolha o idioma na tela exibida na primeira execução. O idioma padrão é inglês.
+2. Escolha o idioma. Recomendamos manter as opções nos valores padrão.
 3. Inicie o jogo ou app que você quer registrar.
-4. Escolha um app na lista ou procure por ele no campo `Pesquisar processos`, depois clique em `Registrar`. Se o app ainda não criou uma sessão de áudio, alterne para `Todos os processos` para consultar a lista de todos os processos em execução. Use `Apenas sessões de áudio` para voltar à lista filtrada. Se ele não estiver na lista, digite o nome `.exe` manualmente.
+4. Selecione um app na lista ou digite o nome `.exe` exato e clique em `Registrar`. Se o app ainda não tiver criado uma sessão de áudio, mude para `Todos os processos` para ver todos os processos em execução.
 5. Se precisar registrar apenas um PID específico, clique em `Ver por PID` e escolha a entrada individual. Registros por PID valem apenas para a instância em execução; se o app reiniciar com outro PID, registre-o novamente.
 6. Clique com o botão direito em um app registrado para editar sua nota ou usar `Pausar` apenas nesse app.
-7. Abra `Configurações` no canto inferior esquerdo para alterar opções de comportamento.
-8. Ao fechar a janela, o app continua rodando na bandeja e monitorando os apps registrados. Use `Sair` para encerrar completamente.
+7. Clique no status `Monitorando` na parte superior para pausar ou retomar todo o monitoramento.
+8. Abra `Configurações` para alterar as opções, inclusive o comportamento ao fechar a janela.
+9. Por padrão, fechar a janela mantém o UnfocusMute rodando na bandeja do sistema. Para sair completamente, clique com o botão direito no ícone da bandeja e escolha `Sair`. Você pode alterar o comportamento do botão de fechar em `Configurações`.
 
----
+<br>
 
 ## Usar notas para apps registrados
 
@@ -113,7 +104,7 @@ Isso ajuda quando um mesmo launcher de jogo abre vários processos ou quando o n
 
 As notas são salvas localmente junto com o restante das configurações em `%APPDATA%\UnfocusMute\config.json`.
 
----
+<br>
 
 ## Encontrar o nome do executável
 
@@ -126,7 +117,7 @@ Se você não souber qual nome registrar, confira no Gerenciador de Tarefas o no
 5. Clique com o botão direito nesse item e abra `Propriedades`.
 6. Veja o nome do executável que termina em `.exe`, como `game.exe`, e registre-o no UnfocusMute.
 
----
+<br>
 
 ## Solução de problemas
 
@@ -138,7 +129,7 @@ Se o problema continuar, abra uma issue no GitHub.
 
 Se você suspeitar de uma vulnerabilidade de segurança, não publique detalhes em uma issue pública. Use o canal de relato privado e consulte [SECURITY.md](../SECURITY.md) para mais informações.
 
----
+<br>
 
 ## Arquivo de configuração
 
@@ -146,7 +137,7 @@ Se precisar verificar ou fazer backup do arquivo de configuração diretamente, 
 
 Você pode editar o arquivo de configuração diretamente, mas se o formato estiver inválido e não puder ser lido, ele será salvo como backup em `config.invalid-<timestamp>.json`. Se o problema for encontrado durante a inicialização do app, as configurações serão restauradas para os padrões; se for encontrado enquanto o app estiver em execução, um novo arquivo de configuração será criado com base nas configurações atuais do app.
 
----
+<br>
 
 ## Segurança e privacidade
 
@@ -165,7 +156,7 @@ O UnfocusMute salva apenas as configurações necessárias para funcionar em `%A
 - Último estado de silenciamento dos apps registrados
 - Notas que você escrever
 - Idioma e configurações escolhidos
-- Posição da janela
+- Posição e tamanho da janela
 
 Essas informações não são enviadas para nenhum lugar.
 
@@ -181,26 +172,58 @@ Para remover todos os arquivos relacionados ao app, apague a pasta `UnfocusMute-
 
 Se você já ativou o início automático, apague também o valor `UnfocusMute` em `HKEY_CURRENT_USER\Software\Microsoft\Windows\CurrentVersion\Run`.
 
----
+<br>
 
-## Verificar arquivos de distribuição
+## Transparência e verificação dos arquivos de distribuição
 
-Não presuma que os arquivos publicados no GitHub Releases sempre correspondem ao código-fonte publicado no repositório.
+O UnfocusMute foi projetado para ser usado com segurança em ambientes comuns, portanto a maioria dos usuários não precisa seguir as etapas de verificação abaixo. Se você não quiser confiar apenas no desenvolvedor ou der especial importância à segurança da cadeia de fornecimento de software, poderá usar este procedimento público para verificar a origem e a integridade dos arquivos baixados.
 
-Se a permissão de publicação no GitHub Releases for usada indevidamente ou uma conta for comprometida, arquivos criados a partir de código diferente do publicado ou arquivos adulterados podem ser publicados ali.
+### Por que uma verificação separada é necessária
 
-Por transparência, o UnfocusMute oferece uma forma de verificar se os arquivos publicados no GitHub Releases são artefatos oficiais gerados pelo GitHub Actions a partir do código-fonte da tag correspondente neste repositório.
+Mesmo que você revise o código-fonte do repositório e conclua que ele é seguro, não é possível presumir que os arquivos de uma versão publicada no GitHub foram realmente criados a partir desse código. Se a conta do desenvolvedor for comprometida ou as permissões de publicação forem usadas indevidamente, arquivos sem relação com o código-fonte publicado poderão ser distribuídos.
 
-O ZIP da versão e o arquivo de verificação SHA-256 são gerados automaticamente pelo GitHub Actions, e cada arquivo é fornecido com uma atestação de proveniência da compilação (attestation).
+A comparação de hashes SHA-256 confirma se um arquivo baixado corresponde à soma de verificação publicada, mas não comprova qual código-fonte e qual ambiente de compilação o produziram.
 
-Os comandos abaixo permitem confirmar que o ZIP baixado foi gerado pela compilação oficial deste repositório.
+Para tratar esses riscos da cadeia de fornecimento com transparência, o UnfocusMute publica um método que permite verificar diretamente se um arquivo de uma versão publicada no GitHub é um artefato oficial gerado pelo GitHub Actions a partir do commit indicado pela tag dessa versão.
+
+<details>
+<summary>Mostrar as etapas de verificação</summary>
+
+Primeiro, instale o [GitHub CLI](https://cli.github.com/), informe a versão que você baixou e execute o comando no PowerShell.
 
 ```powershell
-gh attestation verify .\UnfocusMute-windows-x64.zip -R ilsd7/UnfocusMute
-gh attestation verify .\UnfocusMute-windows-x64.zip.sha256 -R ilsd7/UnfocusMute
+$version = Read-Host "Digite a versão publicada (por exemplo, v1.3.5)"
+$sourceRef = "refs/tags/$version"
+$workflow = "ilsd7/UnfocusMute/.github/workflows/release.yml"
+
+gh attestation verify .\UnfocusMute-windows-x64.zip `
+  -R ilsd7/UnfocusMute `
+  --source-ref $sourceRef `
+  --signer-workflow $workflow
 ```
 
----
+Esse comando acessa o serviço de atestação do GitHub e verifica se o SHA-256 do ZIP local corresponde ao valor registrado na procedência da compilação assinada pelo GitHub Actions.
+
+Você também pode comparar o ZIP com o hash SHA-256 publicado na versão.
+
+```powershell
+$expectedHash = ((Get-Content .\UnfocusMute-windows-x64.zip.sha256 -TotalCount 1) -split '\s+')[0]
+$actualHash = (Get-FileHash .\UnfocusMute-windows-x64.zip -Algorithm SHA256).Hash
+
+if ($actualHash -ne $expectedHash) {
+  throw "A verificação SHA-256 falhou."
+}
+
+"SHA-256 verificado: $actualHash"
+```
+
+Uma verificação bem-sucedida confirma que o ZIP baixado foi gerado para a tag especificada pelo workflow do GitHub Actions indicado e corresponde ao hash registrado em sua atestação.
+
+Isso não prova que o código-fonte em si é seguro, que todo o ambiente do GitHub está íntegro ou que a compilação possa ser reproduzida byte por byte em outro computador.
+
+</details>
+
+<br>
 
 ## Compilar a partir do código-fonte
 
@@ -211,6 +234,9 @@ Requisitos:
 - Rust stable
 - Visual Studio Build Tools 2022 ou Visual Studio 2022
 - Windows 10/11 SDK
+
+<details>
+<summary>Mostrar comandos de compilação e empacotamento</summary>
 
 ```powershell
 rustup target add x86_64-pc-windows-msvc
@@ -239,7 +265,9 @@ cargo about generate about.hbs -c about.toml --locked --offline -o THIRD_PARTY_N
 
 O resultado é criado em `dist\UnfocusMute-windows-x64.zip`, com um arquivo de verificação SHA-256 em `dist\UnfocusMute-windows-x64.zip.sha256`. O ZIP inclui o executável com versão (`UnfocusMute-v<version>.exe`), `LICENSE`, `THIRD_PARTY_NOTICES.md` e os arquivos README `.txt` de cada idioma na pasta `docs`.
 
----
+</details>
+
+<br>
 
 ## Licença
 

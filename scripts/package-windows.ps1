@@ -93,7 +93,7 @@ function Remove-ReadmeHeaderBlock {
 
     return [System.Text.RegularExpressions.Regex]::Replace(
         $Content,
-        '(?ms)^\s*<div(?=[^>]*\balign="center")[^>]*>\s*<img src="(?:\.\./)?assets/app-icon\.png"[\s\S]*?</div>\s*(?:---\s*)?',
+        '(?ms)^\s*<div(?=[^>]*\balign="center")[^>]*>\s*<img src="(?:\.\./)?assets/app-icon\.png"[\s\S]*?</div>\s*(?:(?:---|<br\s*/?>)\s*)?',
         "# UnfocusMute`r`n`r`n"
     )
 }

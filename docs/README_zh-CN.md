@@ -27,7 +27,7 @@
   </p>
 </div>
 
----
+<br>
 
 UnfocusMute 是一款小巧轻量的 Windows 托盘应用，可在选定的游戏或应用转入后台时自动静音，并在它们回到前台时恢复声音。
 
@@ -40,23 +40,13 @@ UnfocusMute 是一款小巧轻量的 Windows 托盘应用，可在选定的游�
   <img src="../assets/screenshot_zh-CN.png" width="600" alt="UnfocusMute 主窗口">
 </p>
 
----
+<br>
 
 ## 适合这些场景
 
 - 游戏或应用保持运行时，经常用 Alt+Tab 在窗口之间来回切换
 - 应用本身没有后台静音选项，而你想让它保持安静
 - 多任务处理时，只想关掉某个特定应用在后台的声音
-
-## 主要功能
-
-- 已添加的应用转入后台时自动静音，回到前台时恢复声音
-- 可直接选择已有音频会话的应用，也可在 `所有进程` 中查找，或手动输入 `game.exe` 这样的名称
-- 可按 `.exe` 添加整个应用，也可按 PID 单独添加当前正在运行的实例
-- 应用备注、实时状态显示，以及单独暂停 / 恢复
-- 关闭窗口后仍在托盘中继续监控，并可从托盘执行 `打开` / `隐藏到托盘` / `暂停` / `退出`
-- 可设置 `启动时最小化到托盘`、`Windows 登录时自动启动`、`退出时恢复由 UnfocusMute 静音的音频`
-- 首次运行时选择语言，之后可在应用内即时切换 9 种语言
 
 ## 下载与运行
 
@@ -71,15 +61,15 @@ UnfocusMute 是一款小巧轻量的 Windows 托盘应用，可在选定的游�
 
 UnfocusMute 是免安装的独立应用。你也无需安装 Rust、Visual Studio Build Tools、MinGW 等开发工具。
 
-> **提示：** 由于代码签名证书需要成本，目前发布文件未进行 Windows 代码签名。首次运行时，可能会出现 Windows SmartScreen 或“未知发布者”警告。如果你想自行确认文件完整性，请参阅[验证发布文件](#验证发布文件)部分。
+> **提示：** 由于代码签名证书需要成本，目前发布文件未进行 Windows 代码签名。首次运行时，可能会出现 Windows SmartScreen 或“未知发布者”警告。如果你想自行确认文件完整性，请参阅[透明度与发布文件验证](#透明度与发布文件验证)部分。
 
----
+<br>
 
 ## 使用前须知
 
 UnfocusMute 基于 Windows 提供的进程名、前台窗口信息和 CoreAudio 会话来工作。因此，如果驱动、权限设置或安全软件限制了会话访问，静音控制可能无法正常工作。
 
-默认列表只显示当前已有音频会话的应用。如果应用尚未创建音频会话，可以切换到 `所有进程`，从正在运行的 `.exe` 列表中查找。点击 `仅音频会话` 可返回音频会话列表。
+建议不要退出 UnfocusMute，而是让它在系统托盘中保持运行。已添加的应用在静音状态下关闭时，最后的静音状态可能会保留下来。只要 UnfocusMute 仍在运行，重新启动应用并将其切换到前台时就会自动恢复声音；如果连 UnfocusMute 也退出了，应用可能会没有声音。此时请在 Windows 的`音量合成器`中手动取消静音。
 
 **按 PID 添加时的行为：** Windows 并不总是为音频会话和前台窗口返回同一个 PID。为处理这种情况，UnfocusMute 会在已添加 PID 对应的 `.exe` 名称与当前前台窗口的 `.exe` 名称相同时，将该应用视为已回到前台。
 
@@ -87,20 +77,21 @@ UnfocusMute 基于 Windows 提供的进程名、前台窗口信息和 CoreAudio 
 
 **反作弊兼容性：** UnfocusMute 不会向游戏注入代码，不会读取游戏内存，不会拦截输入，也不会修改游戏文件。它只使用 Windows 的进程/前台窗口信息和 CoreAudio 会话静音功能，因此在设计上会尽量避免与大多数反作弊系统发生冲突，但不保证兼容所有反作弊系统。
 
----
+<br>
 
 ## 使用方法
 
 1. 启动 UnfocusMute。
-2. 在首次运行的语言选择窗口中选择语言。默认语言为英语。
+2. 选择要使用的语言。建议保留各选项的默认设置。
 3. 启动你想添加的游戏或应用。
-4. 从列表中选择应用，或在 `搜索进程` 中搜索后点击 `添加`。如果应用尚未创建音频会话，请切换到 `所有进程`，查看正在运行的所有进程列表。点击 `仅音频会话` 可返回音频会话列表。如果列表中没有，请手动输入 `.exe` 名称。
+4. 从列表中选择应用，或输入准确的 `.exe` 名称，然后点击 `添加`。如果应用尚未创建音频会话，请切换到 `所有进程`，查看当前运行的所有进程。
 5. 如果只需要添加某个 PID，请点击 `PID 视图` 并选择对应条目。按 PID 添加只适用于当前运行的实例；如果应用重启后 PID 变化，请重新添加。
 6. 右键点击已添加应用，可以编辑该应用的备注，或只暂停该应用。
-7. 打开左下角的 `设置`，即可更改行为选项。
-8. 关闭窗口后，UnfocusMute 会留在托盘中继续监控已添加应用。如需完全退出，请点击 `退出`。
+7. 点击顶部的 `监控中` 状态，可以暂停或继续全部监控。
+8. 在 `设置` 中可以更改关闭窗口时的行为等选项。
+9. 默认情况下，关闭窗口后 UnfocusMute 仍会在托盘中运行。要完全退出，请右键点击托盘图标并选择 `退出`。你可以在 `设置` 中更改关闭按钮的行为。
 
----
+<br>
 
 ## 为已添加应用添加备注
 
@@ -113,7 +104,7 @@ UnfocusMute 基于 Windows 提供的进程名、前台窗口信息和 CoreAudio 
 
 备注会和其他设置一起保存在本地的 `%APPDATA%\UnfocusMute\config.json`。
 
----
+<br>
 
 ## 查看可执行文件名
 
@@ -126,7 +117,7 @@ UnfocusMute 基于 Windows 提供的进程名、前台窗口信息和 CoreAudio 
 5. 右键单击该项目，然后选择 `属性`。
 6. 找到类似 `game.exe` 这样以 `.exe` 结尾的可执行文件名，并将其添加到 UnfocusMute。
 
----
+<br>
 
 ## 故障排查
 
@@ -138,7 +129,7 @@ UnfocusMute 基于 Windows 提供的进程名、前台窗口信息和 CoreAudio 
 
 如果你怀疑问题涉及安全漏洞，请不要在公开 Issue 中发布细节。请使用私密漏洞报告流程，并参阅 [SECURITY.md](../SECURITY.md) 了解详情。
 
----
+<br>
 
 ## 设置文件
 
@@ -146,7 +137,7 @@ UnfocusMute 基于 Windows 提供的进程名、前台窗口信息和 CoreAudio 
 
 你可以直接编辑设置文件，但如果格式错误且无法读取，它会被备份为 `config.invalid-<timestamp>.json`。如果问题在应用启动时发现，设置会恢复为默认值；如果问题在应用运行期间发现，则会基于当前应用设置创建新的设置文件。
 
----
+<br>
 
 ## 安全与隐私
 
@@ -165,7 +156,7 @@ UnfocusMute 只会把运行所需的设置保存到 `%APPDATA%\UnfocusMute\confi
 - 已添加应用最近一次的静音状态
 - 你添加的备注
 - 选择的语言和设置
-- 窗口位置
+- 窗口位置和大小
 
 这些信息不会发送到任何地方。
 
@@ -181,26 +172,58 @@ UnfocusMute 只会把运行所需的设置保存到 `%APPDATA%\UnfocusMute\confi
 
 如果曾经开启过自动启动，也请删除 `HKEY_CURRENT_USER\Software\Microsoft\Windows\CurrentVersion\Run` 下的 `UnfocusMute` 值。
 
----
+<br>
 
-## 验证发布文件
+## 透明度与发布文件验证
 
-不要假设上传到 GitHub Releases 的发布文件总是与仓库中公开的源代码一致。
+UnfocusMute 旨在一般使用环境中安全运行，因此大多数用户无需另外执行以下验证步骤。如果不希望只依赖对开发者的信任，或特别重视软件供应链安全，可以按照公开步骤验证下载文件的来源和完整性。
 
-如果 GitHub Releases 的发布权限被滥用，或账号遭到盗用，可能会上传使用不同代码构建的文件或被篡改的文件。
+### 为什么需要单独验证
 
-为保持透明，UnfocusMute 提供了验证方法。用户可以确认 GitHub Releases 中的文件是否为 GitHub Actions 基于本仓库中对应标签指向的源代码生成的官方构建产物。
+即使亲自检查仓库中的源代码并认为它是安全的，也不能断定 GitHub 发布版本中的文件确实由该源代码构建而成。如果开发者账号被盗或发布权限遭到滥用，可能会分发与公开源代码无关的文件。
 
-发布 ZIP 文件和 SHA-256 校验和文件由 GitHub Actions 自动生成，并且每个文件都会附带可验证构建来源的构建证明（attestation）。
+比较 SHA-256 哈希可以确认下载的文件是否与公开的校验和一致，但无法证明它基于哪些源代码、在何种构建环境中生成。
 
-使用下面的命令可以检查下载的 ZIP 文件是否由本仓库的官方构建生成。
+为了透明地应对这些供应链风险，UnfocusMute 公开了验证方法，可直接确认 GitHub 发布版本中的文件是否为 GitHub Actions 基于相应发布标签所指向的提交生成的官方构建产物。
+
+<details>
+<summary>查看发布文件验证步骤</summary>
+
+首先安装 [GitHub CLI](https://cli.github.com/)，输入实际发布版本，然后在 PowerShell 中运行。
 
 ```powershell
-gh attestation verify .\UnfocusMute-windows-x64.zip -R ilsd7/UnfocusMute
-gh attestation verify .\UnfocusMute-windows-x64.zip.sha256 -R ilsd7/UnfocusMute
+$version = Read-Host "请输入发布版本（例如 v1.3.5）"
+$sourceRef = "refs/tags/$version"
+$workflow = "ilsd7/UnfocusMute/.github/workflows/release.yml"
+
+gh attestation verify .\UnfocusMute-windows-x64.zip `
+  -R ilsd7/UnfocusMute `
+  --source-ref $sourceRef `
+  --signer-workflow $workflow
 ```
 
----
+此命令会连接 GitHub attestation 服务，检查本地 ZIP 的 SHA-256 是否与由 GitHub Actions 签名的构建来源证明中记录的值一致。
+
+还可以将 ZIP 与发布版本中公开的 SHA-256 哈希进行比较。
+
+```powershell
+$expectedHash = ((Get-Content .\UnfocusMute-windows-x64.zip.sha256 -TotalCount 1) -split '\s+')[0]
+$actualHash = (Get-FileHash .\UnfocusMute-windows-x64.zip -Algorithm SHA256).Hash
+
+if ($actualHash -ne $expectedHash) {
+  throw "SHA-256 验证失败。"
+}
+
+"SHA-256 验证成功：$actualHash"
+```
+
+验证成功后，即可确认下载的 ZIP 由指定 GitHub Actions 工作流基于给定发布标签生成，并与 attestation 中记录的哈希一致。
+
+但这并不能证明源代码本身是安全的、整个 GitHub 环境未受破坏，也不能证明该构建可在其他计算机上逐字节重现。
+
+</details>
+
+<br>
 
 ## 自行构建
 
@@ -211,6 +234,9 @@ gh attestation verify .\UnfocusMute-windows-x64.zip.sha256 -R ilsd7/UnfocusMute
 - Rust stable
 - Visual Studio Build Tools 2022 或 Visual Studio 2022
 - Windows 10/11 SDK
+
+<details>
+<summary>查看构建和打包命令</summary>
 
 ```powershell
 rustup target add x86_64-pc-windows-msvc
@@ -239,7 +265,9 @@ cargo about generate about.hbs -c about.toml --locked --offline -o THIRD_PARTY_N
 
 结果会生成到 `dist\UnfocusMute-windows-x64.zip`，同一位置还会生成用于 SHA-256 校验的 `dist\UnfocusMute-windows-x64.zip.sha256`。ZIP 包含带版本号的可执行文件（`UnfocusMute-v<version>.exe`）、`LICENSE`、`THIRD_PARTY_NOTICES.md`，以及 `docs` 文件夹中的各语言 README `.txt` 文件。
 
----
+</details>
+
+<br>
 
 ## 许可证
 

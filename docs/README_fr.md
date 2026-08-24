@@ -27,7 +27,7 @@
   </p>
 </div>
 
----
+<br>
 
 UnfocusMute est une petite application légère qui s’exécute dans la zone de notification de Windows, coupe automatiquement le son des jeux et applications choisis lorsqu’ils passent en arrière-plan, puis le rétablit lorsqu’ils reviennent au premier plan.
 
@@ -40,23 +40,13 @@ UnfocusMute est une petite application légère qui s’exécute dans la zone de
   <img src="../assets/screenshot_fr.png" width="600" alt="Fenêtre principale d’UnfocusMute">
 </p>
 
----
+<br>
 
 ## Cas d’utilisation
 
 - Vous laissez tourner un jeu ou une application et passez souvent à une autre fenêtre avec Alt+Tab.
 - Vous voulez qu’une application reste silencieuse lorsqu’elle ne propose pas d’option pour couper le son en arrière-plan.
 - Vous voulez couper uniquement le son d’une application précise lorsqu’elle est en arrière-plan pendant que vous faites autre chose.
-
-## Fonctionnalités
-
-- Coupe automatiquement le son des applications ajoutées lorsqu’elles passent en arrière-plan, puis le rétablit à leur retour au premier plan.
-- Permet de choisir une application ayant une session audio, de la retrouver dans `Tous les processus` ou de saisir un nom comme `game.exe`.
-- Permet d’ajouter une application entière par nom d’exécutable (`.exe`), ou seulement l’instance en cours d’exécution via son PID.
-- Notes par application, état en temps réel et mise en pause / reprise individuelle.
-- Continue à surveiller les applications depuis la zone de notification après la fermeture de la fenêtre, avec des actions pour `Ouvrir` / `Masquer dans la zone de notification` / `Mettre en pause` / `Quitter`.
-- Paramètres pour `Démarrer réduit dans la zone de notification`, `Lancer à l’ouverture de session Windows` et `Rétablir le son coupé par UnfocusMute en quittant`.
-- Choix de la langue au premier démarrage, puis changement immédiat vers l’une des 9 langues disponibles dans l’application.
 
 ## Télécharger et lancer
 
@@ -71,15 +61,15 @@ Une fois le ZIP extrait, déplacez le dossier `UnfocusMute-windows-x64` à l’e
 
 UnfocusMute est une application autonome qui ne nécessite aucune installation. Vous n’avez pas non plus besoin d’installer Rust, Visual Studio Build Tools, MinGW ni d’autres outils de développement.
 
-> **Remarque :** Comme les certificats de signature de code ont un coût, l’application est actuellement distribuée sans signature de code Windows. Un avertissement Windows SmartScreen ou « éditeur inconnu » peut s’afficher au premier lancement. Pour vérifier vous-même l’intégrité du fichier, consultez [Vérifier les fichiers publiés](#vérifier-les-fichiers-publiés).
+> **Remarque :** Comme les certificats de signature de code ont un coût, l’application est actuellement distribuée sans signature de code Windows. Un avertissement Windows SmartScreen ou « éditeur inconnu » peut s’afficher au premier lancement. Pour vérifier vous-même l’intégrité du fichier, consultez [Transparence et vérification des fichiers publiés](#transparence-et-vérification-des-fichiers-publiés).
 
----
+<br>
 
 ## À savoir avant utilisation
 
 UnfocusMute s’appuie sur les noms de processus, les informations sur la fenêtre au premier plan et les sessions CoreAudio fournies par Windows. Si un pilote, un réglage d’autorisation ou un logiciel de sécurité limite l’accès aux sessions, le contrôle du son peut ne pas fonctionner correctement.
 
-La liste par défaut affiche uniquement les applications qui disposent déjà d’une session audio. Si une application n’a pas encore créé de session audio, passez à `Tous les processus` pour la retrouver parmi les processus `.exe` en cours. Utilisez `Sessions audio uniquement` pour revenir à la liste filtrée.
+Nous vous recommandons de laisser UnfocusMute actif dans la zone de notification plutôt que de le fermer. Si une application ajoutée se ferme alors que son son est coupé, ce dernier état peut être conservé. Tant qu’UnfocusMute reste actif, il rétablit automatiquement le son lorsque vous relancez l’application et la ramenez au premier plan. Si vous quittez également UnfocusMute, l’application risque de ne plus émettre de son ; dans ce cas, réactivez manuellement le son dans le `Mélangeur de volume` de Windows.
 
 **Comportement de l’ajout par PID :** Windows ne fournit pas toujours le même PID pour une session audio et pour la fenêtre au premier plan. Pour compenser cela, UnfocusMute considère que l’application est revenue au premier plan lorsque le nom de l’exécutable (`.exe`) associé au PID ajouté correspond à celui de la fenêtre actuellement active.
 
@@ -87,20 +77,21 @@ Si plusieurs instances du même `.exe` sont ouvertes en même temps, il n’est 
 
 **Compatibilité anti-triche :** UnfocusMute n’injecte pas de code dans les jeux, ne lit pas la mémoire du jeu, n’intercepte pas les entrées utilisateur et ne modifie pas les fichiers du jeu. Il utilise seulement les informations Windows sur les processus et la fenêtre au premier plan, ainsi que les commandes de coupure du son des sessions CoreAudio. Il est donc conçu pour éviter les conflits avec la plupart des systèmes anti-triche, mais la compatibilité avec tous ces systèmes ne peut pas être garantie.
 
----
+<br>
 
 ## Utilisation
 
 1. Lancez UnfocusMute.
-2. Choisissez la langue dans l’écran affiché au premier démarrage. La langue par défaut est l’anglais.
+2. Choisissez la langue. Nous vous recommandons de conserver les réglages par défaut.
 3. Lancez le jeu ou l’application à ajouter.
-4. Choisissez une application dans la liste ou recherchez-la dans le champ `Rechercher un processus`, puis cliquez sur `Ajouter`. Si l’application n’a pas encore créé de session audio, passez à `Tous les processus` pour parcourir la liste de tous les processus en cours. Utilisez `Sessions audio uniquement` pour revenir à la liste filtrée. Si elle n’est pas dans la liste, saisissez manuellement le nom de son fichier `.exe`.
+4. Sélectionnez une application dans la liste ou saisissez son nom `.exe` exact, puis cliquez sur `Ajouter`. Si l’application n’a pas encore créé de session audio, passez à `Tous les processus` pour parcourir tous les processus en cours d’exécution.
 5. Si vous devez ajouter seulement un PID précis, cliquez sur `Vue PID` et choisissez l’entrée concernée. Un ajout par PID n’est valable que pour l’instance actuellement ouverte ; si l’application redémarre avec un autre PID, ajoutez-la à nouveau.
 6. Faites un clic droit sur une application ajoutée pour modifier sa note ou utiliser `Mettre en pause` uniquement pour cette application.
-7. Ouvrez `Paramètres` en bas à gauche pour modifier le comportement.
-8. Lorsque vous fermez la fenêtre, l’application reste dans la zone de notification et continue de surveiller les applications ajoutées. Cliquez sur `Quitter` pour l’arrêter complètement.
+7. Cliquez sur l’état `Surveillance active` en haut pour suspendre ou reprendre toute la surveillance.
+8. Ouvrez `Paramètres` pour modifier les options, notamment le comportement à la fermeture de la fenêtre.
+9. Par défaut, fermer la fenêtre laisse UnfocusMute actif dans la zone de notification. Pour quitter complètement l’application, faites un clic droit sur son icône dans la zone de notification, puis choisissez `Quitter`. Vous pouvez modifier le comportement du bouton de fermeture dans `Paramètres`.
 
----
+<br>
 
 ## Utiliser les notes des applications ajoutées
 
@@ -113,7 +104,7 @@ C’est utile lorsqu’un même lanceur de jeu ouvre plusieurs processus, ou lor
 
 Les notes sont enregistrées localement avec les autres réglages dans `%APPDATA%\UnfocusMute\config.json`.
 
----
+<br>
 
 ## Trouver le nom de l’exécutable
 
@@ -126,7 +117,7 @@ Si vous ne savez pas quel nom ajouter, ouvrez le Gestionnaire des tâches et che
 5. Faites un clic droit sur cet élément et ouvrez `Propriétés`.
 6. Relevez le nom de l’exécutable se terminant par `.exe`, par exemple `game.exe`, puis ajoutez-le à UnfocusMute.
 
----
+<br>
 
 ## Dépannage
 
@@ -138,7 +129,7 @@ Si le problème persiste, ouvrez une issue sur GitHub.
 
 Si vous pensez qu’il s’agit d’une faille de sécurité, ne publiez pas les détails dans une issue publique. Utilisez la procédure de signalement privé et consultez [SECURITY.md](../SECURITY.md) pour plus d’informations.
 
----
+<br>
 
 ## Fichier de configuration
 
@@ -146,7 +137,7 @@ Pour consulter ou sauvegarder directement le fichier de configuration, cliquez s
 
 Vous pouvez modifier directement le fichier de configuration, mais si son format est invalide et qu’il ne peut pas être lu, il est sauvegardé sous `config.invalid-<timestamp>.json`. Si le problème est détecté au démarrage de l’application, les paramètres sont restaurés aux valeurs par défaut ; s’il est détecté pendant l’exécution, un nouveau fichier de configuration est créé à partir des paramètres actuels de l’application.
 
----
+<br>
 
 ## Sécurité et confidentialité
 
@@ -165,7 +156,7 @@ UnfocusMute stocke uniquement les réglages nécessaires à son fonctionnement d
 - Dernier état de coupure du son des applications ajoutées
 - Notes saisies
 - Langue et paramètres choisis
-- Position de la fenêtre
+- Position et taille de la fenêtre
 
 Ces informations ne sont envoyées nulle part.
 
@@ -181,26 +172,58 @@ Pour supprimer tous les fichiers liés à l’application, supprimez le dossier 
 
 Si vous avez déjà activé le démarrage automatique, supprimez aussi la valeur `UnfocusMute` sous `HKEY_CURRENT_USER\Software\Microsoft\Windows\CurrentVersion\Run`.
 
----
+<br>
 
-## Vérifier les fichiers publiés
+## Transparence et vérification des fichiers publiés
 
-Il ne faut pas supposer que les fichiers mis en ligne sur GitHub Releases correspondent toujours au code source publié dans le dépôt.
+UnfocusMute est conçu pour être utilisé en toute sécurité dans les environnements courants. La plupart des utilisateurs n’ont donc pas besoin de suivre les étapes de vérification ci-dessous. Si vous ne souhaitez pas vous fier uniquement au développeur ou si vous accordez une importance particulière à la sécurité de la chaîne d’approvisionnement logicielle, vous pouvez suivre cette procédure publique pour vérifier l’origine et l’intégrité des fichiers téléchargés.
 
-Si les droits de publication sur GitHub Releases sont utilisés de façon abusive ou si un compte est compromis, des fichiers compilés à partir d’un autre code ou des fichiers modifiés pourraient être ajoutés à une version publiée.
+### Pourquoi une vérification distincte est nécessaire
 
-Par souci de transparence, UnfocusMute fournit une méthode permettant de vérifier que les fichiers mis en ligne sur GitHub Releases sont bien des artefacts officiels générés par GitHub Actions à partir du code source du tag correspondant dans ce dépôt.
+Même après avoir examiné le code source du dépôt et l’avoir jugé sûr, vous ne pouvez pas conclure que les fichiers d’une version publiée sur GitHub ont effectivement été produits à partir de ce code. Si le compte du développeur est compromis ou si les droits de publication sont détournés, des fichiers sans rapport avec le code source publié pourraient être distribués.
 
-L’archive ZIP publiée et le fichier de somme de contrôle SHA-256 sont générés automatiquement par GitHub Actions, et chaque fichier est fourni avec une attestation de provenance du build.
+La comparaison des hachages SHA-256 permet de confirmer qu’un fichier téléchargé correspond à la somme de contrôle publiée, mais elle ne prouve pas à partir de quel code source ni dans quel environnement de compilation il a été produit.
 
-Les commandes ci-dessous permettent de vérifier que le ZIP téléchargé a été généré par la compilation officielle de ce dépôt.
+Afin de traiter ces risques de chaîne d’approvisionnement de façon transparente, UnfocusMute publie une méthode permettant de vérifier directement qu’un fichier joint à une version publiée sur GitHub est un artefact officiel généré par GitHub Actions à partir du commit référencé par le tag de cette version.
+
+<details>
+<summary>Afficher la procédure de vérification</summary>
+
+Installez d’abord [GitHub CLI](https://cli.github.com/), indiquez la version que vous avez téléchargée, puis exécutez la commande dans PowerShell.
 
 ```powershell
-gh attestation verify .\UnfocusMute-windows-x64.zip -R ilsd7/UnfocusMute
-gh attestation verify .\UnfocusMute-windows-x64.zip.sha256 -R ilsd7/UnfocusMute
+$version = Read-Host "Saisissez la version publiée (par exemple, v1.3.5)"
+$sourceRef = "refs/tags/$version"
+$workflow = "ilsd7/UnfocusMute/.github/workflows/release.yml"
+
+gh attestation verify .\UnfocusMute-windows-x64.zip `
+  -R ilsd7/UnfocusMute `
+  --source-ref $sourceRef `
+  --signer-workflow $workflow
 ```
 
----
+Cette commande contacte le service d’attestation de GitHub et vérifie que le SHA-256 du ZIP local correspond à la valeur enregistrée dans la provenance de compilation signée par GitHub Actions.
+
+Vous pouvez également comparer le ZIP au hachage SHA-256 publié avec la version.
+
+```powershell
+$expectedHash = ((Get-Content .\UnfocusMute-windows-x64.zip.sha256 -TotalCount 1) -split '\s+')[0]
+$actualHash = (Get-FileHash .\UnfocusMute-windows-x64.zip -Algorithm SHA256).Hash
+
+if ($actualHash -ne $expectedHash) {
+  throw "La vérification SHA-256 a échoué."
+}
+
+"SHA-256 vérifié : $actualHash"
+```
+
+Une vérification réussie confirme que le ZIP téléchargé a été généré pour le tag indiqué par le workflow GitHub Actions concerné et qu’il correspond au hachage enregistré dans son attestation.
+
+Elle ne prouve pas que le code source lui-même est sûr, que l’ensemble de l’environnement GitHub est intact, ni que la compilation est reproductible octet par octet sur un autre ordinateur.
+
+</details>
+
+<br>
 
 ## Compiler depuis le code source
 
@@ -211,6 +234,9 @@ Prérequis :
 - Rust stable
 - Visual Studio Build Tools 2022 ou Visual Studio 2022
 - SDK Windows 10/11
+
+<details>
+<summary>Afficher les commandes de compilation et de création du paquet</summary>
 
 ```powershell
 rustup target add x86_64-pc-windows-msvc
@@ -239,7 +265,9 @@ cargo about generate about.hbs -c about.toml --locked --offline -o THIRD_PARTY_N
 
 Le résultat est créé dans `dist\UnfocusMute-windows-x64.zip`, avec le fichier de vérification SHA-256 `dist\UnfocusMute-windows-x64.zip.sha256` au même emplacement. Le ZIP contient l’exécutable avec numéro de version (`UnfocusMute-v<version>.exe`), `LICENSE`, `THIRD_PARTY_NOTICES.md` et les README traduits au format `.txt` du dossier `docs`.
 
----
+</details>
+
+<br>
 
 ## Licence
 
