@@ -1,12 +1,15 @@
 use super::constants::{
     ID_TARGET_NOTE_CANCEL, ID_TARGET_NOTE_CLEAR, ID_TARGET_NOTE_EDIT, ID_TARGET_NOTE_SAVE,
-    PAGE_COLOR, SS_ENDELLIPSIS_STYLE, TARGET_NOTE_PROMPT_CLASS_NAME, TEXT_COLOR,
+    PAGE_COLOR, PANEL_COLOR, SS_CENTERIMAGE_STYLE, SS_ENDELLIPSIS_STYLE, SS_OWNERDRAW_STYLE,
+    SUBTLE_TEXT_COLOR, TARGET_NOTE_PROMPT_CLASS_NAME, TEXT_COLOR,
 };
 use super::modal_window::run_modal_message_loop;
+use super::set_edit_caret_to_end;
 use super::theme::{OwnedBrush, UiFont, px, ui_font_point_size};
 use super::win32::{
-    WindowClassRegistration, create_button, create_control, default_button_message_result, hiword,
-    loword, measure_text_width, move_window, to_wide, window_text_into,
+    WindowClassRegistration, centered_single_line_edit_rect, control_rect_in_parent, create_button,
+    create_control, default_button_message_result, font_text_height, loword, measure_text_width,
+    move_window, to_wide, window_size_for_client_area, window_text_into,
 };
 use super::window_position::centered_over_parent;
 use crate::config::{MAX_TARGET_NOTE_CHARS, normalize_target_note};
@@ -14,30 +17,106 @@ use crate::i18n::{Language, Strings};
 use crate::windows_app::error::{Context, Result};
 use std::ffi::c_void;
 use windows::Win32::Foundation::{HINSTANCE, HWND, LPARAM, LRESULT, WPARAM};
-use windows::Win32::Graphics::Gdi::{HDC, SetBkMode, SetTextColor, TRANSPARENT};
+use windows::Win32::Graphics::Gdi::{HDC, SetBkColor, SetBkMode, SetTextColor, TRANSPARENT};
 use windows::Win32::UI::Controls::DRAWITEMSTRUCT;
 use windows::Win32::UI::Input::KeyboardAndMouse::SetFocus;
 use windows::Win32::UI::WindowsAndMessaging::{
-    CREATESTRUCTW, CreateWindowExW, DefWindowProcW, DestroyWindow, ES_AUTOHSCROLL, GWLP_USERDATA,
-    GetWindowLongPtrW, HICON, IDC_ARROW, LoadCursorW, RegisterClassW, SendMessageW,
-    SetWindowLongPtrW, WINDOW_EX_STYLE, WINDOW_STYLE, WM_CLOSE, WM_COMMAND, WM_CREATE,
-    WM_CTLCOLORSTATIC, WM_DRAWITEM, WM_NCCREATE, WM_NCDESTROY, WM_SETFONT, WNDCLASSW, WS_CAPTION,
-    WS_CHILD, WS_EX_CLIENTEDGE, WS_OVERLAPPED, WS_SYSMENU, WS_TABSTOP, WS_VISIBLE,
+    CREATESTRUCTW, CreateWindowExW, DefWindowProcW, ES_AUTOHSCROLL, GWLP_USERDATA,
+    GetWindowLongPtrW, HICON, IDC_ARROW, LoadCursorW, MoveWindow, RegisterClassW, SWP_NOACTIVATE,
+    SWP_NOMOVE, SWP_NOSIZE, SendMessageW, SetWindowLongPtrW, SetWindowPos, WINDOW_EX_STYLE,
+    WINDOW_STYLE, WM_CLOSE, WM_COMMAND, WM_CREATE, WM_CTLCOLOREDIT, WM_CTLCOLORSTATIC, WM_DRAWITEM,
+    WM_NCCREATE, WM_NCDESTROY, WM_SETFONT, WNDCLASSW, WS_CAPTION, WS_CHILD, WS_OVERLAPPED,
+    WS_SYSMENU, WS_TABSTOP, WS_VISIBLE,
 };
 use windows::core::PCWSTR;
 
 const TARGET_NOTE_WINDOW_STYLE: WINDOW_STYLE =
     WINDOW_STYLE(WS_OVERLAPPED.0 | WS_CAPTION.0 | WS_SYSMENU.0);
-const TARGET_NOTE_WIDTH: i32 = 560;
-const TARGET_NOTE_HEIGHT: i32 = 230;
+const TARGET_NOTE_CLIENT_WIDTH: i32 = 560;
+const TARGET_NOTE_CLIENT_HEIGHT: i32 = 208;
 const TARGET_NOTE_MARGIN: i32 = 28;
-const TARGET_NOTE_CONTENT_WIDTH: i32 = TARGET_NOTE_WIDTH - TARGET_NOTE_MARGIN * 2;
+const TARGET_NOTE_CONTENT_WIDTH: i32 = TARGET_NOTE_CLIENT_WIDTH - TARGET_NOTE_MARGIN * 2;
+const TARGET_NOTE_TARGET_Y: i32 = 12;
+const TARGET_NOTE_TARGET_HEIGHT: i32 = 30;
+const TARGET_NOTE_DESCRIPTION_Y: i32 = 48;
+const TARGET_NOTE_DESCRIPTION_HEIGHT: i32 = 30;
+const TARGET_NOTE_EDIT_Y: i32 = 84;
+const TARGET_NOTE_EDIT_HEIGHT: i32 = 34;
+const TARGET_NOTE_BUTTON_Y: i32 = 148;
+const TARGET_NOTE_BUTTON_HEIGHT: i32 = 32;
+const TARGET_NOTE_BUTTON_GAP: i32 = 10;
 const EM_LIMITTEXT_MESSAGE: u32 = 0x00C5;
+const _: () = {
+    assert!(TARGET_NOTE_TARGET_Y + TARGET_NOTE_TARGET_HEIGHT <= TARGET_NOTE_DESCRIPTION_Y);
+    assert!(TARGET_NOTE_DESCRIPTION_Y + TARGET_NOTE_DESCRIPTION_HEIGHT <= TARGET_NOTE_EDIT_Y);
+    assert!(TARGET_NOTE_EDIT_Y + TARGET_NOTE_EDIT_HEIGHT < TARGET_NOTE_BUTTON_Y);
+    assert!(
+        TARGET_NOTE_BUTTON_Y + TARGET_NOTE_BUTTON_HEIGHT + TARGET_NOTE_MARGIN
+            == TARGET_NOTE_CLIENT_HEIGHT
+    );
+
+    let widest_clear_end = TARGET_NOTE_MARGIN + 132;
+    let widest_right_group_start =
+        TARGET_NOTE_CLIENT_WIDTH - TARGET_NOTE_MARGIN - 132 - TARGET_NOTE_BUTTON_GAP - 150;
+    assert!(widest_clear_end + TARGET_NOTE_BUTTON_GAP <= widest_right_group_start);
+};
+
+unsafe fn center_single_line_edit_in_frame(
+    parent: HWND,
+    frame: HWND,
+    edit: HWND,
+    font: windows::Win32::Graphics::Gdi::HGDIOBJ,
+) -> bool {
+    let Some(frame_rect) = (unsafe { control_rect_in_parent(parent, frame) }) else {
+        return false;
+    };
+    let frame_height = frame_rect.bottom.saturating_sub(frame_rect.top).max(1);
+    let text_height = unsafe { font_text_height(edit, font) }
+        .unwrap_or_else(|| frame_height.saturating_sub(px(2)).max(1));
+    let border_inset = px(1).max(1);
+    let horizontal_inset = px(7).max(border_inset + 1);
+    let edit_rect = centered_single_line_edit_rect(
+        frame_rect,
+        text_height,
+        horizontal_inset,
+        horizontal_inset,
+        border_inset,
+        px(2),
+        0,
+    );
+    if unsafe {
+        MoveWindow(
+            edit,
+            edit_rect.left,
+            edit_rect.top,
+            edit_rect.right.saturating_sub(edit_rect.left).max(1),
+            edit_rect.bottom.saturating_sub(edit_rect.top).max(1),
+            false,
+        )
+        .is_err()
+    } {
+        return false;
+    }
+
+    unsafe {
+        SetWindowPos(
+            frame,
+            Some(edit),
+            0,
+            0,
+            0,
+            0,
+            SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE,
+        )
+        .is_ok()
+    }
+}
 
 struct TargetNotePrompt<'a> {
     hwnd: HWND,
     target_label: HWND,
     note_label: HWND,
+    edit_frame: HWND,
     edit: HWND,
     save_button: HWND,
     clear_button: HWND,
@@ -49,7 +128,10 @@ struct TargetNotePrompt<'a> {
     target_display: &'a str,
     current_note: Option<&'a str>,
     brush: OwnedBrush,
+    input_brush: OwnedBrush,
     font: UiFont,
+    input_font: UiFont,
+    target_font: UiFont,
     text_buffer: String,
 }
 
@@ -59,6 +141,7 @@ impl<'a> TargetNotePrompt<'a> {
             hwnd: HWND::default(),
             target_label: HWND::default(),
             note_label: HWND::default(),
+            edit_frame: HWND::default(),
             edit: HWND::default(),
             save_button: HWND::default(),
             clear_button: HWND::default(),
@@ -70,7 +153,10 @@ impl<'a> TargetNotePrompt<'a> {
             target_display,
             current_note,
             brush: OwnedBrush::solid(PAGE_COLOR),
+            input_brush: OwnedBrush::solid(PANEL_COLOR),
             font: UiFont::new(ui_font_point_size()),
+            input_font: UiFont::new(ui_font_point_size() + 1),
+            target_font: UiFont::new(ui_font_point_size() + 2),
             text_buffer: String::new(),
         }
     }
@@ -86,12 +172,12 @@ impl<'a> TargetNotePrompt<'a> {
                 instance,
                 windows::core::w!("STATIC"),
                 self.target_display,
-                child | SS_ENDELLIPSIS_STYLE,
+                child | SS_CENTERIMAGE_STYLE | SS_ENDELLIPSIS_STYLE,
                 WINDOW_EX_STYLE(0),
                 TARGET_NOTE_MARGIN,
-                24,
+                TARGET_NOTE_TARGET_Y,
                 TARGET_NOTE_CONTENT_WIDTH,
-                24,
+                TARGET_NOTE_TARGET_HEIGHT,
                 0,
             )?
         };
@@ -101,12 +187,27 @@ impl<'a> TargetNotePrompt<'a> {
                 instance,
                 windows::core::w!("STATIC"),
                 strings.target_note_label,
-                child | SS_ENDELLIPSIS_STYLE,
+                child,
                 WINDOW_EX_STYLE(0),
                 TARGET_NOTE_MARGIN,
-                58,
+                TARGET_NOTE_DESCRIPTION_Y,
                 TARGET_NOTE_CONTENT_WIDTH,
-                22,
+                TARGET_NOTE_DESCRIPTION_HEIGHT,
+                0,
+            )?
+        };
+        self.edit_frame = unsafe {
+            create_control(
+                hwnd,
+                instance,
+                windows::core::w!("STATIC"),
+                "",
+                child | SS_OWNERDRAW_STYLE,
+                WINDOW_EX_STYLE(0),
+                TARGET_NOTE_MARGIN,
+                TARGET_NOTE_EDIT_Y,
+                TARGET_NOTE_CONTENT_WIDTH,
+                TARGET_NOTE_EDIT_HEIGHT,
                 0,
             )?
         };
@@ -117,24 +218,12 @@ impl<'a> TargetNotePrompt<'a> {
                 windows::core::w!("EDIT"),
                 self.current_note.unwrap_or_default(),
                 child | WS_TABSTOP | WINDOW_STYLE(ES_AUTOHSCROLL as u32),
-                WS_EX_CLIENTEDGE,
+                WINDOW_EX_STYLE(0),
                 TARGET_NOTE_MARGIN,
-                88,
+                TARGET_NOTE_EDIT_Y,
                 TARGET_NOTE_CONTENT_WIDTH,
-                28,
+                TARGET_NOTE_EDIT_HEIGHT,
                 ID_TARGET_NOTE_EDIT,
-            )?
-        };
-        self.save_button = unsafe {
-            create_button(
-                hwnd,
-                instance,
-                strings.target_note_save,
-                0,
-                0,
-                96,
-                34,
-                ID_TARGET_NOTE_SAVE,
             )?
         };
         self.clear_button = unsafe {
@@ -145,7 +234,7 @@ impl<'a> TargetNotePrompt<'a> {
                 0,
                 0,
                 96,
-                34,
+                TARGET_NOTE_BUTTON_HEIGHT,
                 ID_TARGET_NOTE_CLEAR,
             )?
         };
@@ -157,13 +246,31 @@ impl<'a> TargetNotePrompt<'a> {
                 0,
                 0,
                 96,
-                34,
+                TARGET_NOTE_BUTTON_HEIGHT,
                 ID_TARGET_NOTE_CANCEL,
+            )?
+        };
+        self.save_button = unsafe {
+            create_button(
+                hwnd,
+                instance,
+                strings.target_note_save,
+                0,
+                0,
+                96,
+                TARGET_NOTE_BUTTON_HEIGHT,
+                ID_TARGET_NOTE_SAVE,
             )?
         };
 
         unsafe {
             self.apply_font();
+            let _ = center_single_line_edit_in_frame(
+                self.hwnd,
+                self.edit_frame,
+                self.edit,
+                self.input_font.handle(),
+            );
             SendMessageW(
                 self.edit,
                 EM_LIMITTEXT_MESSAGE,
@@ -172,6 +279,7 @@ impl<'a> TargetNotePrompt<'a> {
             );
             self.layout_buttons(strings);
             let _ = SetFocus(Some(self.edit));
+            set_edit_caret_to_end(self.edit, self.current_note.unwrap_or_default());
         }
         Ok(())
     }
@@ -179,9 +287,7 @@ impl<'a> TargetNotePrompt<'a> {
     unsafe fn apply_font(&self) {
         unsafe {
             for control in [
-                self.target_label,
                 self.note_label,
-                self.edit,
                 self.save_button,
                 self.clear_button,
                 self.cancel_button,
@@ -193,29 +299,58 @@ impl<'a> TargetNotePrompt<'a> {
                     Some(LPARAM(1)),
                 );
             }
+            SendMessageW(
+                self.edit,
+                WM_SETFONT,
+                Some(self.input_font.wparam()),
+                Some(LPARAM(1)),
+            );
+            SendMessageW(
+                self.target_label,
+                WM_SETFONT,
+                Some(self.target_font.wparam()),
+                Some(LPARAM(1)),
+            );
         }
     }
 
     fn layout_buttons(&self, strings: &Strings) {
-        let gap = 10;
-        let save_width = self.button_width(strings.target_note_save, 88, 140);
-        let clear_width = self.button_width(strings.target_note_clear, 88, 140);
-        let cancel_width = self.button_width(strings.target_note_cancel, 88, 160);
-        let total_width = save_width + clear_width + cancel_width + gap * 2;
-        let mut x = TARGET_NOTE_WIDTH - TARGET_NOTE_MARGIN - total_width;
-        let y = 146;
+        let save_width = self.button_width(strings.target_note_save, 80, 132);
+        let clear_width = self.button_width(strings.target_note_clear, 80, 132);
+        let cancel_width = self.button_width(strings.target_note_cancel, 80, 150);
+        let save_x = TARGET_NOTE_CLIENT_WIDTH - TARGET_NOTE_MARGIN - save_width;
+        let cancel_x = save_x - TARGET_NOTE_BUTTON_GAP - cancel_width;
 
         unsafe {
-            let _ = move_window(self.cancel_button, x, y, cancel_width, 34, true);
-            x += cancel_width + gap;
-            let _ = move_window(self.clear_button, x, y, clear_width, 34, true);
-            x += clear_width + gap;
-            let _ = move_window(self.save_button, x, y, save_width, 34, true);
+            let _ = move_window(
+                self.clear_button,
+                TARGET_NOTE_MARGIN,
+                TARGET_NOTE_BUTTON_Y,
+                clear_width,
+                TARGET_NOTE_BUTTON_HEIGHT,
+                true,
+            );
+            let _ = move_window(
+                self.cancel_button,
+                cancel_x,
+                TARGET_NOTE_BUTTON_Y,
+                cancel_width,
+                TARGET_NOTE_BUTTON_HEIGHT,
+                true,
+            );
+            let _ = move_window(
+                self.save_button,
+                save_x,
+                TARGET_NOTE_BUTTON_Y,
+                save_width,
+                TARGET_NOTE_BUTTON_HEIGHT,
+                true,
+            );
         }
     }
 
     fn button_width(&self, text: &str, min_width: i32, max_width: i32) -> i32 {
-        (unsafe { measure_text_width(self.hwnd, self.font.handle(), text) } + 36)
+        (unsafe { measure_text_width(self.hwnd, self.font.handle(), text) } + 28)
             .clamp(min_width, max_width)
     }
 
@@ -271,8 +406,12 @@ pub(super) unsafe fn prompt_target_note(
     ));
     let state_ptr = state.as_mut() as *mut TargetNotePrompt<'_>;
     let title = to_wide(language.strings().target_note_window_title);
-    let width = px(TARGET_NOTE_WIDTH);
-    let height = px(TARGET_NOTE_HEIGHT);
+    let (width, height) = window_size_for_client_area(
+        px(TARGET_NOTE_CLIENT_WIDTH),
+        px(TARGET_NOTE_CLIENT_HEIGHT),
+        TARGET_NOTE_WINDOW_STYLE,
+        WINDOW_EX_STYLE(0),
+    );
     let position = centered_over_parent(parent, width, height);
     let hwnd = unsafe {
         CreateWindowExW(
@@ -340,20 +479,21 @@ unsafe extern "system" fn target_note_prompt_proc(
             }
             WM_COMMAND => {
                 let id = loword(wparam.0 as u32) as i32;
-                let _notification = hiword(wparam.0 as u32);
                 match id {
                     ID_TARGET_NOTE_SAVE => prompt.accept(),
                     ID_TARGET_NOTE_CLEAR => prompt.clear(),
                     ID_TARGET_NOTE_CANCEL => prompt.cancel(),
                     _ => return LRESULT(0),
                 }
-                unsafe {
-                    let _ = DestroyWindow(hwnd);
-                }
                 return LRESULT(0);
             }
             WM_DRAWITEM if lparam.0 != 0 => {
                 let draw = unsafe { &*(lparam.0 as *const DRAWITEMSTRUCT) };
+                if draw.hwndItem == prompt.edit_frame {
+                    return LRESULT(
+                        unsafe { super::win32::draw_rounded_input_frame(draw, 6) } as isize
+                    );
+                }
                 let id = draw.CtlID as i32;
                 if id == ID_TARGET_NOTE_SAVE
                     || id == ID_TARGET_NOTE_CLEAR
@@ -367,16 +507,33 @@ unsafe extern "system" fn target_note_prompt_proc(
             }
             WM_CLOSE => {
                 prompt.cancel();
-                unsafe {
-                    let _ = DestroyWindow(hwnd);
-                }
                 return LRESULT(0);
+            }
+            WM_CTLCOLOREDIT => {
+                let hdc = HDC(wparam.0 as *mut c_void);
+                unsafe {
+                    let _ = SetBkColor(hdc, PANEL_COLOR);
+                    let _ = SetTextColor(hdc, TEXT_COLOR);
+                }
+                return LRESULT(prompt.input_brush.handle().0 as isize);
             }
             WM_CTLCOLORSTATIC => {
                 let hdc = HDC(wparam.0 as *mut c_void);
+                let control = HWND(lparam.0 as *mut c_void);
+                if control == prompt.edit_frame {
+                    unsafe {
+                        let _ = SetBkColor(hdc, PANEL_COLOR);
+                    }
+                    return LRESULT(prompt.input_brush.handle().0 as isize);
+                }
+                let color = if control == prompt.note_label {
+                    SUBTLE_TEXT_COLOR
+                } else {
+                    TEXT_COLOR
+                };
                 unsafe {
                     let _ = SetBkMode(hdc, TRANSPARENT);
-                    let _ = SetTextColor(hdc, TEXT_COLOR);
+                    let _ = SetTextColor(hdc, color);
                 }
                 return LRESULT(prompt.brush.handle().0 as isize);
             }
