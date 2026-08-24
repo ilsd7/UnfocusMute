@@ -2,15 +2,16 @@ use super::constants::WM_TRAY_ICON;
 use super::win32::{get_message, system_command_closes_or_minimizes};
 use crate::windows_app::error::Result;
 use windows::Win32::Foundation::HWND;
-use windows::Win32::UI::Input::KeyboardAndMouse::{EnableWindow, IsWindowEnabled};
+use windows::Win32::UI::Input::KeyboardAndMouse::{EnableWindow, IsWindowEnabled, SetActiveWindow};
 use windows::Win32::UI::WindowsAndMessaging::{
-    DestroyWindow, DispatchMessageW, IsDialogMessageW, IsIconic, IsWindow, IsWindowVisible, MSG,
-    PM_REMOVE, PeekMessageW, PostQuitMessage, SW_RESTORE, SW_SHOW, SetForegroundWindow, ShowWindow,
-    TranslateMessage, WM_CLOSE, WM_COMMAND, WM_SYSCOMMAND,
+    DestroyWindow, DispatchMessageW, IsDialogMessageW, IsWindow, IsWindowVisible, MSG,
+    PostQuitMessage, SW_HIDE, SW_SHOW, SetForegroundWindow, ShowWindow, TranslateMessage, WM_CLOSE,
+    WM_COMMAND, WM_SYSCOMMAND,
 };
 
 struct ModalParentGuard {
     parent: HWND,
+    dialog: HWND,
     was_enabled: bool,
 }
 
@@ -28,29 +29,38 @@ impl ModalParentGuard {
         }
         Self {
             parent,
+            dialog: hwnd,
             was_enabled,
         }
     }
 
-    unsafe fn restore(&mut self) {
+    unsafe fn finish(&mut self) {
+        let dialog_exists = unsafe { IsWindow(Some(self.dialog)).as_bool() };
         if self.was_enabled {
             unsafe {
                 let _ = EnableWindow(self.parent, true);
             }
-            self.was_enabled = false;
         }
         unsafe {
-            discard_stale_parent_messages(self.parent);
-            restore_parent_if_minimized(self.parent);
-            let _ = SetForegroundWindow(self.parent);
+            if dialog_exists {
+                let _ = ShowWindow(self.dialog, SW_HIDE);
+            }
+            if self.was_enabled && IsWindowVisible(self.parent).as_bool() {
+                let _ = SetActiveWindow(self.parent);
+            }
+            if dialog_exists {
+                let _ = DestroyWindow(self.dialog);
+            }
         }
+        self.was_enabled = false;
+        self.dialog = HWND::default();
     }
 }
 
 impl Drop for ModalParentGuard {
     fn drop(&mut self) {
         unsafe {
-            self.restore();
+            self.finish();
         }
     }
 }
@@ -69,7 +79,6 @@ pub(super) unsafe fn run_modal_message_loop(
         }
         if !unsafe { get_message(&mut msg)? } {
             let quit_code = msg.wParam.0 as i32;
-            let _ = unsafe { DestroyWindow(hwnd) };
             unsafe {
                 PostQuitMessage(quit_code);
             }
@@ -114,20 +123,5 @@ unsafe fn dispatch_modal_message(hwnd: HWND, msg: &MSG) {
             let _ = TranslateMessage(msg);
             DispatchMessageW(msg);
         }
-    }
-}
-
-unsafe fn discard_stale_parent_messages(parent: HWND) {
-    let mut msg = MSG::default();
-    for message in [WM_CLOSE, WM_COMMAND, WM_TRAY_ICON, WM_SYSCOMMAND] {
-        while unsafe { PeekMessageW(&mut msg, Some(parent), message, message, PM_REMOVE) }.as_bool()
-        {
-        }
-    }
-}
-
-unsafe fn restore_parent_if_minimized(parent: HWND) {
-    if unsafe { IsIconic(parent).as_bool() } {
-        let _ = unsafe { ShowWindow(parent, SW_RESTORE) };
     }
 }

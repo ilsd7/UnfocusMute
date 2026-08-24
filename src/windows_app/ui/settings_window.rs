@@ -1,48 +1,48 @@
 use super::constants::{
-    ID_SETTINGS_WINDOW_GITHUB, ID_SETTINGS_WINDOW_GITHUB_TOOLTIP, ID_SETTINGS_WINDOW_LANGUAGE,
+    ID_SETTINGS_WINDOW_GITHUB, ID_SETTINGS_WINDOW_GITHUB_TOOLTIP, ID_SETTINGS_WINDOW_HIDE_ON_CLOSE,
+    ID_SETTINGS_WINDOW_LANGUAGE, ID_SETTINGS_WINDOW_LANGUAGE_FRAME,
     ID_SETTINGS_WINDOW_LAUNCH_STARTUP, ID_SETTINGS_WINDOW_OPEN_CONFIG,
     ID_SETTINGS_WINDOW_RESTORE_EXIT, ID_SETTINGS_WINDOW_START_MINIMIZED, PAGE_COLOR,
     PANEL_BORDER_COLOR, PANEL_COLOR, SETTINGS_WINDOW_CLASS_NAME, SS_CENTERIMAGE_STYLE,
     SS_ENDELLIPSIS_STYLE, SS_OWNERDRAW_STYLE, SS_RIGHT_STYLE, SUBTLE_TEXT_COLOR, TEXT_COLOR,
 };
 use super::drawing::draw_text_line;
+use super::language_combo::{LanguageCombo, LanguageComboIds};
 use super::modal_window::run_modal_message_loop;
 use super::theme::{OwnedBrush, UiFont, px, ui_font_point_size};
 use super::win32::{
-    WindowClassRegistration, add_combo_item_with_buffer, create_button, create_control,
-    create_multiline_checkbox, hiword, is_checked, loword, measure_text_width, move_window,
-    reserve_combo_items, set_checkbox, set_text, to_wide,
+    WindowClassRegistration, create_button, create_control, create_multiline_checkbox, hiword,
+    is_checked, loword, measure_text_width, move_window, set_checkbox, set_text, to_wide,
 };
 use super::window_position::centered_over_parent;
 use crate::config::cached_config_file_path;
-use crate::i18n::{Language, Strings};
+use crate::i18n::Language;
 use crate::windows_app::error::{Context, Result};
 use std::ffi::c_void;
 use std::fs;
-use windows::Win32::Foundation::{COLORREF, HINSTANCE, HWND, LPARAM, LRESULT, POINT, RECT, WPARAM};
+use windows::Win32::Foundation::{COLORREF, HINSTANCE, HWND, LPARAM, LRESULT, RECT, WPARAM};
 use windows::Win32::Graphics::Gdi::{
-    ClientToScreen, DT_END_ELLIPSIS, DT_LEFT, DT_NOPREFIX, DT_SINGLELINE, DT_VCENTER, FillRect,
+    DT_END_ELLIPSIS, DT_LEFT, DT_NOPREFIX, DT_RIGHT, DT_SINGLELINE, DT_VCENTER, FillRect,
     FrameRect, HDC, RDW_ALLCHILDREN, RDW_ERASE, RDW_INVALIDATE, RDW_UPDATENOW, RedrawWindow,
-    ScreenToClient, SetBkMode, SetTextColor, TRANSPARENT,
+    SetBkMode, SetTextColor, TRANSPARENT,
 };
-use windows::Win32::UI::Controls::{CB_SETMINVISIBLE, DRAWITEMSTRUCT, ODS_DISABLED, ODS_SELECTED};
+use windows::Win32::UI::Controls::{DRAWITEMSTRUCT, ODS_DISABLED, ODS_SELECTED};
 use windows::Win32::UI::Shell::ShellExecuteW;
 use windows::Win32::UI::WindowsAndMessaging::{
-    BringWindowToTop, CB_GETCURSEL, CB_SETCURSEL, CBN_SELCHANGE, CBN_SELENDOK, CBS_DROPDOWNLIST,
-    CREATESTRUCTW, CreateWindowExW, DefWindowProcW, DestroyWindow, GWLP_USERDATA, GetCursorPos,
-    GetWindowLongPtrW, HICON, IDC_ARROW, IDC_HAND, LoadCursorW, MB_ICONWARNING, MB_OK, MessageBoxW,
-    MoveWindow, RegisterClassW, SW_HIDE, SW_SHOW, SW_SHOWNOACTIVATE, SendMessageW, SetCursor,
-    SetWindowLongPtrW, ShowWindow, WINDOW_EX_STYLE, WINDOW_STYLE, WM_CLOSE, WM_COMMAND, WM_CREATE,
-    WM_CTLCOLORSTATIC, WM_DRAWITEM, WM_NCCREATE, WM_NCDESTROY, WM_SETCURSOR, WM_SETFONT, WNDCLASSW,
-    WS_CAPTION, WS_CHILD, WS_EX_CLIENTEDGE, WS_EX_TOOLWINDOW, WS_OVERLAPPED, WS_POPUP, WS_SYSMENU,
-    WS_TABSTOP, WS_VISIBLE,
+    BringWindowToTop, CBN_SELCHANGE, CBN_SELENDOK, CREATESTRUCTW, CreateWindowExW, DefWindowProcW,
+    GWLP_USERDATA, GetWindowLongPtrW, GetWindowRect, HICON, IDC_ARROW, IDC_HAND, LoadCursorW,
+    MB_ICONWARNING, MB_OK, MessageBoxW, MoveWindow, RegisterClassW, SW_HIDE, SW_SHOW,
+    SW_SHOWNOACTIVATE, SendMessageW, SetCursor, SetWindowLongPtrW, ShowWindow, WINDOW_EX_STYLE,
+    WINDOW_STYLE, WM_CLOSE, WM_COMMAND, WM_CREATE, WM_CTLCOLORSTATIC, WM_DRAWITEM, WM_NCCREATE,
+    WM_NCDESTROY, WM_SETCURSOR, WM_SETFONT, WNDCLASSW, WS_CAPTION, WS_CHILD, WS_EX_TOOLWINDOW,
+    WS_OVERLAPPED, WS_POPUP, WS_SYSMENU, WS_TABSTOP, WS_VISIBLE,
 };
 use windows::core::{PCWSTR, w};
 
 const SETTINGS_WINDOW_STYLE: WINDOW_STYLE =
     WINDOW_STYLE(WS_OVERLAPPED.0 | WS_CAPTION.0 | WS_SYSMENU.0);
 const SETTINGS_WINDOW_WIDTH: i32 = 370;
-const SETTINGS_WINDOW_HEIGHT: i32 = 344;
+const SETTINGS_WINDOW_HEIGHT: i32 = 376;
 const SETTINGS_MARGIN: i32 = 24;
 const SETTINGS_CONTENT_X: i32 = SETTINGS_MARGIN - 3;
 const SETTINGS_CONTENT_WIDTH: i32 = SETTINGS_WINDOW_WIDTH - SETTINGS_MARGIN * 2;
@@ -50,27 +50,67 @@ const SETTINGS_BEHAVIOR_Y: i32 = 16;
 const SETTINGS_CHECK_1_Y: i32 = 44;
 const SETTINGS_CHECK_2_Y: i32 = 76;
 const SETTINGS_CHECK_3_Y: i32 = 108;
-const SETTINGS_LANGUAGE_Y: i32 = 150;
-const SETTINGS_LANGUAGE_COMBO_Y: i32 = 178;
-const SETTINGS_FILE_INFO_Y: i32 = 224;
-const SETTINGS_OPEN_CONFIG_Y: i32 = 252;
-const SETTINGS_VERSION_ROW_Y: i32 = 242;
-const SETTINGS_GITHUB_ROW_Y: i32 = 266;
-const SETTINGS_GITHUB_HEIGHT: i32 = 20;
-const SETTINGS_GITHUB_LEFT_GAP: i32 = 12;
-const SETTINGS_GITHUB_X_OFFSET: i32 = 2;
-const SETTINGS_FILE_INFO_RIGHT_GAP: i32 = 12;
-const SETTINGS_GITHUB_LINK_HIT_TOP: i32 = 1;
-const SETTINGS_GITHUB_LINK_HIT_BOTTOM: i32 = 15;
+const SETTINGS_CHECK_4_Y: i32 = 140;
+const SETTINGS_LANGUAGE_Y: i32 = 182;
+const SETTINGS_LANGUAGE_COMBO_Y: i32 = 210;
+const SETTINGS_LANGUAGE_COMBO_WIDTH: i32 = 150;
+const SETTINGS_LANGUAGE_COMBO_FRAME_HEIGHT: i32 = 23;
+const SETTINGS_SECTION_GAP: i32 = 16;
+const SETTINGS_FILE_INFO_Y: i32 =
+    SETTINGS_LANGUAGE_COMBO_Y + SETTINGS_LANGUAGE_COMBO_FRAME_HEIGHT + SETTINGS_SECTION_GAP;
+const SETTINGS_OPEN_CONFIG_Y: i32 = SETTINGS_FILE_INFO_Y + SETTINGS_HEADING_TO_CONTROL_OFFSET;
+const SETTINGS_OPEN_CONFIG_HEIGHT: i32 = 32;
+const SETTINGS_HEADING_HEIGHT: i32 = 22;
+const SETTINGS_HEADING_TO_CONTROL_OFFSET: i32 = 28;
+const SETTINGS_GITHUB_HEIGHT: i32 = 17;
+const SETTINGS_GITHUB_Y: i32 =
+    SETTINGS_OPEN_CONFIG_Y + SETTINGS_OPEN_CONFIG_HEIGHT - SETTINGS_GITHUB_HEIGHT;
+const SETTINGS_VERSION_HEIGHT: i32 = 15;
+const SETTINGS_INFO_VERTICAL_GAP: i32 = 4;
+const SETTINGS_VERSION_Y: i32 =
+    SETTINGS_GITHUB_Y - SETTINGS_INFO_VERTICAL_GAP - SETTINGS_VERSION_HEIGHT;
+const SETTINGS_INFO_HORIZONTAL_GAP: i32 = 6;
+const SETTINGS_INFO_TEXT_SLACK: i32 = 16;
+const SETTINGS_GITHUB_MIN_WIDTH: i32 = 64;
+const SETTINGS_VERSION_MIN_WIDTH: i32 = 44;
 const SETTINGS_GITHUB_TOOLTIP_HEIGHT: i32 = 24;
 const SETTINGS_GITHUB_TOOLTIP_X_PADDING: i32 = 8;
 const SETTINGS_GITHUB_TOOLTIP_Y_GAP: i32 = 6;
 const SETTINGS_INFO_RIGHT_OFFSET: i32 = 16;
-const VERSION_TEXT_PADDING: i32 = 4;
 const LINK_COLOR: COLORREF = COLORREF(0x00CC_6600);
 const LINK_HOVER_COLOR: COLORREF = COLORREF(0x00E6_BC6A);
 const LINK_DISABLED_COLOR: COLORREF = SUBTLE_TEXT_COLOR;
 const APP_VERSION: &str = env!("CARGO_PKG_VERSION");
+const SETTINGS_INFO_RIGHT: i32 =
+    SETTINGS_WINDOW_WIDTH - SETTINGS_MARGIN - SETTINGS_INFO_RIGHT_OFFSET;
+const _: () = {
+    assert!(SETTINGS_CONTENT_X < SETTINGS_INFO_RIGHT);
+    assert!(SETTINGS_CHECK_1_Y - SETTINGS_BEHAVIOR_Y == SETTINGS_HEADING_TO_CONTROL_OFFSET);
+    assert!(SETTINGS_LANGUAGE_COMBO_Y - SETTINGS_LANGUAGE_Y == SETTINGS_HEADING_TO_CONTROL_OFFSET);
+    assert!(SETTINGS_OPEN_CONFIG_Y - SETTINGS_FILE_INFO_Y == SETTINGS_HEADING_TO_CONTROL_OFFSET);
+    assert!(
+        SETTINGS_FILE_INFO_Y - (SETTINGS_LANGUAGE_COMBO_Y + SETTINGS_LANGUAGE_COMBO_FRAME_HEIGHT)
+            == SETTINGS_SECTION_GAP
+    );
+    assert!(
+        SETTINGS_VERSION_Y + SETTINGS_VERSION_HEIGHT + SETTINGS_INFO_VERTICAL_GAP
+            == SETTINGS_GITHUB_Y
+    );
+    assert!(
+        SETTINGS_GITHUB_Y + SETTINGS_GITHUB_HEIGHT
+            == SETTINGS_OPEN_CONFIG_Y + SETTINGS_OPEN_CONFIG_HEIGHT
+    );
+    assert!(SETTINGS_OPEN_CONFIG_Y + SETTINGS_OPEN_CONFIG_HEIGHT < SETTINGS_WINDOW_HEIGHT);
+};
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+struct SettingsInfoLayout {
+    open_config_width: i32,
+    version_x: i32,
+    version_width: i32,
+    github_x: i32,
+    github_width: i32,
+}
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(super) struct SettingsPreferences {
@@ -78,6 +118,7 @@ pub(super) struct SettingsPreferences {
     pub(super) start_minimized: bool,
     pub(super) launch_on_startup: bool,
     pub(super) restore_on_exit: bool,
+    pub(super) hide_to_tray_on_close: bool,
 }
 
 struct SettingsWindow {
@@ -86,8 +127,9 @@ struct SettingsWindow {
     start_minimized_check: HWND,
     launch_startup_check: HWND,
     restore_exit_check: HWND,
+    hide_to_tray_on_close_check: HWND,
     language_label: HWND,
-    language_combo: HWND,
+    language_combo: Option<LanguageCombo>,
     file_info_label: HWND,
     open_config_button: HWND,
     github_button: HWND,
@@ -103,7 +145,6 @@ struct SettingsWindow {
     panel_brush: OwnedBrush,
     border_brush: OwnedBrush,
     font: UiFont,
-    text_buffer: Vec<u16>,
     display_text: String,
 }
 
@@ -115,8 +156,9 @@ impl SettingsWindow {
             start_minimized_check: HWND::default(),
             launch_startup_check: HWND::default(),
             restore_exit_check: HWND::default(),
+            hide_to_tray_on_close_check: HWND::default(),
             language_label: HWND::default(),
-            language_combo: HWND::default(),
+            language_combo: None,
             file_info_label: HWND::default(),
             open_config_button: HWND::default(),
             github_button: HWND::default(),
@@ -132,7 +174,6 @@ impl SettingsWindow {
             panel_brush: OwnedBrush::solid(PANEL_COLOR),
             border_brush: OwnedBrush::solid(PANEL_BORDER_COLOR),
             font: UiFont::new(ui_font_point_size()),
-            text_buffer: Vec::new(),
             display_text: String::new(),
         }
     }
@@ -148,12 +189,12 @@ impl SettingsWindow {
                 instance,
                 w!("STATIC"),
                 strings.settings_behavior,
-                child | SS_ENDELLIPSIS_STYLE,
+                child,
                 WINDOW_EX_STYLE(0),
                 SETTINGS_CONTENT_X,
                 SETTINGS_BEHAVIOR_Y,
                 SETTINGS_CONTENT_WIDTH,
-                22,
+                SETTINGS_HEADING_HEIGHT,
                 0,
             )?
         };
@@ -193,48 +234,62 @@ impl SettingsWindow {
                 ID_SETTINGS_WINDOW_RESTORE_EXIT,
             )?
         };
+        self.hide_to_tray_on_close_check = unsafe {
+            create_multiline_checkbox(
+                hwnd,
+                instance,
+                strings.hide_to_tray_on_close,
+                SETTINGS_CONTENT_X,
+                SETTINGS_CHECK_4_Y,
+                SETTINGS_CONTENT_WIDTH,
+                26,
+                ID_SETTINGS_WINDOW_HIDE_ON_CLOSE,
+            )?
+        };
         self.language_label = unsafe {
             create_control(
                 hwnd,
                 instance,
                 w!("STATIC"),
                 strings.settings_general,
-                child | SS_ENDELLIPSIS_STYLE,
+                child,
                 WINDOW_EX_STYLE(0),
                 SETTINGS_CONTENT_X,
                 SETTINGS_LANGUAGE_Y,
                 SETTINGS_CONTENT_WIDTH,
-                22,
+                SETTINGS_HEADING_HEIGHT,
                 0,
             )?
         };
-        self.language_combo = unsafe {
-            create_control(
+        self.language_combo = Some(unsafe {
+            LanguageCombo::create(
                 hwnd,
                 instance,
-                w!("COMBOBOX"),
-                "",
-                child | WS_TABSTOP | WINDOW_STYLE(CBS_DROPDOWNLIST as u32),
-                WS_EX_CLIENTEDGE,
+                self.font.handle(),
+                LanguageComboIds {
+                    frame: ID_SETTINGS_WINDOW_LANGUAGE_FRAME,
+                    combo: ID_SETTINGS_WINDOW_LANGUAGE,
+                },
                 SETTINGS_CONTENT_X,
                 SETTINGS_LANGUAGE_COMBO_Y,
-                150,
+                SETTINGS_LANGUAGE_COMBO_WIDTH,
+                SETTINGS_LANGUAGE_COMBO_FRAME_HEIGHT,
                 210,
-                ID_SETTINGS_WINDOW_LANGUAGE,
+                self.initial.language,
             )?
-        };
+        });
         self.file_info_label = unsafe {
             create_control(
                 hwnd,
                 instance,
                 w!("STATIC"),
                 strings.settings_file_info,
-                child | SS_ENDELLIPSIS_STYLE,
+                child | SS_CENTERIMAGE_STYLE | SS_ENDELLIPSIS_STYLE,
                 WINDOW_EX_STYLE(0),
                 SETTINGS_CONTENT_X,
                 SETTINGS_FILE_INFO_Y,
-                self.file_info_label_width(),
-                22,
+                SETTINGS_CONTENT_WIDTH,
+                SETTINGS_HEADING_HEIGHT,
                 0,
             )?
         };
@@ -246,7 +301,7 @@ impl SettingsWindow {
                 SETTINGS_CONTENT_X,
                 SETTINGS_OPEN_CONFIG_Y,
                 self.button_width(strings.open_config, 150, 230),
-                32,
+                SETTINGS_OPEN_CONFIG_HEIGHT,
                 ID_SETTINGS_WINDOW_OPEN_CONFIG,
             )?
         };
@@ -260,9 +315,9 @@ impl SettingsWindow {
                     | WS_TABSTOP
                     | WINDOW_STYLE(windows::Win32::UI::WindowsAndMessaging::BS_OWNERDRAW as u32),
                 WINDOW_EX_STYLE(0),
-                self.github_text_x(),
-                SETTINGS_GITHUB_ROW_Y,
-                self.github_link_width(),
+                SETTINGS_INFO_RIGHT - SETTINGS_GITHUB_MIN_WIDTH,
+                SETTINGS_GITHUB_Y,
+                SETTINGS_GITHUB_MIN_WIDTH,
                 SETTINGS_GITHUB_HEIGHT,
                 ID_SETTINGS_WINDOW_GITHUB,
             )?
@@ -291,25 +346,29 @@ impl SettingsWindow {
                 instance,
                 w!("STATIC"),
                 "",
-                child | SS_RIGHT_STYLE | SS_CENTERIMAGE_STYLE | SS_ENDELLIPSIS_STYLE,
+                child | SS_RIGHT_STYLE | SS_CENTERIMAGE_STYLE,
                 WINDOW_EX_STYLE(0),
-                self.version_x(),
-                SETTINGS_VERSION_ROW_Y,
-                self.version_width(),
-                SETTINGS_GITHUB_HEIGHT,
+                SETTINGS_CONTENT_X,
+                SETTINGS_VERSION_Y,
+                SETTINGS_VERSION_MIN_WIDTH,
+                SETTINGS_VERSION_HEIGHT,
                 0,
             )?
         };
 
         unsafe {
             self.apply_font();
-            self.populate_languages();
             set_checkbox(self.start_minimized_check, self.initial.start_minimized);
             set_checkbox(self.launch_startup_check, self.initial.launch_on_startup);
             set_checkbox(self.restore_exit_check, self.initial.restore_on_exit);
+            set_checkbox(
+                self.hide_to_tray_on_close_check,
+                self.initial.hide_to_tray_on_close,
+            );
             self.display_text.clear();
-            version_text_into(strings, &mut self.display_text);
+            version_text_into(&mut self.display_text);
             set_text(self.version_label, &self.display_text);
+            self.layout_info_controls();
         }
         Ok(())
     }
@@ -321,8 +380,8 @@ impl SettingsWindow {
                 self.start_minimized_check,
                 self.launch_startup_check,
                 self.restore_exit_check,
+                self.hide_to_tray_on_close_check,
                 self.language_label,
-                self.language_combo,
                 self.file_info_label,
                 self.open_config_button,
                 self.github_button,
@@ -339,40 +398,10 @@ impl SettingsWindow {
         }
     }
 
-    unsafe fn populate_languages(&mut self) {
-        unsafe {
-            reserve_combo_items(
-                self.language_combo,
-                Language::ALL.len(),
-                language_name_storage_bytes_hint(),
-            );
-            self.text_buffer.clear();
-            for language in Language::ALL {
-                add_combo_item_with_buffer(
-                    self.language_combo,
-                    language.native_name(),
-                    &mut self.text_buffer,
-                );
-            }
-            SendMessageW(
-                self.language_combo,
-                CB_SETMINVISIBLE,
-                Some(WPARAM(Language::ALL.len())),
-                None,
-            );
-            let index = Language::ALL
-                .iter()
-                .position(|language| *language == self.initial.language)
-                .unwrap_or(0);
-            SendMessageW(self.language_combo, CB_SETCURSEL, Some(WPARAM(index)), None);
-        }
-    }
-
     fn selected_language(&self) -> Language {
-        let index = unsafe { SendMessageW(self.language_combo, CB_GETCURSEL, None, None).0 };
-        Language::ALL
-            .get(index as usize)
-            .copied()
+        self.language_combo
+            .as_ref()
+            .map(|combo| combo.selected_language(self.initial.language))
             .unwrap_or(self.initial.language)
     }
 
@@ -382,6 +411,7 @@ impl SettingsWindow {
             start_minimized: unsafe { is_checked(self.start_minimized_check) },
             launch_on_startup: unsafe { is_checked(self.launch_startup_check) },
             restore_on_exit: unsafe { is_checked(self.restore_exit_check) },
+            hide_to_tray_on_close: unsafe { is_checked(self.hide_to_tray_on_close_check) },
         }
     }
 
@@ -391,6 +421,11 @@ impl SettingsWindow {
     }
 
     fn change_language(&mut self, language: Language) {
+        if let Some(combo) = &self.language_combo {
+            unsafe {
+                combo.redraw_display();
+            }
+        }
         if self.language == language {
             return;
         }
@@ -416,103 +451,86 @@ impl SettingsWindow {
             set_text(self.start_minimized_check, strings.start_minimized);
             set_text(self.launch_startup_check, strings.launch_on_startup);
             set_text(self.restore_exit_check, strings.restore_on_exit);
+            set_text(
+                self.hide_to_tray_on_close_check,
+                strings.hide_to_tray_on_close,
+            );
             set_text(self.language_label, strings.settings_general);
             set_text(self.file_info_label, strings.settings_file_info);
             set_text(self.open_config_button, strings.open_config);
             set_text(self.github_button, strings.github_repository);
             self.display_text.clear();
-            version_text_into(strings, &mut self.display_text);
-            self.layout_dynamic_controls();
+            version_text_into(&mut self.display_text);
             set_text(self.version_label, &self.display_text);
+            self.layout_info_controls();
             self.redraw_info_area();
         }
     }
 
-    unsafe fn layout_dynamic_controls(&self) {
+    unsafe fn layout_info_controls(&self) {
+        let layout = self.info_layout();
         unsafe {
-            let _ = move_window(
-                self.file_info_label,
-                SETTINGS_CONTENT_X,
-                SETTINGS_FILE_INFO_Y,
-                self.file_info_label_width(),
-                22,
-                true,
-            );
             let _ = move_window(
                 self.open_config_button,
                 SETTINGS_CONTENT_X,
                 SETTINGS_OPEN_CONFIG_Y,
-                self.button_width(self.language.strings().open_config, 150, 230),
-                32,
-                true,
-            );
-            let _ = move_window(
-                self.github_button,
-                self.github_text_x(),
-                SETTINGS_GITHUB_ROW_Y,
-                self.github_link_width(),
-                SETTINGS_GITHUB_HEIGHT,
+                layout.open_config_width,
+                SETTINGS_OPEN_CONFIG_HEIGHT,
                 true,
             );
             let _ = move_window(
                 self.version_label,
-                self.version_x(),
-                SETTINGS_VERSION_ROW_Y,
-                self.version_width(),
+                layout.version_x,
+                SETTINGS_VERSION_Y,
+                layout.version_width,
+                SETTINGS_VERSION_HEIGHT,
+                true,
+            );
+            let _ = move_window(
+                self.github_button,
+                layout.github_x,
+                SETTINGS_GITHUB_Y,
+                layout.github_width,
                 SETTINGS_GITHUB_HEIGHT,
                 true,
             );
         }
+    }
+
+    fn info_layout(&self) -> SettingsInfoLayout {
+        let github_width = Language::ALL
+            .iter()
+            .map(|language| self.text_width(language.strings().github_repository))
+            .max()
+            .unwrap_or(SETTINGS_GITHUB_MIN_WIDTH)
+            .saturating_add(SETTINGS_INFO_TEXT_SLACK)
+            .max(SETTINGS_GITHUB_MIN_WIDTH);
+        let github_x = SETTINGS_INFO_RIGHT - github_width;
+        let open_config_width = self
+            .button_width(self.language.strings().open_config, 150, 230)
+            .min((github_x - SETTINGS_INFO_HORIZONTAL_GAP - SETTINGS_CONTENT_X).max(1));
+        let desired_version_width = self
+            .text_width(&self.display_text)
+            .saturating_add(SETTINGS_INFO_TEXT_SLACK)
+            .max(SETTINGS_VERSION_MIN_WIDTH);
+        let version_width = desired_version_width.min(SETTINGS_CONTENT_WIDTH.max(1));
+        let version_x = SETTINGS_INFO_RIGHT - version_width;
+        SettingsInfoLayout {
+            open_config_width,
+            version_x,
+            version_width,
+            github_x,
+            github_width,
+        }
+    }
+
+    fn text_width(&self, text: &str) -> i32 {
+        unsafe { measure_text_width(self.hwnd, self.font.handle(), text) }
     }
 
     fn button_width(&self, text: &str, min_width: i32, max_width: i32) -> i32 {
         (unsafe { measure_text_width(self.hwnd, self.font.handle(), text) } + 44)
             .clamp(min_width, max_width)
-    }
-
-    fn github_link_width(&self) -> i32 {
-        let measured = unsafe {
-            measure_text_width(
-                self.hwnd,
-                self.font.handle(),
-                self.language.strings().github_repository,
-            )
-        };
-        measured.min(self.github_link_available_width()).max(1)
-    }
-
-    fn github_link_available_width(&self) -> i32 {
-        self.github_right_x() - self.github_min_x()
-    }
-
-    fn version_width(&self) -> i32 {
-        let mut text = String::new();
-        version_text_into(self.language.strings(), &mut text);
-        unsafe { measure_text_width(self.hwnd, self.font.handle(), &text) + VERSION_TEXT_PADDING }
-            .max(1)
-    }
-
-    fn github_text_x(&self) -> i32 {
-        self.github_right_x() - self.github_link_width() + SETTINGS_GITHUB_X_OFFSET
-    }
-
-    fn github_right_x(&self) -> i32 {
-        SETTINGS_WINDOW_WIDTH - SETTINGS_MARGIN - SETTINGS_INFO_RIGHT_OFFSET
-    }
-
-    fn github_min_x(&self) -> i32 {
-        SETTINGS_CONTENT_X
-            + self.button_width(self.language.strings().open_config, 150, 230)
-            + SETTINGS_GITHUB_LEFT_GAP
-    }
-
-    fn version_x(&self) -> i32 {
-        SETTINGS_WINDOW_WIDTH - SETTINGS_MARGIN - SETTINGS_INFO_RIGHT_OFFSET - self.version_width()
-    }
-
-    fn file_info_label_width(&self) -> i32 {
-        (self.version_x() - SETTINGS_CONTENT_X - SETTINGS_FILE_INFO_RIGHT_GAP)
-            .clamp(1, SETTINGS_CONTENT_WIDTH)
     }
 
     unsafe fn redraw_info_area(&self) {
@@ -598,11 +616,6 @@ impl SettingsWindow {
             return false;
         }
 
-        if !self.cursor_is_on_github_link_text() {
-            self.set_github_link_hot(false);
-            return false;
-        }
-
         self.set_github_link_hot(true);
         let Ok(cursor) = (unsafe { LoadCursorW(None, IDC_HAND) }) else {
             return false;
@@ -611,20 +624,6 @@ impl SettingsWindow {
             let _ = SetCursor(Some(cursor));
         }
         true
-    }
-
-    fn cursor_is_on_github_link_text(&self) -> bool {
-        let mut point = POINT::default();
-        if unsafe { GetCursorPos(&mut point) }.is_err()
-            || !unsafe { ScreenToClient(self.github_button, &mut point).as_bool() }
-        {
-            return false;
-        }
-
-        point.x >= 0
-            && point.x < px(self.github_link_width())
-            && point.y >= px(SETTINGS_GITHUB_LINK_HIT_TOP)
-            && point.y < px(SETTINGS_GITHUB_LINK_HIT_BOTTOM)
     }
 
     fn set_github_link_hot(&mut self, hot: bool) {
@@ -671,26 +670,17 @@ impl SettingsWindow {
             (unsafe { measure_text_width(self.hwnd, self.font.handle(), super::GITHUB_PAGE_URL) }
                 + SETTINGS_GITHUB_TOOLTIP_X_PADDING * 2)
                 .max(1);
-        let link_width = self.github_link_width();
-        let client_x = self.github_right_x() - link_width
-            + SETTINGS_GITHUB_X_OFFSET
-            + (link_width - width) / 2;
-        let client_y = (SETTINGS_VERSION_ROW_Y
-            - SETTINGS_GITHUB_TOOLTIP_HEIGHT
-            - SETTINGS_GITHUB_TOOLTIP_Y_GAP)
-            .max(0);
-        let mut point = POINT {
-            x: px(client_x),
-            y: px(client_y),
-        };
-        unsafe {
-            let _ = ClientToScreen(self.hwnd, &mut point);
+        let width = px(width);
+        let height = px(SETTINGS_GITHUB_TOOLTIP_HEIGHT);
+        let mut github_rect = RECT::default();
+        if unsafe { GetWindowRect(self.github_button, &mut github_rect) }.is_err() {
+            return (0, 0, width, height);
         }
         (
-            point.x,
-            point.y,
-            px(width),
-            px(SETTINGS_GITHUB_TOOLTIP_HEIGHT),
+            (github_rect.left + github_rect.right - width) / 2,
+            github_rect.top - height - px(SETTINGS_GITHUB_TOOLTIP_Y_GAP),
+            width,
+            height,
         )
     }
 
@@ -744,7 +734,7 @@ impl SettingsWindow {
             self.language.strings().github_repository,
             rect,
             color,
-            DT_LEFT | DT_SINGLELINE | DT_VCENTER | DT_END_ELLIPSIS | DT_NOPREFIX,
+            DT_RIGHT | DT_SINGLELINE | DT_VCENTER | DT_NOPREFIX,
         );
         true
     }
@@ -869,6 +859,11 @@ unsafe extern "system" fn settings_window_proc(
             }
             WM_DRAWITEM if lparam.0 != 0 => {
                 let draw = unsafe { &*(lparam.0 as *const DRAWITEMSTRUCT) };
+                if settings.language_combo.as_ref().is_some_and(|combo| {
+                    combo.draw(draw, settings.font.handle(), settings.language)
+                }) {
+                    return LRESULT(1);
+                }
                 if draw.CtlID == ID_SETTINGS_WINDOW_OPEN_CONFIG as u32 {
                     return LRESULT(unsafe {
                         super::win32::draw_flat_button(draw, settings.font.handle())
@@ -888,9 +883,6 @@ unsafe extern "system" fn settings_window_proc(
             }
             WM_CLOSE => {
                 settings.accept();
-                unsafe {
-                    let _ = DestroyWindow(hwnd);
-                }
                 return LRESULT(0);
             }
             WM_CTLCOLORSTATIC => {
@@ -916,16 +908,21 @@ unsafe extern "system" fn settings_window_proc(
     unsafe { DefWindowProcW(hwnd, message, wparam, lparam) }
 }
 
-fn language_name_storage_bytes_hint() -> usize {
-    Language::ALL
-        .iter()
-        .map(|language| super::win32::storage_bytes_hint(language.native_name()))
-        .sum()
+fn version_text_into(output: &mut String) {
+    output.clear();
+    output.push_str("\u{200e}v");
+    output.push_str(APP_VERSION);
 }
 
-fn version_text_into(strings: &Strings, output: &mut String) {
-    output.clear();
-    output.push_str(strings.version);
-    output.push_str(": v");
-    output.push_str(APP_VERSION);
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn version_text_has_no_localized_prefix() {
+        let mut text = String::new();
+        version_text_into(&mut text);
+        assert_eq!(text, format!("\u{200e}v{APP_VERSION}"));
+        assert!(!text.contains(':'));
+    }
 }

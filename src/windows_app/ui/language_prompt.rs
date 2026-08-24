@@ -1,82 +1,114 @@
 use super::constants::{
-    ID_LANGUAGE_PROMPT_COMBO, ID_LANGUAGE_PROMPT_OK, ID_LANGUAGE_PROMPT_STARTUP,
-    LANGUAGE_PROMPT_CLASS_NAME, PAGE_COLOR, SS_ENDELLIPSIS_STYLE, TEXT_COLOR,
+    ID_LANGUAGE_PROMPT_COMBO, ID_LANGUAGE_PROMPT_COMBO_FRAME, ID_LANGUAGE_PROMPT_HIDE_ON_CLOSE,
+    ID_LANGUAGE_PROMPT_OK, ID_LANGUAGE_PROMPT_RESTORE_EXIT, ID_LANGUAGE_PROMPT_START_MINIMIZED,
+    ID_LANGUAGE_PROMPT_STARTUP, LANGUAGE_PROMPT_CLASS_NAME, PAGE_COLOR, TEXT_COLOR,
 };
+use super::language_combo::{LanguageCombo, LanguageComboIds};
 use super::theme::{OwnedBrush, UiFont, px, ui_font_point_size};
 use super::win32::{
-    WindowClassRegistration, add_combo_item_with_buffer, create_control, create_multiline_checkbox,
-    create_primary_button, default_button_message_result, get_message, hiword, is_checked, loword,
-    measure_text_width, move_window, reserve_combo_items, set_checkbox, set_text,
-    storage_bytes_hint, to_wide, utf16_code_unit_count,
+    WindowClassRegistration, create_button, create_multiline_checkbox,
+    default_button_message_result, get_message, hiword, is_checked, loword, measure_text_width,
+    move_window, set_checkbox, set_text, to_wide, window_size_for_client_area,
 };
 use super::window_position::centered_position;
-use crate::i18n::Language;
+use crate::i18n::{APP_TITLE, Language};
 use crate::windows_app::error::{Context, Result};
 use std::ffi::c_void;
 use windows::Win32::Foundation::{HINSTANCE, HWND, LPARAM, LRESULT, WPARAM};
 use windows::Win32::Graphics::Gdi::{HDC, SetBkMode, SetTextColor, TRANSPARENT};
 use windows::Win32::System::LibraryLoader::GetModuleHandleW;
-use windows::Win32::UI::Controls::{CB_SETMINVISIBLE, DRAWITEMSTRUCT};
+use windows::Win32::UI::Controls::DRAWITEMSTRUCT;
 use windows::Win32::UI::WindowsAndMessaging::{
-    CB_GETCURSEL, CB_SETCURSEL, CBN_SELCHANGE, CBN_SELENDOK, CBS_DROPDOWNLIST, CREATESTRUCTW,
-    CreateWindowExW, DefWindowProcW, DestroyWindow, DispatchMessageW, GWLP_USERDATA,
-    GetWindowLongPtrW, HICON, IDC_ARROW, IsDialogMessageW, LoadCursorW, MSG, PostQuitMessage,
-    RegisterClassW, SW_SHOW, SendMessageW, SetForegroundWindow, SetWindowLongPtrW, ShowWindow,
-    TranslateMessage, WINDOW_EX_STYLE, WINDOW_STYLE, WM_CLOSE, WM_COMMAND, WM_CREATE,
-    WM_CTLCOLORSTATIC, WM_DRAWITEM, WM_NCCREATE, WM_NCDESTROY, WM_SETFONT, WNDCLASSW, WS_CAPTION,
-    WS_CHILD, WS_EX_CLIENTEDGE, WS_OVERLAPPED, WS_SYSMENU, WS_TABSTOP, WS_VISIBLE,
+    CBN_SELCHANGE, CBN_SELENDOK, CREATESTRUCTW, CreateWindowExW, DefWindowProcW, DestroyWindow,
+    DispatchMessageW, GWLP_USERDATA, GetWindowLongPtrW, GetWindowRect, HICON, IDC_ARROW,
+    IsDialogMessageW, LoadCursorW, MB_ICONINFORMATION, MB_OK, MSG, MessageBoxW, PostQuitMessage,
+    RegisterClassW, SW_SHOW, SWP_NOACTIVATE, SWP_NOOWNERZORDER, SWP_NOZORDER, SendMessageW,
+    SetForegroundWindow, SetWindowLongPtrW, SetWindowPos, ShowWindow, TranslateMessage,
+    WINDOW_EX_STYLE, WINDOW_STYLE, WM_CLOSE, WM_COMMAND, WM_CREATE, WM_CTLCOLORSTATIC, WM_DRAWITEM,
+    WM_NCCREATE, WM_NCDESTROY, WM_SETFONT, WNDCLASSW, WS_CAPTION, WS_OVERLAPPED, WS_SYSMENU,
 };
-use windows::core::{PCWSTR, w};
+use windows::core::PCWSTR;
 
 struct LanguagePrompt {
     hwnd: HWND,
-    title_label: HWND,
-    subtitle_label: HWND,
-    combo: HWND,
+    language_combo: Option<LanguageCombo>,
+    start_minimized_check: HWND,
     launch_on_startup_check: HWND,
+    restore_on_exit_check: HWND,
+    hide_to_tray_on_close_check: HWND,
     start_button: HWND,
     done: bool,
     selected: Option<InitialPreferences>,
     default_button_id: i32,
     current: Language,
-    launch_on_startup: bool,
     brush: OwnedBrush,
     font: UiFont,
 }
 
 const LANGUAGE_PROMPT_WINDOW_STYLE: WINDOW_STYLE =
     WINDOW_STYLE(WS_OVERLAPPED.0 | WS_CAPTION.0 | WS_SYSMENU.0);
-const LANGUAGE_PROMPT_WIDTH: i32 = 620;
-const LANGUAGE_PROMPT_HEIGHT: i32 = 270;
+const LANGUAGE_PROMPT_CLIENT_WIDTH: i32 = 620;
+const LANGUAGE_PROMPT_MIN_CLIENT_HEIGHT: i32 = 250;
 const LANGUAGE_PROMPT_MARGIN: i32 = 32;
-const LANGUAGE_PROMPT_CONTENT_WIDTH: i32 = LANGUAGE_PROMPT_WIDTH - LANGUAGE_PROMPT_MARGIN * 2;
-const LANGUAGE_PROMPT_STARTUP_Y: i32 = 136;
-const LANGUAGE_PROMPT_STARTUP_HEIGHT: i32 = 26;
-const LANGUAGE_PROMPT_STARTUP_TALL_HEIGHT: i32 = 44;
-const LANGUAGE_PROMPT_STARTUP_TEXT_PADDING: i32 = 28;
+const LANGUAGE_PROMPT_BOTTOM_MARGIN: i32 = 16;
+const LANGUAGE_PROMPT_CONTENT_WIDTH: i32 =
+    LANGUAGE_PROMPT_CLIENT_WIDTH - LANGUAGE_PROMPT_MARGIN * 2;
+const LANGUAGE_PROMPT_COMBO_Y: i32 = 28;
+const LANGUAGE_PROMPT_COMBO_WIDTH: i32 = 280;
+const LANGUAGE_PROMPT_COMBO_FRAME_HEIGHT: i32 = 23;
+const LANGUAGE_PROMPT_OPTIONS_Y: i32 = 72;
+const LANGUAGE_PROMPT_OPTION_HEIGHT: i32 = 26;
+const LANGUAGE_PROMPT_OPTION_TALL_HEIGHT: i32 = 44;
+const LANGUAGE_PROMPT_OPTION_TEXT_PADDING: i32 = 28;
+const LANGUAGE_PROMPT_OPTION_GAP: i32 = 4;
 const LANGUAGE_PROMPT_BUTTON_TOP_GAP: i32 = 12;
 const LANGUAGE_PROMPT_BUTTON_HEIGHT: i32 = 34;
+const _: () = {
+    let single_line_options_bottom = LANGUAGE_PROMPT_OPTIONS_Y
+        + LANGUAGE_PROMPT_OPTION_HEIGHT * 4
+        + LANGUAGE_PROMPT_OPTION_GAP * 3;
+    assert!(
+        single_line_options_bottom
+            + LANGUAGE_PROMPT_BUTTON_TOP_GAP
+            + LANGUAGE_PROMPT_BUTTON_HEIGHT
+            + LANGUAGE_PROMPT_BOTTOM_MARGIN
+            == LANGUAGE_PROMPT_MIN_CLIENT_HEIGHT
+    );
+};
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(super) struct InitialPreferences {
     pub(super) language: Language,
+    pub(super) start_minimized: bool,
     pub(super) launch_on_startup: bool,
+    pub(super) restore_on_exit: bool,
+    pub(super) hide_to_tray_on_close: bool,
+}
+
+fn recommended_initial_preferences(language: Language) -> InitialPreferences {
+    InitialPreferences {
+        language,
+        start_minimized: true,
+        launch_on_startup: true,
+        restore_on_exit: true,
+        hide_to_tray_on_close: true,
+    }
 }
 
 impl LanguagePrompt {
-    fn new(current: Language, launch_on_startup: bool) -> Self {
+    fn new(current: Language) -> Self {
         Self {
             hwnd: HWND::default(),
-            title_label: HWND::default(),
-            subtitle_label: HWND::default(),
-            combo: HWND::default(),
+            language_combo: None,
+            start_minimized_check: HWND::default(),
             launch_on_startup_check: HWND::default(),
+            restore_on_exit_check: HWND::default(),
+            hide_to_tray_on_close_check: HWND::default(),
             start_button: HWND::default(),
             done: false,
             selected: None,
             default_button_id: ID_LANGUAGE_PROMPT_OK,
             current,
-            launch_on_startup,
             brush: OwnedBrush::solid(PAGE_COLOR),
             font: UiFont::new(ui_font_point_size()),
         }
@@ -85,52 +117,35 @@ impl LanguagePrompt {
     unsafe fn create_controls(&mut self, hwnd: HWND) -> Result<()> {
         self.hwnd = hwnd;
         let instance = HINSTANCE(unsafe { GetModuleHandleW(None)?.0 });
-        let child = WS_CHILD | WS_VISIBLE;
         let strings = self.current.strings();
 
-        self.title_label = unsafe {
-            create_control(
+        self.language_combo = Some(unsafe {
+            LanguageCombo::create(
                 hwnd,
                 instance,
-                w!("STATIC"),
-                strings.first_run_language_title,
-                child | SS_ENDELLIPSIS_STYLE,
-                WINDOW_EX_STYLE(0),
+                self.font.handle(),
+                LanguageComboIds {
+                    frame: ID_LANGUAGE_PROMPT_COMBO_FRAME,
+                    combo: ID_LANGUAGE_PROMPT_COMBO,
+                },
                 LANGUAGE_PROMPT_MARGIN,
-                28,
-                LANGUAGE_PROMPT_CONTENT_WIDTH,
-                24,
-                0,
-            )?
-        };
-        self.subtitle_label = unsafe {
-            create_control(
-                hwnd,
-                instance,
-                w!("STATIC"),
-                strings.first_run_language_subtitle,
-                child | SS_ENDELLIPSIS_STYLE,
-                WINDOW_EX_STYLE(0),
-                LANGUAGE_PROMPT_MARGIN,
-                56,
-                LANGUAGE_PROMPT_CONTENT_WIDTH,
-                22,
-                0,
-            )?
-        };
-        self.combo = unsafe {
-            create_control(
-                hwnd,
-                instance,
-                w!("COMBOBOX"),
-                "",
-                child | WS_TABSTOP | WINDOW_STYLE(CBS_DROPDOWNLIST as u32),
-                WS_EX_CLIENTEDGE,
-                LANGUAGE_PROMPT_MARGIN,
-                92,
-                280,
+                LANGUAGE_PROMPT_COMBO_Y,
+                LANGUAGE_PROMPT_COMBO_WIDTH,
+                LANGUAGE_PROMPT_COMBO_FRAME_HEIGHT,
                 210,
-                ID_LANGUAGE_PROMPT_COMBO,
+                self.current,
+            )?
+        });
+        self.start_minimized_check = unsafe {
+            create_multiline_checkbox(
+                hwnd,
+                instance,
+                strings.start_minimized,
+                LANGUAGE_PROMPT_MARGIN,
+                LANGUAGE_PROMPT_OPTIONS_Y,
+                LANGUAGE_PROMPT_CONTENT_WIDTH,
+                LANGUAGE_PROMPT_OPTION_HEIGHT,
+                ID_LANGUAGE_PROMPT_START_MINIMIZED,
             )?
         };
         self.launch_on_startup_check = unsafe {
@@ -139,19 +154,47 @@ impl LanguagePrompt {
                 instance,
                 strings.launch_on_startup,
                 LANGUAGE_PROMPT_MARGIN,
-                136,
+                LANGUAGE_PROMPT_OPTIONS_Y
+                    + LANGUAGE_PROMPT_OPTION_HEIGHT
+                    + LANGUAGE_PROMPT_OPTION_GAP,
                 LANGUAGE_PROMPT_CONTENT_WIDTH,
-                26,
+                LANGUAGE_PROMPT_OPTION_HEIGHT,
                 ID_LANGUAGE_PROMPT_STARTUP,
             )?
         };
+        self.restore_on_exit_check = unsafe {
+            create_multiline_checkbox(
+                hwnd,
+                instance,
+                strings.restore_on_exit,
+                LANGUAGE_PROMPT_MARGIN,
+                LANGUAGE_PROMPT_OPTIONS_Y
+                    + (LANGUAGE_PROMPT_OPTION_HEIGHT + LANGUAGE_PROMPT_OPTION_GAP) * 2,
+                LANGUAGE_PROMPT_CONTENT_WIDTH,
+                LANGUAGE_PROMPT_OPTION_HEIGHT,
+                ID_LANGUAGE_PROMPT_RESTORE_EXIT,
+            )?
+        };
+        self.hide_to_tray_on_close_check = unsafe {
+            create_multiline_checkbox(
+                hwnd,
+                instance,
+                strings.hide_to_tray_on_close,
+                LANGUAGE_PROMPT_MARGIN,
+                LANGUAGE_PROMPT_OPTIONS_Y
+                    + (LANGUAGE_PROMPT_OPTION_HEIGHT + LANGUAGE_PROMPT_OPTION_GAP) * 3,
+                LANGUAGE_PROMPT_CONTENT_WIDTH,
+                LANGUAGE_PROMPT_OPTION_HEIGHT,
+                ID_LANGUAGE_PROMPT_HIDE_ON_CLOSE,
+            )?
+        };
         self.start_button = unsafe {
-            create_primary_button(
+            create_button(
                 hwnd,
                 instance,
                 strings.first_run_start,
                 490,
-                174,
+                282,
                 96,
                 34,
                 ID_LANGUAGE_PROMPT_OK,
@@ -160,27 +203,14 @@ impl LanguagePrompt {
 
         unsafe {
             self.apply_font(&self.font);
-            reserve_combo_items(
-                self.combo,
-                Language::ALL.len(),
-                language_name_storage_bytes_hint(),
+            let recommended = recommended_initial_preferences(self.current);
+            set_checkbox(self.start_minimized_check, recommended.start_minimized);
+            set_checkbox(self.launch_on_startup_check, recommended.launch_on_startup);
+            set_checkbox(self.restore_on_exit_check, recommended.restore_on_exit);
+            set_checkbox(
+                self.hide_to_tray_on_close_check,
+                recommended.hide_to_tray_on_close,
             );
-            let mut text_buffer = Vec::with_capacity(language_name_buffer_capacity());
-            for language in Language::ALL {
-                add_combo_item_with_buffer(self.combo, language.native_name(), &mut text_buffer);
-            }
-            SendMessageW(
-                self.combo,
-                CB_SETMINVISIBLE,
-                Some(WPARAM(Language::ALL.len())),
-                None,
-            );
-            let index = Language::ALL
-                .iter()
-                .position(|language| *language == self.current)
-                .unwrap_or(0);
-            SendMessageW(self.combo, CB_SETCURSEL, Some(WPARAM(index)), None);
-            set_checkbox(self.launch_on_startup_check, self.launch_on_startup);
             self.layout_controls(strings);
         }
 
@@ -190,10 +220,10 @@ impl LanguagePrompt {
     unsafe fn apply_font(&self, font: &UiFont) {
         unsafe {
             for control in [
-                self.title_label,
-                self.subtitle_label,
-                self.combo,
+                self.start_minimized_check,
                 self.launch_on_startup_check,
+                self.restore_on_exit_check,
+                self.hide_to_tray_on_close_check,
                 self.start_button,
             ] {
                 SendMessageW(control, WM_SETFONT, Some(font.wparam()), Some(LPARAM(1)));
@@ -202,24 +232,32 @@ impl LanguagePrompt {
     }
 
     fn selected_language(&self) -> Language {
-        let index = unsafe { SendMessageW(self.combo, CB_GETCURSEL, None, None).0 };
-        Language::ALL
-            .get(index as usize)
-            .copied()
+        self.language_combo
+            .as_ref()
+            .map(|combo| combo.selected_language(self.current))
             .unwrap_or(self.current)
     }
 
     fn refresh_prompt_text(&mut self) {
         let language = self.selected_language();
+        if let Some(combo) = &self.language_combo {
+            unsafe {
+                combo.redraw_display();
+            }
+        }
         if self.current == language {
             return;
         }
         let strings = language.strings();
         unsafe {
             set_text(self.hwnd, strings.first_run_window_title);
-            set_text(self.title_label, strings.first_run_language_title);
-            set_text(self.subtitle_label, strings.first_run_language_subtitle);
+            set_text(self.start_minimized_check, strings.start_minimized);
             set_text(self.launch_on_startup_check, strings.launch_on_startup);
+            set_text(self.restore_on_exit_check, strings.restore_on_exit);
+            set_text(
+                self.hide_to_tray_on_close_check,
+                strings.hide_to_tray_on_close,
+            );
             set_text(self.start_button, strings.first_run_start);
         }
         self.current = language;
@@ -227,19 +265,41 @@ impl LanguagePrompt {
     }
 
     fn layout_controls(&self, strings: &crate::i18n::Strings) {
-        let startup_height = startup_checkbox_height(self.text_width(strings.launch_on_startup));
+        let options = [
+            (self.start_minimized_check, strings.start_minimized),
+            (self.launch_on_startup_check, strings.launch_on_startup),
+            (self.restore_on_exit_check, strings.restore_on_exit),
+            (
+                self.hide_to_tray_on_close_check,
+                strings.hide_to_tray_on_close,
+            ),
+        ];
+        let option_heights = options.map(|(_, text)| option_height(self.text_width(text)));
+        let mut option_y = LANGUAGE_PROMPT_OPTIONS_Y;
+        let mut last_option_bottom = option_y;
+        for ((control, _), height) in options.into_iter().zip(option_heights) {
+            unsafe {
+                let _ = move_window(
+                    control,
+                    LANGUAGE_PROMPT_MARGIN,
+                    option_y,
+                    LANGUAGE_PROMPT_CONTENT_WIDTH,
+                    height,
+                    true,
+                );
+            }
+            last_option_bottom = option_y + height;
+            option_y = last_option_bottom + LANGUAGE_PROMPT_OPTION_GAP;
+        }
         let start_width = (self.text_width(strings.first_run_start) + 44).clamp(96, 180);
-        let start_x = LANGUAGE_PROMPT_WIDTH - LANGUAGE_PROMPT_MARGIN - start_width;
-        let start_y = LANGUAGE_PROMPT_STARTUP_Y + startup_height + LANGUAGE_PROMPT_BUTTON_TOP_GAP;
+        let start_x = LANGUAGE_PROMPT_CLIENT_WIDTH - LANGUAGE_PROMPT_MARGIN - start_width;
+        let start_y = last_option_bottom + LANGUAGE_PROMPT_BUTTON_TOP_GAP;
+        let required_client_height = prompt_client_height(option_heights);
+        debug_assert_eq!(
+            required_client_height,
+            start_y + LANGUAGE_PROMPT_BUTTON_HEIGHT + LANGUAGE_PROMPT_BOTTOM_MARGIN
+        );
         unsafe {
-            let _ = move_window(
-                self.launch_on_startup_check,
-                LANGUAGE_PROMPT_MARGIN,
-                LANGUAGE_PROMPT_STARTUP_Y,
-                LANGUAGE_PROMPT_CONTENT_WIDTH,
-                startup_height,
-                true,
-            );
             let _ = move_window(
                 self.start_button,
                 start_x,
@@ -247,6 +307,34 @@ impl LanguagePrompt {
                 start_width,
                 LANGUAGE_PROMPT_BUTTON_HEIGHT,
                 true,
+            );
+            self.resize_to_client_height(required_client_height);
+        }
+    }
+
+    unsafe fn resize_to_client_height(&self, client_height: i32) {
+        let client_height = client_height.max(LANGUAGE_PROMPT_MIN_CLIENT_HEIGHT);
+        let (width, height) = window_size_for_client_area(
+            px(LANGUAGE_PROMPT_CLIENT_WIDTH),
+            px(client_height),
+            LANGUAGE_PROMPT_WINDOW_STYLE,
+            WINDOW_EX_STYLE(0),
+        );
+        let mut current = windows::Win32::Foundation::RECT::default();
+        if unsafe { GetWindowRect(self.hwnd, &mut current) }.is_err() {
+            return;
+        }
+        let center_x = current.left.saturating_add(current.right) / 2;
+        let center_y = current.top.saturating_add(current.bottom) / 2;
+        unsafe {
+            let _ = SetWindowPos(
+                self.hwnd,
+                None,
+                center_x.saturating_sub(width / 2),
+                center_y.saturating_sub(height / 2),
+                width,
+                height,
+                SWP_NOACTIVATE | SWP_NOOWNERZORDER | SWP_NOZORDER,
             );
         }
     }
@@ -256,42 +344,55 @@ impl LanguagePrompt {
     }
 
     fn accept(&mut self) {
-        self.selected = Some(InitialPreferences {
+        let selected = InitialPreferences {
             language: self.selected_language(),
+            start_minimized: unsafe { is_checked(self.start_minimized_check) },
             launch_on_startup: unsafe { is_checked(self.launch_on_startup_check) },
-        });
+            restore_on_exit: unsafe { is_checked(self.restore_on_exit_check) },
+            hide_to_tray_on_close: unsafe { is_checked(self.hide_to_tray_on_close_check) },
+        };
+        if should_show_startup_tray_notice(selected) {
+            let body = to_wide(selected.language.strings().first_run_startup_tray_notice);
+            let title = to_wide(APP_TITLE);
+            unsafe {
+                let _ = MessageBoxW(
+                    Some(self.hwnd),
+                    PCWSTR(body.as_ptr()),
+                    PCWSTR(title.as_ptr()),
+                    MB_OK | MB_ICONINFORMATION,
+                );
+            }
+        }
+        self.selected = Some(selected);
         self.done = true;
     }
 }
 
-fn startup_checkbox_height(text_width: i32) -> i32 {
-    if text_width + LANGUAGE_PROMPT_STARTUP_TEXT_PADDING > LANGUAGE_PROMPT_CONTENT_WIDTH {
-        LANGUAGE_PROMPT_STARTUP_TALL_HEIGHT
+fn should_show_startup_tray_notice(preferences: InitialPreferences) -> bool {
+    preferences.start_minimized && preferences.launch_on_startup
+}
+
+fn option_height(text_width: i32) -> i32 {
+    if text_width + LANGUAGE_PROMPT_OPTION_TEXT_PADDING > LANGUAGE_PROMPT_CONTENT_WIDTH {
+        LANGUAGE_PROMPT_OPTION_TALL_HEIGHT
     } else {
-        LANGUAGE_PROMPT_STARTUP_HEIGHT
+        LANGUAGE_PROMPT_OPTION_HEIGHT
     }
 }
 
-fn language_name_storage_bytes_hint() -> usize {
-    Language::ALL
-        .iter()
-        .map(|language| storage_bytes_hint(language.native_name()))
-        .sum()
-}
-
-fn language_name_buffer_capacity() -> usize {
-    Language::ALL
-        .iter()
-        .map(|language| utf16_code_unit_count(language.native_name()) + 1)
-        .max()
-        .unwrap_or(0)
+fn prompt_client_height(option_heights: [i32; 4]) -> i32 {
+    LANGUAGE_PROMPT_OPTIONS_Y
+        + option_heights.into_iter().sum::<i32>()
+        + LANGUAGE_PROMPT_OPTION_GAP * 3
+        + LANGUAGE_PROMPT_BUTTON_TOP_GAP
+        + LANGUAGE_PROMPT_BUTTON_HEIGHT
+        + LANGUAGE_PROMPT_BOTTOM_MARGIN
 }
 
 pub(super) unsafe fn prompt_initial_language(
     instance: HINSTANCE,
     icon: HICON,
     current: Language,
-    launch_on_startup: bool,
 ) -> Result<Option<InitialPreferences>> {
     let cursor = unsafe { LoadCursorW(None, IDC_ARROW).context("load language prompt cursor")? };
     let background = OwnedBrush::solid(PAGE_COLOR);
@@ -310,11 +411,15 @@ pub(super) unsafe fn prompt_initial_language(
     let _class_registration = (unsafe { RegisterClassW(&class) } != 0)
         .then(|| WindowClassRegistration::new(LANGUAGE_PROMPT_CLASS_NAME, instance));
 
-    let mut state = Box::new(LanguagePrompt::new(current, launch_on_startup));
+    let mut state = Box::new(LanguagePrompt::new(current));
     let state_ptr = state.as_mut() as *mut LanguagePrompt;
     let title = to_wide(current.strings().first_run_window_title);
-    let width = px(LANGUAGE_PROMPT_WIDTH);
-    let height = px(LANGUAGE_PROMPT_HEIGHT);
+    let (width, height) = window_size_for_client_area(
+        px(LANGUAGE_PROMPT_CLIENT_WIDTH),
+        px(LANGUAGE_PROMPT_MIN_CLIENT_HEIGHT),
+        LANGUAGE_PROMPT_WINDOW_STYLE,
+        WINDOW_EX_STYLE(0),
+    );
     let position = centered_position(width, height);
     let hwnd = unsafe {
         CreateWindowExW(
@@ -414,6 +519,13 @@ unsafe extern "system" fn language_prompt_proc(
             }
             WM_DRAWITEM if lparam.0 != 0 => {
                 let draw = unsafe { &*(lparam.0 as *const DRAWITEMSTRUCT) };
+                if prompt
+                    .language_combo
+                    .as_ref()
+                    .is_some_and(|combo| combo.draw(draw, prompt.font.handle(), prompt.current))
+                {
+                    return LRESULT(1);
+                }
                 if draw.CtlID == ID_LANGUAGE_PROMPT_OK as u32 {
                     return LRESULT(unsafe {
                         super::win32::draw_flat_button(draw, prompt.font.handle())
@@ -451,15 +563,57 @@ mod tests {
     use super::*;
 
     #[test]
-    fn startup_checkbox_uses_single_line_height_when_text_fits() {
-        assert_eq!(startup_checkbox_height(200), LANGUAGE_PROMPT_STARTUP_HEIGHT);
+    fn recommended_initial_preferences_enable_every_option() {
+        let preferences = recommended_initial_preferences(Language::En);
+
+        assert_eq!(preferences.language, Language::En);
+        assert!(preferences.start_minimized);
+        assert!(preferences.launch_on_startup);
+        assert!(preferences.restore_on_exit);
+        assert!(preferences.hide_to_tray_on_close);
     }
 
     #[test]
-    fn startup_checkbox_uses_taller_height_when_text_wraps() {
+    fn startup_tray_notice_requires_both_related_options() {
+        let mut preferences = recommended_initial_preferences(Language::En);
+        assert!(should_show_startup_tray_notice(preferences));
+
+        preferences.start_minimized = false;
+        assert!(!should_show_startup_tray_notice(preferences));
+
+        preferences.start_minimized = true;
+        preferences.launch_on_startup = false;
+        assert!(!should_show_startup_tray_notice(preferences));
+    }
+
+    #[test]
+    fn option_uses_single_line_height_when_text_fits() {
+        assert_eq!(option_height(200), LANGUAGE_PROMPT_OPTION_HEIGHT);
+    }
+
+    #[test]
+    fn option_uses_taller_height_when_text_wraps() {
         assert_eq!(
-            startup_checkbox_height(LANGUAGE_PROMPT_CONTENT_WIDTH),
-            LANGUAGE_PROMPT_STARTUP_TALL_HEIGHT
+            option_height(LANGUAGE_PROMPT_CONTENT_WIDTH),
+            LANGUAGE_PROMPT_OPTION_TALL_HEIGHT
+        );
+    }
+
+    #[test]
+    fn prompt_height_grows_with_wrapped_options() {
+        assert_eq!(
+            prompt_client_height([LANGUAGE_PROMPT_OPTION_HEIGHT; 4]),
+            LANGUAGE_PROMPT_MIN_CLIENT_HEIGHT
+        );
+        assert_eq!(
+            prompt_client_height([
+                LANGUAGE_PROMPT_OPTION_TALL_HEIGHT,
+                LANGUAGE_PROMPT_OPTION_HEIGHT,
+                LANGUAGE_PROMPT_OPTION_HEIGHT,
+                LANGUAGE_PROMPT_OPTION_HEIGHT,
+            ]),
+            LANGUAGE_PROMPT_MIN_CLIENT_HEIGHT + LANGUAGE_PROMPT_OPTION_TALL_HEIGHT
+                - LANGUAGE_PROMPT_OPTION_HEIGHT
         );
     }
 }

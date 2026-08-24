@@ -2,7 +2,7 @@ use crate::config::{
     AppConfig, AppConfigLoad, ConfigFileStamp, TargetProcess, WindowPosition, config_dir,
     config_reload_needed, current_config_stamp, is_normalized_process_name,
     is_supported_normalized_target_process_name, merge_pending_config_changes,
-    normalize_manual_process_name, normalize_manual_process_name_cow, target_index_by_identity,
+    normalize_manual_process_name, target_index_by_identity,
 };
 use crate::engine::{AudioSessionKey, TargetMatcher};
 use crate::i18n::{APP_TITLE, Language, Strings};
@@ -16,50 +16,50 @@ use std::mem::size_of;
 use std::os::windows::ffi::OsStrExt;
 use std::path::Path;
 use std::sync::atomic::{AtomicBool, AtomicIsize, Ordering};
-use std::time::{Duration, Instant};
+use std::time::Instant;
 use windows::Win32::Foundation::{
     CloseHandle, ERROR_ALREADY_EXISTS, GetLastError, HANDLE, HINSTANCE, HWND, LPARAM, LRESULT,
     POINT, RECT, WPARAM,
 };
 use windows::Win32::Graphics::Gdi::{
-    BeginPaint, CreatePen, DT_END_ELLIPSIS, DT_LEFT, DT_NOPREFIX, DT_RIGHT, DT_SINGLELINE,
-    DT_VCENTER, DeleteObject, EndPaint, FillRect, HDC, OPAQUE, PAINTSTRUCT, PS_SOLID,
-    RDW_ALLCHILDREN, RDW_ERASE, RDW_INVALIDATE, RDW_UPDATENOW, RedrawWindow, RoundRect,
-    ScreenToClient, SelectObject, SetBkColor, SetBkMode, SetTextColor, TRANSPARENT,
+    BeginPaint, CreatePen, CreateSolidBrush, DT_END_ELLIPSIS, DT_LEFT, DT_NOPREFIX, DT_RIGHT,
+    DT_SINGLELINE, DT_VCENTER, DeleteObject, EndPaint, FillRect, HDC, HGDIOBJ, OPAQUE, PAINTSTRUCT,
+    PS_SOLID, Polygon, RDW_ALLCHILDREN, RDW_ERASE, RDW_INVALIDATE, RDW_UPDATENOW, RedrawWindow,
+    RoundRect, ScreenToClient, SelectObject, SetBkColor, SetBkMode, SetTextColor, TRANSPARENT,
 };
 use windows::Win32::System::Com::{COINIT_APARTMENTTHREADED, CoInitializeEx, CoUninitialize};
 use windows::Win32::System::LibraryLoader::GetModuleHandleW;
 use windows::Win32::System::Threading::CreateMutexW;
 use windows::Win32::UI::Accessibility::{HWINEVENTHOOK, SetWinEventHook, UnhookWinEvent};
 use windows::Win32::UI::Controls::{
-    CB_SETCUEBANNER, CB_SETMINVISIBLE, DRAWITEMSTRUCT, EM_SETCUEBANNER, ICC_WIN95_CLASSES,
-    INITCOMMONCONTROLSEX, InitCommonControlsEx, MEASUREITEMSTRUCT, ODS_DISABLED, ODS_SELECTED,
+    DRAWITEMSTRUCT, ICC_WIN95_CLASSES, INITCOMMONCONTROLSEX, InitCommonControlsEx,
+    MEASUREITEMSTRUCT, ODS_DISABLED, ODS_FOCUS, ODS_SELECTED,
 };
-use windows::Win32::UI::Input::KeyboardAndMouse::{EnableWindow, SetFocus, VK_RETURN};
+use windows::Win32::UI::Input::KeyboardAndMouse::{
+    EnableWindow, SetFocus, VK_DOWN, VK_ESCAPE, VK_RETURN, VK_UP,
+};
 use windows::Win32::UI::Shell::{
     DefSubclassProc, NIF_ICON, NIF_MESSAGE, NIF_TIP, NIM_ADD, NIM_DELETE, NIM_MODIFY,
     NOTIFYICONDATAW, RemoveWindowSubclass, SetWindowSubclass, Shell_NotifyIconW,
 };
 use windows::Win32::UI::WindowsAndMessaging::{
-    AppendMenuW, BS_OWNERDRAW, CB_GETCURSEL, CB_RESETCONTENT, CB_SETCURSEL, CB_SHOWDROPDOWN,
-    CBN_CLOSEUP, CBN_DROPDOWN, CBN_EDITCHANGE, CBN_SELCHANGE, CBN_SELENDOK, CBN_SETFOCUS,
-    CBS_DROPDOWN, CREATESTRUCTW, CreatePopupMenu, CreateWindowExW, DI_NORMAL, DefWindowProcW,
-    DestroyMenu, DestroyWindow, DispatchMessageW, DrawIconEx, EN_CHANGE, ES_AUTOHSCROLL,
-    EVENT_SYSTEM_FOREGROUND, FindWindowW, GWLP_USERDATA, GetCursorPos, GetSystemMetrics,
-    GetWindowRect, HICON, HMENU, ICON_BIG, ICON_SMALL, IDC_ARROW, IsDialogMessageW, IsIconic,
-    IsWindowVisible, KillTimer, LB_GETCURSEL, LB_RESETCONTENT, LB_SETCURSEL, LBN_DBLCLK,
-    LBN_SELCHANGE, LBS_HASSTRINGS, LBS_NOINTEGRALHEIGHT, LBS_NOTIFY, LBS_OWNERDRAWVARIABLE,
-    LoadCursorW, MB_ICONINFORMATION, MB_ICONWARNING, MB_OK, MF_GRAYED, MF_SEPARATOR, MF_STRING,
-    MSG, MessageBoxW, PostMessageW, PostQuitMessage, RegisterClassW, RegisterWindowMessageW,
-    SIZE_MINIMIZED, SM_CXVSCROLL, SW_HIDE, SW_RESTORE, SW_SHOW, SendMessageW, SetForegroundWindow,
-    SetTimer, SetWindowLongPtrW, ShowWindow, TPM_NONOTIFY, TPM_RETURNCMD, TPM_RIGHTBUTTON,
-    TRACK_POPUP_MENU_FLAGS, TrackPopupMenu, TranslateMessage, WINDOW_EX_STYLE, WINDOW_STYLE,
-    WINEVENT_OUTOFCONTEXT, WM_CLOSE, WM_COMMAND, WM_CONTEXTMENU, WM_CREATE, WM_CTLCOLOREDIT,
-    WM_CTLCOLORLISTBOX, WM_CTLCOLORSTATIC, WM_DESTROY, WM_DRAWITEM, WM_EXITSIZEMOVE, WM_KEYDOWN,
-    WM_LBUTTONDBLCLK, WM_LBUTTONDOWN, WM_MEASUREITEM, WM_MOVE, WM_NCCREATE, WM_NCDESTROY, WM_PAINT,
-    WM_RBUTTONUP, WM_SETCURSOR, WM_SETFONT, WM_SETICON, WM_SETREDRAW, WM_SHOWWINDOW, WM_SIZE,
-    WM_SYSCOMMAND, WM_TIMER, WNDCLASSW, WS_BORDER, WS_CAPTION, WS_CHILD, WS_CLIPCHILDREN,
-    WS_MINIMIZEBOX, WS_OVERLAPPED, WS_SYSMENU, WS_TABSTOP, WS_VISIBLE, WS_VSCROLL,
+    AppendMenuW, BS_OWNERDRAW, CREATESTRUCTW, CreatePopupMenu, CreateWindowExW, DI_NORMAL,
+    DefWindowProcW, DestroyMenu, DestroyWindow, DispatchMessageW, DrawIconEx, EN_CHANGE,
+    EN_SETFOCUS, EVENT_SYSTEM_FOREGROUND, FindWindowW, GWLP_USERDATA, GetCursorPos, GetWindowRect,
+    HICON, HMENU, ICON_BIG, ICON_SMALL, IDC_ARROW, IsDialogMessageW, IsIconic, IsWindowVisible,
+    KillTimer, LB_GETCOUNT, LB_GETCURSEL, LB_RESETCONTENT, LB_SETCURSEL, LBN_DBLCLK, LBN_SELCHANGE,
+    LBS_HASSTRINGS, LBS_NOINTEGRALHEIGHT, LBS_NOTIFY, LBS_OWNERDRAWVARIABLE, LoadCursorW,
+    MB_ICONINFORMATION, MB_ICONWARNING, MB_OK, MF_GRAYED, MF_SEPARATOR, MF_STRING, MINMAXINFO, MSG,
+    MessageBoxW, MoveWindow, PostMessageW, PostQuitMessage, RegisterClassW, RegisterWindowMessageW,
+    SW_HIDE, SW_RESTORE, SW_SHOW, SendMessageW, SetForegroundWindow, SetTimer, SetWindowLongPtrW,
+    ShowWindow, TPM_NONOTIFY, TPM_RETURNCMD, TPM_RIGHTBUTTON, TRACK_POPUP_MENU_FLAGS,
+    TrackPopupMenu, TranslateMessage, WA_INACTIVE, WINDOW_EX_STYLE, WINDOW_STYLE,
+    WINEVENT_OUTOFCONTEXT, WM_ACTIVATE, WM_CLOSE, WM_COMMAND, WM_CONTEXTMENU, WM_CREATE,
+    WM_CTLCOLOREDIT, WM_CTLCOLORLISTBOX, WM_CTLCOLORSTATIC, WM_DESTROY, WM_DRAWITEM,
+    WM_ENTERSIZEMOVE, WM_EXITSIZEMOVE, WM_GETMINMAXINFO, WM_KEYDOWN, WM_LBUTTONDBLCLK,
+    WM_LBUTTONDOWN, WM_MEASUREITEM, WM_MOVE, WM_NCCREATE, WM_NCDESTROY, WM_PAINT, WM_RBUTTONUP,
+    WM_SETCURSOR, WM_SETFONT, WM_SETICON, WM_SETREDRAW, WM_SHOWWINDOW, WM_SIZE, WM_SIZING,
+    WM_TIMER, WNDCLASSW, WS_CHILD, WS_TABSTOP, WS_VISIBLE, WS_VSCROLL,
 };
 use windows::core::{PCWSTR, w};
 
@@ -67,11 +67,13 @@ mod constants;
 mod controls;
 mod drawing;
 mod issue_diagnostics;
+mod language_combo;
 mod language_prompt;
 mod managed_mute;
 mod modal_window;
 mod process_choice;
 mod runtime_logic;
+mod search_picker;
 mod settings_window;
 mod startup_sync;
 mod state;
@@ -98,6 +100,7 @@ use runtime_logic::{
     initial_managed_mute_fast_retry_count, initial_process_refresh_attempt,
     process_refresh_is_stale, replace_text_if_changed,
 };
+use search_picker::{SEARCH_PICKER_HEIGHT, SearchPicker, SearchPickerIds};
 use settings_window::{SettingsPreferences, prompt_settings};
 use startup_sync::{
     StartupSyncResult, apply_external_startup_config as sync_external_startup_config,
@@ -115,23 +118,22 @@ use target_model::{
     target_display_name_into, target_display_storage_bytes_hint, target_matcher_inputs_changed,
 };
 use target_note_prompt::prompt_target_note;
-use theme::{AppTheme, OwnedBrush, UiFont, px};
+use theme::{AppTheme, OwnedBrush, px};
 use win32::{
-    WindowClassRegistration, add_combo_item_with_buffer, add_list_item_with_buffer,
+    OwnedIcon, WindowClassRegistration, add_list_item_with_buffer, button_is_hovered,
     copy_wide_fixed, create_button, create_control, default_button_message_result, get_message,
-    hiword, install_combo_dropdown_list_hand_cursor, load_app_icon, load_settings_icon,
-    load_tray_icon, loword, measure_text_width, move_window, reserve_combo_items,
-    reserve_list_items, set_combo_edit_caret, set_hand_cursor_if_enabled, set_text,
-    system_command_closes_or_minimizes, system_command_minimizes, to_wide, window_text_into,
-    write_wide_buffer,
+    hiword, load_app_icon, load_settings_icon, load_tray_icon, loword, measure_text_width,
+    move_window, reserve_list_items, set_flat_button_full_height, set_hand_cursor_if_enabled,
+    set_text, to_wide, window_text_into, write_wide_buffer,
 };
-use window_position::{initial_window_position, should_start_hidden, window_position_is_visible};
+use window_position::{
+    InitialWindowPlacement, apply_window_minmax_info, constrain_sizing_rect,
+    current_logical_window_size, initial_window_placement, should_start_hidden,
+    update_user_scale_from_window, window_position_is_visible,
+};
 
 static FOREGROUND_EVENT_HWND: AtomicIsize = AtomicIsize::new(0);
 static FOREGROUND_EVENT_PENDING: AtomicBool = AtomicBool::new(false);
-const MAIN_WINDOW_STYLE: WINDOW_STYLE = WINDOW_STYLE(
-    WS_OVERLAPPED.0 | WS_CAPTION.0 | WS_SYSMENU.0 | WS_MINIMIZEBOX.0 | WS_CLIPCHILDREN.0,
-);
 const LEFT_EDGE_TRIM: i32 = 16;
 const HEADER_LEFT_X: i32 = 36 - LEFT_EDGE_TRIM;
 const HEADER_RIGHT_MARGIN: i32 = 36;
@@ -140,9 +142,12 @@ const HEADER_RIGHT_WIDTH: i32 = 320;
 const HEADER_RIGHT_X: i32 = HEADER_CONTENT_RIGHT - HEADER_RIGHT_WIDTH;
 const HEADER_TITLE_WIDTH: i32 = HEADER_RIGHT_X - HEADER_LEFT_X - 24;
 const HEADER_FULL_WIDTH: i32 = HEADER_CONTENT_RIGHT - HEADER_LEFT_X;
-const HEADER_TITLE_Y: i32 = 24;
-const HEADER_SUBTITLE_Y: i32 = 56;
-const HEADER_DETAIL_Y: i32 = 82;
+const HEADER_TITLE_Y: i32 = 13;
+const HEADER_PRIMARY_HEIGHT: i32 = 28;
+const HEADER_PRIMARY_TO_DETAIL_GAP: i32 = 8;
+const HEADER_DETAIL_HEIGHT: i32 = 24;
+const HEADER_DETAIL_Y: i32 = HEADER_TITLE_Y + HEADER_PRIMARY_HEIGHT + HEADER_PRIMARY_TO_DETAIL_GAP;
+const HEADER_DETAIL_TO_PANEL_GAP: i32 = 10;
 const ISSUE_DETAILS_BUTTON_MIN_WIDTH: i32 = 74;
 const ISSUE_DETAILS_BUTTON_MAX_WIDTH: i32 = 160;
 const ISSUE_DETAILS_BUTTON_HEIGHT: i32 = 28;
@@ -153,14 +158,24 @@ const RECOVERED_INVALID_CONFIG_DETAIL: &str =
     "invalid config file was backed up and replaced with defaults";
 const TARGET_PANEL_LEFT: i32 = 14;
 const TARGET_PANEL_RIGHT: i32 = HEADER_CONTENT_RIGHT + (HEADER_LEFT_X - TARGET_PANEL_LEFT);
-const HEADER_STATUS_WIDTH: i32 = HEADER_RIGHT_WIDTH;
-const HEADER_STATUS_X: i32 = HEADER_CONTENT_RIGHT - HEADER_STATUS_WIDTH + 2;
-const TARGET_PANEL_TOP: i32 = 112;
+const HEADER_STATUS_MAX_WIDTH: i32 = HEADER_RIGHT_WIDTH;
+const HEADER_STATUS_RIGHT: i32 = HEADER_CONTENT_RIGHT + 2;
+const HEADER_STATUS_ICON_WIDTH: i32 = 12;
+const HEADER_STATUS_ICON_GAP: i32 = 5;
+const HEADER_STATUS_HORIZONTAL_PADDING: i32 = 1;
+const HEADER_STATUS_BASE_WIDTH: i32 =
+    HEADER_STATUS_HORIZONTAL_PADDING * 2 + HEADER_STATUS_ICON_WIDTH + HEADER_STATUS_ICON_GAP;
+const HEADER_STATUS_PAUSE_ICON_OPTICAL_OFFSET_Y: i32 = -1;
+const HEADER_STATUS_PLAY_ICON_OPTICAL_OFFSET_Y: i32 = -1;
+const TARGET_PANEL_TOP: i32 = HEADER_DETAIL_Y + HEADER_DETAIL_HEIGHT + HEADER_DETAIL_TO_PANEL_GAP;
 const TARGET_PANEL_BOTTOM: i32 = 432;
 const TARGET_LIST_Y: i32 = TARGET_PANEL_TOP + 2;
 const TARGET_LIST_X: i32 = TARGET_PANEL_LEFT + 10;
 const TARGET_LIST_WIDTH: i32 = TARGET_PANEL_RIGHT - TARGET_LIST_X - 10;
 const TARGET_LIST_HEIGHT: i32 = TARGET_PANEL_BOTTOM - TARGET_LIST_Y - 12;
+const TARGET_EMPTY_TITLE_Y: i32 =
+    TARGET_PANEL_TOP + (TARGET_PANEL_BOTTOM - TARGET_PANEL_TOP) / 2 - 31;
+const TARGET_EMPTY_HINT_Y: i32 = TARGET_EMPTY_TITLE_Y + 28;
 const TARGET_PLAIN_ROW_HEIGHT: i32 = 34;
 const TARGET_NOTE_ROW_HEIGHT: i32 = 44;
 const TARGET_ROW_HORIZONTAL_PADDING: i32 = 16;
@@ -170,35 +185,19 @@ const TARGET_ROW_PRIMARY_TOP: i32 = 5;
 const TARGET_ROW_PRIMARY_BOTTOM: i32 = 23;
 const TARGET_ROW_SECONDARY_TOP: i32 = 24;
 const TARGET_ROW_SECONDARY_BOTTOM_INSET: i32 = 4;
-const PROCESS_PICKER_HINT_Y: i32 = 462;
-const PROCESS_PICKER_REDRAW_TOP: i32 = PROCESS_PICKER_HINT_Y - 8;
-const PROCESS_PICKER_COMBO_Y: i32 = 482;
-const PROCESS_PICKER_COMBO_HEIGHT: i32 = 28;
-const PROCESS_PICKER_BUTTON_HEIGHT: i32 = 32;
-const PROCESS_PICKER_BUTTON_Y_OFFSET: i32 =
-    (PROCESS_PICKER_COMBO_HEIGHT - PROCESS_PICKER_BUTTON_HEIGHT) / 2 - 2;
-const MANUAL_PROCESS_ROW_Y: i32 = 520;
-const MANUAL_PROCESS_EDIT_Y: i32 = MANUAL_PROCESS_ROW_Y + 20;
-const MANUAL_PROCESS_EDIT_HEIGHT: i32 = 26;
-const MANUAL_PROCESS_BUTTON_Y: i32 =
-    MANUAL_PROCESS_EDIT_Y + (MANUAL_PROCESS_EDIT_HEIGHT - PROCESS_PICKER_BUTTON_HEIGHT) / 2;
-const MANUAL_PROCESS_EDIT_WIDTH: i32 = 240;
-const MANUAL_PROCESS_LABEL_WIDTH: i32 = 260;
-const FOOTER_BUTTON_Y: i32 = 608;
-const FOOTER_BUTTON_HEIGHT: i32 = 34;
+const PROCESS_PICKER_ROW_Y: i32 = 456;
+const PROCESS_PICKER_ROW_HEIGHT: i32 = SEARCH_PICKER_HEIGHT;
+const PROCESS_PICKER_REDRAW_TOP: i32 = PROCESS_PICKER_ROW_Y - 8;
 const GITHUB_PAGE_URL: &str = "https://github.com/ilsd7/UnfocusMute";
 const SETTINGS_ICON_SIZE: i32 = 16;
 const SETTINGS_BUTTON_X: i32 = HEADER_LEFT_X;
-const SETTINGS_BUTTON_Y: i32 =
-    FOOTER_BUTTON_Y + (FOOTER_BUTTON_HEIGHT - SETTINGS_BUTTON_HEIGHT) / 2;
+const SETTINGS_BUTTON_Y: i32 = 514;
 const SETTINGS_BUTTON_HEIGHT: i32 = 18;
 const SETTINGS_BUTTON_TEXT_GAP: i32 = 6;
-const SETTINGS_BUTTON_ICON_Y: i32 =
-    SETTINGS_BUTTON_Y + (SETTINGS_BUTTON_HEIGHT - SETTINGS_ICON_SIZE) / 2;
+const SETTINGS_BUTTON_TEXT_SLACK: i32 = 12;
 const TARGET_LIST_SUBCLASS_ID: usize = 1;
-const SETTINGS_CLOSE_MINIMIZE_GUARD_MS: u64 = 1200;
-const CB_SETITEMHEIGHT_MESSAGE: u32 = 0x0153;
-const PROCESS_PICKER_COMBO_SELECTION_HEIGHT: i32 = 22;
+const EM_SETSEL_MESSAGE: u32 = 0x00B1;
+const LB_SETITEMHEIGHT_MESSAGE: u32 = 0x01A0;
 const LB_ITEMFROMPOINT_MESSAGE: u32 = 0x01A9;
 const LB_ITEMFROMPOINT_OUTSIDE_MASK: isize = 0x0001_0000;
 const LB_GETITEMRECT_MESSAGE: u32 = 0x0198;
@@ -248,7 +247,6 @@ unsafe fn run_window() -> Result<()> {
     let instance = HINSTANCE(module.0);
     let icon = unsafe { load_app_icon(instance) };
     let tray_icon = unsafe { load_tray_icon(instance) };
-    let settings_icon = unsafe { load_settings_icon(instance, px(SETTINGS_ICON_SIZE)) };
     let cursor = unsafe { LoadCursorW(None, IDC_ARROW).context("load cursor")? };
     let background = OwnedBrush::solid(PAGE_COLOR);
     let class_name_wide = main_window_class_name(instance_scope);
@@ -299,13 +297,15 @@ unsafe fn run_window() -> Result<()> {
     let mut config = config_load.config;
     let mut accepted_initial_preferences = false;
     if first_run
-        && let Some(preferences) = unsafe {
-            prompt_initial_language(instance, icon, config.language, config.launch_on_startup)?
-        }
+        && let Some(preferences) =
+            unsafe { prompt_initial_language(instance, icon, config.language)? }
     {
         accepted_initial_preferences = true;
         config.language = preferences.language;
+        config.start_minimized = preferences.start_minimized;
         config.launch_on_startup = preferences.launch_on_startup;
+        config.hide_to_tray_on_close = preferences.hide_to_tray_on_close;
+        config.restore_muted_on_exit = preferences.restore_on_exit;
     }
     let startup_sync = if can_sync_startup
         && should_sync_startup_setting(first_run, accepted_initial_preferences)
@@ -329,9 +329,17 @@ unsafe fn run_window() -> Result<()> {
 
     let forced_minimized = std::env::args_os().any(|arg| arg == "--minimized");
     let start_hidden = should_start_hidden(first_run, forced_minimized, config.start_minimized);
-    let WindowPosition { x, y } = initial_window_position(&config);
-    let window_width = px(WINDOW_WIDTH);
-    let window_height = px(WINDOW_HEIGHT);
+    let InitialWindowPlacement {
+        position: WindowPosition { x, y },
+        width: window_width,
+        height: window_height,
+    } = initial_window_placement(&config);
+    let settings_icon_size = settings_icon_resource_size(px(SETTINGS_ICON_SIZE));
+    let settings_icon = unsafe { load_settings_icon(instance, settings_icon_size) };
+    let loaded_settings_icon_size = settings_icon
+        .as_ref()
+        .map(|_| settings_icon_size)
+        .unwrap_or_default();
 
     let title = to_wide(APP_TITLE);
     let taskbar_created_message = unsafe { RegisterWindowMessageW(w!("TaskbarCreated")) };
@@ -339,6 +347,7 @@ unsafe fn run_window() -> Result<()> {
         main: icon,
         tray: tray_icon,
         settings: settings_icon,
+        settings_size: loaded_settings_icon_size,
     };
     let mut app = Box::new(AppWindow::new(
         config,
@@ -652,6 +661,7 @@ impl ProcessListSource {
 struct AppWindow {
     hwnd: HWND,
     controls: Controls,
+    process_picker: Option<SearchPicker>,
     config: AppConfig,
     persisted_config: AppConfig,
     target_matcher: TargetMatcher,
@@ -664,7 +674,7 @@ struct AppWindow {
     all_process_choices: Vec<ProcessChoice>,
     process_choice_indices: Vec<usize>,
     process_query: String,
-    manual_process_text: String,
+    status_display_text: String,
     status_detail_text: String,
     tray_tip_text_buffer: String,
     display_text_buffer: String,
@@ -672,11 +682,11 @@ struct AppWindow {
     icons: AppIcons,
     settings_button_hot: bool,
     settings_window_open: bool,
-    settings_close_minimize_guard_until: Option<Instant>,
+    interactive_resize: bool,
     foreground_process_name_cache: Option<(u32, Option<String>)>,
     last_process_refresh_attempt: Instant,
     process_list_source: ProcessListSource,
-    updating_process_combo: bool,
+    updating_process_picker: bool,
     running_process_choice_selected: bool,
     muted_by_app: HashSet<AudioSessionKey>,
     last_target_muted: Vec<bool>,
@@ -694,18 +704,85 @@ struct AppWindow {
     target_status_width: i32,
     config_stamp: Option<ConfigFileStamp>,
     next_config_check: Instant,
-    window_position_dirty: bool,
+    window_placement_dirty: bool,
     theme: AppTheme,
     taskbar_created_message: u32,
     default_button_id: i32,
     create_error: Option<String>,
 }
 
-#[derive(Clone, Copy)]
 struct AppIcons {
     main: HICON,
     tray: HICON,
-    settings: HICON,
+    settings: Option<OwnedIcon>,
+    settings_size: i32,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+struct ProcessPickerWidths {
+    combo: i32,
+    add: i32,
+    source: i32,
+    details: i32,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+enum RegistrationCandidate {
+    ProcessChoice(usize),
+    ExactExeName(String),
+}
+
+fn shrink_width(width: &mut i32, minimum: i32, deficit: i32) -> i32 {
+    let shrink = width.saturating_sub(minimum).min(deficit.max(0));
+    *width -= shrink;
+    deficit - shrink
+}
+
+fn status_control_width_for_text(text_width: i32) -> i32 {
+    HEADER_STATUS_BASE_WIDTH
+        .saturating_add(text_width.max(0))
+        .min(HEADER_STATUS_MAX_WIDTH)
+}
+
+fn fit_process_picker_widths(
+    content_width: i32,
+    mut add: i32,
+    mut source: i32,
+    mut details: i32,
+    reserve_pid_help: bool,
+) -> ProcessPickerWidths {
+    const COMBO_MIN_WIDTH: i32 = 132;
+    const COMBO_MAX_WIDTH: i32 = 304;
+    const ADD_MIN_WIDTH: i32 = 78;
+    const SOURCE_MIN_WIDTH: i32 = 116;
+    const DETAILS_MIN_WIDTH: i32 = 84;
+    const GAP: i32 = 12;
+    const HELP_SLOT_WIDTH: i32 = 38;
+
+    let help_slot = if reserve_pid_help { HELP_SLOT_WIDTH } else { 0 };
+    let fixed_width = help_slot + GAP * 3;
+    let available_combo = content_width - add - source - details - fixed_width;
+    let mut deficit = (COMBO_MIN_WIDTH - available_combo).max(0);
+    deficit = shrink_width(&mut source, SOURCE_MIN_WIDTH, deficit);
+    deficit = shrink_width(&mut add, ADD_MIN_WIDTH, deficit);
+    let _ = shrink_width(&mut details, DETAILS_MIN_WIDTH, deficit);
+
+    let combo = (content_width - add - source - details - fixed_width).clamp(1, COMBO_MAX_WIDTH);
+    ProcessPickerWidths {
+        combo,
+        add,
+        source,
+        details,
+    }
+}
+
+fn settings_icon_resource_size(requested: i32) -> i32 {
+    const AVAILABLE_SIZES: [i32; 6] = [16, 20, 24, 32, 48, 64];
+    let requested = requested.max(1);
+    AVAILABLE_SIZES
+        .into_iter()
+        .find(|size| *size >= requested)
+        .unwrap_or(64)
 }
 
 #[derive(Clone, Copy)]
@@ -750,6 +827,7 @@ impl AppWindow {
         Ok(Self {
             hwnd: HWND::default(),
             controls: Controls::default(),
+            process_picker: None,
             target_matcher: TargetMatcher::new(&config.targets),
             persisted_config,
             config,
@@ -762,7 +840,7 @@ impl AppWindow {
             all_process_choices: Vec::new(),
             process_choice_indices: Vec::new(),
             process_query: String::new(),
-            manual_process_text: String::new(),
+            status_display_text: String::new(),
             status_detail_text: String::new(),
             tray_tip_text_buffer: String::new(),
             display_text_buffer: String::new(),
@@ -770,11 +848,11 @@ impl AppWindow {
             icons,
             settings_button_hot: false,
             settings_window_open: false,
-            settings_close_minimize_guard_until: None,
+            interactive_resize: false,
             foreground_process_name_cache: None,
             last_process_refresh_attempt: initial_process_refresh_attempt(),
             process_list_source: ProcessListSource::AudioSessions,
-            updating_process_combo: false,
+            updating_process_picker: false,
             running_process_choice_selected: false,
             muted_by_app: HashSet::new(),
             last_target_muted: Vec::new(),
@@ -792,7 +870,7 @@ impl AppWindow {
             target_status_width: 0,
             config_stamp: current_config_stamp(),
             next_config_check: Instant::now() + CONFIG_RELOAD_CHECK_INTERVAL,
-            window_position_dirty: false,
+            window_placement_dirty: false,
             theme: AppTheme::new(),
             taskbar_created_message,
             default_button_id: ID_ADD_SELECTED,
@@ -838,43 +916,25 @@ impl AppWindow {
                 instance,
                 w!("STATIC"),
                 "",
-                child,
+                child | SS_CENTERIMAGE_STYLE | SS_ENDELLIPSIS_STYLE,
                 WINDOW_EX_STYLE(0),
                 HEADER_LEFT_X,
                 HEADER_TITLE_Y,
                 HEADER_TITLE_WIDTH,
-                28,
-                0,
-            )?
-        };
-        self.controls.subtitle_label = unsafe {
-            create_control(
-                self.hwnd,
-                instance,
-                w!("STATIC"),
-                "",
-                child | SS_CENTERIMAGE_STYLE | SS_ENDELLIPSIS_STYLE,
-                WINDOW_EX_STYLE(0),
-                HEADER_LEFT_X,
-                HEADER_SUBTITLE_Y,
-                HEADER_FULL_WIDTH,
-                24,
+                HEADER_PRIMARY_HEIGHT,
                 0,
             )?
         };
         self.controls.status = unsafe {
-            create_control(
+            create_button(
                 self.hwnd,
                 instance,
-                w!("STATIC"),
                 "",
-                child | SS_OWNERDRAW_STYLE,
-                WINDOW_EX_STYLE(0),
-                HEADER_STATUS_X,
+                HEADER_STATUS_RIGHT - HEADER_STATUS_MAX_WIDTH,
                 HEADER_TITLE_Y,
-                HEADER_STATUS_WIDTH,
-                24,
-                0,
+                HEADER_STATUS_MAX_WIDTH,
+                HEADER_PRIMARY_HEIGHT,
+                ID_STATUS,
             )?
         };
         self.controls.status_detail = unsafe {
@@ -888,7 +948,7 @@ impl AppWindow {
                 HEADER_RIGHT_X,
                 HEADER_DETAIL_Y,
                 HEADER_RIGHT_WIDTH,
-                24,
+                HEADER_DETAIL_HEIGHT,
                 0,
             )?
         };
@@ -937,7 +997,7 @@ impl AppWindow {
                 child | SS_CENTER_STYLE | SS_CENTERIMAGE_STYLE | SS_ENDELLIPSIS_STYLE,
                 WINDOW_EX_STYLE(0),
                 TARGET_LIST_X + 16,
-                TARGET_PANEL_TOP + 122,
+                TARGET_EMPTY_TITLE_Y,
                 TARGET_LIST_WIDTH - 32,
                 24,
                 0,
@@ -952,51 +1012,37 @@ impl AppWindow {
                 child | SS_CENTER_STYLE | SS_CENTERIMAGE_STYLE | SS_ENDELLIPSIS_STYLE,
                 WINDOW_EX_STYLE(0),
                 TARGET_LIST_X + 16,
-                TARGET_PANEL_TOP + 150,
+                TARGET_EMPTY_HINT_Y,
                 TARGET_LIST_WIDTH - 32,
                 22,
                 0,
             )?
         };
-        self.controls.running_hint = unsafe {
-            create_control(
+        let process_picker = unsafe {
+            SearchPicker::create(
                 self.hwnd,
                 instance,
-                w!("STATIC"),
-                "",
-                child | SS_ENDELLIPSIS_STYLE,
-                WINDOW_EX_STYLE(0),
+                self.theme.font.handle(),
+                SearchPickerIds {
+                    frame: ID_PROCESS_SEARCH_FRAME,
+                    edit: ID_RUNNING,
+                    toggle: ID_PROCESS_SEARCH_TOGGLE,
+                },
                 36 - LEFT_EDGE_TRIM,
-                PROCESS_PICKER_HINT_Y,
-                520,
-                22,
-                0,
-            )?
-        };
-        self.controls.running_combo = unsafe {
-            create_control(
-                self.hwnd,
-                instance,
-                w!("COMBOBOX"),
-                "",
-                tab_child | WS_VSCROLL | WINDOW_STYLE(CBS_DROPDOWN as u32),
-                WINDOW_EX_STYLE(0),
-                36 - LEFT_EDGE_TRIM,
-                PROCESS_PICKER_COMBO_Y,
+                PROCESS_PICKER_ROW_Y,
                 320,
-                PROCESS_PICKER_COMBO_HEIGHT,
-                ID_RUNNING,
             )?
         };
+        self.process_picker = Some(process_picker);
         self.controls.process_source_button = unsafe {
             create_button(
                 self.hwnd,
                 instance,
                 "",
                 478 - LEFT_EDGE_TRIM,
-                PROCESS_PICKER_COMBO_Y + PROCESS_PICKER_BUTTON_Y_OFFSET,
+                PROCESS_PICKER_ROW_Y,
                 122,
-                PROCESS_PICKER_BUTTON_HEIGHT,
+                PROCESS_PICKER_ROW_HEIGHT,
                 ID_PROCESS_SOURCE,
             )?
         };
@@ -1006,9 +1052,9 @@ impl AppWindow {
                 instance,
                 "",
                 612 - LEFT_EDGE_TRIM,
-                PROCESS_PICKER_COMBO_Y + PROCESS_PICKER_BUTTON_Y_OFFSET,
+                PROCESS_PICKER_ROW_Y,
                 122,
-                PROCESS_PICKER_BUTTON_HEIGHT,
+                PROCESS_PICKER_ROW_HEIGHT,
                 ID_TOGGLE_PROCESS_DETAILS,
             )?
         };
@@ -1018,9 +1064,9 @@ impl AppWindow {
                 instance,
                 "?",
                 742 - LEFT_EDGE_TRIM,
-                PROCESS_PICKER_COMBO_Y + PROCESS_PICKER_BUTTON_Y_OFFSET,
+                PROCESS_PICKER_ROW_Y,
                 34,
-                PROCESS_PICKER_BUTTON_HEIGHT,
+                PROCESS_PICKER_ROW_HEIGHT,
                 ID_PID_DETAILS_HELP,
             )?
         };
@@ -1030,52 +1076,10 @@ impl AppWindow {
                 instance,
                 "",
                 368 - LEFT_EDGE_TRIM,
-                PROCESS_PICKER_COMBO_Y + PROCESS_PICKER_BUTTON_Y_OFFSET,
+                PROCESS_PICKER_ROW_Y,
                 98,
-                PROCESS_PICKER_BUTTON_HEIGHT,
+                PROCESS_PICKER_ROW_HEIGHT,
                 ID_ADD_SELECTED,
-            )?
-        };
-        self.controls.manual_label = unsafe {
-            create_control(
-                self.hwnd,
-                instance,
-                w!("STATIC"),
-                "",
-                child | SS_ENDELLIPSIS_STYLE,
-                WINDOW_EX_STYLE(0),
-                104 - LEFT_EDGE_TRIM,
-                MANUAL_PROCESS_ROW_Y,
-                MANUAL_PROCESS_LABEL_WIDTH,
-                22,
-                0,
-            )?
-        };
-        self.controls.manual_edit = unsafe {
-            create_control(
-                self.hwnd,
-                instance,
-                w!("EDIT"),
-                "",
-                tab_child | WS_BORDER | WINDOW_STYLE(ES_AUTOHSCROLL as u32),
-                WINDOW_EX_STYLE(0),
-                302 - LEFT_EDGE_TRIM,
-                MANUAL_PROCESS_EDIT_Y,
-                MANUAL_PROCESS_EDIT_WIDTH,
-                MANUAL_PROCESS_EDIT_HEIGHT,
-                ID_MANUAL,
-            )?
-        };
-        self.controls.add_manual_button = unsafe {
-            create_button(
-                self.hwnd,
-                instance,
-                "",
-                570 - LEFT_EDGE_TRIM,
-                MANUAL_PROCESS_BUTTON_Y,
-                124,
-                PROCESS_PICKER_BUTTON_HEIGHT,
-                ID_ADD_MANUAL,
             )?
         };
 
@@ -1094,56 +1098,16 @@ impl AppWindow {
                 ID_SETTINGS,
             )?
         };
-        self.controls.pause_button = unsafe {
-            create_button(
-                self.hwnd,
-                instance,
-                "",
-                436 - LEFT_EDGE_TRIM,
-                FOOTER_BUTTON_Y,
-                132,
-                FOOTER_BUTTON_HEIGHT,
-                ID_PAUSE,
-            )?
-        };
-        self.controls.hide_button = unsafe {
-            create_button(
-                self.hwnd,
-                instance,
-                "",
-                584 - LEFT_EDGE_TRIM,
-                FOOTER_BUTTON_Y,
-                118,
-                FOOTER_BUTTON_HEIGHT,
-                ID_HIDE,
-            )?
-        };
-        self.controls.quit_button = unsafe {
-            create_button(
-                self.hwnd,
-                instance,
-                "",
-                308 - LEFT_EDGE_TRIM,
-                FOOTER_BUTTON_Y,
-                116,
-                FOOTER_BUTTON_HEIGHT,
-                ID_QUIT,
-            )?
-        };
 
         unsafe {
-            SendMessageW(
-                self.controls.running_combo,
-                CB_SETMINVISIBLE,
-                Some(WPARAM(12)),
-                None,
-            );
-            SendMessageW(
-                self.controls.running_combo,
-                CB_SETITEMHEIGHT_MESSAGE,
-                Some(WPARAM(usize::MAX)),
-                Some(LPARAM(px(PROCESS_PICKER_COMBO_SELECTION_HEIGHT) as isize)),
-            );
+            for control in [
+                self.controls.add_selected_button,
+                self.controls.process_source_button,
+                self.controls.toggle_process_details_button,
+                self.controls.pid_details_help_button,
+            ] {
+                let _ = set_flat_button_full_height(control);
+            }
             if !SetWindowSubclass(
                 self.controls.target_list,
                 Some(target_list_subclass_proc),
@@ -1155,59 +1119,125 @@ impl AppWindow {
                 return Err(message_error("install target list click handler"));
             }
         }
-        self.apply_font_set_to_controls(&self.theme.font, &self.theme.title_font);
+        let font = self.theme.font.handle();
+        let title_font = self.theme.title_font.handle();
+        self.apply_font_set_to_controls(font, title_font, true);
         Ok(())
+    }
+
+    fn rescale_ui_to_window(&mut self, finalize_visuals: bool) {
+        if self.controls.title_label == HWND::default() || unsafe { IsIconic(self.hwnd).as_bool() }
+        {
+            return;
+        }
+        let scale_changed = update_user_scale_from_window(self.hwnd);
+        if !scale_changed && !finalize_visuals {
+            return;
+        }
+
+        if finalize_visuals && !self.theme.fonts_match_current_scale() {
+            let (font, title_font) = AppTheme::scaled_fonts();
+            let previous_fonts = self.theme.replace_fonts(font, title_font);
+            let font = self.theme.font.handle();
+            let title_font = self.theme.title_font.handle();
+            self.apply_font_set_to_controls(font, title_font, false);
+            drop(previous_fonts);
+        }
+        if finalize_visuals {
+            self.refresh_settings_icon();
+            self.refresh_target_status_width();
+            self.update_scaled_item_heights();
+        }
+        self.layout_scaled_controls();
+
+        unsafe {
+            let _ = RedrawWindow(
+                Some(self.hwnd),
+                None,
+                None,
+                RDW_INVALIDATE | RDW_ERASE | RDW_ALLCHILDREN,
+            );
+        }
+    }
+
+    fn update_scaled_item_heights(&self) {
+        unsafe {
+            for (index, target) in self.config.targets.iter().enumerate() {
+                SendMessageW(
+                    self.controls.target_list,
+                    LB_SETITEMHEIGHT_MESSAGE,
+                    Some(WPARAM(index)),
+                    Some(LPARAM(px(target_row_height(target)) as isize)),
+                );
+            }
+        }
+    }
+
+    fn layout_scaled_controls(&self) {
+        let issue_visible = self.issues.visible().is_some();
+        self.layout_header(issue_visible, self.current_issue_detail_visible());
+        unsafe {
+            let _ = move_window(
+                self.controls.target_list,
+                TARGET_LIST_X,
+                TARGET_LIST_Y,
+                TARGET_LIST_WIDTH,
+                TARGET_LIST_HEIGHT,
+                false,
+            );
+            let _ = move_window(
+                self.controls.target_empty_title,
+                TARGET_LIST_X + 16,
+                TARGET_EMPTY_TITLE_Y,
+                TARGET_LIST_WIDTH - 32,
+                24,
+                false,
+            );
+            let _ = move_window(
+                self.controls.target_empty_hint,
+                TARGET_LIST_X + 16,
+                TARGET_EMPTY_HINT_Y,
+                TARGET_LIST_WIDTH - 32,
+                22,
+                false,
+            );
+        }
+        self.layout_localized_controls_with_pid_help(self.show_process_details);
+        self.layout_settings_button();
     }
 
     fn refresh_text(&mut self) {
         self.strings = self.config.language.strings();
         self.refresh_target_status_width();
+        self.layout_settings_button();
         unsafe {
             app_title_with_version_into(&mut self.display_text_buffer);
             set_text(self.controls.title_label, &self.display_text_buffer);
             set_text(self.hwnd, APP_TITLE);
-            set_text(self.controls.subtitle_label, self.strings.app_subtitle);
             set_text(
                 self.controls.target_empty_title,
                 self.strings.registered_processes,
             );
             set_text(
                 self.controls.target_empty_hint,
-                self.strings.process_search_hint,
+                self.strings.process_search_placeholder,
             );
             set_text(self.controls.settings_button, self.strings.settings_title);
             set_text(
                 self.controls.issue_details_button,
                 self.strings.issue_details,
             );
-            set_text(self.controls.manual_label, self.strings.manual_process);
             set_text(self.controls.add_selected_button, self.strings.add_selected);
-            set_text(self.controls.add_manual_button, self.strings.add_manual);
-            self.update_pause_button_text();
-            set_text(self.controls.hide_button, self.strings.hide);
-            set_text(self.controls.quit_button, self.strings.quit);
-            self.layout_settings_button();
 
-            let cue_banner_buffer = &mut self.wide_text_buffer;
-            write_wide_buffer(self.strings.manual_placeholder, cue_banner_buffer);
-            SendMessageW(
-                self.controls.manual_edit,
-                EM_SETCUEBANNER,
-                Some(WPARAM(0)),
-                Some(LPARAM(cue_banner_buffer.as_ptr() as isize)),
-            );
-            write_wide_buffer(self.strings.process_search_placeholder, cue_banner_buffer);
-            SendMessageW(
-                self.controls.running_combo,
-                CB_SETCUEBANNER,
-                Some(WPARAM(0)),
-                Some(LPARAM(cue_banner_buffer.as_ptr() as isize)),
-            );
+            if let Some(process_picker) = &self.process_picker {
+                process_picker.set_cue_banner(self.strings.process_search_placeholder);
+            }
         }
         self.refresh_target_list();
         self.refresh_process_details_ui();
         self.last_status = None;
         self.update_status();
+        self.invalidate_all_controls();
     }
 
     fn layout_settings_button(&self) {
@@ -1216,19 +1246,47 @@ impl AppWindow {
         }
 
         unsafe {
-            let _ = move_window(
+            let _ = MoveWindow(
                 self.controls.settings_button,
-                SETTINGS_BUTTON_X,
-                SETTINGS_BUTTON_Y,
-                self.settings_button_width(),
-                SETTINGS_BUTTON_HEIGHT,
-                true,
+                px(SETTINGS_BUTTON_X),
+                px(SETTINGS_BUTTON_Y),
+                self.settings_button_width_px(),
+                px(SETTINGS_BUTTON_HEIGHT),
+                false,
             );
         }
     }
 
+    fn settings_button_width_px(&self) -> i32 {
+        // During interactive resizing, the layout scale changes before fonts do.
+        // Keep this text-dependent width in the same physical-pixel snapshot as
+        // the owner-drawn font so intermediate frames cannot clip the label.
+        let chrome_width =
+            px(SETTINGS_ICON_SIZE + SETTINGS_BUTTON_TEXT_GAP + SETTINGS_BUTTON_TEXT_SLACK);
+        let text_width = px(self.text_width(self.strings.settings_title));
+        chrome_width.saturating_add(text_width).max(1)
+    }
+
     fn settings_button_width(&self) -> i32 {
-        SETTINGS_ICON_SIZE + SETTINGS_BUTTON_TEXT_GAP + self.text_width(self.strings.settings_title)
+        SETTINGS_ICON_SIZE
+            + SETTINGS_BUTTON_TEXT_GAP
+            + self.text_width(self.strings.settings_title)
+            + SETTINGS_BUTTON_TEXT_SLACK
+    }
+
+    fn refresh_settings_icon(&mut self) {
+        let size = settings_icon_resource_size(px(SETTINGS_ICON_SIZE));
+        if self.icons.settings_size == size {
+            return;
+        }
+        let Ok(module) = (unsafe { GetModuleHandleW(None) }) else {
+            return;
+        };
+        let Some(icon) = (unsafe { load_settings_icon(HINSTANCE(module.0), size) }) else {
+            return;
+        };
+        self.icons.settings = Some(icon);
+        self.icons.settings_size = size;
     }
 
     fn set_settings_button_cursor(&mut self, child: HWND) -> bool {
@@ -1267,6 +1325,7 @@ impl AppWindow {
             language,
             start_minimized: self.config.start_minimized,
             launch_on_startup: self.config.launch_on_startup,
+            hide_to_tray_on_close: self.config.hide_to_tray_on_close,
             restore_on_exit: self.config.restore_muted_on_exit,
         };
         self.settings_window_open = true;
@@ -1289,47 +1348,6 @@ impl AppWindow {
 
     fn finish_settings_window_modal(&mut self) {
         self.settings_window_open = false;
-        self.start_settings_close_minimize_guard();
-    }
-
-    fn start_settings_close_minimize_guard(&mut self) {
-        self.settings_close_minimize_guard_until =
-            Some(Instant::now() + Duration::from_millis(SETTINGS_CLOSE_MINIMIZE_GUARD_MS));
-        self.restore_if_minimized_after_settings();
-    }
-
-    fn settings_close_minimize_guard_active(&mut self) -> bool {
-        let Some(until) = self.settings_close_minimize_guard_until else {
-            return false;
-        };
-        if Instant::now() <= until {
-            return true;
-        }
-        self.settings_close_minimize_guard_until = None;
-        false
-    }
-
-    fn should_block_system_command_after_settings(&mut self, wparam: WPARAM) -> bool {
-        if self.settings_window_open {
-            return system_command_closes_or_minimizes(wparam);
-        }
-        self.settings_close_minimize_guard_active() && system_command_minimizes(wparam)
-    }
-
-    fn restore_if_size_minimized_after_settings(&mut self, wparam: WPARAM) -> bool {
-        if wparam.0 != SIZE_MINIMIZED as usize || !self.settings_close_minimize_guard_active() {
-            return false;
-        }
-        self.restore_if_minimized_after_settings();
-        true
-    }
-
-    fn restore_if_minimized_after_settings(&self) {
-        unsafe {
-            if IsIconic(self.hwnd).as_bool() {
-                let _ = ShowWindow(self.hwnd, SW_RESTORE);
-            }
-        }
     }
 
     fn apply_settings_language(&mut self, language: Language) {
@@ -1372,6 +1390,10 @@ impl AppWindow {
             self.config.restore_muted_on_exit = preferences.restore_on_exit;
             changed = true;
         }
+        if self.config.hide_to_tray_on_close != preferences.hide_to_tray_on_close {
+            self.config.hide_to_tray_on_close = preferences.hide_to_tray_on_close;
+            changed = true;
+        }
         if language_changed {
             self.config.language = preferences.language;
             changed = true;
@@ -1403,11 +1425,6 @@ impl AppWindow {
         } else {
             self.strings.show_pid_details
         };
-        let hint_text = if self.show_process_details {
-            self.strings.pid_details_hint
-        } else {
-            self.strings.process_search_hint
-        };
         let show_help = self.show_process_details;
 
         unsafe {
@@ -1415,7 +1432,6 @@ impl AppWindow {
                 let _ = ShowWindow(self.controls.pid_details_help_button, SW_HIDE);
             }
             self.set_process_picker_redraw(false);
-            set_text(self.controls.running_hint, hint_text);
             set_text(
                 self.controls.process_source_button,
                 self.process_source_toggle_text(),
@@ -1427,7 +1443,6 @@ impl AppWindow {
         }
         self.layout_localized_controls_with_pid_help(self.show_process_details);
         unsafe {
-            let _ = ShowWindow(self.controls.running_hint, SW_SHOW);
             if show_help {
                 let _ = ShowWindow(self.controls.pid_details_help_button, SW_SHOW);
             }
@@ -1445,15 +1460,16 @@ impl AppWindow {
 
     unsafe fn set_process_picker_redraw(&self, enabled: bool) {
         let value = if enabled { 1 } else { 0 };
+        if let Some(process_picker) = &self.process_picker {
+            unsafe {
+                process_picker.set_redraw(enabled);
+            }
+        }
         for hwnd in [
-            self.controls.running_hint,
-            self.controls.running_combo,
             self.controls.add_selected_button,
             self.controls.process_source_button,
             self.controls.toggle_process_details_button,
-            self.controls.manual_label,
-            self.controls.manual_edit,
-            self.controls.add_manual_button,
+            self.controls.pid_details_help_button,
         ] {
             unsafe {
                 SendMessageW(hwnd, WM_SETREDRAW, Some(WPARAM(value)), None);
@@ -1466,7 +1482,7 @@ impl AppWindow {
             left: px(0),
             top: px(PROCESS_PICKER_REDRAW_TOP),
             right: px(WINDOW_WIDTH),
-            bottom: px(MANUAL_PROCESS_BUTTON_Y + PROCESS_PICKER_BUTTON_HEIGHT + 12),
+            bottom: px(PROCESS_PICKER_ROW_Y + PROCESS_PICKER_ROW_HEIGHT + 12),
         };
         unsafe {
             let _ = RedrawWindow(
@@ -1482,14 +1498,10 @@ impl AppWindow {
         let content_left = 36 - LEFT_EDGE_TRIM;
         let content_right = WINDOW_WIDTH - 36;
         let gap = 12;
-        let combo_y = PROCESS_PICKER_COMBO_Y;
-        let button_y = combo_y + PROCESS_PICKER_BUTTON_Y_OFFSET;
-        let manual_button_y = MANUAL_PROCESS_BUTTON_Y;
-        let manual_edit_y = MANUAL_PROCESS_EDIT_Y;
-        let manual_label_y = MANUAL_PROCESS_ROW_Y;
+        let row_y = PROCESS_PICKER_ROW_Y;
 
         let add_selected_width = self.compact_button_width(self.strings.add_selected, 78, 150);
-        let refresh_width = self.button_width(self.process_source_toggle_text(), 116, 178);
+        let source_width = self.button_width(self.process_source_toggle_text(), 116, 178);
         let details_text = if self.show_process_details {
             self.strings.hide_pid_details
         } else {
@@ -1498,169 +1510,63 @@ impl AppWindow {
         let details_width = self.button_width(details_text, 84, 120);
         let help_width = 30;
         let help_gap = 8;
-        let help_slot = if reserve_pid_help {
-            help_width + help_gap
-        } else {
-            0
-        };
-        let button_group_width =
-            add_selected_width + refresh_width + details_width + help_slot + gap * 3;
-        let combo_width = (content_right - content_left - button_group_width).clamp(132, 304);
-        let add_selected_x = content_left + combo_width + gap;
-        let refresh_x = add_selected_x + add_selected_width + gap;
-        let details_x = refresh_x + refresh_width + gap;
+        let widths = fit_process_picker_widths(
+            content_right - content_left,
+            add_selected_width,
+            source_width,
+            details_width,
+            reserve_pid_help,
+        );
+        let add_selected_x = content_left + widths.combo + gap;
+        let source_x = add_selected_x + widths.add + gap;
+        let details_x = source_x + widths.source + gap;
         let (help_x, help_control_width, help_control_height) = if reserve_pid_help {
             (
-                details_x + details_width + help_gap,
+                details_x + widths.details + help_gap,
                 help_width,
-                PROCESS_PICKER_BUTTON_HEIGHT,
+                PROCESS_PICKER_ROW_HEIGHT,
             )
         } else {
             (content_right, 0, 0)
         };
-        let _ = unsafe {
-            move_window(
-                self.controls.running_hint,
-                content_left,
-                PROCESS_PICKER_HINT_Y,
-                content_right - content_left,
-                18,
-                true,
-            )
-        };
-        let _ = unsafe {
-            move_window(
-                self.controls.running_combo,
-                content_left,
-                combo_y,
-                combo_width,
-                PROCESS_PICKER_COMBO_HEIGHT,
-                true,
-            )
-        };
-        let _ = unsafe {
-            move_window(
+
+        unsafe {
+            if let Some(process_picker) = &self.process_picker {
+                let _ = process_picker.layout(content_left, row_y, widths.combo);
+            }
+            let _ = move_window(
                 self.controls.add_selected_button,
                 add_selected_x,
-                button_y,
-                add_selected_width,
-                PROCESS_PICKER_BUTTON_HEIGHT,
-                true,
-            )
-        };
-        let _ = unsafe {
-            move_window(
+                row_y,
+                widths.add,
+                PROCESS_PICKER_ROW_HEIGHT,
+                false,
+            );
+            let _ = move_window(
                 self.controls.process_source_button,
-                refresh_x,
-                button_y,
-                refresh_width,
-                PROCESS_PICKER_BUTTON_HEIGHT,
-                true,
-            )
-        };
-        let _ = unsafe {
-            move_window(
+                source_x,
+                row_y,
+                widths.source,
+                PROCESS_PICKER_ROW_HEIGHT,
+                false,
+            );
+            let _ = move_window(
                 self.controls.toggle_process_details_button,
                 details_x,
-                button_y,
-                details_width,
-                PROCESS_PICKER_BUTTON_HEIGHT,
-                true,
-            )
-        };
-        let _ = unsafe {
-            move_window(
+                row_y,
+                widths.details,
+                PROCESS_PICKER_ROW_HEIGHT,
+                false,
+            );
+            let _ = move_window(
                 self.controls.pid_details_help_button,
                 help_x,
-                button_y,
+                row_y,
                 help_control_width,
                 help_control_height,
-                true,
-            )
-        };
-
-        let add_manual_width = add_selected_width;
-        let add_manual_x = add_selected_x;
-        let manual_edit_width = MANUAL_PROCESS_EDIT_WIDTH
-            .max(combo_width)
-            .min(add_manual_x - content_left - gap);
-        let manual_edit_x = content_left;
-        let manual_label_width = content_right - content_left;
-        let manual_label_height = (manual_button_y - manual_label_y).max(1);
-        let _ = unsafe {
-            move_window(
-                self.controls.manual_label,
-                content_left,
-                manual_label_y,
-                manual_label_width,
-                manual_label_height,
-                true,
-            )
-        };
-        let _ = unsafe {
-            move_window(
-                self.controls.manual_edit,
-                manual_edit_x,
-                manual_edit_y,
-                manual_edit_width,
-                MANUAL_PROCESS_EDIT_HEIGHT,
-                true,
-            )
-        };
-        let _ = unsafe {
-            move_window(
-                self.controls.add_manual_button,
-                add_manual_x,
-                manual_button_y,
-                add_manual_width,
-                PROCESS_PICKER_BUTTON_HEIGHT,
-                true,
-            )
-        };
-
-        self.layout_footer_buttons(content_right);
-    }
-
-    fn layout_footer_buttons(&self, content_right: i32) {
-        let gap = 12;
-        let quit_width = self.footer_button_width(self.strings.quit, 78, 150);
-        let pause_width = self.footer_button_width(self.pause_button_text(), 98, 190);
-        let hide_width = self.footer_button_width(self.strings.hide, 110, 300);
-        let total_width = quit_width + pause_width + hide_width + gap * 2;
-        let quit_x = content_right - total_width;
-
-        let _ = unsafe {
-            move_window(
-                self.controls.quit_button,
-                quit_x,
-                FOOTER_BUTTON_Y,
-                quit_width,
-                FOOTER_BUTTON_HEIGHT,
-                true,
-            )
-        };
-        let pause_x = quit_x + quit_width + gap;
-        let _ = unsafe {
-            move_window(
-                self.controls.pause_button,
-                pause_x,
-                FOOTER_BUTTON_Y,
-                pause_width,
-                FOOTER_BUTTON_HEIGHT,
-                true,
-            )
-        };
-        let hide_x = pause_x + pause_width + gap;
-        let _ = unsafe {
-            move_window(
-                self.controls.hide_button,
-                hide_x,
-                FOOTER_BUTTON_Y,
-                hide_width,
-                FOOTER_BUTTON_HEIGHT,
-                true,
-            )
-        };
+                false,
+            );
+        }
     }
 
     fn layout_header(&self, issue_visible: bool, issue_detail_visible: bool) {
@@ -1670,31 +1576,22 @@ impl AppWindow {
                 HEADER_LEFT_X,
                 HEADER_TITLE_Y,
                 HEADER_TITLE_WIDTH,
-                28,
-                true,
+                HEADER_PRIMARY_HEIGHT,
+                false,
             )
         };
+        let status_width = self.status_control_width();
         let _ = unsafe {
             move_window(
                 self.controls.status,
-                HEADER_STATUS_X,
+                HEADER_STATUS_RIGHT - status_width,
                 HEADER_TITLE_Y,
-                HEADER_STATUS_WIDTH,
-                24,
-                true,
+                status_width,
+                HEADER_PRIMARY_HEIGHT,
+                false,
             )
         };
 
-        let _ = unsafe {
-            move_window(
-                self.controls.subtitle_label,
-                HEADER_LEFT_X,
-                HEADER_SUBTITLE_Y,
-                HEADER_FULL_WIDTH,
-                24,
-                true,
-            )
-        };
         let issue_details_button_width = self.issue_details_button_width();
         let issue_details_button_x = ISSUE_DETAILS_BUTTON_RIGHT - issue_details_button_width;
         let (detail_x, detail_width) = if issue_visible && issue_detail_visible {
@@ -1713,8 +1610,8 @@ impl AppWindow {
                 detail_x,
                 HEADER_DETAIL_Y,
                 detail_width,
-                24,
-                true,
+                HEADER_DETAIL_HEIGHT,
+                false,
             )
         };
         let _ = unsafe {
@@ -1724,7 +1621,7 @@ impl AppWindow {
                 ISSUE_DETAILS_BUTTON_Y,
                 issue_details_button_width,
                 ISSUE_DETAILS_BUTTON_HEIGHT,
-                true,
+                false,
             )
         };
         unsafe {
@@ -1756,8 +1653,18 @@ impl AppWindow {
         }
     }
 
-    fn button_width(&self, text: &str, min_width: i32, max_width: i32) -> i32 {
-        (self.text_width(text) + 44).clamp(min_width, max_width)
+    fn invalidate_all_controls(&self) {
+        // Localized controls can shrink as well as grow. Erasing the parent
+        // after every text and layout update clears regions exposed by a child
+        // whose previous bounds were wider.
+        unsafe {
+            let _ = RedrawWindow(
+                Some(self.hwnd),
+                None,
+                None,
+                RDW_INVALIDATE | RDW_ERASE | RDW_ALLCHILDREN,
+            );
+        }
     }
 
     fn issue_details_button_width(&self) -> i32 {
@@ -1768,8 +1675,12 @@ impl AppWindow {
         )
     }
 
-    fn footer_button_width(&self, text: &str, min_width: i32, max_width: i32) -> i32 {
-        (self.text_width(text) + 34).clamp(min_width, max_width)
+    fn status_control_width(&self) -> i32 {
+        status_control_width_for_text(self.text_width(&self.status_display_text))
+    }
+
+    fn button_width(&self, text: &str, min_width: i32, max_width: i32) -> i32 {
+        (self.text_width(text) + 44).clamp(min_width, max_width)
     }
 
     fn compact_button_width(&self, text: &str, min_width: i32, max_width: i32) -> i32 {
@@ -1970,40 +1881,33 @@ impl AppWindow {
             );
         }
 
+        let choices = &self.all_process_choices;
+        let indices = &self.process_choice_indices;
+        let Some(process_picker) = self.process_picker.as_mut() else {
+            return;
+        };
+        let edit = process_picker.edit();
         unsafe {
-            let controls = self.controls;
-            let text_buffer = &mut self.wide_text_buffer;
-            self.updating_process_combo = true;
-            let process_text_bytes = self
-                .process_choice_indices
-                .iter()
-                .map(|index| self.all_process_choices[*index].display_storage_bytes())
-                .sum();
-            SendMessageW(controls.running_combo, CB_RESETCONTENT, None, None);
-            reserve_combo_items(
-                controls.running_combo,
-                self.process_choice_indices.len(),
-                process_text_bytes,
-            );
-            text_buffer.clear();
-            for index in &self.process_choice_indices {
-                add_combo_item_with_buffer(
-                    controls.running_combo,
-                    self.all_process_choices[*index].display_name(),
-                    text_buffer,
-                );
+            window_text_into(edit, &mut self.display_text_buffer);
+        }
+        let edit_already_matches_query = self.display_text_buffer == self.process_query;
+        self.display_text_buffer.clear();
+        unsafe {
+            self.updating_process_picker = true;
+            SendMessageW(edit, WM_SETREDRAW, Some(WPARAM(0)), None);
+            process_picker
+                .replace_results(indices.iter().map(|index| choices[*index].display_name()));
+            // SetWindowTextW resets the native edit selection. Leave matching
+            // user input untouched so filtering does not move its caret.
+            if !edit_already_matches_query {
+                set_text(edit, &self.process_query);
+                if !self.process_query.is_empty() {
+                    set_edit_caret_to_end(edit, &self.process_query);
+                }
             }
-            SendMessageW(
-                controls.running_combo,
-                CB_SETCURSEL,
-                Some(WPARAM(usize::MAX)),
-                None,
-            );
-            set_text(controls.running_combo, &self.process_query);
-            if !self.process_query.is_empty() {
-                set_combo_edit_caret(controls.running_combo, &self.process_query);
-            }
-            self.updating_process_combo = false;
+            SendMessageW(edit, WM_SETREDRAW, Some(WPARAM(1)), None);
+            let _ = RedrawWindow(Some(edit), None, None, RDW_INVALIDATE | RDW_ERASE);
+            self.updating_process_picker = false;
         }
         self.update_action_buttons();
     }
@@ -2154,30 +2058,30 @@ impl AppWindow {
         {
             return;
         }
-        let header_layout_changed = self
-            .last_status
-            .as_ref()
-            .map(|last_snapshot| {
-                last_snapshot.issue.is_some() != snapshot.issue.is_some()
-                    || last_snapshot.issue_detail_visible != snapshot.issue_detail_visible
-            })
-            .unwrap_or(true);
-
+        let issue_text = snapshot
+            .issue
+            .map(|issue| self.issue_text(issue).to_owned());
         let status = status_text_and_detail_into(
             self.strings,
-            snapshot.issue.map(|issue| self.issue_text(issue)),
+            issue_text.as_deref(),
             snapshot.paused,
             snapshot.target_count,
             snapshot.muted_count,
             &mut self.status_detail_text,
         );
+        self.status_display_text.clear();
+        self.status_display_text.push_str(status);
+        if let Some(issue_text) = issue_text.as_deref() {
+            self.status_display_text.push_str(" · ");
+            self.status_display_text.push_str(issue_text);
+        }
         tray_tip_text_into(
             status,
             &self.status_detail_text,
             &mut self.tray_tip_text_buffer,
         );
         unsafe {
-            set_text(self.controls.status, status);
+            set_text(self.controls.status, &self.status_display_text);
             let header_detail_text = if snapshot.issue.is_some() {
                 ""
             } else {
@@ -2185,10 +2089,8 @@ impl AppWindow {
             };
             set_text(self.controls.status_detail, header_detail_text);
         }
-        if header_layout_changed {
-            self.layout_header(snapshot.issue.is_some(), snapshot.issue_detail_visible);
-            self.redraw_header();
-        }
+        self.layout_header(snapshot.issue.is_some(), snapshot.issue_detail_visible);
+        self.redraw_header();
         self.last_status = Some(snapshot);
         let tray_data = self.tray_data(&self.tray_tip_text_buffer);
         self.add_tray_icon_data(&tray_data);
@@ -2705,7 +2607,7 @@ impl AppWindow {
                 self.config_stamp = current_config_stamp();
                 self.persisted_config = self.config.clone();
                 self.next_config_check = Instant::now() + CONFIG_RELOAD_CHECK_INTERVAL;
-                self.window_position_dirty = false;
+                self.window_placement_dirty = false;
                 self.clear_config_issues();
                 true
             }
@@ -2787,61 +2689,87 @@ impl AppWindow {
     }
 
     fn handle_pretranslated_message(&mut self, msg: &MSG) -> bool {
-        if msg.message == WM_KEYDOWN
-            && msg.wParam.0 == VK_RETURN.0 as usize
-            && msg.hwnd == self.controls.manual_edit
-        {
-            if self.can_submit_manual_target() {
-                self.add_manual_target();
-            }
-            return true;
+        if msg.message != WM_KEYDOWN {
+            return false;
         }
 
-        false
+        let Some(process_picker) = &self.process_picker else {
+            return false;
+        };
+        if !process_picker.accepts_keyboard_input_from(msg.hwnd) {
+            return false;
+        }
+
+        let key = msg.wParam.0 as u16;
+        if key == VK_ESCAPE.0 {
+            if process_picker.popup_visible() {
+                unsafe {
+                    process_picker.dismiss_to_edit();
+                }
+                return true;
+            }
+            return false;
+        }
+        if key == VK_DOWN.0 || key == VK_UP.0 {
+            let direction = if key == VK_DOWN.0 { 1 } else { -1 };
+            self.move_process_result_selection(direction);
+            return true;
+        }
+        if key != VK_RETURN.0 {
+            return false;
+        }
+
+        if process_picker.popup_visible() && process_picker.selected_result_index().is_some() {
+            self.commit_selected_process_result();
+        } else if self.can_submit_registration_candidate() {
+            self.add_process_picker_target();
+        }
+        true
     }
 
-    fn command(&mut self, id: i32, notification: u16) {
+    fn is_process_results_window(&self, hwnd: HWND) -> bool {
+        self.process_picker
+            .as_ref()
+            .is_some_and(|picker| picker.is_results_window(hwnd))
+    }
+
+    fn command(&mut self, id: i32, notification: u16, source: HWND) {
+        // The popup list owns its scrolling and selection notifications. They
+        // are not commands from outside the picker and must not dismiss it.
+        if self.is_process_results_window(source) {
+            return;
+        }
         if id != ID_TARGETS {
             self.clear_target_selection();
         }
+        if !matches!(id, ID_RUNNING | ID_PROCESS_SEARCH_TOGGLE)
+            && let Some(process_picker) = &self.process_picker
+        {
+            unsafe {
+                process_picker.hide_popup();
+            }
+        }
 
         match id {
-            ID_ADD_SELECTED => self.add_selected_process(),
-            ID_ADD_MANUAL => self.add_manual_target(),
+            ID_ADD_SELECTED => self.add_process_picker_target(),
             ID_PROCESS_SOURCE => self.toggle_process_list_source(),
             ID_TOGGLE_PROCESS_DETAILS => self.toggle_process_details(),
             ID_PID_DETAILS_HELP => self.show_pid_details_help(),
-            ID_RUNNING if notification == CBN_EDITCHANGE as u16 => {
+            ID_RUNNING if notification == EN_CHANGE as u16 && !self.updating_process_picker => {
                 self.running_process_choice_selected = false;
                 self.search_running_processes();
             }
-            ID_RUNNING if notification == CBN_SETFOCUS as u16 => {
-                self.focus_running_process_picker()
+            ID_RUNNING if notification == EN_SETFOCUS as u16 && !self.updating_process_picker => {
+                self.focus_running_process_picker();
             }
-            ID_RUNNING if notification == CBN_DROPDOWN as u16 => {
-                self.schedule_running_process_list_cursor_install()
-            }
-            ID_RUNNING
-                if notification == CBN_SELCHANGE as u16 || notification == CBN_SELENDOK as u16 =>
-            {
-                // 검색 콤보의 edit text는 선택 알림 시점에 아직 검색어일 수 있다.
-                // 실제 목록 선택 여부는 이 알림에서만 플래그로 기록한다.
-                self.update_running_process_choice_selected();
-                self.update_action_buttons();
-            }
-            ID_RUNNING if notification == CBN_CLOSEUP as u16 => {
-                self.focus_main_window();
-                // closeup에는 입력 삭제 후 남은 stale CB_GETCURSEL도 들어올 수 있으므로
-                // 선택 플래그를 새로 세우지 않는다.
-                self.update_action_buttons();
-            }
-            ID_MANUAL if notification == EN_CHANGE as u16 => self.update_manual_process_text(),
+            ID_PROCESS_SEARCH_TOGGLE => self.toggle_process_results(),
             ID_SETTINGS => self.open_settings_window(),
+            ID_STATUS => self.toggle_pause(),
             ID_ISSUE_DETAILS => self.show_issue_details(),
             ID_PAUSE => self.toggle_pause(),
             ID_HIDE => self.hide_to_tray(),
             ID_QUIT => unsafe {
-                self.save_window_position();
+                self.save_window_placement();
                 let _ = DestroyWindow(self.hwnd);
             },
             ID_TARGETS if notification == LBN_SELCHANGE as u16 => self.update_action_buttons(),
@@ -2850,21 +2778,29 @@ impl AppWindow {
         }
     }
 
-    fn add_selected_process(&mut self) {
-        let Some(choice_index) = self.selected_process_choice_index() else {
+    fn add_process_picker_target(&mut self) {
+        let Some(candidate) = self.registration_candidate() else {
             return;
         };
         self.reload_config_if_changed();
 
-        let (name, pid) = {
-            let Some(choice) = self.all_process_choices.get(choice_index) else {
-                return;
-            };
-            debug_assert!(is_normalized_process_name(&choice.name));
-            if !self.can_add_process_choice(choice) {
-                return;
+        let (name, pid) = match candidate {
+            RegistrationCandidate::ProcessChoice(choice_index) => {
+                let Some(choice) = self.all_process_choices.get(choice_index) else {
+                    return;
+                };
+                debug_assert!(is_normalized_process_name(&choice.name));
+                if !self.can_add_process_choice(choice) {
+                    return;
+                }
+                (choice.name.clone(), choice.pid)
             }
-            (choice.name.clone(), choice.pid)
+            RegistrationCandidate::ExactExeName(name) => {
+                if !self.can_add_process(&name, None) {
+                    return;
+                }
+                (name, None)
+            }
         };
         let added = if let Some(pid) = pid {
             self.config.add_normalized_pid_target(name, pid)
@@ -2878,11 +2814,14 @@ impl AppWindow {
     }
 
     fn search_running_processes(&mut self) {
-        if self.updating_process_combo {
+        if self.updating_process_picker {
             return;
         }
+        let Some(process_picker) = &self.process_picker else {
+            return;
+        };
         unsafe {
-            window_text_into(self.controls.running_combo, &mut self.display_text_buffer);
+            window_text_into(process_picker.edit(), &mut self.display_text_buffer);
         }
         if !replace_text_if_changed(&mut self.process_query, &mut self.display_text_buffer) {
             self.update_action_buttons();
@@ -2890,15 +2829,13 @@ impl AppWindow {
         }
         self.apply_process_filter();
         if !self.process_choice_indices.is_empty() {
-            self.show_running_process_dropdown();
+            self.show_process_results();
         }
     }
 
     fn focus_running_process_picker(&mut self) {
         self.prepare_running_process_picker();
-        if !self.cursor_is_on_running_process_dropdown_button() {
-            self.show_running_process_dropdown();
-        }
+        self.show_process_results();
     }
 
     fn prepare_running_process_picker(&mut self) {
@@ -2915,56 +2852,87 @@ impl AppWindow {
         }
     }
 
-    fn show_running_process_dropdown(&self) {
-        unsafe {
-            SendMessageW(
-                self.controls.running_combo,
-                CB_SHOWDROPDOWN,
-                Some(WPARAM(1)),
-                None,
-            );
-            self.schedule_running_process_list_cursor_install();
+    fn show_process_results(&self) {
+        if let Some(process_picker) = &self.process_picker {
+            unsafe {
+                let _ = SetFocus(Some(process_picker.edit()));
+                let _ = process_picker.show_popup();
+                if !self.process_query.is_empty() {
+                    set_edit_caret_to_end(process_picker.edit(), &self.process_query);
+                }
+            }
         }
     }
 
-    fn schedule_running_process_list_cursor_install(&self) {
-        unsafe {
-            let _ = PostMessageW(
-                Some(self.hwnd),
-                WM_INSTALL_PROCESS_LIST_CURSOR,
-                WPARAM(0),
-                LPARAM(0),
-            );
+    fn hide_process_results(&self) {
+        if let Some(process_picker) = &self.process_picker {
+            unsafe {
+                process_picker.hide_popup();
+            }
         }
     }
 
-    fn install_running_process_list_cursor(&self) {
+    fn toggle_process_results(&mut self) {
+        self.prepare_running_process_picker();
+        let Some(process_picker) = &self.process_picker else {
+            return;
+        };
+        let was_visible = process_picker.popup_visible();
         unsafe {
-            install_combo_dropdown_list_hand_cursor(self.controls.running_combo);
+            let _ = SetFocus(Some(process_picker.edit()));
+            if was_visible {
+                process_picker.hide_popup();
+            } else {
+                let _ = process_picker.show_popup();
+            }
         }
     }
 
-    fn cursor_is_on_running_process_dropdown_button(&self) -> bool {
-        let mut cursor = POINT::default();
-        if unsafe { GetCursorPos(&mut cursor) }.is_err() {
-            return false;
+    fn move_process_result_selection(&mut self, direction: i32) {
+        self.prepare_running_process_picker();
+        let Some(process_picker) = &self.process_picker else {
+            return;
+        };
+        unsafe {
+            let _ = process_picker.move_selection(direction);
         }
+    }
 
-        let mut rect = RECT::default();
-        if unsafe { GetWindowRect(self.controls.running_combo, &mut rect) }.is_err() {
-            return false;
+    fn commit_selected_process_result(&mut self) {
+        let Some(process_picker) = &self.process_picker else {
+            return;
+        };
+        let Some(result_index) = process_picker.selected_result_index() else {
+            return;
+        };
+        self.commit_process_result(result_index);
+    }
+
+    fn commit_process_result(&mut self, result_index: usize) {
+        let Some(process_picker) = &self.process_picker else {
+            return;
+        };
+        let Some(choice_index) = self.process_choice_indices.get(result_index).copied() else {
+            return;
+        };
+        let Some(display_name) = self
+            .all_process_choices
+            .get(choice_index)
+            .map(|choice| choice.display_name().to_owned())
+        else {
+            return;
+        };
+        let edit = process_picker.edit();
+        self.updating_process_picker = true;
+        unsafe {
+            set_text(edit, &display_name);
+            set_edit_caret_to_end(edit, &display_name);
+            let _ = SetFocus(Some(edit));
+            process_picker.hide_popup();
         }
-
-        if cursor.x < rect.left
-            || cursor.x >= rect.right
-            || cursor.y < rect.top
-            || cursor.y >= rect.bottom
-        {
-            return false;
-        }
-
-        let button_width = unsafe { GetSystemMetrics(SM_CXVSCROLL) }.max(18);
-        cursor.x >= rect.right - button_width
+        self.updating_process_picker = false;
+        self.running_process_choice_selected = true;
+        self.update_action_buttons();
     }
 
     fn clear_process_search(&mut self) {
@@ -2982,16 +2950,14 @@ impl AppWindow {
 
     fn clear_running_process_selection(&mut self) {
         self.running_process_choice_selected = false;
-        unsafe {
-            self.updating_process_combo = true;
-            SendMessageW(
-                self.controls.running_combo,
-                CB_SETCURSEL,
-                Some(WPARAM(usize::MAX)),
-                None,
-            );
-            set_text(self.controls.running_combo, "");
-            self.updating_process_combo = false;
+        if let Some(process_picker) = &self.process_picker {
+            unsafe {
+                self.updating_process_picker = true;
+                process_picker.clear_selection();
+                process_picker.hide_popup();
+                set_text(process_picker.edit(), "");
+                self.updating_process_picker = false;
+            }
         }
         self.update_action_buttons();
     }
@@ -3001,7 +2967,7 @@ impl AppWindow {
         self.focus_main_window();
         self.refresh_process_details_ui();
         let _ = self.refresh_processes();
-        self.show_running_process_dropdown();
+        self.show_process_results();
     }
 
     fn focus_main_window(&self) {
@@ -3018,7 +2984,7 @@ impl AppWindow {
             self.apply_process_filter();
         }
         self.refresh_process_details_ui();
-        self.show_running_process_dropdown();
+        self.show_process_results();
     }
 
     fn show_pid_details_help(&self) {
@@ -3030,50 +2996,6 @@ impl AppWindow {
                 PCWSTR(body.as_ptr()),
                 PCWSTR(title.as_ptr()),
                 MB_OK | MB_ICONINFORMATION,
-            );
-        }
-    }
-
-    fn add_manual_target(&mut self) {
-        unsafe {
-            window_text_into(self.controls.manual_edit, &mut self.manual_process_text);
-        }
-        let Some(name) = normalize_manual_process_name(&self.manual_process_text) else {
-            return;
-        };
-        if !is_supported_normalized_target_process_name(&name) {
-            self.show_manual_process_exe_required();
-            return;
-        }
-        self.reload_config_if_changed();
-        if self.config.add_normalized_target(name) {
-            self.finish_target_change();
-            self.manual_process_text.clear();
-            unsafe {
-                set_text(self.controls.manual_edit, "");
-            }
-        }
-    }
-
-    fn update_manual_process_text(&mut self) {
-        unsafe {
-            window_text_into(self.controls.manual_edit, &mut self.display_text_buffer);
-        }
-        if !replace_text_if_changed(&mut self.manual_process_text, &mut self.display_text_buffer) {
-            return;
-        }
-        self.update_action_buttons();
-    }
-
-    fn show_manual_process_exe_required(&self) {
-        let title = to_wide(self.strings.manual_process);
-        let body = to_wide(self.strings.manual_process_exe_required);
-        unsafe {
-            let _ = MessageBoxW(
-                Some(self.hwnd),
-                PCWSTR(body.as_ptr()),
-                PCWSTR(title.as_ptr()),
-                MB_OK | MB_ICONWARNING,
             );
         }
     }
@@ -3288,40 +3210,8 @@ impl AppWindow {
     }
 
     fn target_index_from_list_client_point(&self, point: POINT) -> Option<usize> {
-        let point_value = ((point.y as u16 as isize) << 16) | (point.x as u16 as isize);
-        let result = unsafe {
-            SendMessageW(
-                self.controls.target_list,
-                LB_ITEMFROMPOINT_MESSAGE,
-                None,
-                Some(LPARAM(point_value)),
-            )
-        };
-        if result.0 & LB_ITEMFROMPOINT_OUTSIDE_MASK != 0 {
-            return None;
-        }
-
-        let index = (result.0 as u32 & 0xffff) as usize;
-        if index >= self.config.targets.len() {
-            return None;
-        }
-
-        let mut item_rect = RECT::default();
-        let result = unsafe {
-            SendMessageW(
-                self.controls.target_list,
-                LB_GETITEMRECT_MESSAGE,
-                Some(WPARAM(index)),
-                Some(LPARAM(
-                    (&mut item_rect as *mut RECT).cast::<c_void>() as isize
-                )),
-            )
-        };
-        if result.0 == LB_ERR || !point_is_in_rect(point, item_rect) {
-            return None;
-        }
-
-        Some(index)
+        target_list_index_at_client_point(self.controls.target_list, point)
+            .filter(|index| *index < self.config.targets.len())
     }
 
     fn select_target_index(&mut self, index: usize) {
@@ -3353,33 +3243,31 @@ impl AppWindow {
     }
 
     fn update_action_buttons(&mut self) {
-        let selected_process_choice_index = self.selected_process_choice_index();
-        let can_add_selected = selected_process_choice_index
-            .and_then(|index| self.all_process_choices.get(index))
-            .is_some_and(|choice| self.can_add_process_choice(choice));
-        let can_add_manual = self.can_submit_manual_target();
-        let state = ActionButtonState {
-            add_selected: can_add_selected,
-            add_manual: can_add_manual,
-        };
+        let register = self
+            .registration_candidate()
+            .as_ref()
+            .is_some_and(|candidate| self.can_add_registration_candidate(candidate));
+        let state = ActionButtonState { register };
         if self.last_action_buttons == Some(state) {
             return;
         }
 
         unsafe {
-            let _ = EnableWindow(self.controls.add_selected_button, state.add_selected);
-            let _ = EnableWindow(self.controls.add_manual_button, state.add_manual);
+            let _ = EnableWindow(self.controls.add_selected_button, state.register);
         }
         self.last_action_buttons = Some(state);
     }
 
-    fn selected_process_choice_index(&mut self) -> Option<usize> {
-        let index =
-            unsafe { SendMessageW(self.controls.running_combo, CB_GETCURSEL, None, None).0 };
+    fn registration_candidate(&mut self) -> Option<RegistrationCandidate> {
+        let process_picker = self.process_picker.as_ref()?;
+        let index = process_picker
+            .selected_result_index()
+            .map(|index| index as isize)
+            .unwrap_or(-1);
         unsafe {
-            window_text_into(self.controls.running_combo, &mut self.display_text_buffer);
+            window_text_into(process_picker.edit(), &mut self.display_text_buffer);
         }
-        let selected = selected_process_choice_index_from_picker_state(
+        let candidate = registration_candidate_from_picker_state(
             index,
             self.running_process_choice_selected,
             &self.process_query,
@@ -3387,13 +3275,7 @@ impl AppWindow {
             &self.process_choice_indices,
         );
         self.display_text_buffer.clear();
-        selected
-    }
-
-    fn update_running_process_choice_selected(&mut self) {
-        let index =
-            unsafe { SendMessageW(self.controls.running_combo, CB_GETCURSEL, None, None).0 };
-        self.running_process_choice_selected = index >= 0;
+        candidate
     }
 
     fn can_add_process_choice(&self, choice: &ProcessChoice) -> bool {
@@ -3408,12 +3290,20 @@ impl AppWindow {
         !self.config.contains_normalized_target(name, pid)
     }
 
-    fn can_submit_manual_target(&self) -> bool {
-        let Some(name) = normalize_manual_process_name_cow(&self.manual_process_text) else {
-            return false;
-        };
-        is_supported_normalized_target_process_name(name.as_ref())
-            && !self.config.contains_normalized_target(name.as_ref(), None)
+    fn can_add_registration_candidate(&self, candidate: &RegistrationCandidate) -> bool {
+        match candidate {
+            RegistrationCandidate::ProcessChoice(index) => self
+                .all_process_choices
+                .get(*index)
+                .is_some_and(|choice| self.can_add_process_choice(choice)),
+            RegistrationCandidate::ExactExeName(name) => self.can_add_process(name, None),
+        }
+    }
+
+    fn can_submit_registration_candidate(&mut self) -> bool {
+        self.registration_candidate()
+            .as_ref()
+            .is_some_and(|candidate| self.can_add_registration_candidate(candidate))
     }
 
     fn finish_target_change(&mut self) {
@@ -3424,8 +3314,6 @@ impl AppWindow {
 
     fn toggle_pause(&mut self) {
         self.paused = !self.paused;
-        self.update_pause_button_text();
-        self.layout_footer_buttons(WINDOW_WIDTH - 36);
         if self.paused {
             let _ = self.restore_managed_mutes();
             self.foreground_hook = None;
@@ -3437,21 +3325,7 @@ impl AppWindow {
         self.update_status();
     }
 
-    fn update_pause_button_text(&self) {
-        unsafe {
-            set_text(self.controls.pause_button, self.pause_button_text());
-        }
-    }
-
-    fn pause_button_text(&self) -> &'static str {
-        if self.paused {
-            self.strings.resume
-        } else {
-            self.strings.pause
-        }
-    }
-
-    fn remember_window_position(&mut self) -> bool {
+    fn remember_window_placement(&mut self) -> bool {
         let mut rect = RECT::default();
         if unsafe { GetWindowRect(self.hwnd, &mut rect) }.is_ok() {
             let position = WindowPosition {
@@ -3467,24 +3341,29 @@ impl AppWindow {
             if !window_position_is_visible(position, width, height) {
                 return false;
             }
-            if self.config.window_position != Some(position) {
+            let size = current_logical_window_size();
+            if self.config.window_position != Some(position)
+                || self.config.window_size != Some(size)
+            {
                 self.config.window_position = Some(position);
-                self.window_position_dirty = true;
+                self.config.window_size = Some(size);
+                self.window_placement_dirty = true;
                 return true;
             }
         }
         false
     }
 
-    fn save_window_position(&mut self) {
+    fn save_window_placement(&mut self) {
         self.reload_config_if_changed();
-        self.remember_window_position();
-        if self.window_position_dirty || self.issues.contains(StatusIssue::ConfigLoadFailed) {
+        self.remember_window_placement();
+        if self.window_placement_dirty || self.issues.contains(StatusIssue::ConfigLoadFailed) {
             self.save_config();
         }
     }
 
     fn background_click(&mut self) {
+        self.hide_process_results();
         self.clear_target_selection();
         self.focus_main_window();
     }
@@ -3497,7 +3376,7 @@ impl AppWindow {
             return;
         }
 
-        self.save_window_position();
+        self.save_window_placement();
         unsafe {
             let _ = ShowWindow(self.hwnd, SW_HIDE);
         }
@@ -3505,7 +3384,7 @@ impl AppWindow {
 
     fn cleanup(&mut self) {
         self.foreground_hook = None;
-        self.save_window_position();
+        self.save_window_placement();
         let restore_issue = if self.config.restore_muted_on_exit && self.has_managed_mutes() {
             self.restore_managed_mutes()
         } else {
@@ -3682,11 +3561,8 @@ impl AppWindow {
                     };
                     let _ = SetTextColor(hdc, color);
                     let (brush, background_color) = if child == self.controls.title_label
-                        || child == self.controls.subtitle_label
                         || child == self.controls.status
                         || child == self.controls.status_detail
-                        || child == self.controls.running_hint
-                        || child == self.controls.manual_label
                     {
                         (self.theme.page_brush.handle(), PAGE_COLOR)
                     } else {
@@ -3721,16 +3597,8 @@ impl AppWindow {
     }
 
     fn draw_status_badge(&self, draw: &DRAWITEMSTRUCT) -> bool {
-        let issue = self.issues.visible();
-        let issue_visible = issue.is_some();
-        let base_status = status_text(self.strings, self.paused, issue_visible);
-        let issue_status;
-        let status = if let Some(issue) = issue {
-            issue_status = format!("{base_status} · {}", self.issue_text(issue));
-            issue_status.as_str()
-        } else {
-            base_status
-        };
+        let issue_visible = self.issues.visible().is_some();
+        let status = &self.status_display_text;
         let text_color = if issue_visible || self.paused {
             WARNING_COLOR
         } else {
@@ -3741,44 +3609,131 @@ impl AppWindow {
             let _ = FillRect(draw.hDC, &draw.rcItem, self.theme.page_brush.handle());
         }
 
-        let status_height = 22;
         let status_left = draw.rcItem.left + px(1);
         let status_right = draw.rcItem.right - px(1);
-        let dot_width = px(10);
-        let dot_gap = px(5);
-        let text_left_bound = (status_left + dot_width + dot_gap).min(status_right);
-        let text_left = (status_right - px(self.text_width(status))).max(text_left_bound);
+        let icon_width = px(12);
+        let icon_gap = px(5);
+        let text_right = status_right;
+        let text_left_bound = (status_left + icon_width + icon_gap).min(text_right);
+        let text_left = (text_right - px(self.text_width(status))).max(text_left_bound);
         let text_rect = RECT {
             left: text_left,
             top: draw.rcItem.top,
-            right: status_right,
-            bottom: draw.rcItem.top + px(status_height),
+            right: text_right,
+            bottom: draw.rcItem.bottom,
         };
-        let dot_rect = RECT {
-            left: text_rect.left - dot_gap - dot_width,
-            top: text_rect.top,
-            right: text_rect.left - dot_gap,
-            bottom: text_rect.bottom,
+        let icon_rect = RECT {
+            left: text_rect.left - icon_gap - icon_width,
+            top: draw.rcItem.top,
+            right: text_rect.left - icon_gap,
+            bottom: draw.rcItem.bottom,
         };
 
-        draw_text_line(
-            draw.hDC,
-            self.theme.font.handle(),
-            "●",
-            dot_rect,
-            text_color,
-            DT_LEFT | DT_SINGLELINE | DT_VCENTER | DT_NOPREFIX,
-        );
+        let status_text_flags = if issue_visible {
+            DT_LEFT | DT_SINGLELINE | DT_VCENTER | DT_END_ELLIPSIS | DT_NOPREFIX
+        } else {
+            DT_LEFT | DT_SINGLELINE | DT_VCENTER | DT_NOPREFIX
+        };
         draw_text_line(
             draw.hDC,
             self.theme.font.handle(),
             status,
             text_rect,
             text_color,
-            DT_LEFT | DT_SINGLELINE | DT_VCENTER | DT_END_ELLIPSIS | DT_NOPREFIX,
+            status_text_flags,
         );
 
+        let hovered = unsafe { button_is_hovered(draw.hwndItem) };
+        let pressed_offset = if draw.itemState.0 & ODS_SELECTED.0 != 0 {
+            px(1)
+        } else {
+            0
+        };
+        self.draw_status_action_icon(
+            draw.hDC,
+            icon_rect,
+            if hovered { TEXT_COLOR } else { text_color },
+            pressed_offset,
+        );
+
+        if draw.itemState.0 & ODS_FOCUS.0 != 0 {
+            let underline = RECT {
+                left: icon_rect.left + px(2),
+                top: icon_rect.bottom - px(3),
+                right: icon_rect.right - px(2),
+                bottom: icon_rect.bottom - px(2),
+            };
+            unsafe {
+                let brush = CreateSolidBrush(text_color);
+                let _ = FillRect(draw.hDC, &underline, brush);
+                let _ = DeleteObject(brush.into());
+            }
+        }
+
         true
+    }
+
+    fn draw_status_action_icon(
+        &self,
+        hdc: HDC,
+        rect: RECT,
+        color: windows::Win32::Foundation::COLORREF,
+        offset: i32,
+    ) {
+        let center_x = (rect.left + rect.right) / 2 + offset;
+        let optical_offset_y = if self.paused {
+            HEADER_STATUS_PLAY_ICON_OPTICAL_OFFSET_Y
+        } else {
+            HEADER_STATUS_PAUSE_ICON_OPTICAL_OFFSET_Y
+        };
+        let center_y = (rect.top + rect.bottom) / 2 + px(optical_offset_y) + offset;
+        unsafe {
+            let brush = CreateSolidBrush(color);
+            if self.paused {
+                let half_width = px(3).max(2);
+                let half_height = px(4).max(3);
+                let points = [
+                    POINT {
+                        x: center_x - half_width,
+                        y: center_y - half_height,
+                    },
+                    POINT {
+                        x: center_x - half_width,
+                        y: center_y + half_height,
+                    },
+                    POINT {
+                        x: center_x + half_width,
+                        y: center_y,
+                    },
+                ];
+                let pen = CreatePen(PS_SOLID, 1, color);
+                let previous_brush = SelectObject(hdc, brush.into());
+                let previous_pen = SelectObject(hdc, pen.into());
+                let _ = Polygon(hdc, &points);
+                let _ = SelectObject(hdc, previous_brush);
+                let _ = SelectObject(hdc, previous_pen);
+                let _ = DeleteObject(pen.into());
+            } else {
+                let bar_width = px(2).max(1);
+                let half_gap = px(1).max(1);
+                let half_height = px(4).max(3);
+                let left_bar = RECT {
+                    left: center_x - half_gap - bar_width,
+                    top: center_y - half_height,
+                    right: center_x - half_gap,
+                    bottom: center_y + half_height,
+                };
+                let right_bar = RECT {
+                    left: center_x + half_gap,
+                    top: center_y - half_height,
+                    right: center_x + half_gap + bar_width,
+                    bottom: center_y + half_height,
+                };
+                let _ = FillRect(hdc, &left_bar, brush);
+                let _ = FillRect(hdc, &right_bar, brush);
+            }
+            let _ = DeleteObject(brush.into());
+        }
     }
 
     fn draw_item(&self, lparam: LPARAM) -> bool {
@@ -3787,13 +3742,17 @@ impl AppWindow {
         }
 
         let draw = unsafe { &*(lparam.0 as *const DRAWITEMSTRUCT) };
+        if let Some(process_picker) = &self.process_picker
+            && (process_picker.draw_frame(draw) || process_picker.draw_toggle(draw))
+        {
+            return true;
+        }
         let ctl_id = draw.CtlID as i32;
         if ctl_id == ID_PROCESS_SOURCE
             || ctl_id == ID_TOGGLE_PROCESS_DETAILS
             || ctl_id == ID_PID_DETAILS_HELP
             || ctl_id == ID_ISSUE_DETAILS
             || ctl_id == ID_ADD_SELECTED
-            || ctl_id == ID_ADD_MANUAL
             || ctl_id == ID_PAUSE
             || ctl_id == ID_HIDE
             || ctl_id == ID_QUIT
@@ -3924,15 +3883,18 @@ impl AppWindow {
         }
 
         let offset = if pressed { px(1) } else { 0 };
-        if !self.icons.settings.0.is_null() {
+        let button_height = draw.rcItem.bottom.saturating_sub(draw.rcItem.top);
+        let icon_size = px(SETTINGS_ICON_SIZE).min(button_height).max(0);
+        if let Some(icon) = &self.icons.settings {
+            let icon_y = draw.rcItem.top + (button_height - icon_size).max(0) / 2;
             unsafe {
                 let _ = DrawIconEx(
                     draw.hDC,
                     draw.rcItem.left + offset,
-                    px(SETTINGS_BUTTON_ICON_Y - SETTINGS_BUTTON_Y) + draw.rcItem.top + offset,
-                    self.icons.settings,
-                    px(SETTINGS_ICON_SIZE),
-                    px(SETTINGS_ICON_SIZE),
+                    icon_y + offset,
+                    icon.handle(),
+                    icon_size,
+                    icon_size,
                     0,
                     None,
                     DI_NORMAL,
@@ -3959,7 +3921,7 @@ impl AppWindow {
             self.strings.settings_title,
             text_rect,
             text_color,
-            DT_LEFT | DT_SINGLELINE | DT_VCENTER | DT_END_ELLIPSIS | DT_NOPREFIX,
+            DT_LEFT | DT_SINGLELINE | DT_VCENTER | DT_NOPREFIX,
         );
 
         true
@@ -3995,25 +3957,37 @@ impl AppWindow {
         }
     }
 
-    fn apply_font_set_to_controls(&self, font: &UiFont, title_font: &UiFont) {
-        self.apply_font_to_controls(font);
+    fn apply_font_set_to_controls(&mut self, font: HGDIOBJ, title_font: HGDIOBJ, redraw: bool) {
+        self.apply_font_to_controls(font, redraw);
+        if let Some(process_picker) = &mut self.process_picker {
+            unsafe {
+                process_picker.set_font(font);
+            }
+        }
+        let redraw = LPARAM(if redraw { 1 } else { 0 });
         unsafe {
             if self.controls.title_label != HWND::default() {
                 SendMessageW(
                     self.controls.title_label,
                     WM_SETFONT,
-                    Some(title_font.wparam()),
-                    Some(LPARAM(1)),
+                    Some(WPARAM(title_font.0 as usize)),
+                    Some(redraw),
                 );
             }
         }
     }
 
-    fn apply_font_to_controls(&self, font: &UiFont) {
+    fn apply_font_to_controls(&self, font: HGDIOBJ, redraw: bool) {
+        let redraw = LPARAM(if redraw { 1 } else { 0 });
         unsafe {
             for hwnd in self.controls.all() {
                 if hwnd != HWND::default() {
-                    SendMessageW(hwnd, WM_SETFONT, Some(font.wparam()), Some(LPARAM(1)));
+                    SendMessageW(
+                        hwnd,
+                        WM_SETFONT,
+                        Some(WPARAM(font.0 as usize)),
+                        Some(redraw),
+                    );
                 }
             }
         }
@@ -4023,6 +3997,18 @@ impl AppWindow {
 fn selected_list_index(hwnd: HWND) -> Option<usize> {
     let index = unsafe { SendMessageW(hwnd, LB_GETCURSEL, None, None).0 };
     (index >= 0).then_some(index as usize)
+}
+
+unsafe fn set_edit_caret_to_end(hwnd: HWND, text: &str) {
+    let position = text.encode_utf16().count().min(isize::MAX as usize);
+    unsafe {
+        SendMessageW(
+            hwnd,
+            EM_SETSEL_MESSAGE,
+            Some(WPARAM(position)),
+            Some(LPARAM(position as isize)),
+        );
+    }
 }
 
 fn target_row_height(target: &TargetProcess) -> i32 {
@@ -4090,6 +4076,41 @@ fn point_is_in_rect(point: POINT, rect: RECT) -> bool {
     point.x >= rect.left && point.x < rect.right && point.y >= rect.top && point.y < rect.bottom
 }
 
+fn target_list_index_at_client_point(hwnd: HWND, point: POINT) -> Option<usize> {
+    let count = unsafe { SendMessageW(hwnd, LB_GETCOUNT, None, None).0 };
+    let count = usize::try_from(count).ok()?;
+    let point_value = ((point.y as u16 as isize) << 16) | (point.x as u16 as isize);
+    let result = unsafe {
+        SendMessageW(
+            hwnd,
+            LB_ITEMFROMPOINT_MESSAGE,
+            None,
+            Some(LPARAM(point_value)),
+        )
+    };
+    if result.0 & LB_ITEMFROMPOINT_OUTSIDE_MASK != 0 {
+        return None;
+    }
+
+    let index = (result.0 as u32 & 0xffff) as usize;
+    if index >= count {
+        return None;
+    }
+
+    let mut item_rect = RECT::default();
+    let result = unsafe {
+        SendMessageW(
+            hwnd,
+            LB_GETITEMRECT_MESSAGE,
+            Some(WPARAM(index)),
+            Some(LPARAM(
+                (&mut item_rect as *mut RECT).cast::<c_void>() as isize
+            )),
+        )
+    };
+    (result.0 != LB_ERR && point_is_in_rect(point, item_rect)).then_some(index)
+}
+
 fn signed_loword(value: isize) -> i32 {
     (value as u32 & 0xffff) as u16 as i16 as i32
 }
@@ -4104,7 +4125,7 @@ unsafe extern "system" fn target_list_subclass_proc(
     wparam: WPARAM,
     lparam: LPARAM,
     subclass_id: usize,
-    ref_data: usize,
+    _ref_data: usize,
 ) -> LRESULT {
     if message == WM_NCDESTROY {
         unsafe {
@@ -4113,18 +4134,17 @@ unsafe extern "system" fn target_list_subclass_proc(
         }
     }
 
-    if message == WM_LBUTTONDOWN {
-        let app = unsafe { (ref_data as *mut AppWindow).as_mut() };
-        if let Some(app) = app {
-            let point = POINT {
-                x: signed_loword(lparam.0),
-                y: signed_hiword(lparam.0),
-            };
-            if app.target_index_from_list_client_point(point).is_none() {
-                let result = unsafe { DefSubclassProc(hwnd, message, wparam, lparam) };
-                app.clear_target_selection();
-                return result;
+    if matches!(message, WM_LBUTTONDOWN | WM_LBUTTONDBLCLK) {
+        let point = POINT {
+            x: signed_loword(lparam.0),
+            y: signed_hiword(lparam.0),
+        };
+        if target_list_index_at_client_point(hwnd, point).is_none() {
+            unsafe {
+                let _ = SetFocus(Some(hwnd));
+                SendMessageW(hwnd, LB_SETCURSEL, Some(WPARAM(usize::MAX)), None);
             }
+            return LRESULT(0);
         }
     }
 
@@ -4173,18 +4193,31 @@ fn issue_message_body(issue_text: &str, detail: Option<&str>) -> String {
     body
 }
 
-fn selected_process_choice_index_from_picker_state(
+fn registration_candidate_from_picker_state(
     combo_index: isize,
     running_process_choice_selected: bool,
     process_query: &str,
     picker_text: &str,
     process_choice_indices: &[usize],
-) -> Option<usize> {
+) -> Option<RegistrationCandidate> {
     if combo_index >= 0 && running_process_choice_selected {
-        return process_choice_indices.get(combo_index as usize).copied();
+        return process_choice_indices
+            .get(combo_index as usize)
+            .copied()
+            .map(RegistrationCandidate::ProcessChoice);
+    }
+
+    if let Some(name) = normalize_manual_process_name(picker_text)
+        && is_supported_normalized_target_process_name(&name)
+    {
+        return Some(RegistrationCandidate::ExactExeName(name));
+    }
+    if picker_text.to_ascii_lowercase().contains(".exe") {
+        return None;
     }
 
     single_filtered_process_choice_index(process_query, picker_text, process_choice_indices)
+        .map(RegistrationCandidate::ProcessChoice)
 }
 
 fn single_filtered_process_choice_index(
@@ -4244,10 +4277,11 @@ unsafe extern "system" fn window_proc(
             WM_COMMAND => {
                 let id = loword(wparam.0 as u32) as i32;
                 let notification = hiword(wparam.0 as u32);
+                let source = HWND(lparam.0 as *mut c_void);
                 if id == ID_SHOW && notification == 0 {
                     show_main_window(hwnd);
                 } else {
-                    app.command(id, notification);
+                    app.command(id, notification, source);
                 }
                 return LRESULT(0);
             }
@@ -4255,15 +4289,15 @@ unsafe extern "system" fn window_proc(
                 app.timer_tick(wparam.0);
                 return LRESULT(0);
             }
-            WM_INSTALL_PROCESS_LIST_CURSOR => {
-                app.install_running_process_list_cursor();
-                return LRESULT(0);
-            }
             WM_FOREGROUND_CHANGED => {
                 FOREGROUND_EVENT_PENDING.store(false, Ordering::Release);
                 app.clear_foreground_process_cache();
                 app.start_managed_mute_fast_retry();
                 app.tick();
+                return LRESULT(0);
+            }
+            WM_PROCESS_SEARCH_RESULT_CHOSEN => {
+                app.commit_process_result(wparam.0);
                 return LRESULT(0);
             }
             WM_PAINT => {
@@ -4282,8 +4316,16 @@ unsafe extern "system" fn window_proc(
             WM_SHOWWINDOW => {
                 if wparam.0 != 0 {
                     app.refresh_processes_if_stale();
+                } else {
+                    app.hide_process_results();
                 }
                 return LRESULT(0);
+            }
+            WM_ACTIVATE if loword(wparam.0 as u32) as u32 == WA_INACTIVE => {
+                let activated_window = HWND(lparam.0 as *mut c_void);
+                if !app.is_process_results_window(activated_window) {
+                    app.hide_process_results();
+                }
             }
             WM_LBUTTONDOWN => {
                 app.background_click();
@@ -4292,25 +4334,48 @@ unsafe extern "system" fn window_proc(
             WM_CONTEXTMENU if app.target_context_menu(wparam, lparam) => {
                 return LRESULT(0);
             }
+            WM_GETMINMAXINFO if lparam.0 != 0 => {
+                let info = unsafe { &mut *(lparam.0 as *mut MINMAXINFO) };
+                apply_window_minmax_info(hwnd, info);
+                return LRESULT(0);
+            }
+            WM_SIZING if lparam.0 != 0 => {
+                let rect = unsafe { &mut *(lparam.0 as *mut RECT) };
+                constrain_sizing_rect(hwnd, wparam.0, rect);
+                return LRESULT(1);
+            }
             WM_MOVE => {
-                app.remember_window_position();
+                app.remember_window_placement();
+                return LRESULT(0);
+            }
+            WM_ENTERSIZEMOVE => {
+                app.hide_process_results();
+                app.interactive_resize = true;
                 return LRESULT(0);
             }
             WM_EXITSIZEMOVE => {
-                app.save_window_position();
+                app.interactive_resize = false;
+                app.rescale_ui_to_window(true);
+                app.save_window_placement();
                 return LRESULT(0);
             }
             WM_CLOSE => {
+                app.hide_process_results();
                 if app.settings_window_open {
                     return LRESULT(0);
                 }
-                app.hide_to_tray();
+                if app.config.hide_to_tray_on_close {
+                    app.hide_to_tray();
+                } else {
+                    app.save_window_placement();
+                    unsafe {
+                        let _ = DestroyWindow(hwnd);
+                    }
+                }
                 return LRESULT(0);
             }
-            WM_SYSCOMMAND if app.should_block_system_command_after_settings(wparam) => {
-                return LRESULT(0);
-            }
-            WM_SIZE if app.restore_if_size_minimized_after_settings(wparam) => {
+            WM_SIZE => {
+                app.rescale_ui_to_window(!app.interactive_resize);
                 return LRESULT(0);
             }
             WM_CTLCOLORSTATIC | WM_CTLCOLOREDIT | WM_CTLCOLORLISTBOX => {
@@ -4372,6 +4437,53 @@ mod target_list_tests {
     }
 
     #[test]
+    fn process_picker_widths_fit_inside_content_with_pid_help() {
+        let content_width = WINDOW_WIDTH - 72 + LEFT_EDGE_TRIM;
+        let widths = fit_process_picker_widths(content_width, 150, 178, 120, true);
+        let used = widths.combo + widths.add + widths.source + widths.details + 12 * 3 + 38;
+
+        assert!(used <= content_width);
+        assert!(widths.combo >= 132);
+    }
+
+    #[test]
+    fn header_rows_are_derived_from_explicit_gaps() {
+        assert_eq!(
+            HEADER_DETAIL_Y,
+            HEADER_TITLE_Y + HEADER_PRIMARY_HEIGHT + HEADER_PRIMARY_TO_DETAIL_GAP
+        );
+        assert_eq!(
+            TARGET_PANEL_TOP,
+            HEADER_DETAIL_Y + HEADER_DETAIL_HEIGHT + HEADER_DETAIL_TO_PANEL_GAP
+        );
+    }
+
+    #[test]
+    fn status_hit_area_wraps_visible_content() {
+        assert_eq!(status_control_width_for_text(0), HEADER_STATUS_BASE_WIDTH);
+        assert_eq!(
+            status_control_width_for_text(80),
+            HEADER_STATUS_HORIZONTAL_PADDING * 2
+                + HEADER_STATUS_ICON_WIDTH
+                + HEADER_STATUS_ICON_GAP
+                + 80
+        );
+        assert_eq!(
+            status_control_width_for_text(i32::MAX),
+            HEADER_STATUS_MAX_WIDTH
+        );
+    }
+
+    #[test]
+    fn settings_icon_uses_only_embedded_resource_sizes() {
+        assert_eq!(settings_icon_resource_size(1), 16);
+        assert_eq!(settings_icon_resource_size(17), 20);
+        assert_eq!(settings_icon_resource_size(25), 32);
+        assert_eq!(settings_icon_resource_size(50), 64);
+        assert_eq!(settings_icon_resource_size(200), 64);
+    }
+
+    #[test]
     fn single_instance_window_class_uses_same_scope_as_mutex() {
         let scope = 0x0123_4567_89ab_cdef;
 
@@ -4390,8 +4502,8 @@ mod target_list_tests {
         let indices = vec![0, 1];
 
         assert_eq!(
-            selected_process_choice_index_from_picker_state(1, true, "zen", "zen", &indices),
-            Some(1)
+            registration_candidate_from_picker_state(1, true, "game.exe", "game.exe", &indices),
+            Some(RegistrationCandidate::ProcessChoice(1))
         );
     }
 
@@ -4400,28 +4512,88 @@ mod target_list_tests {
         let indices = vec![0];
 
         assert_eq!(
-            selected_process_choice_index_from_picker_state(0, true, "", "", &indices),
-            Some(0)
+            registration_candidate_from_picker_state(0, true, "", "", &indices),
+            Some(RegistrationCandidate::ProcessChoice(0))
         );
     }
 
     #[test]
-    fn uncommitted_process_picker_selection_does_not_trust_stale_combo_index() {
+    fn exact_exe_input_registers_the_whole_app_without_trusting_stale_index() {
         let indices = vec![0, 1];
 
         assert_eq!(
-            selected_process_choice_index_from_picker_state(0, false, "zen", "zen", &indices),
+            registration_candidate_from_picker_state(
+                0,
+                false,
+                "  Game.EXE  ",
+                "  Game.EXE  ",
+                &indices
+            ),
+            Some(RegistrationCandidate::ExactExeName("game.exe".to_owned()))
+        );
+    }
+
+    #[test]
+    fn quoted_exact_exe_input_is_normalized_for_direct_registration() {
+        assert_eq!(
+            registration_candidate_from_picker_state(
+                -1,
+                false,
+                r#""Game.EXE""#,
+                r#""Game.EXE""#,
+                &[]
+            ),
+            Some(RegistrationCandidate::ExactExeName("game.exe".to_owned()))
+        );
+    }
+
+    #[test]
+    fn invalid_exe_intent_never_falls_back_to_a_pid_result() {
+        let indices = vec![0];
+
+        assert_eq!(
+            registration_candidate_from_picker_state(
+                -1,
+                false,
+                "game.exe --fullscreen",
+                "game.exe --fullscreen",
+                &indices
+            ),
+            None
+        );
+        assert_eq!(
+            registration_candidate_from_picker_state(
+                -1,
+                false,
+                r"C:\Games\game.exe",
+                r"C:\Games\game.exe",
+                &indices
+            ),
+            None
+        );
+        assert_eq!(
+            registration_candidate_from_picker_state(-1, false, "con.exe", "con.exe", &indices),
             None
         );
     }
 
     #[test]
-    fn single_filtered_process_picker_result_stays_selectable() {
-        let indices = vec![0];
+    fn stale_combo_index_without_a_direct_or_unique_intent_is_ignored() {
+        let indices = vec![0, 1];
 
         assert_eq!(
-            selected_process_choice_index_from_picker_state(-1, false, "zen", "zen", &indices),
-            Some(0)
+            registration_candidate_from_picker_state(0, false, "zen", "zen", &indices),
+            None
+        );
+    }
+
+    #[test]
+    fn single_filtered_non_exe_result_stays_selectable() {
+        let indices = vec![3];
+
+        assert_eq!(
+            registration_candidate_from_picker_state(-1, false, "zen", "zen", &indices),
+            Some(RegistrationCandidate::ProcessChoice(3))
         );
     }
 

@@ -99,8 +99,7 @@ pub(super) struct StatusSnapshot {
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(super) struct ActionButtonState {
-    pub(super) add_selected: bool,
-    pub(super) add_manual: bool,
+    pub(super) register: bool,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]

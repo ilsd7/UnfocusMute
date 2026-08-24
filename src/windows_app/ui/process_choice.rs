@@ -1,4 +1,3 @@
-use super::win32::storage_bytes_hint;
 use std::borrow::Cow;
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -6,7 +5,6 @@ pub(super) struct ProcessChoice {
     pub(super) name: String,
     pub(super) pid: Option<u32>,
     display_name: Option<String>,
-    display_storage_bytes: usize,
     search_text: Option<String>,
 }
 
@@ -28,23 +26,16 @@ impl ProcessChoice {
             ),
             None => (None, into_owned_if_allocated(search_name)),
         };
-        let display_storage_bytes = storage_bytes_hint(display_name.as_deref().unwrap_or(&name));
-
         Self {
             name,
             pid,
             display_name,
-            display_storage_bytes,
             search_text,
         }
     }
 
     pub(super) fn display_name(&self) -> &str {
         self.display_name.as_deref().unwrap_or(&self.name)
-    }
-
-    pub(super) fn display_storage_bytes(&self) -> usize {
-        self.display_storage_bytes
     }
 
     pub(super) fn matches_search(&self, terms: &SearchTerms<'_>) -> bool {
@@ -177,7 +168,6 @@ pub(super) fn search_terms(query: &str) -> SearchTerms<'_> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::mem::size_of;
 
     #[test]
     fn pid_choices_match_by_name_and_pid() {
@@ -191,10 +181,6 @@ mod tests {
         let choice = ProcessChoice::new("musicapp.exe".to_owned(), Some(4242), 1);
 
         assert_eq!(choice.display_name(), "musicapp.exe (PID 4242)");
-        assert_eq!(
-            choice.display_storage_bytes(),
-            ("musicapp.exe (PID 4242)".len() + 1) * size_of::<u16>()
-        );
     }
 
     #[test]
@@ -202,10 +188,7 @@ mod tests {
         let choice = ProcessChoice::new("Chat.exe".to_owned(), None, 3);
 
         assert!(choice.matches_search(&search_terms("chat 3")));
-        assert_eq!(
-            choice.display_storage_bytes(),
-            ("Chat.exe (3 PID)".len() + 1) * size_of::<u16>()
-        );
+        assert_eq!(choice.display_name(), "Chat.exe (3 PID)");
     }
 
     #[test]
@@ -213,21 +196,7 @@ mod tests {
         let choice = ProcessChoice::new("player.exe".to_owned(), None, 1);
 
         assert_eq!(choice.search_text, None);
-        assert_eq!(
-            choice.display_storage_bytes(),
-            ("player.exe".len() + 1) * size_of::<u16>()
-        );
         assert!(choice.matches_search(&search_terms("player")));
-    }
-
-    #[test]
-    fn display_storage_bytes_counts_utf16_units() {
-        let choice = ProcessChoice::new("게임.exe".to_owned(), None, 1);
-
-        assert_eq!(
-            choice.display_storage_bytes(),
-            ("게임.exe".encode_utf16().count() + 1) * size_of::<u16>()
-        );
     }
 
     #[test]

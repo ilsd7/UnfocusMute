@@ -1,5 +1,6 @@
 use super::constants::{PAGE_COLOR, PANEL_BORDER_COLOR, PANEL_COLOR, SELECTED_ROW_COLOR};
 use std::sync::OnceLock;
+use std::sync::atomic::{AtomicI32, Ordering};
 use windows::Win32::Foundation::{COLORREF, WPARAM};
 use windows::Win32::Graphics::Gdi::{
     CLIP_DEFAULT_PRECIS, CreateFontW, CreateSolidBrush, DEFAULT_CHARSET, DEFAULT_GUI_FONT,
@@ -7,17 +8,15 @@ use windows::Win32::Graphics::Gdi::{
     OUT_DEFAULT_PRECIS,
 };
 use windows::Win32::UI::HiDpi::GetDpiForSystem;
-use windows::Win32::UI::WindowsAndMessaging::{GetSystemMetrics, SM_CXSCREEN, SM_CYSCREEN};
 use windows::core::{PCWSTR, w};
 
-const BASE_DESKTOP_WIDTH: i32 = 1920;
-const BASE_DESKTOP_HEIGHT: i32 = 1080;
 const BASE_DPI: i32 = 96;
 const SCALE_BASE: i32 = 1_000;
-const MIN_UI_SCALE: i32 = 1_000;
-const MAX_UI_SCALE: i32 = 2_000;
+const MIN_USER_UI_SCALE: i32 = 250;
+const MAX_USER_UI_SCALE: i32 = 10_000;
 
-static UI_SCALE: OnceLock<i32> = OnceLock::new();
+static SYSTEM_UI_SCALE: OnceLock<i32> = OnceLock::new();
+static USER_UI_SCALE: AtomicI32 = AtomicI32::new(SCALE_BASE);
 
 pub(super) struct OwnedBrush {
     handle: HBRUSH,
@@ -54,25 +53,46 @@ pub(super) struct AppTheme {
 
 impl AppTheme {
     pub(super) fn new() -> Self {
-        let font_point_size = ui_font_point_size();
+        let (font, title_font) = Self::scaled_fonts();
         Self {
             page_brush: OwnedBrush::solid(PAGE_COLOR),
             panel_brush: OwnedBrush::solid(PANEL_COLOR),
             border_brush: OwnedBrush::solid(PANEL_BORDER_COLOR),
             selected_row_brush: OwnedBrush::solid(SELECTED_ROW_COLOR),
-            font: UiFont::new(font_point_size),
-            title_font: UiFont::new_with_face(
-                font_point_size + 2,
-                600,
-                w!("Segoe UI Variable Display"),
-            ),
+            font,
+            title_font,
         }
+    }
+
+    pub(super) fn fonts_match_current_scale(&self) -> bool {
+        let font_point_size = ui_font_point_size();
+        self.font.pixel_height() == font_pixel_height(font_point_size)
+            && self.title_font.pixel_height() == font_pixel_height(font_point_size + 2)
+    }
+
+    pub(super) fn scaled_fonts() -> (UiFont, UiFont) {
+        let font_point_size = ui_font_point_size();
+        (
+            UiFont::new(font_point_size),
+            UiFont::new_with_face(font_point_size + 2, 600, w!("Segoe UI Variable Display")),
+        )
+    }
+
+    /// Returns the previous fonts so their handles can remain valid until every
+    /// child control has received the replacement handles.
+    #[must_use]
+    pub(super) fn replace_fonts(&mut self, font: UiFont, title_font: UiFont) -> (UiFont, UiFont) {
+        (
+            std::mem::replace(&mut self.font, font),
+            std::mem::replace(&mut self.title_font, title_font),
+        )
     }
 }
 
 pub(super) struct UiFont {
     handle: HGDIOBJ,
     owned: bool,
+    pixel_height: i32,
 }
 
 impl UiFont {
@@ -81,8 +101,7 @@ impl UiFont {
     }
 
     fn new_with_face(point_size: i32, weight: i32, face: PCWSTR) -> Self {
-        let dpi = effective_ui_dpi();
-        let height = -((point_size * dpi + 36) / 72);
+        let height = font_pixel_height(point_size);
         let font = unsafe {
             CreateFontW(
                 height,
@@ -105,11 +124,13 @@ impl UiFont {
             Self {
                 handle: unsafe { GetStockObject(DEFAULT_GUI_FONT) },
                 owned: false,
+                pixel_height: height,
             }
         } else {
             Self {
                 handle: HGDIOBJ(font.0),
                 owned: true,
+                pixel_height: height,
             }
         }
     }
@@ -120,6 +141,10 @@ impl UiFont {
 
     pub(super) fn handle(&self) -> HGDIOBJ {
         self.handle
+    }
+
+    fn pixel_height(&self) -> i32 {
+        self.pixel_height
     }
 }
 
@@ -145,41 +170,47 @@ pub(super) fn logical_px(value: i32) -> i32 {
     scale_i32(value, inverse_scale())
 }
 
+pub(super) fn system_px(value: i32) -> i32 {
+    scale_i32(value, system_ui_scale())
+}
+
+pub(super) fn set_user_ui_scale(scale: i32) -> bool {
+    let scale = scale.clamp(MIN_USER_UI_SCALE, MAX_USER_UI_SCALE);
+    USER_UI_SCALE.swap(scale, Ordering::Relaxed) != scale
+}
+
+pub(super) fn user_ui_scale() -> i32 {
+    USER_UI_SCALE.load(Ordering::Relaxed)
+}
+
 fn effective_ui_dpi() -> i32 {
-    scale_i32(BASE_DPI, ui_scale()).max(BASE_DPI)
+    scale_i32(BASE_DPI, ui_scale()).max(1)
+}
+
+fn font_pixel_height(point_size: i32) -> i32 {
+    -((point_size * effective_ui_dpi() + 36) / 72)
 }
 
 fn ui_scale() -> i32 {
-    *UI_SCALE.get_or_init(calculate_ui_scale)
+    multiply_scale(system_ui_scale(), user_ui_scale())
 }
 
 fn inverse_scale() -> i32 {
     ((SCALE_BASE * SCALE_BASE) + (ui_scale() / 2)) / ui_scale()
 }
 
-fn calculate_ui_scale() -> i32 {
-    let dpi_scale = dpi_scale();
-    let resolution_scale = resolution_scale();
-    dpi_scale
-        .max(resolution_scale)
-        .clamp(MIN_UI_SCALE, MAX_UI_SCALE)
+fn system_ui_scale() -> i32 {
+    *SYSTEM_UI_SCALE.get_or_init(dpi_scale)
 }
 
 fn dpi_scale() -> i32 {
     let dpi = unsafe { GetDpiForSystem() as i32 }.max(BASE_DPI);
-    ratio_milli(dpi, BASE_DPI).max(MIN_UI_SCALE)
+    ratio_milli(dpi, BASE_DPI).max(SCALE_BASE)
 }
 
-fn resolution_scale() -> i32 {
-    let width = unsafe { GetSystemMetrics(SM_CXSCREEN) };
-    let height = unsafe { GetSystemMetrics(SM_CYSCREEN) };
-    if width <= 0 || height <= 0 {
-        return MIN_UI_SCALE;
-    }
-
-    ratio_milli(width, BASE_DESKTOP_WIDTH)
-        .min(ratio_milli(height, BASE_DESKTOP_HEIGHT))
-        .max(MIN_UI_SCALE)
+fn multiply_scale(left: i32, right: i32) -> i32 {
+    ((left as i64 * right as i64 + (SCALE_BASE / 2) as i64) / SCALE_BASE as i64)
+        .clamp(1, i32::MAX as i64) as i32
 }
 
 fn ratio_milli(value: i32, base: i32) -> i32 {

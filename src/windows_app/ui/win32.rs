@@ -1,3 +1,7 @@
+use super::constants::{
+    PAGE_COLOR, PANEL_BORDER_COLOR, PANEL_COLOR, SUBTLE_TEXT_COLOR, TEXT_COLOR,
+};
+use super::drawing::draw_text_line;
 use super::theme::{logical_px, px};
 use crate::windows_app::error::{Context, Result, message_error};
 use std::borrow::Cow;
@@ -8,29 +12,32 @@ use windows::Win32::Foundation::{
     COLORREF, HANDLE, HINSTANCE, HWND, LPARAM, LRESULT, POINT, RECT, SIZE, WPARAM,
 };
 use windows::Win32::Graphics::Gdi::{
-    CreatePen, CreateSolidBrush, DT_CENTER, DT_NOPREFIX, DT_SINGLELINE, DT_VCENTER, DeleteObject,
-    DrawFocusRect, DrawTextW, FillRect, GetDC, GetTextExtentPoint32W, HDC, HGDIOBJ, PS_SOLID,
-    RDW_INVALIDATE, RDW_UPDATENOW, RedrawWindow, ReleaseDC, RoundRect, ScreenToClient,
-    SelectObject, SetBkMode, SetTextColor, TRANSPARENT,
+    CreatePen, CreateSolidBrush, DT_CENTER, DT_LEFT, DT_NOPREFIX, DT_SINGLELINE, DT_VCENTER,
+    DeleteObject, DrawFocusRect, DrawTextW, FillRect, GetDC, GetTextExtentPoint32W,
+    GetTextMetricsW, HDC, HGDIOBJ, PS_INSIDEFRAME, PS_SOLID, Polygon, RDW_INVALIDATE,
+    RDW_UPDATENOW, RedrawWindow, ReleaseDC, RoundRect, ScreenToClient, SelectObject, SetBkMode,
+    SetTextColor, TEXTMETRICW, TRANSPARENT,
 };
 use windows::Win32::UI::Controls::{
-    BST_CHECKED, BST_UNCHECKED, COMBOBOXINFO, DRAWITEMSTRUCT, GetComboBoxInfo, ODS_DISABLED,
-    ODS_FOCUS, ODS_SELECTED,
+    BST_CHECKED, BST_UNCHECKED, DRAWITEMSTRUCT, ODS_DISABLED, ODS_FOCUS, ODS_SELECTED,
 };
-use windows::Win32::UI::HiDpi::{GetDpiForSystem, GetSystemMetricsForDpi};
+use windows::Win32::UI::HiDpi::{
+    AdjustWindowRectExForDpi, GetDpiForSystem, GetSystemMetricsForDpi,
+};
 use windows::Win32::UI::Input::KeyboardAndMouse::{
     IsWindowEnabled, TRACKMOUSEEVENT, TRACKMOUSEEVENT_FLAGS, TrackMouseEvent,
 };
 use windows::Win32::UI::Shell::{DefSubclassProc, RemoveWindowSubclass, SetWindowSubclass};
 use windows::Win32::UI::WindowsAndMessaging::{
     BM_GETCHECK, BM_SETCHECK, BS_AUTOCHECKBOX, BS_MULTILINE, BS_OWNERDRAW, CB_ADDSTRING,
-    CB_INITSTORAGE, CB_SETEDITSEL, CreateWindowExW, GA_ROOT, GetAncestor, GetCursorPos,
-    GetMessageW, GetPropW, GetSystemMetrics, GetWindowTextLengthW, GetWindowTextW, HICON, HMENU,
-    HTCLIENT, IDC_ARROW, IDC_HAND, IDI_APPLICATION, IMAGE_ICON, LB_ADDSTRING, LB_INITSTORAGE,
-    LR_DEFAULTCOLOR, LR_SHARED, LoadCursorW, LoadIconW, LoadImageW, MSG, MoveWindow, RemovePropW,
-    SM_CXICON, SM_CXSMICON, SM_CYICON, SM_CYSMICON, SendMessageW, SetCursor, SetPropW,
-    SetWindowTextW, UnregisterClassW, WINDOW_EX_STYLE, WINDOW_STYLE, WM_MOUSEMOVE, WM_NCDESTROY,
-    WM_SETCURSOR, WS_CHILD, WS_CLIPSIBLINGS, WS_TABSTOP, WS_VISIBLE,
+    CB_INITSTORAGE, CreateWindowExW, DestroyIcon, GetMessageW, GetPropW, GetSystemMetrics,
+    GetWindowRect, GetWindowTextLengthW, GetWindowTextW, HICON, HMENU, HTCLIENT, HTTRANSPARENT,
+    HWND_TOP, IDC_HAND, IDI_APPLICATION, IMAGE_ICON, LB_ADDSTRING, LB_INITSTORAGE, LR_DEFAULTCOLOR,
+    LR_SHARED, LoadCursorW, LoadIconW, LoadImageW, MSG, MoveWindow, RemovePropW, SM_CXICON,
+    SM_CXSMICON, SM_CYICON, SM_CYSMICON, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE, SendMessageW,
+    SetCursor, SetPropW, SetWindowPos, SetWindowTextW, UnregisterClassW, WINDOW_EX_STYLE,
+    WINDOW_STYLE, WM_MOUSEMOVE, WM_NCDESTROY, WM_NCHITTEST, WM_SETCURSOR, WS_CHILD,
+    WS_CLIPSIBLINGS, WS_TABSTOP, WS_VISIBLE,
 };
 use windows::core::{PCWSTR, w};
 
@@ -48,15 +55,34 @@ const SYSTEM_COMMAND_MASK: usize = 0xfff0;
 const SC_CLOSE_COMMAND: usize = 0xf060;
 const SC_MINIMIZE_COMMAND: usize = 0xf020;
 const BUTTON_HOVER_SUBCLASS_ID: usize = 42;
-const COMBO_LIST_CURSOR_SUBCLASS_ID: usize = 43;
-const LB_ITEMFROMPOINT_MESSAGE: u32 = 0x01A9;
-const LB_ITEMFROMPOINT_OUTSIDE_MASK: isize = 0x0001_0000;
-const LB_GETITEMRECT_MESSAGE: u32 = 0x0198;
-const LB_ERR: isize = -1;
+const HIT_TEST_TRANSPARENT_SUBCLASS_ID: usize = 43;
+const FULL_HEIGHT_BUTTON_PROPERTY: PCWSTR = w!("UnfocusMute.FullHeightButton");
 
 pub(super) struct WindowClassRegistration {
     class_name: PCWSTR,
     instance: HINSTANCE,
+}
+
+pub(super) struct OwnedIcon {
+    handle: HICON,
+}
+
+impl OwnedIcon {
+    fn new(handle: HICON) -> Option<Self> {
+        (!handle.0.is_null()).then_some(Self { handle })
+    }
+
+    pub(super) fn handle(&self) -> HICON {
+        self.handle
+    }
+}
+
+impl Drop for OwnedIcon {
+    fn drop(&mut self) {
+        unsafe {
+            let _ = DestroyIcon(self.handle);
+        }
+    }
 }
 
 impl WindowClassRegistration {
@@ -90,10 +116,6 @@ pub(super) fn system_command_closes_or_minimizes(wparam: WPARAM) -> bool {
         wparam.0 & SYSTEM_COMMAND_MASK,
         SC_CLOSE_COMMAND | SC_MINIMIZE_COMMAND
     )
-}
-
-pub(super) fn system_command_minimizes(wparam: WPARAM) -> bool {
-    wparam.0 & SYSTEM_COMMAND_MASK == SC_MINIMIZE_COMMAND
 }
 
 fn marker_handle() -> HANDLE {
@@ -162,44 +184,13 @@ pub(super) unsafe fn create_button(
     height: i32,
     id: i32,
 ) -> Result<HWND> {
-    unsafe { create_ownerdraw_button(parent, instance, text, x, y, width, height, id, false) }
+    unsafe { create_ownerdraw_button(parent, instance, text, x, y, width, height, id) }
 }
 
-#[allow(clippy::too_many_arguments)]
-pub(super) unsafe fn create_primary_button(
-    parent: HWND,
-    instance: HINSTANCE,
-    text: &str,
-    x: i32,
-    y: i32,
-    width: i32,
-    height: i32,
-    id: i32,
-) -> Result<HWND> {
-    unsafe { create_ownerdraw_button(parent, instance, text, x, y, width, height, id, true) }
-}
-
-unsafe fn combo_dropdown_list(hwnd: HWND) -> Option<HWND> {
-    let mut info = COMBOBOXINFO {
-        cbSize: std::mem::size_of::<COMBOBOXINFO>() as u32,
-        ..Default::default()
-    };
-    if unsafe { GetComboBoxInfo(hwnd, &mut info) }.is_err() || info.hwndList.0.is_null() {
-        return None;
-    }
-    Some(info.hwndList)
-}
-
-pub(super) unsafe fn install_combo_dropdown_list_hand_cursor(hwnd: HWND) {
-    if let Some(list) = unsafe { combo_dropdown_list(hwnd) } {
-        unsafe {
-            install_combo_list_cursor_subclass(list, list);
-            let root = GetAncestor(list, GA_ROOT);
-            if !root.0.is_null() && root != list {
-                install_combo_list_cursor_subclass(root, list);
-            }
-        }
-    }
+/// Makes the visible border fill the control's full height. Use this for a
+/// button that shares a row with a native control whose border fills its HWND.
+pub(super) unsafe fn set_flat_button_full_height(hwnd: HWND) -> bool {
+    unsafe { SetPropW(hwnd, FULL_HEIGHT_BUTTON_PROPERTY, Some(marker_handle())).is_ok() }
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -212,7 +203,6 @@ unsafe fn create_ownerdraw_button(
     width: i32,
     height: i32,
     id: i32,
-    primary: bool,
 ) -> Result<HWND> {
     unsafe {
         let hwnd = create_control(
@@ -228,9 +218,6 @@ unsafe fn create_ownerdraw_button(
             height,
             id,
         )?;
-        if primary {
-            let _ = SetPropW(hwnd, w!("IsPrimaryButton"), Some(marker_handle()));
-        }
         install_button_hover_subclass(hwnd);
         Ok(hwnd)
     }
@@ -341,16 +328,17 @@ unsafe fn create_control_with_wide_text(
     height: i32,
     id: i32,
 ) -> Result<HWND> {
+    let (x, y, width, height) = scaled_control_rect(x, y, width, height);
     unsafe {
         CreateWindowExW(
             ex_style,
             class,
             PCWSTR(text.as_ptr()),
             style | WS_CLIPSIBLINGS,
-            px(x),
-            px(y),
-            px(width),
-            px(height),
+            x,
+            y,
+            width,
+            height,
             Some(parent),
             Some(HMENU(id as isize as *mut c_void)),
             Some(instance),
@@ -377,6 +365,76 @@ pub(super) unsafe fn measure_text_width(hwnd: HWND, font: HGDIOBJ, text: &str) -
     let wide = encode_wide_for_measurement(text, &mut stack);
 
     unsafe { measure_wide_text_width(hwnd, font, wide.as_ref(), fallback_width) }
+}
+
+pub(super) unsafe fn font_text_height(hwnd: HWND, font: HGDIOBJ) -> Option<i32> {
+    let dc = unsafe { WindowDc::get(hwnd) }?;
+    let _selected = unsafe { SelectedGdiObject::select(dc.handle(), font) };
+    let mut metrics = TEXTMETRICW::default();
+    unsafe { GetTextMetricsW(dc.handle(), &mut metrics).as_bool() }
+        .then_some(metrics.tmHeight.max(1))
+}
+
+pub(super) unsafe fn control_rect_in_parent(parent: HWND, control: HWND) -> Option<RECT> {
+    let mut rect = RECT::default();
+    if unsafe { GetWindowRect(control, &mut rect) }.is_err() {
+        return None;
+    }
+    let mut top_left = POINT {
+        x: rect.left,
+        y: rect.top,
+    };
+    let mut bottom_right = POINT {
+        x: rect.right,
+        y: rect.bottom,
+    };
+    if !unsafe { ScreenToClient(parent, &mut top_left).as_bool() }
+        || !unsafe { ScreenToClient(parent, &mut bottom_right).as_bool() }
+    {
+        return None;
+    }
+    Some(RECT {
+        left: top_left.x,
+        top: top_left.y,
+        right: bottom_right.x,
+        bottom: bottom_right.y,
+    })
+}
+
+pub(super) fn centered_single_line_edit_rect(
+    bounds: RECT,
+    text_height: i32,
+    left_inset: i32,
+    right_inset: i32,
+    vertical_inset: i32,
+    height_padding: i32,
+    optical_offset_y: i32,
+) -> RECT {
+    let width = bounds.right.saturating_sub(bounds.left).max(1);
+    let height = bounds.bottom.saturating_sub(bounds.top).max(1);
+    let vertical_inset = vertical_inset.max(0).min(height / 2);
+    let available_height = height.saturating_sub(vertical_inset * 2).max(1);
+    let edit_height = text_height
+        .max(1)
+        .saturating_add(height_padding.max(0))
+        .clamp(1, available_height);
+    let left = bounds
+        .left
+        .saturating_add(left_inset.max(0).min(width.saturating_sub(1)));
+    let right = bounds
+        .right
+        .saturating_sub(right_inset.max(0))
+        .max(left.saturating_add(1));
+    let top = bounds
+        .top
+        .saturating_add(height.saturating_sub(edit_height) / 2)
+        .saturating_add(optical_offset_y);
+    RECT {
+        left,
+        top,
+        right,
+        bottom: top.saturating_add(edit_height),
+    }
 }
 
 fn encode_wide_for_measurement<'a>(text: &str, stack: &'a mut [u16]) -> Cow<'a, [u16]> {
@@ -438,7 +496,67 @@ pub(super) unsafe fn move_window(
     height: i32,
     repaint: bool,
 ) -> bool {
-    unsafe { MoveWindow(hwnd, px(x), px(y), px(width), px(height), repaint).is_ok() }
+    let (x, y, width, height) = scaled_control_rect(x, y, width, height);
+    unsafe { MoveWindow(hwnd, x, y, width, height, repaint).is_ok() }
+}
+
+pub(super) unsafe fn redraw_control_now(hwnd: HWND) -> bool {
+    unsafe { RedrawWindow(Some(hwnd), None, None, RDW_INVALIDATE | RDW_UPDATENOW).as_bool() }
+}
+
+pub(super) unsafe fn place_control_on_top(hwnd: HWND) -> bool {
+    unsafe {
+        SetWindowPos(
+            hwnd,
+            Some(HWND_TOP),
+            0,
+            0,
+            0,
+            0,
+            SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE,
+        )
+        .is_ok()
+    }
+}
+
+pub(super) fn window_size_for_client_area(
+    client_width: i32,
+    client_height: i32,
+    style: WINDOW_STYLE,
+    ex_style: WINDOW_EX_STYLE,
+) -> (i32, i32) {
+    let mut rect = RECT {
+        left: 0,
+        top: 0,
+        right: client_width.max(1),
+        bottom: client_height.max(1),
+    };
+    let adjusted = unsafe {
+        AdjustWindowRectExForDpi(&mut rect, style, false, ex_style, GetDpiForSystem()).is_ok()
+    };
+    if !adjusted {
+        return (client_width.max(1), client_height.max(1));
+    }
+
+    (
+        rect.right.saturating_sub(rect.left).max(1),
+        rect.bottom.saturating_sub(rect.top).max(1),
+    )
+}
+
+fn scaled_control_rect(x: i32, y: i32, width: i32, height: i32) -> (i32, i32, i32, i32) {
+    let (x, width) = scaled_span(x, width, px);
+    let (y, height) = scaled_span(y, height, px);
+    (x, y, width, height)
+}
+
+fn scaled_span(origin: i32, extent: i32, scale: impl Fn(i32) -> i32) -> (i32, i32) {
+    let start = scale(origin);
+    if extent <= 0 {
+        return (start, 0);
+    }
+    let end = scale(origin.saturating_add(extent));
+    (start, end.saturating_sub(start).max(1))
 }
 
 pub(super) unsafe fn window_text_into(hwnd: HWND, output: &mut String) {
@@ -582,25 +700,6 @@ pub(super) unsafe fn set_checkbox(hwnd: HWND, checked: bool) {
     }
 }
 
-pub(super) unsafe fn set_combo_edit_caret(hwnd: HWND, text: &str) {
-    let position = utf16_code_unit_count(text).min(u16::MAX as usize) as u16;
-    unsafe {
-        set_combo_edit_selection(hwnd, position, position);
-    }
-}
-
-unsafe fn set_combo_edit_selection(hwnd: HWND, start: u16, end: u16) {
-    let selection = ((end as u32) << 16) | start as u32;
-    unsafe {
-        SendMessageW(
-            hwnd,
-            CB_SETEDITSEL,
-            Some(WPARAM(0)),
-            Some(LPARAM(selection as i32 as isize)),
-        );
-    }
-}
-
 pub(super) unsafe fn is_checked(hwnd: HWND) -> bool {
     unsafe { SendMessageW(hwnd, BM_GETCHECK, None, None).0 as u32 == BST_CHECKED.0 }
 }
@@ -622,23 +721,19 @@ pub(super) unsafe fn load_tray_icon(instance: HINSTANCE) -> HICON {
     unsafe { load_sized_app_icon(instance, size).unwrap_or_else(|| load_app_icon(instance)) }
 }
 
-pub(super) unsafe fn load_settings_icon(instance: HINSTANCE, size: i32) -> HICON {
-    unsafe { load_resource_icon(instance, 3, size) }
-}
-
-unsafe fn load_resource_icon(instance: HINSTANCE, id: u16, size: i32) -> HICON {
+pub(super) unsafe fn load_settings_icon(instance: HINSTANCE, size: i32) -> Option<OwnedIcon> {
     unsafe {
         LoadImageW(
             Some(instance),
-            int_resource(id),
+            int_resource(3),
             IMAGE_ICON,
             size,
             size,
-            LR_DEFAULTCOLOR | LR_SHARED,
+            LR_DEFAULTCOLOR,
         )
         .ok()
         .map(|handle| HICON(handle.0))
-        .unwrap_or_default()
+        .and_then(OwnedIcon::new)
     }
 }
 
@@ -720,6 +815,36 @@ pub(super) fn utf16_code_unit_count(text: &str) -> usize {
     }
 }
 
+unsafe extern "system" fn hit_test_transparent_subclass_proc(
+    hwnd: HWND,
+    message: u32,
+    wparam: WPARAM,
+    lparam: LPARAM,
+    subclass_id: usize,
+    _ref_data: usize,
+) -> LRESULT {
+    match message {
+        WM_NCHITTEST => return LRESULT(HTTRANSPARENT as isize),
+        WM_NCDESTROY => unsafe {
+            let _ =
+                RemoveWindowSubclass(hwnd, Some(hit_test_transparent_subclass_proc), subclass_id);
+        },
+        _ => {}
+    }
+    unsafe { DefSubclassProc(hwnd, message, wparam, lparam) }
+}
+
+pub(super) unsafe fn install_hit_test_transparent_subclass(hwnd: HWND) {
+    unsafe {
+        let _ = SetWindowSubclass(
+            hwnd,
+            Some(hit_test_transparent_subclass_proc),
+            HIT_TEST_TRANSPARENT_SUBCLASS_ID,
+            0,
+        );
+    }
+}
+
 unsafe extern "system" fn button_hover_subclass_proc(
     hwnd: HWND,
     message: u32,
@@ -757,7 +882,7 @@ unsafe extern "system" fn button_hover_subclass_proc(
         },
         WM_NCDESTROY => unsafe {
             let _ = RemovePropW(hwnd, w!("ButtonHovered"));
-            let _ = RemovePropW(hwnd, w!("IsPrimaryButton"));
+            let _ = RemovePropW(hwnd, FULL_HEIGHT_BUTTON_PROPERTY);
             let _ = RemoveWindowSubclass(hwnd, Some(button_hover_subclass_proc), subclass_id);
         },
         _ => {}
@@ -776,100 +901,8 @@ pub(super) unsafe fn install_button_hover_subclass(hwnd: HWND) {
     }
 }
 
-unsafe extern "system" fn combo_list_cursor_subclass_proc(
-    hwnd: HWND,
-    message: u32,
-    wparam: WPARAM,
-    lparam: LPARAM,
-    subclass_id: usize,
-    ref_data: usize,
-) -> LRESULT {
-    let list = HWND(ref_data as *mut c_void);
-    match message {
-        WM_SETCURSOR if loword(lparam.0 as u32) as u32 == HTCLIENT => {
-            set_combo_list_cursor(list);
-            return LRESULT(1);
-        }
-        WM_MOUSEMOVE => {
-            set_combo_list_cursor(list);
-        }
-        WM_NCDESTROY => unsafe {
-            let _ = RemoveWindowSubclass(hwnd, Some(combo_list_cursor_subclass_proc), subclass_id);
-        },
-        _ => {}
-    }
-    unsafe { DefSubclassProc(hwnd, message, wparam, lparam) }
-}
-
-unsafe fn install_combo_list_cursor_subclass(hwnd: HWND, list: HWND) {
-    unsafe {
-        let _ = SetWindowSubclass(
-            hwnd,
-            Some(combo_list_cursor_subclass_proc),
-            COMBO_LIST_CURSOR_SUBCLASS_ID,
-            list.0 as usize,
-        );
-    }
-}
-
-fn set_combo_list_cursor(list: HWND) -> bool {
-    if cursor_is_over_list_item(list) {
-        set_hand_cursor_if_enabled(list)
-    } else {
-        set_arrow_cursor()
-    }
-}
-
-fn cursor_is_over_list_item(list: HWND) -> bool {
-    if list.0.is_null() || unsafe { !IsWindowEnabled(list).as_bool() } {
-        return false;
-    }
-
-    let mut point = POINT::default();
-    if unsafe { GetCursorPos(&mut point) }.is_err()
-        || !unsafe { ScreenToClient(list, &mut point).as_bool() }
-    {
-        return false;
-    }
-
-    let result = unsafe {
-        SendMessageW(
-            list,
-            LB_ITEMFROMPOINT_MESSAGE,
-            Some(WPARAM(0)),
-            Some(point_lparam(point)),
-        )
-        .0
-    };
-    if result & LB_ITEMFROMPOINT_OUTSIDE_MASK != 0 {
-        return false;
-    }
-
-    let item_index = loword(result as u32) as usize;
-    let mut item_rect = RECT::default();
-    let rect_result = unsafe {
-        SendMessageW(
-            list,
-            LB_GETITEMRECT_MESSAGE,
-            Some(WPARAM(item_index)),
-            Some(LPARAM(
-                (&mut item_rect as *mut RECT).cast::<c_void>() as isize
-            )),
-        )
-        .0
-    };
-
-    rect_result != LB_ERR
-        && point.x >= item_rect.left
-        && point.x < item_rect.right
-        && point.y >= item_rect.top
-        && point.y < item_rect.bottom
-}
-
-fn point_lparam(point: POINT) -> LPARAM {
-    let x = point.x as i16 as u16 as u32;
-    let y = point.y as i16 as u16 as u32;
-    LPARAM(((y << 16) | x) as isize)
+pub(super) unsafe fn button_is_hovered(hwnd: HWND) -> bool {
+    unsafe { !GetPropW(hwnd, w!("ButtonHovered")).0.is_null() }
 }
 
 pub(super) fn set_hand_cursor_if_enabled(hwnd: HWND) -> bool {
@@ -878,16 +911,6 @@ pub(super) fn set_hand_cursor_if_enabled(hwnd: HWND) -> bool {
     }
 
     let Ok(cursor) = (unsafe { LoadCursorW(None, IDC_HAND) }) else {
-        return false;
-    };
-    unsafe {
-        let _ = SetCursor(Some(cursor));
-    }
-    true
-}
-
-fn set_arrow_cursor() -> bool {
-    let Ok(cursor) = (unsafe { LoadCursorW(None, IDC_ARROW) }) else {
         return false;
     };
     unsafe {
@@ -925,32 +948,20 @@ pub(super) unsafe fn draw_flat_button(draw: &DRAWITEMSTRUCT, font: HGDIOBJ) -> b
     let disabled = (draw.itemState.0 & ODS_DISABLED.0) != 0;
     let focused = (draw.itemState.0 & ODS_FOCUS.0) != 0;
     let hovered = unsafe { !GetPropW(hwnd, w!("ButtonHovered")).0.is_null() };
-    let is_primary = unsafe { !GetPropW(hwnd, w!("IsPrimaryButton")).0.is_null() };
+    let full_height = unsafe { !GetPropW(hwnd, FULL_HEIGHT_BUTTON_PROPERTY).0.is_null() };
 
     let rgb = |r: u8, g: u8, b: u8| -> COLORREF {
         COLORREF((r as u32) | ((g as u32) << 8) | ((b as u32) << 16))
     };
 
-    let (bg_color, border_color, text_color) = if is_primary {
-        if disabled {
-            (rgb(248, 248, 250), rgb(229, 229, 234), rgb(160, 160, 166))
-        } else if pressed {
-            (rgb(45, 45, 48), rgb(45, 45, 48), rgb(255, 255, 255))
-        } else if hovered {
-            (rgb(57, 57, 60), rgb(57, 57, 60), rgb(255, 255, 255))
-        } else {
-            (rgb(29, 29, 31), rgb(29, 29, 31), rgb(255, 255, 255))
-        }
+    let (bg_color, border_color, text_color) = if disabled {
+        (rgb(250, 250, 252), rgb(229, 229, 234), rgb(160, 160, 166))
+    } else if pressed {
+        (rgb(238, 238, 240), rgb(218, 220, 224), rgb(29, 29, 31))
+    } else if hovered {
+        (rgb(248, 248, 250), rgb(218, 220, 224), rgb(29, 29, 31))
     } else {
-        if disabled {
-            (rgb(250, 250, 252), rgb(229, 229, 234), rgb(160, 160, 166))
-        } else if pressed {
-            (rgb(238, 238, 240), rgb(218, 220, 224), rgb(29, 29, 31))
-        } else if hovered {
-            (rgb(248, 248, 250), rgb(218, 220, 224), rgb(29, 29, 31))
-        } else {
-            (rgb(255, 255, 255), rgb(218, 220, 224), rgb(29, 29, 31))
-        }
+        (rgb(255, 255, 255), rgb(218, 220, 224), rgb(29, 29, 31))
     };
 
     unsafe {
@@ -960,16 +971,15 @@ pub(super) unsafe fn draw_flat_button(draw: &DRAWITEMSTRUCT, font: HGDIOBJ) -> b
 
         let r = px(6);
         let horizontal_inset = px(1);
-        let top_inset = px(2);
-        let bottom_inset = px(1);
+        let vertical_inset = if full_height { 0 } else { px(1) };
         let mut button_rect = draw.rcItem;
         button_rect.left += horizontal_inset;
-        button_rect.top += top_inset;
+        button_rect.top += vertical_inset;
         button_rect.right -= horizontal_inset;
-        button_rect.bottom -= bottom_inset;
+        button_rect.bottom -= vertical_inset;
 
         let brush = CreateSolidBrush(bg_color);
-        let pen = CreatePen(PS_SOLID, px(1), border_color);
+        let pen = CreatePen(PS_INSIDEFRAME, px(1).max(1), border_color);
 
         let old_brush = SelectObject(hdc, brush.into());
         let old_pen = SelectObject(hdc, pen.into());
@@ -1017,9 +1027,138 @@ pub(super) unsafe fn draw_flat_button(draw: &DRAWITEMSTRUCT, font: HGDIOBJ) -> b
     true
 }
 
+pub(super) unsafe fn draw_rounded_input_frame(draw: &DRAWITEMSTRUCT, radius: i32) -> bool {
+    unsafe {
+        let background = CreateSolidBrush(PAGE_COLOR);
+        let _ = FillRect(draw.hDC, &draw.rcItem, background);
+        let _ = DeleteObject(background.into());
+
+        let brush = CreateSolidBrush(PANEL_COLOR);
+        let pen = CreatePen(PS_INSIDEFRAME, px(1).max(1), PANEL_BORDER_COLOR);
+        let previous_brush = SelectObject(draw.hDC, brush.into());
+        let previous_pen = SelectObject(draw.hDC, pen.into());
+        let diameter = px(radius).saturating_mul(2).max(1);
+        let _ = RoundRect(
+            draw.hDC,
+            draw.rcItem.left,
+            draw.rcItem.top,
+            draw.rcItem.right,
+            draw.rcItem.bottom,
+            diameter,
+            diameter,
+        );
+        let _ = SelectObject(draw.hDC, previous_brush);
+        let _ = SelectObject(draw.hDC, previous_pen);
+        let _ = DeleteObject(brush.into());
+        let _ = DeleteObject(pen.into());
+    }
+    true
+}
+
+pub(super) unsafe fn draw_rounded_combo_display(
+    draw: &DRAWITEMSTRUCT,
+    font: HGDIOBJ,
+    text: &str,
+    radius: i32,
+) -> bool {
+    unsafe {
+        let _ = draw_rounded_input_frame(draw, radius);
+
+        let horizontal_padding = px(8);
+        let arrow_area_width = px(28);
+        let text_rect = RECT {
+            left: draw.rcItem.left + horizontal_padding,
+            top: draw.rcItem.top,
+            right: draw.rcItem.right - arrow_area_width,
+            bottom: draw.rcItem.bottom,
+        };
+        draw_text_line(
+            draw.hDC,
+            font,
+            text,
+            text_rect,
+            TEXT_COLOR,
+            DT_LEFT | DT_SINGLELINE | DT_VCENTER | DT_NOPREFIX,
+        );
+
+        let center_x = draw.rcItem.right - px(11);
+        let center_y = (draw.rcItem.top + draw.rcItem.bottom) / 2;
+        let half_width = px(3).max(2);
+        let half_height = px(2).max(1);
+        let points = [
+            POINT {
+                x: center_x - half_width,
+                y: center_y - half_height,
+            },
+            POINT {
+                x: center_x + half_width,
+                y: center_y - half_height,
+            },
+            POINT {
+                x: center_x,
+                y: center_y + half_height,
+            },
+        ];
+        let brush = CreateSolidBrush(SUBTLE_TEXT_COLOR);
+        let pen = CreatePen(PS_SOLID, px(1).max(1), SUBTLE_TEXT_COLOR);
+        let previous_brush = SelectObject(draw.hDC, brush.into());
+        let previous_pen = SelectObject(draw.hDC, pen.into());
+        let _ = Polygon(draw.hDC, &points);
+        let _ = SelectObject(draw.hDC, previous_brush);
+        let _ = SelectObject(draw.hDC, previous_pen);
+        let _ = DeleteObject(brush.into());
+        let _ = DeleteObject(pen.into());
+    }
+    true
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn scale_for_test(value: i32, scale: i32) -> i32 {
+        ((value as i64 * scale as i64 + 500) / 1_000) as i32
+    }
+
+    #[test]
+    fn scaled_adjacent_spans_share_the_same_edge() {
+        for scale in 1_000..=3_000 {
+            let (first_x, first_width) = scaled_span(20, 442, |value| scale_for_test(value, scale));
+            let (second_x, _) = scaled_span(462, 15, |value| scale_for_test(value, scale));
+
+            assert_eq!(first_x + first_width, second_x, "scale {scale}");
+        }
+    }
+
+    #[test]
+    fn scaled_zero_extent_stays_zero() {
+        let (_, width) = scaled_span(624, 0, |value| scale_for_test(value, 1_375));
+
+        assert_eq!(width, 0);
+    }
+
+    #[test]
+    fn single_line_edit_rect_centers_text_with_explicit_optical_offset() {
+        let rect = centered_single_line_edit_rect(
+            RECT {
+                left: 10,
+                top: 20,
+                right: 210,
+                bottom: 52,
+            },
+            16,
+            8,
+            6,
+            1,
+            2,
+            1,
+        );
+
+        assert_eq!(rect.left, 18);
+        assert_eq!(rect.right, 204);
+        assert_eq!(rect.top, 28);
+        assert_eq!(rect.bottom, 46);
+    }
 
     #[test]
     fn storage_bytes_hint_includes_utf16_nul() {
@@ -1206,17 +1345,11 @@ mod tests {
         assert!(system_command_closes_or_minimizes(WPARAM(
             SC_MINIMIZE_COMMAND
         )));
-        assert!(system_command_minimizes(WPARAM(SC_MINIMIZE_COMMAND)));
-        assert!(system_command_minimizes(WPARAM(
-            SC_MINIMIZE_COMMAND | 0x0002
-        )));
     }
 
     #[test]
     fn system_command_detection_ignores_other_commands() {
         assert!(!system_command_closes_or_minimizes(WPARAM(0xf120)));
         assert!(!system_command_closes_or_minimizes(WPARAM(0)));
-        assert!(!system_command_minimizes(WPARAM(SC_CLOSE_COMMAND)));
-        assert!(!system_command_minimizes(WPARAM(0xf120)));
     }
 }
