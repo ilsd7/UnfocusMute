@@ -1,13 +1,17 @@
-use super::drawing::{centered_pixel_span, draw_wide_text_line_at_visual_center};
-use super::theme::{ResolvedTheme, active_palette, active_theme, px, ui_dpi};
+use super::drawing::{
+    centered_pixel_span, draw_wide_text_block_vertically_centered,
+    draw_wide_text_line_at_visual_center,
+};
+use super::theme::{AppTheme, ResolvedTheme, px, ui_dpi};
 use super::win32::is_checked;
 use std::ffi::c_void;
 use std::mem::size_of;
 use windows::Win32::Foundation::{COLORREF, HWND, LPARAM, LRESULT, SIZE};
 use windows::Win32::Graphics::Gdi::{
     BI_RGB, BITMAPINFO, BitBlt, CreateCompatibleDC, CreateDIBSection, DIB_RGB_COLORS,
-    DT_END_ELLIPSIS, DT_LEFT, DT_NOPREFIX, DT_SINGLELINE, DT_VCENTER, DeleteDC, DeleteObject,
-    DrawFocusRect, FillRect, GetTextExtentPoint32W, HBITMAP, HDC, HGDIOBJ, SRCCOPY, SelectObject,
+    DRAW_TEXT_FORMAT, DT_END_ELLIPSIS, DT_LEFT, DT_NOPREFIX, DT_SINGLELINE, DT_VCENTER,
+    DT_WORDBREAK, DeleteDC, DeleteObject, FillRect, GetTextExtentPoint32W, HBITMAP, HDC, HGDIOBJ,
+    SRCCOPY, SelectObject,
 };
 use windows::Win32::UI::Accessibility::{HCF_HIGHCONTRASTON, HIGHCONTRASTW};
 use windows::Win32::UI::Controls::{
@@ -19,8 +23,9 @@ use windows::Win32::UI::Controls::{
 };
 use windows::Win32::UI::Input::KeyboardAndMouse::IsWindowEnabled;
 use windows::Win32::UI::WindowsAndMessaging::{
-    BS_AUTOCHECKBOX, BS_TYPEMASK, GWL_STYLE, GetWindowLongPtrW, GetWindowTextW,
-    SPI_GETHIGHCONTRAST, SYSTEM_PARAMETERS_INFO_UPDATE_FLAGS, SystemParametersInfoW,
+    BS_AUTOCHECKBOX, BS_MULTILINE, BS_TYPEMASK, GWL_STYLE, GetWindowLongPtrW, GetWindowTextLengthW,
+    GetWindowTextW, SPI_GETHIGHCONTRAST, SYSTEM_PARAMETERS_INFO_UPDATE_FLAGS,
+    SystemParametersInfoW,
 };
 use windows::core::PCWSTR;
 
@@ -43,20 +48,22 @@ const MAX_ACCENT_HUE_DISTANCE: i32 = 144;
 pub(super) unsafe fn custom_draw_result(
     lparam: LPARAM,
     font: HGDIOBJ,
+    theme: &AppTheme,
     host_background: COLORREF,
 ) -> Option<LRESULT> {
     if lparam.0 == 0 {
         return None;
     }
     let header = unsafe { &*(lparam.0 as *const NMHDR) };
-    if header.code != NM_CUSTOMDRAW || !unsafe { is_auto_checkbox(header.hwndFrom) } {
+    if header.code != NM_CUSTOMDRAW {
         return None;
     }
+    let style = (unsafe { auto_checkbox_style(header.hwndFrom) })?;
     let draw = unsafe { &*(lparam.0 as *const NMCUSTOMDRAW) };
 
     match draw.dwDrawStage {
         CDDS_PREPAINT if !unsafe { high_contrast_is_enabled_or_unknown() } => {
-            if unsafe { draw_scaled_checkbox(draw, font, host_background) } {
+            if unsafe { draw_scaled_checkbox(draw, font, style, theme, host_background) } {
                 Some(LRESULT(CDRF_SKIPDEFAULT as isize))
             } else {
                 Some(LRESULT(CDRF_DODEFAULT as isize))
@@ -69,6 +76,8 @@ pub(super) unsafe fn custom_draw_result(
 unsafe fn draw_scaled_checkbox(
     draw: &NMCUSTOMDRAW,
     font: HGDIOBJ,
+    style: u32,
+    theme_context: &AppTheme,
     host_background: COLORREF,
 ) -> bool {
     if draw.hdc.0.is_null() {
@@ -78,9 +87,8 @@ unsafe fn draw_scaled_checkbox(
     let hwnd = draw.hdr.hwndFrom;
     let enabled = unsafe { IsWindowEnabled(hwnd).as_bool() };
     let checked = unsafe { is_checked(hwnd) };
-    let hot = draw.uItemState.contains(CDIS_HOT);
+    let hot = draw.uItemState.contains(CDIS_HOT) || draw.uItemState.contains(CDIS_FOCUS);
     let pressed = draw.uItemState.contains(CDIS_SELECTED);
-    let focused = draw.uItemState.contains(CDIS_FOCUS);
     let state = match (checked, enabled, pressed, hot) {
         (false, false, _, _) => CBS_UNCHECKEDDISABLED.0,
         (false, true, true, _) => CBS_UNCHECKEDPRESSED.0,
@@ -146,8 +154,8 @@ unsafe fn draw_scaled_checkbox(
         return false;
     }
 
-    let palette = active_palette();
-    if active_theme() == ResolvedTheme::Dark && enabled && checked {
+    let palette = &theme_context.palette;
+    if theme_context.resolved == ResolvedTheme::Dark && enabled && checked {
         let _ = unsafe {
             tint_checkbox_rect(
                 draw.hdc,
@@ -164,50 +172,73 @@ unsafe fn draw_scaled_checkbox(
         right: draw.rc.right,
         bottom: draw.rc.bottom,
     };
-    let mut text = [0u16; 256];
-    let text_len = unsafe { GetWindowTextW(hwnd, &mut text) }.max(0) as usize;
-    draw_wide_text_line_at_visual_center(
-        draw.hdc,
-        font,
-        &mut text[..text_len],
-        text_rect,
-        visual_center_twice,
-        if enabled {
-            palette.text
-        } else {
-            palette.disabled_text
-        },
-        DT_LEFT | DT_SINGLELINE | DT_VCENTER | DT_END_ELLIPSIS | DT_NOPREFIX,
-    );
-
-    if focused && enabled {
-        let mut text_size = SIZE::default();
-        unsafe {
-            let previous_font = SelectObject(draw.hdc, font);
-            let measured =
-                GetTextExtentPoint32W(draw.hdc, &text[..text_len], &mut text_size).as_bool();
-            if !previous_font.0.is_null() {
-                let _ = SelectObject(draw.hdc, previous_font);
-            }
-            if measured {
-                let (top, bottom) =
-                    centered_pixel_span(visual_center_twice, text_size.cy.saturating_add(px(2)));
-                let focus_rect = windows::Win32::Foundation::RECT {
-                    left: text_rect.left - px(1),
-                    top,
-                    right: (text_rect.left + text_size.cx + px(1)).min(text_rect.right),
-                    bottom,
-                };
-                let _ = DrawFocusRect(draw.hdc, &focus_rect);
-            }
-        }
+    let text_color = if enabled {
+        palette.text
+    } else {
+        palette.disabled_text
+    };
+    let text_len = unsafe { GetWindowTextLengthW(hwnd) }.max(0) as usize;
+    let mut stack_text = [0u16; 256];
+    let mut heap_text = Vec::new();
+    let text = if text_len < stack_text.len() {
+        let copied = unsafe { GetWindowTextW(hwnd, &mut stack_text) }.max(0) as usize;
+        &mut stack_text[..copied]
+    } else {
+        heap_text.resize(text_len.saturating_add(1), 0);
+        let copied = unsafe { GetWindowTextW(hwnd, &mut heap_text) }.max(0) as usize;
+        &mut heap_text[..copied]
+    };
+    let multiline_allowed = style & BS_MULTILINE as u32 != 0;
+    let wraps = multiline_allowed
+        && measured_text_size(draw.hdc, font, text)
+            .is_none_or(|size| size.cx > text_rect.right.saturating_sub(text_rect.left).max(1));
+    let text_format = checkbox_text_format(wraps);
+    if wraps {
+        draw_wide_text_block_vertically_centered(
+            draw.hdc,
+            font,
+            text,
+            text_rect,
+            text_color,
+            text_format,
+        );
+    } else {
+        draw_wide_text_line_at_visual_center(
+            draw.hdc,
+            font,
+            text,
+            text_rect,
+            visual_center_twice,
+            text_color,
+            text_format,
+        );
     }
     true
 }
 
-unsafe fn is_auto_checkbox(hwnd: HWND) -> bool {
+fn checkbox_text_format(multiline: bool) -> DRAW_TEXT_FORMAT {
+    if multiline {
+        DT_LEFT | DT_WORDBREAK | DT_END_ELLIPSIS | DT_NOPREFIX
+    } else {
+        DT_LEFT | DT_SINGLELINE | DT_VCENTER | DT_END_ELLIPSIS | DT_NOPREFIX
+    }
+}
+
+fn measured_text_size(hdc: HDC, font: HGDIOBJ, text: &[u16]) -> Option<SIZE> {
+    let mut text_size = SIZE::default();
+    unsafe {
+        let previous_font = SelectObject(hdc, font);
+        let measured = GetTextExtentPoint32W(hdc, text, &mut text_size).as_bool();
+        if !previous_font.0.is_null() {
+            let _ = SelectObject(hdc, previous_font);
+        }
+        measured.then_some(text_size)
+    }
+}
+
+unsafe fn auto_checkbox_style(hwnd: HWND) -> Option<u32> {
     let style = unsafe { GetWindowLongPtrW(hwnd, GWL_STYLE) } as u32;
-    style & BS_TYPEMASK as u32 == BS_AUTOCHECKBOX as u32
+    (style & BS_TYPEMASK as u32 == BS_AUTOCHECKBOX as u32).then_some(style)
 }
 
 unsafe fn high_contrast_is_enabled_or_unknown() -> bool {
@@ -524,6 +555,23 @@ mod tests {
         green: 159,
         blue: 234,
     };
+
+    #[test]
+    fn multiline_checkbox_text_wraps_instead_of_using_single_line_ellipsis() {
+        let format = checkbox_text_format(true);
+
+        assert_ne!(format & DT_WORDBREAK, DRAW_TEXT_FORMAT(0));
+        assert_eq!(format & DT_SINGLELINE, DRAW_TEXT_FORMAT(0));
+    }
+
+    #[test]
+    fn single_line_checkbox_text_uses_the_shared_vertical_center_path() {
+        let format = checkbox_text_format(false);
+
+        assert_ne!(format & DT_SINGLELINE, DRAW_TEXT_FORMAT(0));
+        assert_ne!(format & DT_VCENTER, DRAW_TEXT_FORMAT(0));
+        assert_eq!(format & DT_WORDBREAK, DRAW_TEXT_FORMAT(0));
+    }
 
     #[test]
     fn tint_preserves_neutral_native_check_pixels() {

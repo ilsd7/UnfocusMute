@@ -1,21 +1,23 @@
+use super::constants::WM_REDRAW_DEFERRED_CONTROL;
 use super::drawing::{
     draw_glyph_at_visual_center, draw_text_line_at_visual_center,
     draw_wide_text_line_at_visual_center,
 };
-use super::theme::{ThemePalette, active_palette, logical_px, px};
+use super::theme::{ThemePalette, active_palette, logical_px_covering, px};
 use crate::windows_app::error::{Context, Result, message_error};
 use std::borrow::Cow;
 use std::ffi::c_void;
 use std::os::windows::ffi::OsStrExt;
 use std::path::Path;
 use windows::Win32::Foundation::{
-    HANDLE, HINSTANCE, HWND, LPARAM, LRESULT, POINT, RECT, SIZE, WPARAM,
+    COLORREF, HANDLE, HINSTANCE, HWND, LPARAM, LRESULT, POINT, RECT, SIZE, WPARAM,
 };
 use windows::Win32::Graphics::Gdi::{
-    CreatePen, CreateSolidBrush, DT_CENTER, DT_LEFT, DT_NOPREFIX, DT_SINGLELINE, DT_VCENTER,
-    DeleteObject, DrawFocusRect, FillRect, GetDC, GetTextExtentPoint32W, GetTextMetricsW, HDC,
-    HGDIOBJ, PS_INSIDEFRAME, PS_SOLID, Polygon, RDW_INVALIDATE, RDW_UPDATENOW, RedrawWindow,
-    ReleaseDC, RoundRect, ScreenToClient, SelectObject, TEXTMETRICW,
+    CreatePen, CreateSolidBrush, DC_BRUSH, DT_CENTER, DT_LEFT, DT_NOPREFIX, DT_SINGLELINE,
+    DT_VCENTER, DeleteObject, FillRect, GetDC, GetStockObject, GetTextExtentPoint32W,
+    GetTextMetricsW, HDC, HGDIOBJ, PS_INSIDEFRAME, PS_SOLID, Polygon, RDW_INVALIDATE,
+    RDW_UPDATENOW, RedrawWindow, ReleaseDC, RoundRect, ScreenToClient, SelectObject, SetBkColor,
+    SetBkMode, SetDCBrushColor, SetTextColor, TEXTMETRICW, TRANSPARENT,
 };
 use windows::Win32::UI::Controls::{
     BST_CHECKED, BST_UNCHECKED, DRAWITEMSTRUCT, ODS_DISABLED, ODS_FOCUS, ODS_SELECTED,
@@ -31,12 +33,13 @@ use windows::Win32::UI::WindowsAndMessaging::{
     BM_GETCHECK, BM_SETCHECK, BS_AUTOCHECKBOX, BS_MULTILINE, BS_OWNERDRAW, CB_ADDSTRING,
     CB_INITSTORAGE, CreateWindowExW, GetMessageW, GetPropW, GetSystemMetrics, GetWindowRect,
     GetWindowTextLengthW, GetWindowTextW, HICON, HMENU, HTCLIENT, HTTRANSPARENT, HWND_TOP,
-    ICON_BIG, ICON_SMALL, IDC_HAND, IDI_APPLICATION, IMAGE_ICON, LB_ADDSTRING, LB_INITSTORAGE,
-    LR_DEFAULTCOLOR, LR_SHARED, LoadCursorW, LoadIconW, LoadImageW, MSG, MoveWindow, RemovePropW,
-    SM_CXICON, SM_CXSMICON, SM_CYICON, SM_CYSMICON, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE,
-    SendMessageW, SetCursor, SetPropW, SetWindowPos, SetWindowTextW, UnregisterClassW,
-    WINDOW_EX_STYLE, WINDOW_STYLE, WM_MOUSEMOVE, WM_NCDESTROY, WM_NCHITTEST, WM_SETCURSOR,
-    WM_SETICON, WS_CHILD, WS_CLIPSIBLINGS, WS_TABSTOP, WS_VISIBLE,
+    ICON_BIG, ICON_SMALL, IDC_HAND, IDI_APPLICATION, IMAGE_ICON, IsChild, IsWindow, LB_ADDSTRING,
+    LB_INITSTORAGE, LR_DEFAULTCOLOR, LR_SHARED, LoadCursorW, LoadIconW, LoadImageW, MSG,
+    MoveWindow, PostMessageW, RemovePropW, SM_CXICON, SM_CXSMICON, SM_CYICON, SM_CYSMICON,
+    SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE, SendMessageW, SetCursor, SetPropW, SetWindowPos,
+    SetWindowTextW, UnregisterClassW, WINDOW_EX_STYLE, WINDOW_STYLE, WM_DRAWITEM, WM_ERASEBKGND,
+    WM_MOUSEMOVE, WM_NCDESTROY, WM_NCHITTEST, WM_SETCURSOR, WM_SETICON, WS_CHILD, WS_CLIPSIBLINGS,
+    WS_TABSTOP, WS_VISIBLE,
 };
 use windows::core::{PCWSTR, w};
 
@@ -151,6 +154,8 @@ impl Drop for SelectedGdiObject {
 }
 
 #[allow(clippy::too_many_arguments)]
+/// Creates an owner-draw button from logical UI coordinates. Scaling is
+/// applied exactly once inside the shared child-control creation path.
 pub(super) unsafe fn create_button(
     parent: HWND,
     instance: HINSTANCE,
@@ -261,6 +266,8 @@ unsafe fn create_checkbox_with_style(
 }
 
 #[allow(clippy::too_many_arguments)]
+/// Creates a child control from logical UI coordinates. Callers must not pass
+/// values that have already been converted with `px()`.
 pub(super) unsafe fn create_control(
     parent: HWND,
     instance: HINSTANCE,
@@ -336,6 +343,7 @@ pub(super) unsafe fn set_text(hwnd: HWND, text: &str) {
     let _ = unsafe { SetWindowTextW(hwnd, PCWSTR(wide.as_ptr())) };
 }
 
+/// Measures text and returns a covering width in logical UI units.
 pub(super) unsafe fn measure_text_width(hwnd: HWND, font: HGDIOBJ, text: &str) -> i32 {
     let fallback_width = text.chars().count() as i32 * 8;
     let mut stack = [0u16; MEASURE_TEXT_STACK_BUFFER_LEN];
@@ -459,12 +467,13 @@ unsafe fn measure_wide_text_width(
     let _selected = unsafe { SelectedGdiObject::select(dc.handle(), font) };
     let mut size = SIZE::default();
     if unsafe { GetTextExtentPoint32W(dc.handle(), wide, &mut size).as_bool() } {
-        logical_px(size.cx)
+        logical_px_covering(size.cx)
     } else {
         fallback_width
     }
 }
 
+/// Moves a child control using logical UI coordinates.
 pub(super) unsafe fn move_window(
     hwnd: HWND,
     x: i32,
@@ -525,8 +534,8 @@ pub(super) fn centered_control_span_exact(center_twice: i32, preferred_height: i
     (top, height)
 }
 
-pub(super) unsafe fn redraw_control_now(hwnd: HWND) -> bool {
-    unsafe { RedrawWindow(Some(hwnd), None, None, RDW_INVALIDATE | RDW_UPDATENOW).as_bool() }
+pub(super) unsafe fn invalidate_control(hwnd: HWND) -> bool {
+    unsafe { RedrawWindow(Some(hwnd), None, None, RDW_INVALIDATE).as_bool() }
 }
 
 pub(super) unsafe fn place_control_on_top(hwnd: HWND) -> bool {
@@ -603,16 +612,22 @@ pub(super) unsafe fn window_text_into(hwnd: HWND, output: &mut String) {
     push_utf16_lossy(output, &buffer[..len.max(0) as usize]);
 }
 
-pub(super) unsafe fn add_list_item_with_buffer(hwnd: HWND, text: &str, wide: &mut Vec<u16>) {
+pub(super) unsafe fn add_list_item_with_buffer(
+    hwnd: HWND,
+    text: &str,
+    wide: &mut Vec<u16>,
+) -> Option<usize> {
     write_wide_buffer(text, wide);
-    unsafe {
+    let result = unsafe {
         SendMessageW(
             hwnd,
             LB_ADDSTRING,
             None,
             Some(LPARAM(wide.as_ptr() as isize)),
-        );
-    }
+        )
+        .0
+    };
+    (result >= 0).then_some(result as usize)
 }
 
 pub(super) unsafe fn reserve_list_items(hwnd: HWND, count: usize, text_bytes: usize) {
@@ -878,14 +893,19 @@ unsafe extern "system" fn hit_test_transparent_subclass_proc(
     unsafe { DefSubclassProc(hwnd, message, wparam, lparam) }
 }
 
-pub(super) unsafe fn install_hit_test_transparent_subclass(hwnd: HWND) {
-    unsafe {
-        let _ = SetWindowSubclass(
+pub(super) unsafe fn install_hit_test_transparent_subclass(hwnd: HWND) -> Result<()> {
+    if unsafe {
+        SetWindowSubclass(
             hwnd,
             Some(hit_test_transparent_subclass_proc),
             HIT_TEST_TRANSPARENT_SUBCLASS_ID,
             0,
-        );
+        )
+        .as_bool()
+    } {
+        Ok(())
+    } else {
+        Err(message_error("install click-through overlay handler"))
     }
 }
 
@@ -898,6 +918,10 @@ unsafe extern "system" fn button_hover_subclass_proc(
     _ref_data: usize,
 ) -> LRESULT {
     match message {
+        // Every button with this subclass is fully painted by WM_DRAWITEM.
+        // Letting the native BUTTON class erase first exposes its system-light
+        // brush for one frame before the owner-draw callback catches up.
+        WM_ERASEBKGND => return LRESULT(1),
         WM_SETCURSOR
             if loword(lparam.0 as u32) as u32 == HTCLIENT && set_hand_cursor_if_enabled(hwnd) =>
         {
@@ -981,6 +1005,68 @@ pub(super) fn default_button_message_result(
     }
 }
 
+/// Owner-draw callbacks can reenter a parent window while its model is being
+/// updated. Acknowledge that synchronous callback instead of letting the
+/// system draw a light-themed fallback, then repaint the control once the
+/// outer message has completed.
+pub(super) unsafe fn defer_reentrant_owner_draw(
+    parent: HWND,
+    message: u32,
+    lparam: LPARAM,
+) -> Option<LRESULT> {
+    if message != WM_DRAWITEM || lparam.0 == 0 {
+        return None;
+    }
+
+    let draw = unsafe { &*(lparam.0 as *const DRAWITEMSTRUCT) };
+    if !draw.hwndItem.0.is_null() {
+        unsafe {
+            let _ = PostMessageW(
+                Some(parent),
+                WM_REDRAW_DEFERRED_CONTROL,
+                WPARAM(draw.hwndItem.0 as usize),
+                LPARAM(0),
+            );
+        }
+    }
+    Some(LRESULT(1))
+}
+
+pub(super) unsafe fn redraw_deferred_control(parent: HWND, wparam: WPARAM) {
+    let hwnd = HWND(wparam.0 as *mut c_void);
+    if hwnd.0.is_null()
+        || unsafe { !IsWindow(Some(hwnd)).as_bool() }
+        || unsafe { !IsChild(parent, hwnd).as_bool() }
+    {
+        return;
+    }
+    unsafe {
+        let _ = RedrawWindow(Some(hwnd), None, None, RDW_INVALIDATE | RDW_UPDATENOW);
+    }
+}
+
+/// Supplies a theme-colored stock brush without borrowing a window model.
+/// Paint callbacks can arrive synchronously from native controls while that
+/// model is already mutably borrowed, so this path must remain independent.
+pub(super) unsafe fn themed_control_color(
+    wparam: WPARAM,
+    text: COLORREF,
+    background: COLORREF,
+) -> Option<LRESULT> {
+    let hdc = HDC(wparam.0 as *mut c_void);
+    if hdc.0.is_null() {
+        return None;
+    }
+    unsafe {
+        let _ = SetBkMode(hdc, TRANSPARENT);
+        let _ = SetTextColor(hdc, text);
+        let _ = SetBkColor(hdc, background);
+        let _ = SetDCBrushColor(hdc, background);
+        let brush = GetStockObject(DC_BRUSH);
+        (!brush.0.is_null()).then_some(LRESULT(brush.0 as isize))
+    }
+}
+
 pub(super) unsafe fn draw_flat_button(draw: &DRAWITEMSTRUCT, font: HGDIOBJ) -> bool {
     let palette = active_palette();
     unsafe { draw_flat_button_on(draw, font, palette, palette.page) }
@@ -1012,7 +1098,7 @@ pub(super) unsafe fn draw_flat_button_on(
         )
     } else if pressed {
         (palette.button_pressed, palette.button_border, palette.text)
-    } else if hovered {
+    } else if hovered || focused {
         (palette.button_hover, palette.button_border, palette.text)
     } else {
         (palette.button, palette.button_border, palette.text)
@@ -1062,24 +1148,9 @@ pub(super) unsafe fn draw_flat_button_on(
             text_color,
             DT_CENTER | DT_SINGLELINE | DT_VCENTER | DT_NOPREFIX,
         );
-
-        if focused && !disabled {
-            let mut focus_rect = button_rect;
-            let inset = px(4);
-            focus_rect.left += inset;
-            focus_rect.top += inset;
-            focus_rect.right -= inset;
-            focus_rect.bottom -= inset;
-            let _ = DrawFocusRect(hdc, &focus_rect);
-        }
     }
 
     true
-}
-
-pub(super) unsafe fn draw_rounded_input_frame(draw: &DRAWITEMSTRUCT, radius: i32) -> bool {
-    let palette = active_palette();
-    unsafe { draw_rounded_input_frame_on(draw, radius, palette, palette.page) }
 }
 
 pub(super) unsafe fn draw_rounded_input_frame_on(
@@ -1089,12 +1160,30 @@ pub(super) unsafe fn draw_rounded_input_frame_on(
     host_background: windows::Win32::Foundation::COLORREF,
 ) -> bool {
     unsafe {
+        draw_rounded_input_frame_with_border_on(
+            draw,
+            radius,
+            palette,
+            host_background,
+            palette.border,
+        )
+    }
+}
+
+pub(super) unsafe fn draw_rounded_input_frame_with_border_on(
+    draw: &DRAWITEMSTRUCT,
+    radius: i32,
+    palette: &ThemePalette,
+    host_background: windows::Win32::Foundation::COLORREF,
+    border_color: windows::Win32::Foundation::COLORREF,
+) -> bool {
+    unsafe {
         let background = CreateSolidBrush(host_background);
         let _ = FillRect(draw.hDC, &draw.rcItem, background);
         let _ = DeleteObject(background.into());
 
         let brush = CreateSolidBrush(palette.input);
-        let pen = CreatePen(PS_INSIDEFRAME, px(1).max(1), palette.border);
+        let pen = CreatePen(PS_INSIDEFRAME, px(1).max(1), border_color);
         let previous_brush = SelectObject(draw.hDC, brush.into());
         let previous_pen = SelectObject(draw.hDC, pen.into());
         let diameter = px(radius).saturating_mul(2).max(1);
@@ -1122,9 +1211,21 @@ pub(super) unsafe fn draw_rounded_combo_display_on(
     radius: i32,
     palette: &ThemePalette,
     host_background: windows::Win32::Foundation::COLORREF,
+    focused: bool,
 ) -> bool {
     unsafe {
-        let _ = draw_rounded_input_frame_on(draw, radius, palette, host_background);
+        let border_color = if focused {
+            palette.link
+        } else {
+            palette.border
+        };
+        let _ = draw_rounded_input_frame_with_border_on(
+            draw,
+            radius,
+            palette,
+            host_background,
+            border_color,
+        );
 
         let horizontal_padding = px(8);
         let arrow_area_width = px(28);

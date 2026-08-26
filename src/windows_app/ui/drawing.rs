@@ -1,7 +1,7 @@
 use crate::config::TargetProcess;
 use windows::Win32::Foundation::{COLORREF, RECT};
 use windows::Win32::Graphics::Gdi::{
-    DRAW_TEXT_FORMAT, DrawTextW, FIXED, GGO_METRICS, GLYPHMETRICS, GetGlyphOutlineW,
+    DRAW_TEXT_FORMAT, DT_CALCRECT, DrawTextW, FIXED, GGO_METRICS, GLYPHMETRICS, GetGlyphOutlineW,
     GetTextMetricsW, HDC, HGDIOBJ, MAT2, SelectObject, SetBkMode, SetTextAlign, SetTextColor,
     TA_BASELINE, TA_CENTER, TEXT_ALIGN_OPTIONS, TEXTMETRICW, TRANSPARENT, TextOutW,
 };
@@ -149,6 +149,57 @@ pub(super) fn draw_wide_text_line_at_visual_center(
         rect.bottom = rect.bottom.saturating_add(offset);
     }
     draw_wide_text_line(hdc, font, wide, rect, color, format);
+}
+
+/// Draws a wrapped text block centered as a whole within the supplied bounds.
+///
+/// Single-line controls use the capital-height optical axis above. A wrapped
+/// label has no single baseline, so its complete line box is the stable unit
+/// to center. The returned rectangle describes the vertical block used for
+/// drawing and can also be used for a keyboard focus cue.
+pub(super) fn draw_wide_text_block_vertically_centered(
+    hdc: HDC,
+    font: HGDIOBJ,
+    wide: &mut [u16],
+    bounds: RECT,
+    color: COLORREF,
+    format: DRAW_TEXT_FORMAT,
+) -> RECT {
+    if wide.is_empty() {
+        return bounds;
+    }
+
+    unsafe {
+        let previous_font = SelectObject(hdc, font);
+        let _ = SetBkMode(hdc, TRANSPARENT);
+        let _ = SetTextColor(hdc, color);
+
+        let available_height = bounds.bottom.saturating_sub(bounds.top).max(1);
+        let mut measured = RECT {
+            left: 0,
+            top: 0,
+            right: bounds.right.saturating_sub(bounds.left).max(1),
+            bottom: 0,
+        };
+        let _ = DrawTextW(hdc, wide, &mut measured, format | DT_CALCRECT);
+        let block_height = measured
+            .bottom
+            .saturating_sub(measured.top)
+            .clamp(1, available_height);
+        let block_top = bounds.top + (available_height - block_height).div_euclid(2);
+        let mut draw_rect = RECT {
+            left: bounds.left,
+            top: block_top,
+            right: bounds.right,
+            bottom: block_top.saturating_add(block_height),
+        };
+        let _ = DrawTextW(hdc, wide, &mut draw_rect, format);
+
+        if !previous_font.0.is_null() {
+            let _ = SelectObject(hdc, previous_font);
+        }
+        draw_rect
+    }
 }
 
 /// Produces a fixed-height, exclusive-bottom pixel span around a doubled center.

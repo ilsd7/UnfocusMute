@@ -2,11 +2,11 @@ use super::constants::WM_TRAY_ICON;
 use super::win32::{get_message, system_command_closes_or_minimizes};
 use crate::windows_app::error::Result;
 use windows::Win32::Foundation::HWND;
-use windows::Win32::UI::Input::KeyboardAndMouse::{EnableWindow, IsWindowEnabled, SetActiveWindow};
+use windows::Win32::UI::Input::KeyboardAndMouse::{EnableWindow, IsWindowEnabled};
 use windows::Win32::UI::WindowsAndMessaging::{
-    DestroyWindow, DispatchMessageW, IsDialogMessageW, IsWindow, IsWindowVisible, MSG,
-    PostQuitMessage, SW_HIDE, SW_SHOW, SetForegroundWindow, ShowWindow, TranslateMessage, WM_CLOSE,
-    WM_COMMAND, WM_SYSCOMMAND,
+    DestroyWindow, DispatchMessageW, GetForegroundWindow, IsDialogMessageW, IsWindow,
+    IsWindowVisible, MSG, PostQuitMessage, SW_SHOW, SetForegroundWindow, ShowWindow,
+    TranslateMessage, WM_CLOSE, WM_COMMAND, WM_SYSCOMMAND,
 };
 
 struct ModalParentGuard {
@@ -36,17 +36,21 @@ impl ModalParentGuard {
 
     unsafe fn finish(&mut self) {
         let dialog_exists = unsafe { IsWindow(Some(self.dialog)).as_bool() };
+        let dialog_was_foreground =
+            dialog_exists && unsafe { GetForegroundWindow() == self.dialog };
         if self.was_enabled {
             unsafe {
                 let _ = EnableWindow(self.parent, true);
             }
         }
+        // DestroyWindow hides the dialog before destroying it. If it is still
+        // the foreground window, Windows can otherwise activate the app that
+        // preceded this modal in the Alt+Tab order. Hand the foreground back
+        // to the owner first, while this process is still allowed to do so.
+        // Do not do this for a background dialog, which would steal focus.
         unsafe {
-            if dialog_exists {
-                let _ = ShowWindow(self.dialog, SW_HIDE);
-            }
-            if self.was_enabled && IsWindowVisible(self.parent).as_bool() {
-                let _ = SetActiveWindow(self.parent);
+            if self.was_enabled && dialog_was_foreground && IsWindowVisible(self.parent).as_bool() {
+                let _ = SetForegroundWindow(self.parent);
             }
             if dialog_exists {
                 let _ = DestroyWindow(self.dialog);

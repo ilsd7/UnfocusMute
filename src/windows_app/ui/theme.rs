@@ -1,6 +1,7 @@
 use crate::config::ThemePreference;
 use std::ffi::c_void;
 use std::mem::size_of;
+use std::ops::{Deref, DerefMut};
 use std::sync::OnceLock;
 use std::sync::atomic::{AtomicI32, AtomicU8, Ordering};
 use windows::Win32::Foundation::{COLORREF, ERROR_SUCCESS, HWND, WPARAM};
@@ -252,7 +253,7 @@ impl Drop for OwnedBrush {
     }
 }
 
-pub(super) struct AppTheme {
+pub(super) struct ThemeSurface {
     pub(super) resolved: ResolvedTheme,
     pub(super) palette: ThemePalette,
     pub(super) page_brush: OwnedBrush,
@@ -260,12 +261,9 @@ pub(super) struct AppTheme {
     pub(super) input_brush: OwnedBrush,
     pub(super) border_brush: OwnedBrush,
     pub(super) selected_row_brush: OwnedBrush,
-    pub(super) font: UiFont,
-    pub(super) icon_font: UiFont,
-    pub(super) action_icon_font: UiFont,
 }
 
-impl AppTheme {
+impl ThemeSurface {
     pub(super) fn new() -> Self {
         let resolved = active_theme();
         let palette = *active_palette();
@@ -277,9 +275,6 @@ impl AppTheme {
             input_brush: OwnedBrush::solid(palette.input),
             border_brush: OwnedBrush::solid(palette.border),
             selected_row_brush: OwnedBrush::solid(palette.selected_row),
-            font: Self::scaled_font(),
-            icon_font: Self::scaled_icon_font(),
-            action_icon_font: Self::scaled_action_icon_font(),
         }
     }
 
@@ -297,6 +292,28 @@ impl AppTheme {
         self.border_brush = OwnedBrush::solid(palette.border);
         self.selected_row_brush = OwnedBrush::solid(palette.selected_row);
         true
+    }
+}
+
+pub(super) struct AppTheme {
+    surface: ThemeSurface,
+    pub(super) font: UiFont,
+    pub(super) icon_font: UiFont,
+    pub(super) action_icon_font: UiFont,
+}
+
+impl AppTheme {
+    pub(super) fn new() -> Self {
+        Self {
+            surface: ThemeSurface::new(),
+            font: Self::scaled_font(),
+            icon_font: Self::scaled_icon_font(),
+            action_icon_font: Self::scaled_action_icon_font(),
+        }
+    }
+
+    pub(super) fn refresh_colors(&mut self) -> bool {
+        self.surface.refresh_colors()
     }
 
     pub(super) fn fonts_match_current_scale(&self) -> bool {
@@ -333,6 +350,20 @@ impl AppTheme {
     #[must_use]
     pub(super) fn replace_action_icon_font(&mut self, font: UiFont) -> UiFont {
         std::mem::replace(&mut self.action_icon_font, font)
+    }
+}
+
+impl Deref for AppTheme {
+    type Target = ThemeSurface;
+
+    fn deref(&self) -> &Self::Target {
+        &self.surface
+    }
+}
+
+impl DerefMut for AppTheme {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.surface
     }
 }
 
@@ -454,8 +485,15 @@ pub(super) fn px(value: i32) -> i32 {
     scale_i32(value, ui_scale())
 }
 
-pub(super) fn logical_px(value: i32) -> i32 {
-    scale_i32(value, inverse_scale())
+/// Converts a measured device-pixel extent back to the smallest logical extent
+/// that still covers it after the normal UI scaling is applied again.
+pub(super) fn logical_px_covering(value: i32) -> i32 {
+    let value = value.max(0);
+    let mut logical = scale_i32(value, inverse_scale()).max(0);
+    while px(logical) < value {
+        logical = logical.saturating_add(1);
+    }
+    logical
 }
 
 pub(super) fn system_px(value: i32) -> i32 {
@@ -541,5 +579,17 @@ mod tests {
         assert_eq!(DARK_PALETTE.button_hover, rgb(63, 62, 63));
         assert_eq!(DARK_PALETTE.button_disabled, rgb(38, 37, 38));
         assert_eq!(DARK_PALETTE.checkbox_checked, rgb(111, 159, 234));
+    }
+
+    #[test]
+    fn measured_device_extents_are_not_rounded_too_small() {
+        for physical in 0..=512 {
+            let logical = logical_px_covering(physical);
+
+            assert!(px(logical) >= physical);
+            if logical > 0 {
+                assert!(px(logical - 1) < physical);
+            }
+        }
     }
 }

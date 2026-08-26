@@ -4,12 +4,12 @@ use super::win32::window_size_for_client_area;
 use crate::config::{AppConfig, WindowPosition, WindowSize};
 use windows::Win32::Foundation::{HWND, POINT, RECT};
 use windows::Win32::Graphics::Gdi::{
-    GetMonitorInfoW, MONITOR_DEFAULTTONEAREST, MONITORINFO, MonitorFromWindow,
+    GetMonitorInfoW, MONITOR_DEFAULTTONEAREST, MONITOR_DEFAULTTONULL, MONITORINFO, MonitorFromRect,
+    MonitorFromWindow,
 };
 use windows::Win32::UI::WindowsAndMessaging::{
-    GetClientRect, GetSystemMetrics, GetWindowRect, MINMAXINFO, SM_CXSCREEN, SM_CXVIRTUALSCREEN,
-    SM_CYSCREEN, SM_CYVIRTUALSCREEN, SM_XVIRTUALSCREEN, SM_YVIRTUALSCREEN, SPI_GETWORKAREA,
-    SYSTEM_PARAMETERS_INFO_UPDATE_FLAGS, SystemParametersInfoW, WINDOW_EX_STYLE,
+    GetClientRect, GetSystemMetrics, GetWindowRect, MINMAXINFO, SM_CXSCREEN, SM_CYSCREEN,
+    SPI_GETWORKAREA, SYSTEM_PARAMETERS_INFO_UPDATE_FLAGS, SystemParametersInfoW, WINDOW_EX_STYLE,
 };
 
 const SCALE_BASE: i32 = 1_000;
@@ -150,14 +150,41 @@ pub(super) fn centered_over_parent(parent: HWND, width: i32, height: i32) -> Win
         let parent_width = rect.right - rect.left;
         let parent_height = rect.bottom - rect.top;
         if parent_height > 0 {
-            return WindowPosition {
-                x: rect.left + (parent_width - width) / 2,
-                y: rect.top + (parent_height - height) / 2,
-            };
+            return clamp_window_position_to_rect(
+                WindowPosition {
+                    x: rect.left + (parent_width - width) / 2,
+                    y: rect.top + (parent_height - height) / 2,
+                },
+                width,
+                height,
+                work_area_rect(parent),
+            );
         }
     }
 
     centered_position(width, height)
+}
+
+fn clamp_window_position_to_rect(
+    position: WindowPosition,
+    width: i32,
+    height: i32,
+    bounds: RECT,
+) -> WindowPosition {
+    let max_x = bounds.right.saturating_sub(width);
+    let max_y = bounds.bottom.saturating_sub(height);
+    WindowPosition {
+        x: if max_x < bounds.left {
+            bounds.left
+        } else {
+            position.x.clamp(bounds.left, max_x)
+        },
+        y: if max_y < bounds.top {
+            bounds.top
+        } else {
+            position.y.clamp(bounds.top, max_y)
+        },
+    }
 }
 
 pub(super) fn window_position_is_visible(
@@ -171,14 +198,43 @@ pub(super) fn window_position_is_visible(
         return false;
     }
 
-    let screen = virtual_screen_rect();
-    let right = position.x.saturating_add(width);
-    let bottom = position.y.saturating_add(height);
+    let window_rect = RECT {
+        left: position.x,
+        top: position.y,
+        right: position.x.saturating_add(width),
+        bottom: position.y.saturating_add(height),
+    };
+    let monitor = unsafe { MonitorFromRect(&raw const window_rect, MONITOR_DEFAULTTONULL) };
+    if monitor.is_invalid() {
+        return false;
+    }
+    let mut info = MONITORINFO {
+        cbSize: std::mem::size_of::<MONITORINFO>() as u32,
+        ..Default::default()
+    };
+    if !unsafe { GetMonitorInfoW(monitor, &mut info) }.as_bool() {
+        return false;
+    }
+
     let min_visible_edge = px(MIN_VISIBLE_EDGE);
-    right > screen.left.saturating_add(min_visible_edge)
-        && position.x < screen.right.saturating_sub(min_visible_edge)
-        && bottom > screen.top.saturating_add(min_visible_edge)
-        && position.y < screen.bottom.saturating_sub(min_visible_edge)
+    visible_extent(
+        window_rect.left,
+        window_rect.right,
+        info.rcMonitor.left,
+        info.rcMonitor.right,
+    ) >= min_visible_edge
+        && visible_extent(
+            window_rect.top,
+            window_rect.bottom,
+            info.rcMonitor.top,
+            info.rcMonitor.bottom,
+        ) >= min_visible_edge
+}
+
+fn visible_extent(start: i32, end: i32, bounds_start: i32, bounds_end: i32) -> i32 {
+    end.min(bounds_end)
+        .saturating_sub(start.max(bounds_start))
+        .max(0)
 }
 
 fn fitted_user_scale(requested_scale: i32, work_area: RECT, canvas: ClientCanvas) -> i32 {
@@ -369,28 +425,6 @@ fn monitor_work_area_rect(hwnd: HWND) -> Option<RECT> {
     }
 }
 
-fn virtual_screen_rect() -> RECT {
-    let left = unsafe { GetSystemMetrics(SM_XVIRTUALSCREEN) };
-    let top = unsafe { GetSystemMetrics(SM_YVIRTUALSCREEN) };
-    let width = unsafe { GetSystemMetrics(SM_CXVIRTUALSCREEN) };
-    let height = unsafe { GetSystemMetrics(SM_CYVIRTUALSCREEN) };
-    if width > 0 && height > 0 {
-        return RECT {
-            left,
-            top,
-            right: left.saturating_add(width),
-            bottom: top.saturating_add(height),
-        };
-    }
-
-    RECT {
-        left: 0,
-        top: 0,
-        right: unsafe { GetSystemMetrics(SM_CXSCREEN) },
-        bottom: unsafe { GetSystemMetrics(SM_CYSCREEN) },
-    }
-}
-
 fn ratio_milli(value: i32, base: i32) -> i32 {
     if value <= 0 || base <= 0 {
         return SCALE_BASE;
@@ -467,6 +501,52 @@ mod tests {
 
         assert!(!window_position_is_visible(position, 0, WINDOW_HEIGHT));
         assert!(!window_position_is_visible(position, WINDOW_WIDTH, 0));
+    }
+
+    #[test]
+    fn visible_extent_measures_only_the_overlap() {
+        assert_eq!(visible_extent(20, 120, 0, 100), 80);
+        assert_eq!(visible_extent(-20, 40, 0, 100), 40);
+        assert_eq!(visible_extent(120, 180, 0, 100), 0);
+    }
+
+    #[test]
+    fn modal_position_is_clamped_inside_its_work_area() {
+        let work_area = RECT {
+            left: 100,
+            top: 50,
+            right: 1_100,
+            bottom: 750,
+        };
+
+        assert_eq!(
+            clamp_window_position_to_rect(WindowPosition { x: 950, y: 680 }, 400, 300, work_area,),
+            WindowPosition { x: 700, y: 450 }
+        );
+        assert_eq!(
+            clamp_window_position_to_rect(WindowPosition { x: -200, y: -100 }, 400, 300, work_area,),
+            WindowPosition { x: 100, y: 50 }
+        );
+    }
+
+    #[test]
+    fn oversized_modal_starts_at_the_work_area_origin() {
+        let work_area = RECT {
+            left: -1_200,
+            top: 20,
+            right: 0,
+            bottom: 820,
+        };
+
+        assert_eq!(
+            clamp_window_position_to_rect(
+                WindowPosition { x: -900, y: 100 },
+                1_400,
+                900,
+                work_area,
+            ),
+            WindowPosition { x: -1_200, y: 20 }
+        );
     }
 
     #[test]
