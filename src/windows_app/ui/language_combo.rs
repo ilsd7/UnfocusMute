@@ -2,20 +2,24 @@ use super::constants::SS_OWNERDRAW_STYLE;
 use super::theme::{ThemePalette, apply_native_control_theme};
 use super::win32::{
     add_combo_item_with_buffer, center_control_vertically, control_rect_in_parent, create_control,
-    install_hit_test_transparent_subclass, place_control_on_top, redraw_control_now,
+    install_hit_test_transparent_subclass, invalidate_control, place_control_on_top,
     reserve_combo_items, storage_bytes_hint,
 };
 use crate::i18n::Language;
-use crate::windows_app::error::Result;
-use windows::Win32::Foundation::{HINSTANCE, HWND, LPARAM, WPARAM};
+use crate::windows_app::error::{Result, message_error};
+use windows::Win32::Foundation::{HINSTANCE, HWND, LPARAM, LRESULT, WPARAM};
 use windows::Win32::Graphics::Gdi::HGDIOBJ;
 use windows::Win32::UI::Controls::{CB_SETMINVISIBLE, DRAWITEMSTRUCT};
+use windows::Win32::UI::Input::KeyboardAndMouse::GetFocus;
+use windows::Win32::UI::Shell::{DefSubclassProc, RemoveWindowSubclass, SetWindowSubclass};
 use windows::Win32::UI::WindowsAndMessaging::{
     CB_GETCURSEL, CB_SETCURSEL, CBS_DROPDOWNLIST, SWP_NOACTIVATE, SWP_NOSIZE, SWP_NOZORDER,
-    SendMessageW, SetWindowPos, WINDOW_EX_STYLE, WINDOW_STYLE, WM_SETFONT, WS_CHILD,
-    WS_CLIPSIBLINGS, WS_EX_CLIENTEDGE, WS_TABSTOP, WS_VISIBLE,
+    SendMessageW, SetWindowPos, WINDOW_EX_STYLE, WINDOW_STYLE, WM_KILLFOCUS, WM_NCDESTROY,
+    WM_SETFOCUS, WM_SETFONT, WS_CHILD, WS_CLIPSIBLINGS, WS_EX_CLIENTEDGE, WS_TABSTOP, WS_VISIBLE,
 };
 use windows::core::w;
+
+const COMBO_FOCUS_SUBCLASS_ID: usize = 1;
 
 #[derive(Clone, Copy)]
 pub(super) struct LanguageComboIds {
@@ -89,9 +93,19 @@ impl LanguageCombo {
         unsafe {
             picker.set_font(font);
             picker.populate(selected);
-            install_hit_test_transparent_subclass(frame);
+            install_hit_test_transparent_subclass(frame)?;
+            if !SetWindowSubclass(
+                combo,
+                Some(combo_focus_subclass_proc),
+                COMBO_FOCUS_SUBCLASS_ID,
+                frame.0 as usize,
+            )
+            .as_bool()
+            {
+                return Err(message_error("install language picker focus handler"));
+            }
             let _ = place_control_on_top(frame);
-            let _ = redraw_control_now(frame);
+            let _ = invalidate_control(frame);
         }
         Ok(picker)
     }
@@ -143,7 +157,7 @@ impl LanguageCombo {
 
     pub(super) unsafe fn redraw_display(&self) {
         unsafe {
-            let _ = redraw_control_now(self.frame);
+            let _ = invalidate_control(self.frame);
         }
     }
 
@@ -171,6 +185,7 @@ impl LanguageCombo {
                 6,
                 palette,
                 host_background,
+                GetFocus() == self.combo,
             )
         }
     }
@@ -178,7 +193,7 @@ impl LanguageCombo {
     pub(super) fn apply_native_theme(&self) {
         apply_native_control_theme(self.combo);
         unsafe {
-            let _ = redraw_control_now(self.frame);
+            let _ = invalidate_control(self.frame);
         }
     }
 
@@ -217,4 +232,24 @@ impl LanguageCombo {
             SendMessageW(self.combo, CB_SETCURSEL, Some(WPARAM(index)), None);
         }
     }
+}
+
+unsafe extern "system" fn combo_focus_subclass_proc(
+    hwnd: HWND,
+    message: u32,
+    wparam: WPARAM,
+    lparam: LPARAM,
+    subclass_id: usize,
+    ref_data: usize,
+) -> LRESULT {
+    match message {
+        WM_SETFOCUS | WM_KILLFOCUS => unsafe {
+            let _ = invalidate_control(HWND(ref_data as *mut core::ffi::c_void));
+        },
+        WM_NCDESTROY => unsafe {
+            let _ = RemoveWindowSubclass(hwnd, Some(combo_focus_subclass_proc), subclass_id);
+        },
+        _ => {}
+    }
+    unsafe { DefSubclassProc(hwnd, message, wparam, lparam) }
 }

@@ -1,28 +1,30 @@
-use super::constants::{SS_OWNERDRAW_STYLE, WM_PROCESS_SEARCH_RESULT_CHOSEN};
-use super::drawing::draw_text_line;
+use super::constants::{
+    SS_OWNERDRAW_STYLE, WM_PROCESS_SEARCH_RESULT_CHOSEN, WM_SHOW_PROCESS_RESULTS,
+};
+use super::drawing::draw_text_line_at_visual_center;
 use super::theme::{active_palette, apply_native_control_theme, px};
 use super::win32;
 use crate::windows_app::error::{Context, Result};
 use windows::Win32::Foundation::{HINSTANCE, HWND, LPARAM, LRESULT, POINT, RECT, WPARAM};
 use windows::Win32::Graphics::Gdi::{
     CreatePen, CreateSolidBrush, DT_LEFT, DT_NOPREFIX, DT_SINGLELINE, DT_VCENTER, DeleteObject,
-    FillRect, HGDIOBJ, PS_SOLID, Polygon, RDW_INVALIDATE, RedrawWindow, ScreenToClient,
-    SelectObject,
+    FillRect, HDC, HGDIOBJ, PS_SOLID, Polygon, RDW_ERASE, RDW_FRAME, RDW_INVALIDATE, RedrawWindow,
+    ScreenToClient, SelectObject,
 };
 use windows::Win32::UI::Controls::{DRAWITEMSTRUCT, ODS_DISABLED, ODS_SELECTED};
-use windows::Win32::UI::Input::KeyboardAndMouse::SetFocus;
+use windows::Win32::UI::Input::KeyboardAndMouse::{GetFocus, SetFocus};
 use windows::Win32::UI::Shell::{DefSubclassProc, RemoveWindowSubclass, SetWindowSubclass};
 use windows::Win32::UI::WindowsAndMessaging::{
     AW_SLIDE, AW_VER_NEGATIVE, AW_VER_POSITIVE, AnimateWindow, BS_OWNERDRAW, CreateWindowExW,
-    ES_AUTOHSCROLL, GetCursorPos, GetWindowTextLengthW, HTCLIENT, HWND_BOTTOM, HWND_TOP,
-    IsWindowVisible, LB_ADDSTRING, LB_GETCOUNT, LB_GETCURSEL, LB_GETITEMHEIGHT, LB_RESETCONTENT,
-    LB_SETCURSEL, LBS_HASSTRINGS, LBS_NOINTEGRALHEIGHT, LBS_NOTIFY, MoveWindow, PostMessageW,
-    SPI_GETCLIENTAREAANIMATION, SPI_GETCOMBOBOXANIMATION, SW_HIDE, SW_SHOWNOACTIVATE,
+    ES_AUTOHSCROLL, GetClientRect, GetCursorPos, GetWindowTextLengthW, HTCLIENT, HWND_BOTTOM,
+    HWND_TOP, IsWindowVisible, LB_ADDSTRING, LB_GETCOUNT, LB_GETCURSEL, LB_GETITEMHEIGHT,
+    LB_RESETCONTENT, LB_SETCURSEL, LBS_HASSTRINGS, LBS_NOINTEGRALHEIGHT, LBS_NOTIFY, MoveWindow,
+    PostMessageW, SPI_GETCLIENTAREAANIMATION, SPI_GETCOMBOBOXANIMATION, SW_HIDE, SW_SHOWNOACTIVATE,
     SWP_NOACTIVATE, SWP_NOOWNERZORDER, SYSTEM_PARAMETERS_INFO_ACTION,
     SYSTEM_PARAMETERS_INFO_UPDATE_FLAGS, SendMessageW, SetWindowPos, ShowWindow,
-    SystemParametersInfoW, WINDOW_EX_STYLE, WINDOW_STYLE, WM_LBUTTONUP, WM_MOUSEMOVE, WM_NCDESTROY,
-    WM_SETCURSOR, WM_SETFONT, WM_SETREDRAW, WS_BORDER, WS_CHILD, WS_CLIPSIBLINGS, WS_DISABLED,
-    WS_EX_NOACTIVATE, WS_EX_TOOLWINDOW, WS_POPUP, WS_TABSTOP, WS_VISIBLE, WS_VSCROLL,
+    SystemParametersInfoW, WINDOW_EX_STYLE, WINDOW_STYLE, WM_ERASEBKGND, WM_LBUTTONUP,
+    WM_MOUSEMOVE, WM_NCDESTROY, WM_SETCURSOR, WM_SETFONT, WS_BORDER, WS_CHILD, WS_CLIPSIBLINGS,
+    WS_DISABLED, WS_EX_NOACTIVATE, WS_EX_TOOLWINDOW, WS_POPUP, WS_TABSTOP, WS_VISIBLE, WS_VSCROLL,
 };
 use windows::core::{BOOL, PCWSTR, w};
 
@@ -49,6 +51,83 @@ struct PopupLayout {
 }
 
 #[derive(Clone, Copy)]
+pub(super) struct SearchPopupShowRequest {
+    results: HWND,
+    chrome: [HWND; 3],
+    layout: PopupLayout,
+    already_visible: bool,
+}
+
+#[derive(Clone, Copy)]
+pub(super) struct SearchSelectionRequest {
+    parent: HWND,
+    results: HWND,
+    next: usize,
+}
+
+impl SearchSelectionRequest {
+    pub(super) unsafe fn apply(self) {
+        unsafe {
+            SendMessageW(self.results, LB_SETCURSEL, Some(WPARAM(self.next)), None);
+            let _ = PostMessageW(
+                Some(self.parent),
+                WM_SHOW_PROCESS_RESULTS,
+                WPARAM(0),
+                LPARAM(0),
+            );
+        }
+    }
+}
+
+impl SearchPopupShowRequest {
+    /// Shows the native popup only after the main window has released its
+    /// `AppWindow` borrow. `AnimateWindow` paints synchronously and asks the
+    /// owner for list colors while the animation is running.
+    pub(super) unsafe fn show(self) -> bool {
+        if unsafe {
+            SetWindowPos(
+                self.results,
+                Some(HWND_TOP),
+                self.layout.x,
+                self.layout.y,
+                self.layout.width,
+                self.layout.height,
+                SWP_NOACTIVATE | SWP_NOOWNERZORDER,
+            )
+        }
+        .is_err()
+        {
+            return false;
+        }
+
+        let animated = !self.already_visible
+            && unsafe { client_area_animations_enabled() }
+            && unsafe {
+                AnimateWindow(
+                    self.results,
+                    POPUP_SHOW_ANIMATION_MS,
+                    AW_SLIDE
+                        | if self.layout.opens_upward {
+                            AW_VER_NEGATIVE
+                        } else {
+                            AW_VER_POSITIVE
+                        },
+                )
+                .is_ok()
+            };
+        if !self.already_visible && !animated {
+            unsafe {
+                let _ = ShowWindow(self.results, SW_SHOWNOACTIVATE);
+            }
+        }
+        unsafe {
+            redraw_picker_chrome(self.chrome);
+        }
+        true
+    }
+}
+
+#[derive(Clone, Copy)]
 pub(super) struct SearchPickerIds {
     pub(super) frame: i32,
     pub(super) edit: i32,
@@ -62,12 +141,6 @@ struct SearchPickerHandles {
     pub(super) cue: HWND,
     pub(super) toggle: HWND,
     pub(super) results: HWND,
-}
-
-impl SearchPickerHandles {
-    fn all(self) -> [HWND; 5] {
-        [self.frame, self.edit, self.cue, self.toggle, self.results]
-    }
 }
 
 /// A process-search control with one paint owner for each visual surface.
@@ -211,7 +284,7 @@ impl SearchPicker {
         apply_native_control_theme(edit);
         apply_native_control_theme(results);
         unsafe {
-            win32::install_hit_test_transparent_subclass(cue);
+            win32::install_hit_test_transparent_subclass(cue)?;
             picker.set_font(font);
             let _ = picker.layout(x, y, width);
         }
@@ -225,6 +298,14 @@ impl SearchPicker {
     pub(super) fn apply_native_theme(&self) {
         apply_native_control_theme(self.handles.edit);
         apply_native_control_theme(self.handles.results);
+        unsafe {
+            let _ = RedrawWindow(
+                Some(self.handles.results),
+                None,
+                None,
+                RDW_INVALIDATE | RDW_ERASE | RDW_FRAME,
+            );
+        }
     }
 
     pub(super) fn is_results_window(&self, hwnd: HWND) -> bool {
@@ -233,15 +314,6 @@ impl SearchPicker {
 
     pub(super) fn accepts_keyboard_input_from(&self, hwnd: HWND) -> bool {
         hwnd == self.handles.edit || hwnd == self.handles.results
-    }
-
-    pub(super) unsafe fn set_redraw(&self, enabled: bool) {
-        let value = if enabled { 1 } else { 0 };
-        unsafe {
-            for hwnd in self.handles.all() {
-                SendMessageW(hwnd, WM_SETREDRAW, Some(WPARAM(value)), None);
-            }
-        }
     }
 
     pub(super) unsafe fn set_font(&mut self, font: HGDIOBJ) {
@@ -302,17 +374,27 @@ impl SearchPicker {
 
         // A native single-line EDIT draws its ink slightly above its geometric
         // center. Keep that optical correction explicit and DPI-scaled.
+        let text_bounds = RECT {
+            right: slot_left,
+            ..frame
+        };
         let edit_rect = win32::centered_single_line_edit_rect(
-            RECT {
-                right: slot_left,
-                ..frame
-            },
+            text_bounds,
             self.text_height,
             px(EDIT_HORIZONTAL_PADDING),
             px(EDIT_ARROW_GAP),
             border,
             px(2),
             px(EDIT_TEXT_OPTICAL_OFFSET_Y),
+        );
+        let cue_rect = win32::centered_single_line_edit_rect(
+            text_bounds,
+            self.text_height,
+            px(EDIT_HORIZONTAL_PADDING),
+            px(EDIT_ARROW_GAP),
+            border,
+            px(2),
+            0,
         );
 
         let edit_moved = unsafe {
@@ -329,10 +411,10 @@ impl SearchPicker {
         let cue_moved = unsafe {
             MoveWindow(
                 self.handles.cue,
-                edit_rect.left,
-                edit_rect.top,
-                edit_rect.right.saturating_sub(edit_rect.left).max(1),
-                edit_rect.bottom.saturating_sub(edit_rect.top).max(1),
+                cue_rect.left,
+                cue_rect.top,
+                cue_rect.right.saturating_sub(cue_rect.left).max(1),
+                cue_rect.bottom.saturating_sub(cue_rect.top).max(1),
                 false,
             )
             .is_ok()
@@ -390,7 +472,9 @@ impl SearchPicker {
     }
 
     pub(super) unsafe fn sync_cue_visibility(&self) {
-        let show_custom_cue = unsafe { GetWindowTextLengthW(self.handles.edit) == 0 };
+        let show_custom_cue = unsafe {
+            GetWindowTextLengthW(self.handles.edit) == 0 && GetFocus() != self.handles.edit
+        };
         unsafe {
             let _ = ShowWindow(
                 self.handles.cue,
@@ -403,6 +487,13 @@ impl SearchPicker {
             if show_custom_cue {
                 let _ = RedrawWindow(Some(self.handles.cue), None, None, RDW_INVALIDATE);
             }
+        }
+    }
+
+    pub(super) unsafe fn sync_focus_visuals(&self) {
+        unsafe {
+            self.sync_cue_visibility();
+            self.redraw_chrome();
         }
     }
 
@@ -453,14 +544,21 @@ impl SearchPicker {
     pub(super) unsafe fn dismiss_to_edit(&self) {
         unsafe {
             self.hide_popup();
-            let _ = SetFocus(Some(self.handles.edit));
+            self.focus_edit();
         }
     }
 
-    pub(super) unsafe fn move_selection(&self, direction: i32) -> bool {
+    pub(super) unsafe fn focus_edit(&self) {
+        unsafe {
+            let _ = SetFocus(Some(self.handles.edit));
+            self.sync_focus_visuals();
+        }
+    }
+
+    pub(super) fn prepare_move_selection(&self, direction: i32) -> Option<SearchSelectionRequest> {
         let count = self.result_count();
         if count == 0 {
-            return false;
+            return None;
         }
         let current = self.selected_result_index();
         let next = match (current, direction.cmp(&0)) {
@@ -470,11 +568,11 @@ impl SearchPicker {
             (None, std::cmp::Ordering::Less) => count - 1,
             (None, _) => 0,
         };
-        unsafe {
-            let _ = self.show_popup();
-            SendMessageW(self.handles.results, LB_SETCURSEL, Some(WPARAM(next)), None);
-        }
-        true
+        Some(SearchSelectionRequest {
+            parent: self.parent,
+            results: self.handles.results,
+            next,
+        })
     }
 
     pub(super) unsafe fn clear_selection(&self) {
@@ -492,46 +590,17 @@ impl SearchPicker {
         unsafe { IsWindowVisible(self.handles.results).as_bool() }
     }
 
-    pub(super) unsafe fn show_popup(&self) -> bool {
+    pub(super) unsafe fn prepare_show_popup(&self) -> Option<SearchPopupShowRequest> {
         if self.result_count() == 0 {
-            unsafe {
-                self.hide_popup();
-            }
-            return false;
+            return None;
         }
-        if self.popup_visible() {
-            return unsafe { self.position_popup().is_some() };
-        }
-        let Some(opens_upward) = (unsafe { self.position_popup() }) else {
-            return false;
-        };
-
-        let shown = if unsafe { client_area_animations_enabled() } {
-            let direction = if opens_upward {
-                AW_VER_NEGATIVE
-            } else {
-                AW_VER_POSITIVE
-            };
-            unsafe {
-                AnimateWindow(
-                    self.handles.results,
-                    POPUP_SHOW_ANIMATION_MS,
-                    AW_SLIDE | direction,
-                )
-                .is_ok()
-            }
-        } else {
-            false
-        };
-        if !shown {
-            unsafe {
-                let _ = ShowWindow(self.handles.results, SW_SHOWNOACTIVATE);
-            }
-        }
-        unsafe {
-            self.redraw_chrome();
-        }
-        true
+        let layout = unsafe { self.popup_layout()? };
+        Some(SearchPopupShowRequest {
+            results: self.handles.results,
+            chrome: [self.handles.frame, self.handles.cue, self.handles.toggle],
+            layout,
+            already_visible: self.popup_visible(),
+        })
     }
 
     pub(super) unsafe fn hide_popup(&self) {
@@ -551,7 +620,18 @@ impl SearchPicker {
 
         let palette = active_palette();
         unsafe {
-            let _ = win32::draw_rounded_input_frame(draw, 6);
+            let border_color = if GetFocus() == self.handles.edit {
+                palette.link
+            } else {
+                palette.border
+            };
+            let _ = win32::draw_rounded_input_frame_with_border_on(
+                draw,
+                6,
+                palette,
+                palette.page,
+                border_color,
+            );
 
             let separator_width = px(1).max(1);
             let separator_x = draw.rcItem.right.saturating_sub(px(ARROW_SLOT_WIDTH));
@@ -579,11 +659,12 @@ impl SearchPicker {
             let _ = FillRect(draw.hDC, &draw.rcItem, background);
             let _ = DeleteObject(background.into());
         }
-        draw_text_line(
+        draw_text_line_at_visual_center(
             draw.hDC,
             self.font,
             &self.cue_text,
             draw.rcItem,
+            draw.rcItem.top + draw.rcItem.bottom - 1,
             palette.input_placeholder,
             DT_LEFT | DT_SINGLELINE | DT_VCENTER | DT_NOPREFIX,
         );
@@ -667,6 +748,23 @@ impl SearchPicker {
     }
 
     unsafe fn position_popup(&self) -> Option<bool> {
+        let layout = unsafe { self.popup_layout()? };
+        unsafe {
+            SetWindowPos(
+                self.handles.results,
+                Some(HWND_TOP),
+                layout.x,
+                layout.y,
+                layout.width,
+                layout.height,
+                SWP_NOACTIVATE | SWP_NOOWNERZORDER,
+            )
+            .is_ok()
+            .then_some(layout.opens_upward)
+        }
+    }
+
+    unsafe fn popup_layout(&self) -> Option<PopupLayout> {
         let count = self.result_count().min(MAX_POPUP_ROWS);
         if count == 0 {
             return None;
@@ -683,28 +781,25 @@ impl SearchPicker {
         {
             return None;
         }
-        let work_area = super::window_position::work_area_rect(self.parent);
-        let layout = popup_layout(frame_rect, work_area, self.result_row_height, count)?;
-        unsafe {
-            SetWindowPos(
-                self.handles.results,
-                Some(HWND_TOP),
-                layout.x,
-                layout.y,
-                layout.width,
-                layout.height,
-                SWP_NOACTIVATE | SWP_NOOWNERZORDER,
-            )
-            .is_ok()
-            .then_some(layout.opens_upward)
-        }
+        popup_layout(
+            frame_rect,
+            super::window_position::work_area_rect(self.parent),
+            self.result_row_height,
+            count,
+        )
     }
 
     unsafe fn redraw_chrome(&self) {
         unsafe {
-            for hwnd in [self.handles.frame, self.handles.cue, self.handles.toggle] {
-                let _ = RedrawWindow(Some(hwnd), None, None, RDW_INVALIDATE);
-            }
+            redraw_picker_chrome([self.handles.frame, self.handles.cue, self.handles.toggle]);
+        }
+    }
+}
+
+unsafe fn redraw_picker_chrome(handles: [HWND; 3]) {
+    for hwnd in handles {
+        unsafe {
+            let _ = RedrawWindow(Some(hwnd), None, None, RDW_INVALIDATE);
         }
     }
 }
@@ -799,6 +894,20 @@ unsafe extern "system" fn results_subclass_proc(
     }
 
     match message {
+        WM_ERASEBKGND => {
+            let hdc = HDC(wparam.0 as *mut core::ffi::c_void);
+            if !hdc.0.is_null() {
+                let mut rect = RECT::default();
+                unsafe {
+                    if GetClientRect(hwnd, &mut rect).is_ok() {
+                        let brush = CreateSolidBrush(active_palette().panel);
+                        let _ = FillRect(hdc, &rect, brush);
+                        let _ = DeleteObject(brush.into());
+                        return LRESULT(1);
+                    }
+                }
+            }
+        }
         WM_SETCURSOR
             if loword(lparam.0 as u32) as u32 == HTCLIENT
                 && result_index_at_cursor(hwnd).is_some()

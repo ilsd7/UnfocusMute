@@ -5,44 +5,53 @@ use super::constants::{
     ID_SETTINGS_WINDOW_LAUNCH_STARTUP, ID_SETTINGS_WINDOW_OPEN_CONFIG,
     ID_SETTINGS_WINDOW_RESTORE_EXIT, ID_SETTINGS_WINDOW_START_MINIMIZED, ID_SETTINGS_WINDOW_THEME,
     SETTINGS_WINDOW_CLASS_NAME, SS_CENTER_STYLE, SS_CENTERIMAGE_STYLE, SS_OWNERDRAW_STYLE,
+    WM_REDRAW_DEFERRED_CONTROL,
 };
 use super::drawing::{draw_text_line, draw_text_line_at_visual_center};
 use super::language_combo::{LanguageCombo, LanguageComboIds};
 use super::modal_window::run_modal_message_loop;
 use super::theme::{
-    AppTheme, OwnedBrush, ResolvedTheme, active_palette, apply_native_control_theme,
-    apply_window_theme, px, resolve_theme, set_active_theme,
+    AppTheme, ResolvedTheme, active_palette, apply_native_control_theme, apply_window_theme, px,
+    resolve_theme, set_active_theme,
 };
 use super::win32::{
     AppIcons, WindowClassRegistration, center_control_vertically, centered_control_span_exact,
-    control_rect_in_parent, create_button, create_control, create_multiline_checkbox, hiword,
-    is_checked, loword, measure_text_width, move_control_vertical_span, move_window, set_checkbox,
-    set_text, to_wide, window_size_for_client_area,
+    control_rect_in_parent, create_button, create_control, create_multiline_checkbox,
+    defer_reentrant_owner_draw, hiword, is_checked, loword, measure_text_width,
+    move_control_vertical_span, move_window, redraw_deferred_control, set_checkbox,
+    set_hand_cursor_if_enabled, set_text, to_wide, window_size_for_client_area,
 };
 use super::window_position::centered_over_parent;
 use crate::config::{ThemePreference, cached_config_file_path};
 use crate::i18n::Language;
-use crate::windows_app::error::{Context, Result};
+use crate::windows_app::error::{Context, Result, message_error};
+use std::cell::RefCell;
 use std::ffi::c_void;
 use std::fs;
 use windows::Win32::Foundation::{HINSTANCE, HWND, LPARAM, LRESULT, RECT, WPARAM};
 use windows::Win32::Graphics::Gdi::{
     BeginPaint, CreatePen, DT_END_ELLIPSIS, DT_LEFT, DT_NOPREFIX, DT_RIGHT, DT_SINGLELINE,
     DT_VCENTER, DeleteObject, EndPaint, FillRect, FrameRect, HDC, PAINTSTRUCT, PS_SOLID,
-    RDW_ALLCHILDREN, RDW_ERASE, RDW_INVALIDATE, RDW_UPDATENOW, RedrawWindow, RoundRect,
-    SelectObject, SetBkMode, SetTextColor, TRANSPARENT,
+    RDW_ALLCHILDREN, RDW_ERASE, RDW_INVALIDATE, RedrawWindow, RoundRect, SelectObject, SetBkMode,
+    SetTextColor, TRANSPARENT,
 };
-use windows::Win32::UI::Controls::{DRAWITEMSTRUCT, ODS_DISABLED, ODS_SELECTED};
-use windows::Win32::UI::Shell::ShellExecuteW;
+use windows::Win32::UI::Controls::{DRAWITEMSTRUCT, ODS_DISABLED, ODS_FOCUS, ODS_SELECTED};
+use windows::Win32::UI::Input::KeyboardAndMouse::{
+    TRACKMOUSEEVENT, TRACKMOUSEEVENT_FLAGS, TrackMouseEvent,
+};
+use windows::Win32::UI::Shell::{
+    DefSubclassProc, RemoveWindowSubclass, SetWindowSubclass, ShellExecuteW,
+};
 use windows::Win32::UI::WindowsAndMessaging::{
     BringWindowToTop, CBN_SELCHANGE, CBN_SELENDOK, CREATESTRUCTW, CreateWindowExW, DefWindowProcW,
-    GWLP_USERDATA, GetClientRect, GetWindowLongPtrW, GetWindowRect, IDC_ARROW, IDC_HAND,
+    GWLP_USERDATA, GetClientRect, GetWindowLongPtrW, GetWindowRect, IDC_ARROW, IDCANCEL,
     LoadCursorW, MB_ICONWARNING, MB_OK, MessageBoxW, MoveWindow, RegisterClassW, SW_HIDE, SW_SHOW,
-    SW_SHOWNOACTIVATE, SendMessageW, SetCursor, SetWindowLongPtrW, ShowWindow, WINDOW_EX_STYLE,
-    WINDOW_STYLE, WM_CLOSE, WM_COMMAND, WM_CREATE, WM_CTLCOLORBTN, WM_CTLCOLORSTATIC, WM_DRAWITEM,
-    WM_ERASEBKGND, WM_NCCREATE, WM_NCDESTROY, WM_NOTIFY, WM_PAINT, WM_PRINTCLIENT, WM_SETCURSOR,
-    WM_SETFONT, WM_SETTINGCHANGE, WM_THEMECHANGED, WNDCLASSW, WS_CAPTION, WS_CHILD,
-    WS_EX_TOOLWINDOW, WS_OVERLAPPED, WS_POPUP, WS_SYSMENU, WS_TABSTOP, WS_VISIBLE,
+    SW_SHOWNOACTIVATE, SendMessageW, SetWindowLongPtrW, ShowWindow, WA_INACTIVE, WINDOW_EX_STYLE,
+    WINDOW_STYLE, WM_ACTIVATE, WM_APP, WM_CLOSE, WM_COMMAND, WM_CREATE, WM_CTLCOLORBTN,
+    WM_CTLCOLORSTATIC, WM_DRAWITEM, WM_ERASEBKGND, WM_MOUSEMOVE, WM_NCCREATE, WM_NCDESTROY,
+    WM_NOTIFY, WM_PAINT, WM_PRINTCLIENT, WM_SETCURSOR, WM_SETFONT, WM_SETTINGCHANGE,
+    WM_THEMECHANGED, WNDCLASSW, WS_CAPTION, WS_CHILD, WS_EX_TOOLWINDOW, WS_OVERLAPPED, WS_POPUP,
+    WS_SYSMENU, WS_TABSTOP, WS_VISIBLE,
 };
 use windows::core::{PCWSTR, w};
 
@@ -112,6 +121,10 @@ const SETTINGS_GITHUB_TOOLTIP_HEIGHT: i32 = 24;
 const SETTINGS_GITHUB_TOOLTIP_X_PADDING: i32 = 8;
 const SETTINGS_GITHUB_TOOLTIP_Y_GAP: i32 = 6;
 const APP_VERSION_TEXT: &str = concat!("\u{200e}v", env!("CARGO_PKG_VERSION"));
+const GITHUB_HOVER_SUBCLASS_ID: usize = 1;
+const WM_SETTINGS_GITHUB_HOVER: u32 = WM_APP + 41;
+const WM_MOUSELEAVE: u32 = 0x02A3;
+const TME_LEAVE: u32 = 0x00000002;
 
 const _: () = {
     assert!(SETTINGS_CONTENT_X < SETTINGS_CONTENT_RIGHT);
@@ -149,6 +162,12 @@ pub(super) struct SettingsPreferences {
 pub(super) enum SettingsLiveUpdate {
     Language(Language),
     Theme(ThemePreference),
+}
+
+#[derive(Clone, Copy)]
+enum SettingsExternalAction {
+    OpenConfigFolder { parent: HWND, language: Language },
+    OpenGithubPage { parent: HWND, language: Language },
 }
 
 struct SettingsWindow {
@@ -224,7 +243,7 @@ impl SettingsWindow {
                 instance,
                 w!("STATIC"),
                 strings.settings_theme,
-                child | SS_CENTERIMAGE_STYLE,
+                child | SS_OWNERDRAW_STYLE,
                 WINDOW_EX_STYLE(0),
                 SETTINGS_CONTENT_X,
                 SETTINGS_THEME_LABEL_Y,
@@ -251,7 +270,7 @@ impl SettingsWindow {
                 instance,
                 w!("STATIC"),
                 strings.settings_behavior,
-                child | SS_CENTERIMAGE_STYLE,
+                child | SS_OWNERDRAW_STYLE,
                 WINDOW_EX_STYLE(0),
                 SETTINGS_CONTENT_X,
                 SETTINGS_BEHAVIOR_Y,
@@ -314,7 +333,7 @@ impl SettingsWindow {
                 instance,
                 w!("STATIC"),
                 strings.settings_general,
-                child | SS_CENTERIMAGE_STYLE,
+                child | SS_OWNERDRAW_STYLE,
                 WINDOW_EX_STYLE(0),
                 SETTINGS_CONTENT_X,
                 SETTINGS_LANGUAGE_Y,
@@ -371,6 +390,17 @@ impl SettingsWindow {
                 ID_SETTINGS_WINDOW_GITHUB,
             )?
         };
+        if !unsafe {
+            SetWindowSubclass(
+                self.github_button,
+                Some(github_hover_subclass_proc),
+                GITHUB_HOVER_SUBCLASS_ID,
+                hwnd.0 as usize,
+            )
+            .as_bool()
+        } {
+            return Err(message_error("install GitHub link hover handler"));
+        }
         self.tooltip = unsafe {
             let tooltip_text = to_wide(super::GITHUB_PAGE_URL);
             CreateWindowExW(
@@ -519,9 +549,7 @@ impl SettingsWindow {
             return;
         }
         set_active_theme(resolve_theme(ThemePreference::System));
-        if !self.theme.refresh_colors() {
-            return;
-        }
+        let _ = self.theme.refresh_colors();
         self.refresh_theme_visuals();
     }
 
@@ -534,7 +562,7 @@ impl SettingsWindow {
                 Some(self.hwnd),
                 None,
                 None,
-                RDW_INVALIDATE | RDW_ERASE | RDW_ALLCHILDREN | RDW_UPDATENOW,
+                RDW_INVALIDATE | RDW_ERASE | RDW_ALLCHILDREN,
             );
         }
     }
@@ -717,85 +745,23 @@ impl SettingsWindow {
                 Some(self.hwnd),
                 Some(&rect),
                 None,
-                RDW_INVALIDATE | RDW_ERASE | RDW_ALLCHILDREN | RDW_UPDATENOW,
+                RDW_INVALIDATE | RDW_ERASE | RDW_ALLCHILDREN,
             );
         }
     }
 
-    fn open_config_folder(&mut self) {
-        let strings = self.language.strings();
-        let Ok(config_path) = cached_config_file_path() else {
-            self.show_warning(strings.open_config_failed);
-            return;
-        };
-        let Some(path) = config_path.parent() else {
-            self.show_warning(strings.open_config_failed);
-            return;
-        };
-        if fs::create_dir_all(path).is_err() {
-            self.show_warning(strings.open_config_failed);
-            return;
+    fn external_action(&self, id: i32) -> Option<SettingsExternalAction> {
+        match id {
+            ID_SETTINGS_WINDOW_OPEN_CONFIG => Some(SettingsExternalAction::OpenConfigFolder {
+                parent: self.hwnd,
+                language: self.language,
+            }),
+            ID_SETTINGS_WINDOW_GITHUB => Some(SettingsExternalAction::OpenGithubPage {
+                parent: self.hwnd,
+                language: self.language,
+            }),
+            _ => None,
         }
-        let path = super::win32::path_to_wide(path);
-        unsafe {
-            let result = ShellExecuteW(
-                Some(self.hwnd),
-                w!("open"),
-                PCWSTR(path.as_ptr()),
-                PCWSTR::null(),
-                PCWSTR::null(),
-                SW_SHOW,
-            );
-            if result.0 as isize <= 32 {
-                self.show_warning(strings.open_config_failed);
-            }
-        }
-    }
-
-    fn open_github_page(&self) {
-        let url = to_wide(super::GITHUB_PAGE_URL);
-        unsafe {
-            let result = ShellExecuteW(
-                Some(self.hwnd),
-                w!("open"),
-                PCWSTR(url.as_ptr()),
-                PCWSTR::null(),
-                PCWSTR::null(),
-                SW_SHOW,
-            );
-            if result.0 as isize <= 32 {
-                self.show_warning(self.language.strings().open_github_failed);
-            }
-        }
-    }
-
-    fn show_warning(&self, body: &str) {
-        let title = to_wide(self.language.strings().status_issue);
-        let body = to_wide(body);
-        unsafe {
-            let _ = MessageBoxW(
-                Some(self.hwnd),
-                PCWSTR(body.as_ptr()),
-                PCWSTR(title.as_ptr()),
-                MB_OK | MB_ICONWARNING,
-            );
-        }
-    }
-
-    fn set_github_link_cursor(&mut self, child: HWND) -> bool {
-        if child != self.github_button {
-            self.set_github_link_hot(false);
-            return false;
-        }
-
-        self.set_github_link_hot(true);
-        let Ok(cursor) = (unsafe { LoadCursorW(None, IDC_HAND) }) else {
-            return false;
-        };
-        unsafe {
-            let _ = SetCursor(Some(cursor));
-        }
-        true
     }
 
     fn set_github_link_hot(&mut self, hot: bool) {
@@ -804,12 +770,7 @@ impl SettingsWindow {
         }
         self.github_link_hot = hot;
         unsafe {
-            let _ = RedrawWindow(
-                Some(self.github_button),
-                None,
-                None,
-                RDW_INVALIDATE | RDW_UPDATENOW,
-            );
+            let _ = RedrawWindow(Some(self.github_button), None, None, RDW_INVALIDATE);
         }
         if hot {
             self.show_github_tooltip();
@@ -878,9 +839,36 @@ impl SettingsWindow {
         true
     }
 
+    fn draw_heading(&self, draw: &DRAWITEMSTRUCT) -> bool {
+        let text = if draw.hwndItem == self.theme_label {
+            self.language.strings().settings_theme
+        } else if draw.hwndItem == self.behavior_label {
+            self.language.strings().settings_behavior
+        } else if draw.hwndItem == self.language_label {
+            self.language.strings().settings_general
+        } else {
+            return false;
+        };
+
+        unsafe {
+            let _ = FillRect(draw.hDC, &draw.rcItem, self.theme.panel_brush.handle());
+        }
+        draw_text_line_at_visual_center(
+            draw.hDC,
+            self.theme.font.handle(),
+            text,
+            draw.rcItem,
+            draw.rcItem.top + draw.rcItem.bottom - 1,
+            self.theme.palette.text,
+            DT_LEFT | DT_SINGLELINE | DT_VCENTER | DT_END_ELLIPSIS | DT_NOPREFIX,
+        );
+        true
+    }
+
     fn draw_github_button(&self, draw: &DRAWITEMSTRUCT) -> bool {
         let pressed = draw.itemState.0 & ODS_SELECTED.0 != 0;
         let disabled = draw.itemState.0 & ODS_DISABLED.0 != 0;
+        let focused = draw.itemState.0 & ODS_FOCUS.0 != 0;
         unsafe {
             let _ = FillRect(draw.hDC, &draw.rcItem, self.theme.panel_brush.handle());
         }
@@ -888,7 +876,7 @@ impl SettingsWindow {
         let offset = if pressed { px(1) } else { 0 };
         let color = if disabled {
             self.theme.palette.subtle_text
-        } else if self.github_link_hot {
+        } else if self.github_link_hot || focused {
             self.theme.palette.link_hover
         } else {
             self.theme.palette.link
@@ -922,16 +910,16 @@ impl SettingsWindow {
             }
             let _ = FillRect(hdc, &client, self.theme.page_brush.handle());
         }
-        for (top, height) in [
-            (SETTINGS_THEME_CARD_Y, SETTINGS_THEME_CARD_HEIGHT),
-            (SETTINGS_BEHAVIOR_CARD_Y, SETTINGS_BEHAVIOR_CARD_HEIGHT),
-            (SETTINGS_LANGUAGE_CARD_Y, SETTINGS_LANGUAGE_CARD_HEIGHT),
-            (SETTINGS_INFO_CARD_Y, SETTINGS_INFO_CARD_HEIGHT),
-        ] {
-            unsafe {
-                let pen = CreatePen(PS_SOLID, px(1).max(1), self.theme.palette.border);
-                let old_brush = SelectObject(hdc, self.theme.panel_brush.handle().into());
-                let old_pen = SelectObject(hdc, pen.into());
+        unsafe {
+            let pen = CreatePen(PS_SOLID, px(1).max(1), self.theme.palette.border);
+            let old_brush = SelectObject(hdc, self.theme.panel_brush.handle().into());
+            let old_pen = SelectObject(hdc, pen.into());
+            for (top, height) in [
+                (SETTINGS_THEME_CARD_Y, SETTINGS_THEME_CARD_HEIGHT),
+                (SETTINGS_BEHAVIOR_CARD_Y, SETTINGS_BEHAVIOR_CARD_HEIGHT),
+                (SETTINGS_LANGUAGE_CARD_Y, SETTINGS_LANGUAGE_CARD_HEIGHT),
+                (SETTINGS_INFO_CARD_Y, SETTINGS_INFO_CARD_HEIGHT),
+            ] {
                 let radius = px(SETTINGS_CARD_RADIUS).max(1);
                 let _ = RoundRect(
                     hdc,
@@ -942,10 +930,10 @@ impl SettingsWindow {
                     radius * 2,
                     radius * 2,
                 );
-                let _ = SelectObject(hdc, old_brush);
-                let _ = SelectObject(hdc, old_pen);
-                let _ = DeleteObject(pen.into());
             }
+            let _ = SelectObject(hdc, old_brush);
+            let _ = SelectObject(hdc, old_pen);
+            let _ = DeleteObject(pen.into());
         }
         true
     }
@@ -960,7 +948,88 @@ impl SettingsWindow {
     }
 
     fn erase_background(&self, hdc: HDC) -> bool {
-        self.paint_surface(hdc)
+        if hdc.0.is_null() {
+            return false;
+        }
+        let mut client = RECT::default();
+        unsafe {
+            if GetClientRect(self.hwnd, &mut client).is_err() {
+                return false;
+            }
+            let _ = FillRect(hdc, &client, self.theme.page_brush.handle());
+        }
+        true
+    }
+}
+
+fn execute_settings_external_action(action: SettingsExternalAction) {
+    match action {
+        SettingsExternalAction::OpenConfigFolder { parent, language } => {
+            open_config_folder(parent, language)
+        }
+        SettingsExternalAction::OpenGithubPage { parent, language } => {
+            open_github_page(parent, language)
+        }
+    }
+}
+
+fn open_config_folder(parent: HWND, language: Language) {
+    let strings = language.strings();
+    let Ok(config_path) = cached_config_file_path() else {
+        show_warning(parent, language, strings.open_config_failed);
+        return;
+    };
+    let Some(path) = config_path.parent() else {
+        show_warning(parent, language, strings.open_config_failed);
+        return;
+    };
+    if fs::create_dir_all(path).is_err() {
+        show_warning(parent, language, strings.open_config_failed);
+        return;
+    }
+    let path = super::win32::path_to_wide(path);
+    unsafe {
+        let result = ShellExecuteW(
+            Some(parent),
+            w!("open"),
+            PCWSTR(path.as_ptr()),
+            PCWSTR::null(),
+            PCWSTR::null(),
+            SW_SHOW,
+        );
+        if result.0 as isize <= 32 {
+            show_warning(parent, language, strings.open_config_failed);
+        }
+    }
+}
+
+fn open_github_page(parent: HWND, language: Language) {
+    let url = to_wide(super::GITHUB_PAGE_URL);
+    unsafe {
+        let result = ShellExecuteW(
+            Some(parent),
+            w!("open"),
+            PCWSTR(url.as_ptr()),
+            PCWSTR::null(),
+            PCWSTR::null(),
+            SW_SHOW,
+        );
+        if result.0 as isize <= 32 {
+            show_warning(parent, language, language.strings().open_github_failed);
+        }
+    }
+}
+
+fn show_warning(parent: HWND, language: Language, body: &str) {
+    let title = to_wide(language.strings().status_issue);
+    let body = to_wide(body);
+    unsafe {
+        let _ = MessageBoxW(
+            Some(parent),
+            PCWSTR(body.as_ptr()),
+            PCWSTR(title.as_ptr()),
+            MB_OK | MB_ICONWARNING,
+        );
     }
 }
 
@@ -975,7 +1044,6 @@ where
     F: FnMut(SettingsLiveUpdate),
 {
     let cursor = unsafe { LoadCursorW(None, IDC_ARROW).context("load settings cursor")? };
-    let background = OwnedBrush::solid(active_palette().page);
     let class = WNDCLASSW {
         style: Default::default(),
         lpfnWndProc: Some(settings_window_proc),
@@ -984,15 +1052,16 @@ where
         hInstance: instance,
         hIcon: icons.main(),
         hCursor: cursor,
-        hbrBackground: background.handle(),
+        hbrBackground: Default::default(),
         lpszMenuName: PCWSTR::null(),
         lpszClassName: SETTINGS_WINDOW_CLASS_NAME,
     };
     let _class_registration = (unsafe { RegisterClassW(&class) } != 0)
         .then(|| WindowClassRegistration::new(SETTINGS_WINDOW_CLASS_NAME, instance));
 
-    let mut state = Box::new(SettingsWindow::new(initial, icons));
-    let state_ptr = state.as_mut() as *mut SettingsWindow;
+    let state = Box::new(RefCell::new(SettingsWindow::new(initial, icons)));
+    let state_ptr =
+        state.as_ref() as *const RefCell<SettingsWindow> as *mut RefCell<SettingsWindow>;
     let title = to_wide(initial.language.strings().settings_title);
     let (width, height) = window_size_for_client_area(
         px(SETTINGS_CLIENT_WIDTH),
@@ -1021,14 +1090,51 @@ where
 
     unsafe {
         run_modal_message_loop(parent, hwnd, || {
-            if let Some(update) = state.take_pending_update() {
+            let mut settings = state.borrow_mut();
+            if let Some(update) = settings.take_pending_update() {
                 on_live_update(update);
             }
-            state.done
+            settings.done
         })?;
     }
 
-    Ok(state.selected)
+    Ok(state.borrow_mut().selected.take())
+}
+
+unsafe extern "system" fn github_hover_subclass_proc(
+    hwnd: HWND,
+    message: u32,
+    wparam: WPARAM,
+    lparam: LPARAM,
+    subclass_id: usize,
+    ref_data: usize,
+) -> LRESULT {
+    let parent = HWND(ref_data as *mut c_void);
+    match message {
+        // The GitHub link paints its complete owner-draw surface. Suppress the
+        // native BUTTON erase so a system-light frame cannot appear first.
+        WM_ERASEBKGND => return LRESULT(1),
+        WM_MOUSEMOVE => unsafe {
+            let mut tracking = TRACKMOUSEEVENT {
+                cbSize: std::mem::size_of::<TRACKMOUSEEVENT>() as u32,
+                dwFlags: TRACKMOUSEEVENT_FLAGS(TME_LEAVE),
+                hwndTrack: hwnd,
+                dwHoverTime: 0,
+            };
+            let _ = TrackMouseEvent(&mut tracking);
+            SendMessageW(parent, WM_SETTINGS_GITHUB_HOVER, Some(WPARAM(1)), None);
+        },
+        WM_MOUSELEAVE => unsafe {
+            SendMessageW(parent, WM_SETTINGS_GITHUB_HOVER, Some(WPARAM(0)), None);
+        },
+        WM_SETCURSOR if set_hand_cursor_if_enabled(hwnd) => return LRESULT(1),
+        WM_NCDESTROY => unsafe {
+            SendMessageW(parent, WM_SETTINGS_GITHUB_HOVER, Some(WPARAM(0)), None);
+            let _ = RemoveWindowSubclass(hwnd, Some(github_hover_subclass_proc), subclass_id);
+        },
+        _ => {}
+    }
+    unsafe { DefSubclassProc(hwnd, message, wparam, lparam) }
 }
 
 unsafe extern "system" fn settings_window_proc(
@@ -1040,20 +1146,40 @@ unsafe extern "system" fn settings_window_proc(
     if message == WM_NCCREATE {
         let create = lparam.0 as *const CREATESTRUCTW;
         if !create.is_null() {
-            let settings = unsafe { (*create).lpCreateParams as *mut SettingsWindow };
+            let settings = unsafe { (*create).lpCreateParams as *mut RefCell<SettingsWindow> };
             unsafe {
                 SetWindowLongPtrW(hwnd, GWLP_USERDATA, settings as isize);
             }
         }
         return LRESULT(1);
     }
+    if message == WM_REDRAW_DEFERRED_CONTROL {
+        unsafe {
+            redraw_deferred_control(hwnd, wparam);
+        }
+        return LRESULT(0);
+    }
+    if message == WM_CTLCOLORBTN {
+        let palette = active_palette();
+        if let Some(result) =
+            unsafe { super::win32::themed_control_color(wparam, palette.text, palette.panel) }
+        {
+            return result;
+        }
+    }
 
-    let settings = unsafe {
-        let ptr = GetWindowLongPtrW(hwnd, GWLP_USERDATA) as *mut SettingsWindow;
-        ptr.as_mut()
+    let state = unsafe {
+        let ptr = GetWindowLongPtrW(hwnd, GWLP_USERDATA) as *mut RefCell<SettingsWindow>;
+        ptr.as_ref()
     };
 
-    if let Some(settings) = settings {
+    if let Some(state) = state {
+        let Ok(mut settings) = state.try_borrow_mut() else {
+            if let Some(result) = unsafe { defer_reentrant_owner_draw(hwnd, message, lparam) } {
+                return result;
+            }
+            return unsafe { DefWindowProcW(hwnd, message, wparam, lparam) };
+        };
         match message {
             WM_CREATE => {
                 let create = lparam.0 as *const CREATESTRUCTW;
@@ -1068,17 +1194,22 @@ unsafe extern "system" fn settings_window_proc(
             WM_COMMAND => {
                 let id = loword(wparam.0 as u32) as i32;
                 let notification = hiword(wparam.0 as u32);
+                let external_action = settings.external_action(id);
                 match id {
+                    id if id == IDCANCEL.0 => settings.accept(),
                     ID_SETTINGS_WINDOW_LANGUAGE
                         if notification == CBN_SELCHANGE as u16
                             || notification == CBN_SELENDOK as u16 =>
                     {
-                        settings.change_language(settings.selected_language());
+                        let language = settings.selected_language();
+                        settings.change_language(language);
                     }
                     ID_SETTINGS_WINDOW_THEME => settings.change_theme(),
-                    ID_SETTINGS_WINDOW_OPEN_CONFIG => settings.open_config_folder(),
-                    ID_SETTINGS_WINDOW_GITHUB => settings.open_github_page(),
                     _ => {}
+                }
+                if let Some(action) = external_action {
+                    drop(settings);
+                    execute_settings_external_action(action);
                 }
                 return LRESULT(0);
             }
@@ -1087,14 +1218,22 @@ unsafe extern "system" fn settings_window_proc(
                     checkbox::custom_draw_result(
                         lparam,
                         settings.theme.font.handle(),
+                        &settings.theme,
                         settings.theme.palette.panel,
                     )
                 } {
                     return result;
                 }
             }
+            WM_SETTINGS_GITHUB_HOVER => {
+                settings.set_github_link_hot(wparam.0 != 0);
+                return LRESULT(0);
+            }
             WM_DRAWITEM if lparam.0 != 0 => {
                 let draw = unsafe { &*(lparam.0 as *const DRAWITEMSTRUCT) };
+                if settings.draw_heading(draw) {
+                    return LRESULT(1);
+                }
                 if settings.language_combo.as_ref().is_some_and(|combo| {
                     combo.draw(
                         draw,
@@ -1146,14 +1285,14 @@ unsafe extern "system" fn settings_window_proc(
                 return LRESULT(1);
             }
             WM_SETTINGCHANGE | WM_THEMECHANGED => settings.refresh_system_theme(),
-            WM_SETCURSOR if settings.set_github_link_cursor(HWND(wparam.0 as *mut c_void)) => {
-                return LRESULT(1);
+            WM_ACTIVATE if loword(wparam.0 as u32) as u32 == WA_INACTIVE => {
+                settings.set_github_link_hot(false);
             }
             WM_CLOSE => {
                 settings.accept();
                 return LRESULT(0);
             }
-            WM_CTLCOLORSTATIC | WM_CTLCOLORBTN => {
+            WM_CTLCOLORSTATIC => {
                 let hdc = HDC(wparam.0 as *mut c_void);
                 let control = HWND(lparam.0 as *mut c_void);
                 let text_color = if control == settings.version_label {

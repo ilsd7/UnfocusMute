@@ -1,33 +1,40 @@
 use super::constants::{
     ID_TARGET_NOTE_CANCEL, ID_TARGET_NOTE_CLEAR, ID_TARGET_NOTE_EDIT, ID_TARGET_NOTE_SAVE,
-    SS_CENTERIMAGE_STYLE, SS_ENDELLIPSIS_STYLE, SS_OWNERDRAW_STYLE, TARGET_NOTE_PROMPT_CLASS_NAME,
+    SS_CENTERIMAGE_STYLE, SS_ENDELLIPSIS_STYLE, SS_NOPREFIX_STYLE, SS_OWNERDRAW_STYLE,
+    TARGET_NOTE_PROMPT_CLASS_NAME, WM_REDRAW_DEFERRED_CONTROL,
 };
 use super::modal_window::run_modal_message_loop;
 use super::set_edit_caret_to_end;
 use super::theme::{
-    OwnedBrush, UiFont, active_palette, apply_native_control_theme, apply_window_theme, px,
-    ui_font_point_size,
+    ThemeSurface, UiFont, active_palette, apply_native_control_theme, apply_window_theme, px,
+    resolve_theme, set_active_theme, ui_font_point_size,
 };
 use super::win32::{
     WindowClassRegistration, centered_single_line_edit_rect, control_rect_in_parent, create_button,
-    create_control, default_button_message_result, font_text_height, loword, measure_text_width,
-    move_window, to_wide, window_size_for_client_area, window_text_into,
+    create_control, default_button_message_result, defer_reentrant_owner_draw, font_text_height,
+    loword, measure_text_width, move_window, redraw_deferred_control, set_text, to_wide,
+    window_size_for_client_area, window_text_into,
 };
 use super::window_position::centered_over_parent;
-use crate::config::{MAX_TARGET_NOTE_CHARS, normalize_target_note};
+use crate::config::{MAX_TARGET_NOTE_CHARS, ThemePreference, normalize_target_note};
 use crate::i18n::{Language, Strings};
 use crate::windows_app::error::{Context, Result};
+use std::cell::RefCell;
 use std::ffi::c_void;
 use windows::Win32::Foundation::{HINSTANCE, HWND, LPARAM, LRESULT, WPARAM};
-use windows::Win32::Graphics::Gdi::{HDC, SetBkColor, SetBkMode, SetTextColor, TRANSPARENT};
+use windows::Win32::Graphics::Gdi::{
+    FillRect, HDC, RDW_ALLCHILDREN, RDW_ERASE, RDW_INVALIDATE, RedrawWindow, SetBkColor, SetBkMode,
+    SetTextColor, TRANSPARENT,
+};
 use windows::Win32::UI::Controls::DRAWITEMSTRUCT;
 use windows::Win32::UI::Input::KeyboardAndMouse::SetFocus;
 use windows::Win32::UI::WindowsAndMessaging::{
-    CREATESTRUCTW, CreateWindowExW, DefWindowProcW, ES_AUTOHSCROLL, GWLP_USERDATA,
-    GetWindowLongPtrW, HICON, IDC_ARROW, LoadCursorW, MoveWindow, RegisterClassW, SWP_NOACTIVATE,
-    SWP_NOMOVE, SWP_NOSIZE, SendMessageW, SetWindowLongPtrW, SetWindowPos, WINDOW_EX_STYLE,
-    WINDOW_STYLE, WM_CLOSE, WM_COMMAND, WM_CREATE, WM_CTLCOLOREDIT, WM_CTLCOLORSTATIC, WM_DRAWITEM,
-    WM_NCCREATE, WM_NCDESTROY, WM_SETFONT, WNDCLASSW, WS_CAPTION, WS_CHILD, WS_OVERLAPPED,
+    CREATESTRUCTW, CreateWindowExW, DefWindowProcW, ES_AUTOHSCROLL, GWLP_USERDATA, GetClientRect,
+    GetWindowLongPtrW, HICON, IDC_ARROW, IDCANCEL, LoadCursorW, MoveWindow, RegisterClassW,
+    SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE, SendMessageW, SetWindowLongPtrW, SetWindowPos,
+    WINDOW_EX_STYLE, WINDOW_STYLE, WM_CLOSE, WM_COMMAND, WM_CREATE, WM_CTLCOLORBTN,
+    WM_CTLCOLOREDIT, WM_CTLCOLORSTATIC, WM_DRAWITEM, WM_ERASEBKGND, WM_NCCREATE, WM_NCDESTROY,
+    WM_SETFONT, WM_SETTINGCHANGE, WM_THEMECHANGED, WNDCLASSW, WS_CAPTION, WS_CHILD, WS_OVERLAPPED,
     WS_SYSMENU, WS_TABSTOP, WS_VISIBLE,
 };
 use windows::core::PCWSTR;
@@ -127,10 +134,10 @@ struct TargetNotePrompt<'a> {
     selected: Option<Option<String>>,
     default_button_id: i32,
     language: Language,
+    theme_preference: ThemePreference,
     target_display: &'a str,
     current_note: Option<&'a str>,
-    brush: OwnedBrush,
-    input_brush: OwnedBrush,
+    theme: ThemeSurface,
     font: UiFont,
     input_font: UiFont,
     target_font: UiFont,
@@ -138,7 +145,12 @@ struct TargetNotePrompt<'a> {
 }
 
 impl<'a> TargetNotePrompt<'a> {
-    fn new(language: Language, target_display: &'a str, current_note: Option<&'a str>) -> Self {
+    fn new(
+        language: Language,
+        theme_preference: ThemePreference,
+        target_display: &'a str,
+        current_note: Option<&'a str>,
+    ) -> Self {
         Self {
             hwnd: HWND::default(),
             target_label: HWND::default(),
@@ -152,10 +164,10 @@ impl<'a> TargetNotePrompt<'a> {
             selected: None,
             default_button_id: ID_TARGET_NOTE_SAVE,
             language,
+            theme_preference,
             target_display,
             current_note,
-            brush: OwnedBrush::solid(active_palette().page),
-            input_brush: OwnedBrush::solid(active_palette().input),
+            theme: ThemeSurface::new(),
             font: UiFont::new(ui_font_point_size()),
             input_font: UiFont::new(ui_font_point_size() + 1),
             target_font: UiFont::new(ui_font_point_size() + 2),
@@ -175,7 +187,7 @@ impl<'a> TargetNotePrompt<'a> {
                 instance,
                 windows::core::w!("STATIC"),
                 self.target_display,
-                child | SS_CENTERIMAGE_STYLE | SS_ENDELLIPSIS_STYLE,
+                child | SS_CENTERIMAGE_STYLE | SS_ENDELLIPSIS_STYLE | SS_NOPREFIX_STYLE,
                 WINDOW_EX_STYLE(0),
                 TARGET_NOTE_MARGIN,
                 TARGET_NOTE_TARGET_Y,
@@ -268,6 +280,7 @@ impl<'a> TargetNotePrompt<'a> {
         };
 
         unsafe {
+            set_text(self.hwnd, strings.target_note_window_title);
             self.apply_font();
             let _ = center_single_line_edit_in_frame(
                 self.hwnd,
@@ -376,6 +389,38 @@ impl<'a> TargetNotePrompt<'a> {
         self.selected = None;
         self.done = true;
     }
+
+    fn refresh_system_theme(&mut self) {
+        if self.theme_preference != ThemePreference::System {
+            return;
+        }
+        set_active_theme(resolve_theme(ThemePreference::System));
+        let _ = self.theme.refresh_colors();
+        apply_window_theme(self.hwnd);
+        apply_native_control_theme(self.edit);
+        unsafe {
+            let _ = RedrawWindow(
+                Some(self.hwnd),
+                None,
+                None,
+                RDW_INVALIDATE | RDW_ERASE | RDW_ALLCHILDREN,
+            );
+        }
+    }
+
+    fn erase_background(&self, hdc: HDC) -> bool {
+        if hdc.0.is_null() {
+            return false;
+        }
+        let mut client = windows::Win32::Foundation::RECT::default();
+        unsafe {
+            if GetClientRect(self.hwnd, &mut client).is_err() {
+                return false;
+            }
+            let _ = FillRect(hdc, &client, self.theme.page_brush.handle());
+        }
+        true
+    }
 }
 
 pub(super) unsafe fn prompt_target_note(
@@ -383,11 +428,11 @@ pub(super) unsafe fn prompt_target_note(
     instance: HINSTANCE,
     icon: HICON,
     language: Language,
+    theme_preference: ThemePreference,
     target_display: &str,
     current_note: Option<&str>,
 ) -> Result<Option<Option<String>>> {
     let cursor = unsafe { LoadCursorW(None, IDC_ARROW).context("load target note cursor")? };
-    let background = OwnedBrush::solid(active_palette().page);
     let class = WNDCLASSW {
         style: Default::default(),
         lpfnWndProc: Some(target_note_prompt_proc),
@@ -396,19 +441,21 @@ pub(super) unsafe fn prompt_target_note(
         hInstance: instance,
         hIcon: icon,
         hCursor: cursor,
-        hbrBackground: background.handle(),
+        hbrBackground: Default::default(),
         lpszMenuName: PCWSTR::null(),
         lpszClassName: TARGET_NOTE_PROMPT_CLASS_NAME,
     };
     let _class_registration = (unsafe { RegisterClassW(&class) } != 0)
         .then(|| WindowClassRegistration::new(TARGET_NOTE_PROMPT_CLASS_NAME, instance));
 
-    let mut state = Box::new(TargetNotePrompt::new(
+    let state = Box::new(RefCell::new(TargetNotePrompt::new(
         language,
+        theme_preference,
         target_display,
         current_note,
-    ));
-    let state_ptr = state.as_mut() as *mut TargetNotePrompt<'_>;
+    )));
+    let state_ptr = state.as_ref() as *const RefCell<TargetNotePrompt<'_>>
+        as *mut RefCell<TargetNotePrompt<'_>>;
     let title = to_wide(language.strings().target_note_window_title);
     let (width, height) = window_size_for_client_area(
         px(TARGET_NOTE_CLIENT_WIDTH),
@@ -436,10 +483,10 @@ pub(super) unsafe fn prompt_target_note(
     };
 
     unsafe {
-        run_modal_message_loop(parent, hwnd, || state.done)?;
+        run_modal_message_loop(parent, hwnd, || state.borrow().done)?;
     }
 
-    Ok(state.selected)
+    Ok(state.borrow_mut().selected.take())
 }
 
 unsafe extern "system" fn target_note_prompt_proc(
@@ -451,20 +498,40 @@ unsafe extern "system" fn target_note_prompt_proc(
     if message == WM_NCCREATE {
         let create = lparam.0 as *const CREATESTRUCTW;
         if !create.is_null() {
-            let prompt = unsafe { (*create).lpCreateParams as *mut TargetNotePrompt<'_> };
+            let prompt = unsafe { (*create).lpCreateParams as *mut RefCell<TargetNotePrompt<'_>> };
             unsafe {
                 SetWindowLongPtrW(hwnd, GWLP_USERDATA, prompt as isize);
             }
         }
         return LRESULT(1);
     }
+    if message == WM_REDRAW_DEFERRED_CONTROL {
+        unsafe {
+            redraw_deferred_control(hwnd, wparam);
+        }
+        return LRESULT(0);
+    }
+    if message == WM_CTLCOLORBTN {
+        let palette = active_palette();
+        if let Some(result) =
+            unsafe { super::win32::themed_control_color(wparam, palette.text, palette.page) }
+        {
+            return result;
+        }
+    }
 
-    let prompt = unsafe {
-        let ptr = GetWindowLongPtrW(hwnd, GWLP_USERDATA) as *mut TargetNotePrompt<'_>;
-        ptr.as_mut()
+    let state = unsafe {
+        let ptr = GetWindowLongPtrW(hwnd, GWLP_USERDATA) as *mut RefCell<TargetNotePrompt<'_>>;
+        ptr.as_ref()
     };
 
-    if let Some(prompt) = prompt {
+    if let Some(state) = state {
+        let Ok(mut prompt) = state.try_borrow_mut() else {
+            if let Some(result) = unsafe { defer_reentrant_owner_draw(hwnd, message, lparam) } {
+                return result;
+            }
+            return unsafe { DefWindowProcW(hwnd, message, wparam, lparam) };
+        };
         if let Some(result) =
             default_button_message_result(message, wparam, &mut prompt.default_button_id)
         {
@@ -484,6 +551,7 @@ unsafe extern "system" fn target_note_prompt_proc(
             WM_COMMAND => {
                 let id = loword(wparam.0 as u32) as i32;
                 match id {
+                    id if id == IDCANCEL.0 => prompt.cancel(),
                     ID_TARGET_NOTE_SAVE => prompt.accept(),
                     ID_TARGET_NOTE_CLEAR => prompt.clear(),
                     ID_TARGET_NOTE_CANCEL => prompt.cancel(),
@@ -494,9 +562,14 @@ unsafe extern "system" fn target_note_prompt_proc(
             WM_DRAWITEM if lparam.0 != 0 => {
                 let draw = unsafe { &*(lparam.0 as *const DRAWITEMSTRUCT) };
                 if draw.hwndItem == prompt.edit_frame {
-                    return LRESULT(
-                        unsafe { super::win32::draw_rounded_input_frame(draw, 6) } as isize
-                    );
+                    return LRESULT(unsafe {
+                        super::win32::draw_rounded_input_frame_on(
+                            draw,
+                            6,
+                            &prompt.theme.palette,
+                            prompt.theme.palette.page,
+                        )
+                    } as isize);
                 }
                 let id = draw.CtlID as i32;
                 if id == ID_TARGET_NOTE_SAVE
@@ -504,7 +577,12 @@ unsafe extern "system" fn target_note_prompt_proc(
                     || id == ID_TARGET_NOTE_CANCEL
                 {
                     return LRESULT(unsafe {
-                        super::win32::draw_flat_button(draw, prompt.font.handle())
+                        super::win32::draw_flat_button_on(
+                            draw,
+                            prompt.font.handle(),
+                            &prompt.theme.palette,
+                            prompt.theme.palette.page,
+                        )
                     } as isize);
                 }
                 return LRESULT(0);
@@ -515,33 +593,35 @@ unsafe extern "system" fn target_note_prompt_proc(
             }
             WM_CTLCOLOREDIT => {
                 let hdc = HDC(wparam.0 as *mut c_void);
-                let palette = active_palette();
                 unsafe {
-                    let _ = SetBkColor(hdc, palette.input);
-                    let _ = SetTextColor(hdc, palette.text);
+                    let _ = SetBkColor(hdc, prompt.theme.palette.input);
+                    let _ = SetTextColor(hdc, prompt.theme.palette.text);
                 }
-                return LRESULT(prompt.input_brush.handle().0 as isize);
+                return LRESULT(prompt.theme.input_brush.handle().0 as isize);
             }
             WM_CTLCOLORSTATIC => {
                 let hdc = HDC(wparam.0 as *mut c_void);
                 let control = HWND(lparam.0 as *mut c_void);
-                let palette = active_palette();
                 if control == prompt.edit_frame {
                     unsafe {
-                        let _ = SetBkColor(hdc, palette.input);
+                        let _ = SetBkColor(hdc, prompt.theme.palette.input);
                     }
-                    return LRESULT(prompt.input_brush.handle().0 as isize);
+                    return LRESULT(prompt.theme.input_brush.handle().0 as isize);
                 }
                 let color = if control == prompt.note_label {
-                    palette.subtle_text
+                    prompt.theme.palette.subtle_text
                 } else {
-                    palette.text
+                    prompt.theme.palette.text
                 };
                 unsafe {
                     let _ = SetBkMode(hdc, TRANSPARENT);
                     let _ = SetTextColor(hdc, color);
                 }
-                return LRESULT(prompt.brush.handle().0 as isize);
+                return LRESULT(prompt.theme.page_brush.handle().0 as isize);
+            }
+            WM_SETTINGCHANGE | WM_THEMECHANGED => prompt.refresh_system_theme(),
+            WM_ERASEBKGND if prompt.erase_background(HDC(wparam.0 as *mut c_void)) => {
+                return LRESULT(1);
             }
             WM_NCDESTROY => {
                 if !prompt.done {
