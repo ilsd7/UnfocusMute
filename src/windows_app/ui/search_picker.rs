@@ -1,25 +1,28 @@
 use super::constants::{SS_OWNERDRAW_STYLE, WM_PROCESS_SEARCH_RESULT_CHOSEN};
+use super::drawing::draw_text_line;
 use super::theme::{active_palette, apply_native_control_theme, px};
 use super::win32;
 use crate::windows_app::error::{Context, Result};
 use windows::Win32::Foundation::{HINSTANCE, HWND, LPARAM, LRESULT, POINT, RECT, WPARAM};
 use windows::Win32::Graphics::Gdi::{
-    CreatePen, CreateSolidBrush, DeleteObject, FillRect, HGDIOBJ, PS_SOLID, Polygon,
-    RDW_INVALIDATE, RedrawWindow, ScreenToClient, SelectObject,
+    CreatePen, CreateSolidBrush, DT_LEFT, DT_NOPREFIX, DT_SINGLELINE, DT_VCENTER, DeleteObject,
+    FillRect, HGDIOBJ, PS_SOLID, Polygon, RDW_INVALIDATE, RedrawWindow, ScreenToClient,
+    SelectObject,
 };
 use windows::Win32::UI::Controls::{DRAWITEMSTRUCT, ODS_DISABLED, ODS_SELECTED};
 use windows::Win32::UI::Input::KeyboardAndMouse::SetFocus;
 use windows::Win32::UI::Shell::{DefSubclassProc, RemoveWindowSubclass, SetWindowSubclass};
 use windows::Win32::UI::WindowsAndMessaging::{
     AW_SLIDE, AW_VER_NEGATIVE, AW_VER_POSITIVE, AnimateWindow, BS_OWNERDRAW, CreateWindowExW,
-    ES_AUTOHSCROLL, GetCursorPos, HTCLIENT, HWND_BOTTOM, HWND_TOP, IsWindowVisible, LB_ADDSTRING,
-    LB_GETCOUNT, LB_GETCURSEL, LB_GETITEMHEIGHT, LB_RESETCONTENT, LB_SETCURSEL, LBS_HASSTRINGS,
-    LBS_NOINTEGRALHEIGHT, LBS_NOTIFY, MoveWindow, PostMessageW, SPI_GETCLIENTAREAANIMATION,
-    SPI_GETCOMBOBOXANIMATION, SW_HIDE, SW_SHOWNOACTIVATE, SWP_NOACTIVATE, SWP_NOOWNERZORDER,
-    SYSTEM_PARAMETERS_INFO_ACTION, SYSTEM_PARAMETERS_INFO_UPDATE_FLAGS, SendMessageW, SetWindowPos,
-    ShowWindow, SystemParametersInfoW, WINDOW_EX_STYLE, WINDOW_STYLE, WM_LBUTTONUP, WM_MOUSEMOVE,
-    WM_NCDESTROY, WM_SETCURSOR, WM_SETFONT, WM_SETREDRAW, WS_BORDER, WS_CHILD, WS_EX_NOACTIVATE,
-    WS_EX_TOOLWINDOW, WS_POPUP, WS_TABSTOP, WS_VISIBLE, WS_VSCROLL,
+    ES_AUTOHSCROLL, GetCursorPos, GetWindowTextLengthW, HTCLIENT, HWND_BOTTOM, HWND_TOP,
+    IsWindowVisible, LB_ADDSTRING, LB_GETCOUNT, LB_GETCURSEL, LB_GETITEMHEIGHT, LB_RESETCONTENT,
+    LB_SETCURSEL, LBS_HASSTRINGS, LBS_NOINTEGRALHEIGHT, LBS_NOTIFY, MoveWindow, PostMessageW,
+    SPI_GETCLIENTAREAANIMATION, SPI_GETCOMBOBOXANIMATION, SW_HIDE, SW_SHOWNOACTIVATE,
+    SWP_NOACTIVATE, SWP_NOOWNERZORDER, SYSTEM_PARAMETERS_INFO_ACTION,
+    SYSTEM_PARAMETERS_INFO_UPDATE_FLAGS, SendMessageW, SetWindowPos, ShowWindow,
+    SystemParametersInfoW, WINDOW_EX_STYLE, WINDOW_STYLE, WM_LBUTTONUP, WM_MOUSEMOVE, WM_NCDESTROY,
+    WM_SETCURSOR, WM_SETFONT, WM_SETREDRAW, WS_BORDER, WS_CHILD, WS_CLIPSIBLINGS, WS_DISABLED,
+    WS_EX_NOACTIVATE, WS_EX_TOOLWINDOW, WS_POPUP, WS_TABSTOP, WS_VISIBLE, WS_VSCROLL,
 };
 use windows::core::{BOOL, PCWSTR, w};
 
@@ -56,13 +59,14 @@ pub(super) struct SearchPickerIds {
 struct SearchPickerHandles {
     pub(super) frame: HWND,
     pub(super) edit: HWND,
+    pub(super) cue: HWND,
     pub(super) toggle: HWND,
     pub(super) results: HWND,
 }
 
 impl SearchPickerHandles {
-    fn all(self) -> [HWND; 4] {
-        [self.frame, self.edit, self.toggle, self.results]
+    fn all(self) -> [HWND; 5] {
+        [self.frame, self.edit, self.cue, self.toggle, self.results]
     }
 }
 
@@ -74,6 +78,8 @@ impl SearchPickerHandles {
 pub(super) struct SearchPicker {
     parent: HWND,
     handles: SearchPickerHandles,
+    font: HGDIOBJ,
+    cue_text: String,
     text_height: i32,
     result_row_height: i32,
     wide_text_buffer: Vec<u16>,
@@ -119,6 +125,21 @@ impl SearchPicker {
                 width,
                 SEARCH_PICKER_HEIGHT,
                 ids.edit,
+            )?
+        };
+        let cue = unsafe {
+            win32::create_control(
+                parent,
+                instance,
+                w!("STATIC"),
+                "",
+                child | SS_OWNERDRAW_STYLE | WS_CLIPSIBLINGS | WS_DISABLED,
+                WINDOW_EX_STYLE(0),
+                x,
+                y,
+                width,
+                SEARCH_PICKER_HEIGHT,
+                0,
             )?
         };
         let toggle = unsafe {
@@ -177,9 +198,12 @@ impl SearchPicker {
             handles: SearchPickerHandles {
                 frame,
                 edit,
+                cue,
                 toggle,
                 results,
             },
+            font,
+            cue_text: String::new(),
             text_height: px(14),
             result_row_height: px(24),
             wide_text_buffer: Vec::new(),
@@ -187,6 +211,7 @@ impl SearchPicker {
         apply_native_control_theme(edit);
         apply_native_control_theme(results);
         unsafe {
+            win32::install_hit_test_transparent_subclass(cue);
             picker.set_font(font);
             let _ = picker.layout(x, y, width);
         }
@@ -220,6 +245,7 @@ impl SearchPicker {
     }
 
     pub(super) unsafe fn set_font(&mut self, font: HGDIOBJ) {
+        self.font = font;
         for hwnd in [self.handles.edit, self.handles.toggle, self.handles.results] {
             unsafe {
                 SendMessageW(
@@ -300,6 +326,17 @@ impl SearchPicker {
             )
             .is_ok()
         };
+        let cue_moved = unsafe {
+            MoveWindow(
+                self.handles.cue,
+                edit_rect.left,
+                edit_rect.top,
+                edit_rect.right.saturating_sub(edit_rect.left).max(1),
+                edit_rect.bottom.saturating_sub(edit_rect.top).max(1),
+                false,
+            )
+            .is_ok()
+        };
         let button_moved = unsafe {
             MoveWindow(
                 self.handles.toggle,
@@ -332,12 +369,14 @@ impl SearchPicker {
             true
         };
         unsafe {
+            let _ = win32::place_control_on_top(self.handles.cue);
             self.redraw_chrome();
         }
-        edit_moved && button_moved && frame_lowered && popup_positioned
+        edit_moved && cue_moved && button_moved && frame_lowered && popup_positioned
     }
 
-    pub(super) unsafe fn set_cue_banner(&self, cue: &str) {
+    pub(super) unsafe fn set_cue_banner(&mut self, cue: &str) {
+        cue.clone_into(&mut self.cue_text);
         let wide = win32::to_wide(cue);
         unsafe {
             SendMessageW(
@@ -346,6 +385,24 @@ impl SearchPicker {
                 Some(WPARAM(1)),
                 Some(LPARAM(wide.as_ptr() as isize)),
             );
+            self.sync_cue_visibility();
+        }
+    }
+
+    pub(super) unsafe fn sync_cue_visibility(&self) {
+        let show_custom_cue = unsafe { GetWindowTextLengthW(self.handles.edit) == 0 };
+        unsafe {
+            let _ = ShowWindow(
+                self.handles.cue,
+                if show_custom_cue {
+                    SW_SHOWNOACTIVATE
+                } else {
+                    SW_HIDE
+                },
+            );
+            if show_custom_cue {
+                let _ = RedrawWindow(Some(self.handles.cue), None, None, RDW_INVALIDATE);
+            }
         }
     }
 
@@ -511,6 +568,28 @@ impl SearchPicker {
         true
     }
 
+    pub(super) fn draw_cue(&self, draw: &DRAWITEMSTRUCT) -> bool {
+        if draw.hwndItem != self.handles.cue {
+            return false;
+        }
+
+        let palette = active_palette();
+        unsafe {
+            let background = CreateSolidBrush(palette.input);
+            let _ = FillRect(draw.hDC, &draw.rcItem, background);
+            let _ = DeleteObject(background.into());
+        }
+        draw_text_line(
+            draw.hDC,
+            self.font,
+            &self.cue_text,
+            draw.rcItem,
+            palette.input_placeholder,
+            DT_LEFT | DT_SINGLELINE | DT_VCENTER | DT_NOPREFIX,
+        );
+        true
+    }
+
     pub(super) fn draw_toggle(&self, draw: &DRAWITEMSTRUCT) -> bool {
         if draw.hwndItem != self.handles.toggle {
             return false;
@@ -525,7 +604,7 @@ impl SearchPicker {
         } else if hovered {
             palette.button_hover
         } else {
-            palette.panel
+            palette.input
         };
         let arrow_color = if disabled {
             palette.disabled_text
@@ -623,7 +702,7 @@ impl SearchPicker {
 
     unsafe fn redraw_chrome(&self) {
         unsafe {
-            for hwnd in [self.handles.frame, self.handles.toggle] {
+            for hwnd in [self.handles.frame, self.handles.cue, self.handles.toggle] {
                 let _ = RedrawWindow(Some(hwnd), None, None, RDW_INVALIDATE);
             }
         }

@@ -1,4 +1,4 @@
-use super::checkbox_tint;
+use super::checkbox;
 use super::constants::{
     ID_SETTINGS_WINDOW_GITHUB, ID_SETTINGS_WINDOW_GITHUB_TOOLTIP, ID_SETTINGS_WINDOW_HIDE_ON_CLOSE,
     ID_SETTINGS_WINDOW_LANGUAGE, ID_SETTINGS_WINDOW_LANGUAGE_FRAME,
@@ -6,7 +6,7 @@ use super::constants::{
     ID_SETTINGS_WINDOW_RESTORE_EXIT, ID_SETTINGS_WINDOW_START_MINIMIZED, ID_SETTINGS_WINDOW_THEME,
     SETTINGS_WINDOW_CLASS_NAME, SS_CENTER_STYLE, SS_CENTERIMAGE_STYLE, SS_OWNERDRAW_STYLE,
 };
-use super::drawing::draw_text_line;
+use super::drawing::{draw_text_line, draw_text_line_at_visual_center};
 use super::language_combo::{LanguageCombo, LanguageComboIds};
 use super::modal_window::run_modal_message_loop;
 use super::theme::{
@@ -14,7 +14,7 @@ use super::theme::{
     apply_window_theme, px, resolve_theme, set_active_theme,
 };
 use super::win32::{
-    WindowClassRegistration, center_control_vertically, centered_control_span_exact,
+    AppIcons, WindowClassRegistration, center_control_vertically, centered_control_span_exact,
     control_rect_in_parent, create_button, create_control, create_multiline_checkbox, hiword,
     is_checked, loword, measure_text_width, move_control_vertical_span, move_window, set_checkbox,
     set_text, to_wide, window_size_for_client_area,
@@ -27,7 +27,7 @@ use std::ffi::c_void;
 use std::fs;
 use windows::Win32::Foundation::{HINSTANCE, HWND, LPARAM, LRESULT, RECT, WPARAM};
 use windows::Win32::Graphics::Gdi::{
-    BeginPaint, CreatePen, DT_CENTER, DT_END_ELLIPSIS, DT_LEFT, DT_NOPREFIX, DT_SINGLELINE,
+    BeginPaint, CreatePen, DT_END_ELLIPSIS, DT_LEFT, DT_NOPREFIX, DT_RIGHT, DT_SINGLELINE,
     DT_VCENTER, DeleteObject, EndPaint, FillRect, FrameRect, HDC, PAINTSTRUCT, PS_SOLID,
     RDW_ALLCHILDREN, RDW_ERASE, RDW_INVALIDATE, RDW_UPDATENOW, RedrawWindow, RoundRect,
     SelectObject, SetBkMode, SetTextColor, TRANSPARENT,
@@ -36,7 +36,7 @@ use windows::Win32::UI::Controls::{DRAWITEMSTRUCT, ODS_DISABLED, ODS_SELECTED};
 use windows::Win32::UI::Shell::ShellExecuteW;
 use windows::Win32::UI::WindowsAndMessaging::{
     BringWindowToTop, CBN_SELCHANGE, CBN_SELENDOK, CREATESTRUCTW, CreateWindowExW, DefWindowProcW,
-    GWLP_USERDATA, GetClientRect, GetWindowLongPtrW, GetWindowRect, HICON, IDC_ARROW, IDC_HAND,
+    GWLP_USERDATA, GetClientRect, GetWindowLongPtrW, GetWindowRect, IDC_ARROW, IDC_HAND,
     LoadCursorW, MB_ICONWARNING, MB_OK, MessageBoxW, MoveWindow, RegisterClassW, SW_HIDE, SW_SHOW,
     SW_SHOWNOACTIVATE, SendMessageW, SetCursor, SetWindowLongPtrW, ShowWindow, WINDOW_EX_STYLE,
     WINDOW_STYLE, WM_CLOSE, WM_COMMAND, WM_CREATE, WM_CTLCOLORBTN, WM_CTLCOLORSTATIC, WM_DRAWITEM,
@@ -48,7 +48,7 @@ use windows::core::{PCWSTR, w};
 
 const SETTINGS_WINDOW_STYLE: WINDOW_STYLE =
     WINDOW_STYLE(WS_OVERLAPPED.0 | WS_CAPTION.0 | WS_SYSMENU.0);
-const SETTINGS_CLIENT_WIDTH: i32 = 404;
+const SETTINGS_CLIENT_WIDTH: i32 = 428;
 const SETTINGS_CLIENT_HEIGHT: i32 = 430;
 const SETTINGS_CARD_X: i32 = 16;
 const SETTINGS_CARD_WIDTH: i32 = SETTINGS_CLIENT_WIDTH - SETTINGS_CARD_X * 2;
@@ -105,12 +105,13 @@ const SETTINGS_VERSION_Y: i32 =
 const SETTINGS_GITHUB_Y: i32 =
     SETTINGS_VERSION_Y + SETTINGS_VERSION_HEIGHT + SETTINGS_INFO_VERTICAL_GAP;
 const SETTINGS_INFO_HORIZONTAL_GAP: i32 = 10;
-const SETTINGS_INFO_TEXT_SLACK: i32 = 12;
-const SETTINGS_GITHUB_MIN_WIDTH: i32 = 64;
+const SETTINGS_GITHUB_LEFT_HIT_SLOP: i32 = 12;
+const SETTINGS_VERSION_HORIZONTAL_SLOP: i32 = 4;
+const SETTINGS_VERSION_MIN_WIDTH: i32 = 64;
 const SETTINGS_GITHUB_TOOLTIP_HEIGHT: i32 = 24;
 const SETTINGS_GITHUB_TOOLTIP_X_PADDING: i32 = 8;
 const SETTINGS_GITHUB_TOOLTIP_Y_GAP: i32 = 6;
-const APP_VERSION: &str = env!("CARGO_PKG_VERSION");
+const APP_VERSION_TEXT: &str = concat!("\u{200e}v", env!("CARGO_PKG_VERSION"));
 
 const _: () = {
     assert!(SETTINGS_CONTENT_X < SETTINGS_CONTENT_RIGHT);
@@ -174,10 +175,11 @@ struct SettingsWindow {
     github_link_hot: bool,
     theme: AppTheme,
     display_text: String,
+    icons: AppIcons,
 }
 
 impl SettingsWindow {
-    fn new(initial: SettingsPreferences) -> Self {
+    fn new(initial: SettingsPreferences, icons: AppIcons) -> Self {
         Self {
             hwnd: HWND::default(),
             theme_label: HWND::default(),
@@ -202,12 +204,14 @@ impl SettingsWindow {
             github_link_hot: false,
             theme: AppTheme::new(),
             display_text: String::new(),
+            icons,
         }
     }
 
     unsafe fn create_controls(&mut self, hwnd: HWND, instance: HINSTANCE) -> Result<()> {
         self.hwnd = hwnd;
         apply_window_theme(hwnd);
+        self.icons.apply_to(hwnd);
         let child = WS_CHILD | WS_VISIBLE;
         let strings = self.language.strings();
         unsafe {
@@ -337,6 +341,7 @@ impl SettingsWindow {
                 self.initial.language,
             )?
         });
+        let info_layout = self.info_layout();
         self.open_config_button = unsafe {
             create_button(
                 hwnd,
@@ -344,7 +349,7 @@ impl SettingsWindow {
                 strings.open_config,
                 SETTINGS_CONTENT_X,
                 SETTINGS_OPEN_CONFIG_Y,
-                self.button_width(strings.open_config, 150, 230),
+                info_layout.open_config_width,
                 SETTINGS_OPEN_CONFIG_HEIGHT,
                 ID_SETTINGS_WINDOW_OPEN_CONFIG,
             )?
@@ -359,9 +364,9 @@ impl SettingsWindow {
                     | WS_TABSTOP
                     | WINDOW_STYLE(windows::Win32::UI::WindowsAndMessaging::BS_OWNERDRAW as u32),
                 WINDOW_EX_STYLE(0),
-                SETTINGS_CONTENT_RIGHT - SETTINGS_GITHUB_MIN_WIDTH,
+                info_layout.github_x,
                 SETTINGS_GITHUB_Y,
-                SETTINGS_GITHUB_MIN_WIDTH,
+                info_layout.github_width,
                 SETTINGS_GITHUB_HEIGHT,
                 ID_SETTINGS_WINDOW_GITHUB,
             )?
@@ -392,9 +397,9 @@ impl SettingsWindow {
                 "",
                 child | SS_CENTER_STYLE | SS_CENTERIMAGE_STYLE,
                 WINDOW_EX_STYLE(0),
-                SETTINGS_CONTENT_X,
+                info_layout.version_x,
                 SETTINGS_VERSION_Y,
-                SETTINGS_GITHUB_MIN_WIDTH,
+                info_layout.version_width,
                 SETTINGS_VERSION_HEIGHT,
                 0,
             )?
@@ -678,24 +683,18 @@ impl SettingsWindow {
     }
 
     fn info_layout(&self) -> SettingsInfoLayout {
-        let github_width = Language::ALL
+        let github_text_width = self.text_width(self.language.strings().github_repository);
+        let widest_github_text_width = Language::ALL
             .iter()
             .map(|language| self.text_width(language.strings().github_repository))
             .max()
-            .unwrap_or(SETTINGS_GITHUB_MIN_WIDTH)
-            .saturating_add(SETTINGS_INFO_TEXT_SLACK)
-            .max(SETTINGS_GITHUB_MIN_WIDTH);
-        let github_x = SETTINGS_CONTENT_RIGHT - github_width;
-        let open_config_width = self
-            .button_width(self.language.strings().open_config, 150, 230)
-            .min((github_x - SETTINGS_INFO_HORIZONTAL_GAP - SETTINGS_CONTENT_X).max(1));
-        SettingsInfoLayout {
-            open_config_width,
-            version_x: github_x,
-            version_width: github_width,
-            github_x,
-            github_width,
-        }
+            .unwrap_or(github_text_width);
+        calculate_info_layout(
+            github_text_width,
+            widest_github_text_width,
+            self.text_width(APP_VERSION_TEXT),
+            self.button_width(self.language.strings().open_config, 150, 230),
+        )
     }
 
     fn text_width(&self, text: &str) -> i32 {
@@ -900,13 +899,14 @@ impl SettingsWindow {
             right: draw.rcItem.right + offset,
             bottom: draw.rcItem.bottom + offset,
         };
-        draw_text_line(
+        draw_text_line_at_visual_center(
             draw.hDC,
             self.theme.font.handle(),
             self.language.strings().github_repository,
             rect,
+            rect.top + rect.bottom - 1,
             color,
-            DT_CENTER | DT_SINGLELINE | DT_VCENTER | DT_NOPREFIX,
+            DT_RIGHT | DT_SINGLELINE | DT_VCENTER | DT_NOPREFIX,
         );
         true
     }
@@ -967,7 +967,7 @@ impl SettingsWindow {
 pub(super) unsafe fn prompt_settings<F>(
     parent: HWND,
     instance: HINSTANCE,
-    icon: HICON,
+    icons: AppIcons,
     initial: SettingsPreferences,
     mut on_live_update: F,
 ) -> Result<Option<SettingsPreferences>>
@@ -982,7 +982,7 @@ where
         cbClsExtra: 0,
         cbWndExtra: 0,
         hInstance: instance,
-        hIcon: icon,
+        hIcon: icons.main(),
         hCursor: cursor,
         hbrBackground: background.handle(),
         lpszMenuName: PCWSTR::null(),
@@ -991,7 +991,7 @@ where
     let _class_registration = (unsafe { RegisterClassW(&class) } != 0)
         .then(|| WindowClassRegistration::new(SETTINGS_WINDOW_CLASS_NAME, instance));
 
-    let mut state = Box::new(SettingsWindow::new(initial));
+    let mut state = Box::new(SettingsWindow::new(initial, icons));
     let state_ptr = state.as_mut() as *mut SettingsWindow;
     let title = to_wide(initial.language.strings().settings_title);
     let (width, height) = window_size_for_client_area(
@@ -1084,7 +1084,11 @@ unsafe extern "system" fn settings_window_proc(
             }
             WM_NOTIFY => {
                 if let Some(result) = unsafe {
-                    checkbox_tint::custom_draw_result(lparam, settings.theme.palette.panel)
+                    checkbox::custom_draw_result(
+                        lparam,
+                        settings.theme.font.handle(),
+                        settings.theme.palette.panel,
+                    )
                 } {
                     return result;
                 }
@@ -1180,8 +1184,36 @@ unsafe extern "system" fn settings_window_proc(
 
 fn version_text_into(output: &mut String) {
     output.clear();
-    output.push_str("‎v");
-    output.push_str(APP_VERSION);
+    output.push_str(APP_VERSION_TEXT);
+}
+
+fn calculate_info_layout(
+    github_text_width: i32,
+    widest_github_text_width: i32,
+    version_text_width: i32,
+    requested_open_config_width: i32,
+) -> SettingsInfoLayout {
+    let github_text_width = github_text_width.max(1);
+    let version_width = version_text_width
+        .max(1)
+        .saturating_add(SETTINGS_VERSION_HORIZONTAL_SLOP)
+        .max(SETTINGS_VERSION_MIN_WIDTH);
+    let github_width = widest_github_text_width
+        .max(github_text_width)
+        .saturating_add(SETTINGS_GITHUB_LEFT_HIT_SLOP);
+    let github_x = SETTINGS_CONTENT_RIGHT - github_width;
+    let github_center_twice = SETTINGS_CONTENT_RIGHT * 2 - github_text_width;
+    let version_x = (github_center_twice - version_width) / 2;
+    let open_config_width = requested_open_config_width
+        .min((github_x - SETTINGS_INFO_HORIZONTAL_GAP - SETTINGS_CONTENT_X).max(1));
+
+    SettingsInfoLayout {
+        open_config_width,
+        version_x,
+        version_width,
+        github_x,
+        github_width,
+    }
 }
 
 #[cfg(test)]
@@ -1232,7 +1264,38 @@ mod tests {
     fn version_text_has_no_localized_prefix() {
         let mut text = String::new();
         version_text_into(&mut text);
-        assert_eq!(text, format!("‎v{APP_VERSION}"));
+        assert_eq!(text, APP_VERSION_TEXT);
         assert!(!text.contains(':'));
+    }
+
+    #[test]
+    fn info_text_uses_the_same_visible_card_inset_as_the_open_button() {
+        let github_text_width = 96;
+        let widest_github_text_width = 128;
+        let version_text_width = 48;
+        let layout = calculate_info_layout(
+            github_text_width,
+            widest_github_text_width,
+            version_text_width,
+            150,
+        );
+
+        assert_eq!(
+            layout.github_x + layout.github_width,
+            SETTINGS_CONTENT_RIGHT
+        );
+        assert_eq!(
+            layout.github_width,
+            widest_github_text_width + SETTINGS_GITHUB_LEFT_HIT_SLOP
+        );
+        assert_eq!(SETTINGS_CONTENT_X - SETTINGS_CARD_X, SETTINGS_CARD_INSET);
+        assert_eq!(
+            SETTINGS_CARD_X + SETTINGS_CARD_WIDTH - (layout.github_x + layout.github_width),
+            SETTINGS_CARD_INSET
+        );
+        assert_eq!(
+            layout.version_x * 2 + layout.version_width,
+            SETTINGS_CONTENT_RIGHT * 2 - github_text_width
+        );
     }
 }

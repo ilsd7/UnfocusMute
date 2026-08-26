@@ -1,4 +1,4 @@
-use super::checkbox_tint;
+use super::checkbox;
 use super::constants::{
     ID_LANGUAGE_PROMPT_COMBO, ID_LANGUAGE_PROMPT_COMBO_FRAME, ID_LANGUAGE_PROMPT_HIDE_ON_CLOSE,
     ID_LANGUAGE_PROMPT_OK, ID_LANGUAGE_PROMPT_RESTORE_EXIT, ID_LANGUAGE_PROMPT_START_MINIMIZED,
@@ -10,9 +10,10 @@ use super::theme::{
     apply_window_theme, px, resolve_theme, set_active_theme,
 };
 use super::win32::{
-    WindowClassRegistration, center_control_vertically, create_button, create_multiline_checkbox,
-    default_button_message_result, get_message, hiword, is_checked, loword, measure_text_width,
-    move_window, set_checkbox, set_text, to_wide, window_size_for_client_area,
+    AppIcons, WindowClassRegistration, center_control_vertically, create_button,
+    create_multiline_checkbox, default_button_message_result, get_message, hiword, is_checked,
+    loword, measure_text_width, move_window, set_checkbox, set_text, to_wide,
+    window_size_for_client_area,
 };
 use super::window_position::centered_position;
 use crate::config::ThemePreference;
@@ -28,13 +29,13 @@ use windows::Win32::System::LibraryLoader::GetModuleHandleW;
 use windows::Win32::UI::Controls::DRAWITEMSTRUCT;
 use windows::Win32::UI::WindowsAndMessaging::{
     CBN_SELCHANGE, CBN_SELENDOK, CREATESTRUCTW, CreateWindowExW, DefWindowProcW, DestroyWindow,
-    DispatchMessageW, GWLP_USERDATA, GetClientRect, GetWindowLongPtrW, GetWindowRect, HICON,
-    IDC_ARROW, IsDialogMessageW, LoadCursorW, MB_ICONINFORMATION, MB_OK, MSG, MessageBoxW,
-    PostQuitMessage, RegisterClassW, SW_SHOW, SWP_NOACTIVATE, SWP_NOOWNERZORDER, SWP_NOZORDER,
-    SendMessageW, SetForegroundWindow, SetWindowLongPtrW, SetWindowPos, ShowWindow,
-    TranslateMessage, WINDOW_EX_STYLE, WINDOW_STYLE, WM_CLOSE, WM_COMMAND, WM_CREATE,
-    WM_CTLCOLORBTN, WM_CTLCOLORSTATIC, WM_DRAWITEM, WM_ERASEBKGND, WM_NCCREATE, WM_NCDESTROY,
-    WM_NOTIFY, WM_SETFONT, WM_SETTINGCHANGE, WM_THEMECHANGED, WNDCLASSW, WS_CAPTION, WS_OVERLAPPED,
+    DispatchMessageW, GWLP_USERDATA, GetClientRect, GetWindowLongPtrW, GetWindowRect, IDC_ARROW,
+    IsDialogMessageW, LoadCursorW, MB_ICONINFORMATION, MB_OK, MSG, MessageBoxW, PostQuitMessage,
+    RegisterClassW, SW_SHOW, SWP_NOACTIVATE, SWP_NOOWNERZORDER, SWP_NOZORDER, SendMessageW,
+    SetForegroundWindow, SetWindowLongPtrW, SetWindowPos, ShowWindow, TranslateMessage,
+    WINDOW_EX_STYLE, WINDOW_STYLE, WM_CLOSE, WM_COMMAND, WM_CREATE, WM_CTLCOLORBTN,
+    WM_CTLCOLORSTATIC, WM_DRAWITEM, WM_ERASEBKGND, WM_NCCREATE, WM_NCDESTROY, WM_NOTIFY,
+    WM_SETFONT, WM_SETTINGCHANGE, WM_THEMECHANGED, WNDCLASSW, WS_CAPTION, WS_OVERLAPPED,
     WS_SYSMENU,
 };
 use windows::core::PCWSTR;
@@ -55,6 +56,7 @@ struct LanguagePrompt {
     initial_theme_preference: ThemePreference,
     theme_preference: ThemePreference,
     theme: AppTheme,
+    icons: AppIcons,
 }
 
 const LANGUAGE_PROMPT_WINDOW_STYLE: WINDOW_STYLE =
@@ -118,7 +120,7 @@ fn recommended_initial_preferences(
 }
 
 impl LanguagePrompt {
-    fn new(current: Language, theme_preference: ThemePreference) -> Self {
+    fn new(current: Language, theme_preference: ThemePreference, icons: AppIcons) -> Self {
         Self {
             hwnd: HWND::default(),
             language_combo: None,
@@ -135,12 +137,14 @@ impl LanguagePrompt {
             initial_theme_preference: theme_preference,
             theme_preference,
             theme: AppTheme::new(),
+            icons,
         }
     }
 
     unsafe fn create_controls(&mut self, hwnd: HWND) -> Result<()> {
         self.hwnd = hwnd;
         apply_window_theme(hwnd);
+        self.icons.apply_to(hwnd);
         let instance = HINSTANCE(unsafe { GetModuleHandleW(None)?.0 });
         let strings = self.current.strings();
 
@@ -526,7 +530,7 @@ fn prompt_client_height(option_heights: [i32; 4]) -> i32 {
 
 pub(super) unsafe fn prompt_initial_language(
     instance: HINSTANCE,
-    icon: HICON,
+    icons: AppIcons,
     current: Language,
     theme_preference: ThemePreference,
 ) -> Result<Option<InitialPreferences>> {
@@ -538,7 +542,7 @@ pub(super) unsafe fn prompt_initial_language(
         cbClsExtra: 0,
         cbWndExtra: 0,
         hInstance: instance,
-        hIcon: icon,
+        hIcon: icons.main(),
         hCursor: cursor,
         hbrBackground: background.handle(),
         lpszMenuName: PCWSTR::null(),
@@ -547,7 +551,7 @@ pub(super) unsafe fn prompt_initial_language(
     let _class_registration = (unsafe { RegisterClassW(&class) } != 0)
         .then(|| WindowClassRegistration::new(LANGUAGE_PROMPT_CLASS_NAME, instance));
 
-    let mut state = Box::new(LanguagePrompt::new(current, theme_preference));
+    let mut state = Box::new(LanguagePrompt::new(current, theme_preference, icons));
     let state_ptr = state.as_mut() as *mut LanguagePrompt;
     let title = to_wide(current.strings().first_run_window_title);
     let (width, height) = window_size_for_client_area(
@@ -659,9 +663,13 @@ unsafe extern "system" fn language_prompt_proc(
                 return LRESULT(0);
             }
             WM_NOTIFY => {
-                if let Some(result) =
-                    unsafe { checkbox_tint::custom_draw_result(lparam, prompt.theme.palette.page) }
-                {
+                if let Some(result) = unsafe {
+                    checkbox::custom_draw_result(
+                        lparam,
+                        prompt.theme.font.handle(),
+                        prompt.theme.palette.page,
+                    )
+                } {
                     return result;
                 }
             }

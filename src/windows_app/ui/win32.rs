@@ -1,4 +1,7 @@
-use super::drawing::draw_text_line;
+use super::drawing::{
+    draw_glyph_at_visual_center, draw_text_line_at_visual_center,
+    draw_wide_text_line_at_visual_center,
+};
 use super::theme::{ThemePalette, active_palette, logical_px, px};
 use crate::windows_app::error::{Context, Result, message_error};
 use std::borrow::Cow;
@@ -10,10 +13,9 @@ use windows::Win32::Foundation::{
 };
 use windows::Win32::Graphics::Gdi::{
     CreatePen, CreateSolidBrush, DT_CENTER, DT_LEFT, DT_NOPREFIX, DT_SINGLELINE, DT_VCENTER,
-    DeleteObject, DrawFocusRect, DrawTextW, FillRect, GetDC, GetTextExtentPoint32W,
-    GetTextMetricsW, HDC, HGDIOBJ, PS_INSIDEFRAME, PS_SOLID, Polygon, RDW_INVALIDATE,
-    RDW_UPDATENOW, RedrawWindow, ReleaseDC, RoundRect, ScreenToClient, SelectObject, SetBkMode,
-    SetTextColor, TEXTMETRICW, TRANSPARENT,
+    DeleteObject, DrawFocusRect, FillRect, GetDC, GetTextExtentPoint32W, GetTextMetricsW, HDC,
+    HGDIOBJ, PS_INSIDEFRAME, PS_SOLID, Polygon, RDW_INVALIDATE, RDW_UPDATENOW, RedrawWindow,
+    ReleaseDC, RoundRect, ScreenToClient, SelectObject, TEXTMETRICW,
 };
 use windows::Win32::UI::Controls::{
     BST_CHECKED, BST_UNCHECKED, DRAWITEMSTRUCT, ODS_DISABLED, ODS_FOCUS, ODS_SELECTED,
@@ -29,12 +31,12 @@ use windows::Win32::UI::WindowsAndMessaging::{
     BM_GETCHECK, BM_SETCHECK, BS_AUTOCHECKBOX, BS_MULTILINE, BS_OWNERDRAW, CB_ADDSTRING,
     CB_INITSTORAGE, CreateWindowExW, GetMessageW, GetPropW, GetSystemMetrics, GetWindowRect,
     GetWindowTextLengthW, GetWindowTextW, HICON, HMENU, HTCLIENT, HTTRANSPARENT, HWND_TOP,
-    IDC_HAND, IDI_APPLICATION, IMAGE_ICON, LB_ADDSTRING, LB_INITSTORAGE, LR_DEFAULTCOLOR,
-    LR_SHARED, LoadCursorW, LoadIconW, LoadImageW, MSG, MoveWindow, RemovePropW, SM_CXICON,
-    SM_CXSMICON, SM_CYICON, SM_CYSMICON, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE, SendMessageW,
-    SetCursor, SetPropW, SetWindowPos, SetWindowTextW, UnregisterClassW, WINDOW_EX_STYLE,
-    WINDOW_STYLE, WM_MOUSEMOVE, WM_NCDESTROY, WM_NCHITTEST, WM_SETCURSOR, WS_CHILD,
-    WS_CLIPSIBLINGS, WS_TABSTOP, WS_VISIBLE,
+    ICON_BIG, ICON_SMALL, IDC_HAND, IDI_APPLICATION, IMAGE_ICON, LB_ADDSTRING, LB_INITSTORAGE,
+    LR_DEFAULTCOLOR, LR_SHARED, LoadCursorW, LoadIconW, LoadImageW, MSG, MoveWindow, RemovePropW,
+    SM_CXICON, SM_CXSMICON, SM_CYICON, SM_CYSMICON, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE,
+    SendMessageW, SetCursor, SetPropW, SetWindowPos, SetWindowTextW, UnregisterClassW,
+    WINDOW_EX_STYLE, WINDOW_STYLE, WM_MOUSEMOVE, WM_NCDESTROY, WM_NCHITTEST, WM_SETCURSOR,
+    WM_SETICON, WS_CHILD, WS_CLIPSIBLINGS, WS_TABSTOP, WS_VISIBLE,
 };
 use windows::core::{PCWSTR, w};
 
@@ -727,28 +729,63 @@ pub(super) unsafe fn is_checked(hwnd: HWND) -> bool {
     unsafe { SendMessageW(hwnd, BM_GETCHECK, None, None).0 as u32 == BST_CHECKED.0 }
 }
 
-pub(super) unsafe fn load_app_icon(instance: HINSTANCE) -> HICON {
-    let size = unsafe { GetSystemMetrics(SM_CXICON).max(GetSystemMetrics(SM_CYICON)) };
-    unsafe {
-        load_sized_app_icon(instance, size)
-            .or_else(|| LoadIconW(Some(instance), int_resource(1)).ok())
-            .unwrap_or_else(|| LoadIconW(None, IDI_APPLICATION).unwrap_or_default())
+const APP_ICON_RESOURCE_ID: u16 = 1;
+
+#[derive(Clone, Copy)]
+pub(super) struct AppIcons {
+    main: HICON,
+    small: HICON,
+}
+
+impl AppIcons {
+    pub(super) fn main(self) -> HICON {
+        self.main
+    }
+
+    pub(super) fn small(self) -> HICON {
+        self.small
+    }
+
+    pub(super) fn apply_to(self, hwnd: HWND) {
+        unsafe {
+            SendMessageW(
+                hwnd,
+                WM_SETICON,
+                Some(WPARAM(ICON_BIG as usize)),
+                Some(LPARAM(self.main.0 as isize)),
+            );
+            SendMessageW(
+                hwnd,
+                WM_SETICON,
+                Some(WPARAM(ICON_SMALL as usize)),
+                Some(LPARAM(self.small.0 as isize)),
+            );
+        }
     }
 }
 
-pub(super) unsafe fn load_tray_icon(instance: HINSTANCE) -> HICON {
-    let size = unsafe {
+pub(super) unsafe fn load_app_icons(instance: HINSTANCE) -> AppIcons {
+    let main_size = unsafe { GetSystemMetrics(SM_CXICON).max(GetSystemMetrics(SM_CYICON)) };
+    let small_size = unsafe {
         let dpi = GetDpiForSystem();
         GetSystemMetricsForDpi(SM_CXSMICON, dpi).max(GetSystemMetricsForDpi(SM_CYSMICON, dpi))
     };
-    unsafe { load_sized_app_icon(instance, size).unwrap_or_else(|| load_app_icon(instance)) }
+    let fallback = unsafe { LoadIconW(None, IDI_APPLICATION).unwrap_or_default() };
+    let main = unsafe {
+        load_sized_icon(instance, APP_ICON_RESOURCE_ID, main_size)
+            .or_else(|| LoadIconW(Some(instance), int_resource(APP_ICON_RESOURCE_ID)).ok())
+            .unwrap_or(fallback)
+    };
+    let small =
+        unsafe { load_sized_icon(instance, APP_ICON_RESOURCE_ID, small_size).unwrap_or(main) };
+    AppIcons { main, small }
 }
 
-unsafe fn load_sized_app_icon(instance: HINSTANCE, size: i32) -> Option<HICON> {
+unsafe fn load_sized_icon(instance: HINSTANCE, resource_id: u16, size: i32) -> Option<HICON> {
     unsafe {
         LoadImageW(
             Some(instance),
-            int_resource(1),
+            int_resource(resource_id),
             IMAGE_ICON,
             size,
             size,
@@ -1016,19 +1053,15 @@ pub(super) unsafe fn draw_flat_button_on(
         let _ = DeleteObject(brush.into());
         let _ = DeleteObject(pen.into());
 
-        let old_font = SelectObject(hdc, font);
-        let _ = SetBkMode(hdc, TRANSPARENT);
-        let _ = SetTextColor(hdc, text_color);
-
-        let mut rect = button_rect;
-        let _ = DrawTextW(
+        draw_wide_text_line_at_visual_center(
             hdc,
+            font,
             &mut text_buffer[..len],
-            &mut rect,
+            button_rect,
+            button_rect.top + button_rect.bottom - 1,
+            text_color,
             DT_CENTER | DT_SINGLELINE | DT_VCENTER | DT_NOPREFIX,
         );
-
-        let _ = SelectObject(hdc, old_font);
 
         if focused && !disabled {
             let mut focus_rect = button_rect;
@@ -1060,7 +1093,7 @@ pub(super) unsafe fn draw_rounded_input_frame_on(
         let _ = FillRect(draw.hDC, &draw.rcItem, background);
         let _ = DeleteObject(background.into());
 
-        let brush = CreateSolidBrush(palette.panel);
+        let brush = CreateSolidBrush(palette.input);
         let pen = CreatePen(PS_INSIDEFRAME, px(1).max(1), palette.border);
         let previous_brush = SelectObject(draw.hDC, brush.into());
         let previous_pen = SelectObject(draw.hDC, pen.into());
@@ -1101,11 +1134,12 @@ pub(super) unsafe fn draw_rounded_combo_display_on(
             right: draw.rcItem.right - arrow_area_width,
             bottom: draw.rcItem.bottom,
         };
-        draw_text_line(
+        draw_text_line_at_visual_center(
             draw.hDC,
             font,
             text,
             text_rect,
+            draw.rcItem.top + draw.rcItem.bottom - 1,
             palette.text,
             DT_LEFT | DT_SINGLELINE | DT_VCENTER | DT_NOPREFIX,
         );
@@ -1194,19 +1228,35 @@ pub(super) unsafe fn draw_icon_button_on(
         palette.subtle_text
     };
     let offset = i32::from(pressed) * px(1);
-    draw_text_line(
-        draw.hDC,
-        icon_font,
-        glyph,
-        RECT {
-            left: draw.rcItem.left + offset,
-            top: draw.rcItem.top + offset,
-            right: draw.rcItem.right + offset,
-            bottom: draw.rcItem.bottom + offset,
-        },
-        color,
-        DT_CENTER | DT_SINGLELINE | DT_VCENTER | DT_NOPREFIX,
-    );
+    let glyph_rect = RECT {
+        left: draw.rcItem.left + offset,
+        top: draw.rcItem.top + offset,
+        right: draw.rcItem.right + offset,
+        bottom: draw.rcItem.bottom + offset,
+    };
+    let glyph_center_twice = draw.rcItem.top + draw.rcItem.bottom - 1 + offset * 2;
+    let glyph_char = glyph.chars().next();
+    let glyph_drawn = glyph_char.is_some_and(|glyph_char| {
+        draw_glyph_at_visual_center(
+            draw.hDC,
+            icon_font,
+            glyph_char,
+            glyph_rect,
+            glyph_center_twice,
+            color,
+        )
+    });
+    if !glyph_drawn {
+        draw_text_line_at_visual_center(
+            draw.hDC,
+            icon_font,
+            glyph,
+            glyph_rect,
+            glyph_center_twice,
+            color,
+            DT_CENTER | DT_SINGLELINE | DT_VCENTER | DT_NOPREFIX,
+        );
+    }
 
     true
 }

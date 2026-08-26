@@ -155,7 +155,7 @@ impl<'a> TargetNotePrompt<'a> {
             target_display,
             current_note,
             brush: OwnedBrush::solid(active_palette().page),
-            input_brush: OwnedBrush::solid(active_palette().panel),
+            input_brush: OwnedBrush::solid(active_palette().input),
             font: UiFont::new(ui_font_point_size()),
             input_font: UiFont::new(ui_font_point_size() + 1),
             target_font: UiFont::new(ui_font_point_size() + 2),
@@ -517,7 +517,7 @@ unsafe extern "system" fn target_note_prompt_proc(
                 let hdc = HDC(wparam.0 as *mut c_void);
                 let palette = active_palette();
                 unsafe {
-                    let _ = SetBkColor(hdc, palette.panel);
+                    let _ = SetBkColor(hdc, palette.input);
                     let _ = SetTextColor(hdc, palette.text);
                 }
                 return LRESULT(prompt.input_brush.handle().0 as isize);
@@ -528,7 +528,7 @@ unsafe extern "system" fn target_note_prompt_proc(
                 let palette = active_palette();
                 if control == prompt.edit_frame {
                     unsafe {
-                        let _ = SetBkColor(hdc, palette.panel);
+                        let _ = SetBkColor(hdc, palette.input);
                     }
                     return LRESULT(prompt.input_brush.handle().0 as isize);
                 }

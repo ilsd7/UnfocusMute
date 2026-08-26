@@ -7,8 +7,8 @@ use windows::Win32::Foundation::{COLORREF, ERROR_SUCCESS, HWND, WPARAM};
 use windows::Win32::Graphics::Dwm::{DWMWA_USE_IMMERSIVE_DARK_MODE, DwmSetWindowAttribute};
 use windows::Win32::Graphics::Gdi::{
     CLIP_DEFAULT_PRECIS, CreateFontW, CreateSolidBrush, DEFAULT_CHARSET, DEFAULT_GUI_FONT,
-    DEFAULT_QUALITY, DeleteObject, FF_DONTCARE, FW_NORMAL, GetStockObject, HBRUSH, HGDIOBJ,
-    OUT_DEFAULT_PRECIS,
+    DEFAULT_QUALITY, DeleteObject, FF_DONTCARE, FW_NORMAL, GetDC, GetStockObject, GetTextFaceW,
+    HBRUSH, HGDIOBJ, OUT_DEFAULT_PRECIS, ReleaseDC, SelectObject,
 };
 use windows::Win32::System::Registry::{
     HKEY, HKEY_CURRENT_USER, KEY_QUERY_VALUE, REG_DWORD, REG_VALUE_TYPE, RegCloseKey,
@@ -24,6 +24,7 @@ const MIN_USER_UI_SCALE: i32 = 250;
 const MAX_USER_UI_SCALE: i32 = 10_000;
 
 static SYSTEM_UI_SCALE: OnceLock<i32> = OnceLock::new();
+static FLUENT_ICON_FONT_AVAILABLE: OnceLock<bool> = OnceLock::new();
 static USER_UI_SCALE: AtomicI32 = AtomicI32::new(SCALE_BASE);
 static ACTIVE_THEME: AtomicU8 = AtomicU8::new(ResolvedTheme::Light as u8);
 
@@ -63,13 +64,15 @@ pub(super) const SETTINGS_ICON_GLYPH: &str = "\u{e713}";
 pub(super) struct ThemePalette {
     pub(super) page: COLORREF,
     pub(super) panel: COLORREF,
+    pub(super) input: COLORREF,
     pub(super) border: COLORREF,
     pub(super) text: COLORREF,
     pub(super) subtle_text: COLORREF,
-    pub(super) accent: COLORREF,
+    pub(super) input_placeholder: COLORREF,
     pub(super) warning: COLORREF,
     pub(super) status_active: COLORREF,
     pub(super) status_paused: COLORREF,
+    pub(super) status_muted: COLORREF,
     pub(super) selected_row: COLORREF,
     pub(super) disabled_text: COLORREF,
     pub(super) button: COLORREF,
@@ -85,13 +88,15 @@ pub(super) struct ThemePalette {
 const LIGHT_PALETTE: ThemePalette = ThemePalette {
     page: rgb(245, 245, 247),
     panel: rgb(255, 255, 255),
+    input: rgb(255, 255, 255),
     border: rgb(229, 229, 234),
     text: rgb(29, 29, 31),
     subtle_text: rgb(82, 82, 86),
-    accent: rgb(34, 134, 58),
+    input_placeholder: rgb(82, 82, 86),
     warning: rgb(138, 98, 18),
-    status_active: rgb(34, 134, 58),
+    status_active: rgb(31, 127, 55),
     status_paused: rgb(138, 98, 18),
+    status_muted: rgb(180, 35, 24),
     selected_row: rgb(248, 248, 250),
     disabled_text: rgb(160, 160, 166),
     button: rgb(255, 255, 255),
@@ -109,20 +114,22 @@ const LIGHT_PALETTE: ThemePalette = ThemePalette {
 const DARK_PALETTE: ThemePalette = ThemePalette {
     page: rgb(19, 19, 19),
     panel: rgb(30, 29, 30),
+    input: rgb(55, 54, 54),
     border: rgb(64, 64, 64),
     text: rgb(202, 204, 202),
     subtle_text: rgb(158, 158, 158),
-    accent: rgb(98, 186, 70),
+    input_placeholder: rgb(176, 176, 176),
     warning: rgb(176, 168, 120),
     status_active: rgb(115, 173, 100),
     status_paused: rgb(185, 173, 106),
+    status_muted: rgb(212, 106, 106),
     selected_row: rgb(53, 52, 54),
     disabled_text: rgb(143, 143, 143),
     button: rgb(55, 54, 54),
-    button_hover: rgb(53, 52, 54),
+    button_hover: rgb(63, 62, 63),
     button_pressed: rgb(71, 70, 70),
     button_border: rgb(64, 64, 64),
-    button_disabled: rgb(30, 29, 30),
+    button_disabled: rgb(38, 37, 38),
     link: rgb(127, 174, 249),
     link_hover: rgb(169, 200, 250),
     checkbox_checked: rgb(111, 159, 234),
@@ -250,6 +257,7 @@ pub(super) struct AppTheme {
     pub(super) palette: ThemePalette,
     pub(super) page_brush: OwnedBrush,
     pub(super) panel_brush: OwnedBrush,
+    pub(super) input_brush: OwnedBrush,
     pub(super) border_brush: OwnedBrush,
     pub(super) selected_row_brush: OwnedBrush,
     pub(super) font: UiFont,
@@ -266,6 +274,7 @@ impl AppTheme {
             palette,
             page_brush: OwnedBrush::solid(palette.page),
             panel_brush: OwnedBrush::solid(palette.panel),
+            input_brush: OwnedBrush::solid(palette.input),
             border_brush: OwnedBrush::solid(palette.border),
             selected_row_brush: OwnedBrush::solid(palette.selected_row),
             font: Self::scaled_font(),
@@ -284,6 +293,7 @@ impl AppTheme {
         self.palette = palette;
         self.page_brush = OwnedBrush::solid(palette.page);
         self.panel_brush = OwnedBrush::solid(palette.panel);
+        self.input_brush = OwnedBrush::solid(palette.input);
         self.border_brush = OwnedBrush::solid(palette.border);
         self.selected_row_brush = OwnedBrush::solid(palette.selected_row);
         true
@@ -338,7 +348,23 @@ impl UiFont {
     }
 
     pub(super) fn icon(point_size: i32) -> Self {
-        Self::new_with_face(point_size, FW_NORMAL.0 as i32, w!("Segoe MDL2 Assets"))
+        if let Some(available) = FLUENT_ICON_FONT_AVAILABLE.get() {
+            let face = if *available {
+                w!("Segoe Fluent Icons")
+            } else {
+                w!("Segoe MDL2 Assets")
+            };
+            return Self::new_with_face(point_size, FW_NORMAL.0 as i32, face);
+        }
+
+        let fluent = Self::new_with_face(point_size, FW_NORMAL.0 as i32, w!("Segoe Fluent Icons"));
+        let available = fluent.selected_face_matches("Segoe Fluent Icons");
+        let _ = FLUENT_ICON_FONT_AVAILABLE.set(available);
+        if available {
+            fluent
+        } else {
+            Self::new_with_face(point_size, FW_NORMAL.0 as i32, w!("Segoe MDL2 Assets"))
+        }
     }
 
     fn new_with_face(point_size: i32, weight: i32, face: PCWSTR) -> Self {
@@ -361,18 +387,15 @@ impl UiFont {
                 face,
             )
         };
-        if font.0.is_null() {
-            Self {
-                handle: unsafe { GetStockObject(DEFAULT_GUI_FONT) },
-                owned: false,
-                pixel_height: height,
-            }
+        let (handle, owned) = if font.0.is_null() {
+            (unsafe { GetStockObject(DEFAULT_GUI_FONT) }, false)
         } else {
-            Self {
-                handle: HGDIOBJ(font.0),
-                owned: true,
-                pixel_height: height,
-            }
+            (HGDIOBJ(font.0), true)
+        };
+        Self {
+            handle,
+            owned,
+            pixel_height: height,
         }
     }
 
@@ -382,6 +405,30 @@ impl UiFont {
 
     pub(super) fn handle(&self) -> HGDIOBJ {
         self.handle
+    }
+
+    fn selected_face_matches(&self, expected: &str) -> bool {
+        unsafe {
+            let hdc = GetDC(None);
+            if hdc.0.is_null() {
+                return false;
+            }
+            let previous_font = SelectObject(hdc, self.handle);
+            let mut face = [0u16; 32];
+            let copied = GetTextFaceW(hdc, Some(&mut face));
+            if !previous_font.0.is_null() {
+                let _ = SelectObject(hdc, previous_font);
+            }
+            let _ = ReleaseDC(None, hdc);
+            if copied <= 0 {
+                return false;
+            }
+            let end = face
+                .iter()
+                .position(|unit| *unit == 0)
+                .unwrap_or(face.len());
+            String::from_utf16_lossy(&face[..end]).eq_ignore_ascii_case(expected)
+        }
     }
 
     fn pixel_height(&self) -> i32 {
@@ -426,6 +473,10 @@ pub(super) fn user_ui_scale() -> i32 {
 
 fn effective_ui_dpi() -> i32 {
     scale_i32(BASE_DPI, ui_scale()).max(1)
+}
+
+pub(super) fn ui_dpi() -> u32 {
+    effective_ui_dpi() as u32
 }
 
 fn font_pixel_height(point_size: i32) -> i32 {
@@ -481,10 +532,14 @@ mod tests {
     fn dark_palette_matches_selected_visual_reference() {
         assert_eq!(DARK_PALETTE.page, rgb(19, 19, 19));
         assert_eq!(DARK_PALETTE.panel, rgb(30, 29, 30));
+        assert_eq!(DARK_PALETTE.input, DARK_PALETTE.button);
         assert_eq!(DARK_PALETTE.text, rgb(202, 204, 202));
-        assert_eq!(DARK_PALETTE.accent, rgb(98, 186, 70));
+        assert_eq!(DARK_PALETTE.input_placeholder, rgb(176, 176, 176));
         assert_eq!(DARK_PALETTE.status_active, rgb(115, 173, 100));
         assert_eq!(DARK_PALETTE.status_paused, rgb(185, 173, 106));
+        assert_eq!(DARK_PALETTE.status_muted, rgb(212, 106, 106));
+        assert_eq!(DARK_PALETTE.button_hover, rgb(63, 62, 63));
+        assert_eq!(DARK_PALETTE.button_disabled, rgb(38, 37, 38));
         assert_eq!(DARK_PALETTE.checkbox_checked, rgb(111, 159, 234));
     }
 }

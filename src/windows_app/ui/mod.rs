@@ -48,25 +48,25 @@ use windows::Win32::UI::Shell::{
 use windows::Win32::UI::WindowsAndMessaging::{
     AppendMenuW, CREATESTRUCTW, CreatePopupMenu, CreateWindowExW, DefWindowProcW, DestroyMenu,
     DestroyWindow, DispatchMessageW, EN_CHANGE, EN_SETFOCUS, EVENT_SYSTEM_FOREGROUND, FindWindowW,
-    GWLP_USERDATA, GetClientRect, GetCursorPos, GetWindowRect, GetWindowThreadProcessId, HICON,
-    HMENU, ICON_BIG, ICON_SMALL, IDC_ARROW, IsDialogMessageW, IsIconic, IsWindowVisible, KillTimer,
-    LB_GETCOUNT, LB_GETCURSEL, LB_RESETCONTENT, LB_SETCURSEL, LBN_DBLCLK, LBN_SELCHANGE,
-    LBS_HASSTRINGS, LBS_NOINTEGRALHEIGHT, LBS_NOTIFY, LBS_OWNERDRAWVARIABLE, LoadCursorW,
-    MB_ICONINFORMATION, MB_ICONWARNING, MB_OK, MF_GRAYED, MF_SEPARATOR, MF_STRING, MINMAXINFO, MSG,
-    MessageBoxW, PostMessageW, PostQuitMessage, PostThreadMessageW, RegisterClassW,
-    RegisterWindowMessageW, SW_HIDE, SW_RESTORE, SW_SHOW, SendMessageW, SetForegroundWindow,
-    SetTimer, SetWindowLongPtrW, ShowWindow, TPM_NONOTIFY, TPM_RETURNCMD, TPM_RIGHTBUTTON,
-    TRACK_POPUP_MENU_FLAGS, TrackPopupMenu, TranslateMessage, WA_INACTIVE, WINDOW_EX_STYLE,
-    WINDOW_STYLE, WINEVENT_OUTOFCONTEXT, WM_ACTIVATE, WM_CLOSE, WM_COMMAND, WM_CONTEXTMENU,
-    WM_CREATE, WM_CTLCOLOREDIT, WM_CTLCOLORLISTBOX, WM_CTLCOLORSTATIC, WM_DESTROY, WM_DRAWITEM,
+    GWLP_USERDATA, GetClientRect, GetCursorPos, GetWindowRect, GetWindowThreadProcessId, HMENU,
+    IDC_ARROW, IsDialogMessageW, IsIconic, IsWindowVisible, KillTimer, LB_GETCOUNT, LB_GETCURSEL,
+    LB_RESETCONTENT, LB_SETCURSEL, LBN_DBLCLK, LBN_SELCHANGE, LBS_HASSTRINGS, LBS_NOINTEGRALHEIGHT,
+    LBS_NOTIFY, LBS_OWNERDRAWVARIABLE, LoadCursorW, MB_ICONINFORMATION, MB_ICONWARNING, MB_OK,
+    MF_GRAYED, MF_SEPARATOR, MF_STRING, MINMAXINFO, MSG, MessageBoxW, PostMessageW,
+    PostQuitMessage, PostThreadMessageW, RegisterClassW, RegisterWindowMessageW, SW_HIDE,
+    SW_RESTORE, SW_SHOW, SendMessageW, SetForegroundWindow, SetTimer, SetWindowLongPtrW,
+    ShowWindow, TPM_NONOTIFY, TPM_RETURNCMD, TPM_RIGHTBUTTON, TRACK_POPUP_MENU_FLAGS,
+    TrackPopupMenu, TranslateMessage, WA_INACTIVE, WINDOW_EX_STYLE, WINDOW_STYLE,
+    WINEVENT_OUTOFCONTEXT, WM_ACTIVATE, WM_CLOSE, WM_COMMAND, WM_CONTEXTMENU, WM_CREATE,
+    WM_CTLCOLOREDIT, WM_CTLCOLORLISTBOX, WM_CTLCOLORSTATIC, WM_DESTROY, WM_DRAWITEM,
     WM_ENTERSIZEMOVE, WM_ERASEBKGND, WM_EXITSIZEMOVE, WM_GETMINMAXINFO, WM_KEYDOWN,
     WM_LBUTTONDBLCLK, WM_LBUTTONDOWN, WM_MEASUREITEM, WM_MOVE, WM_NCCREATE, WM_NCDESTROY, WM_PAINT,
-    WM_QUIT, WM_RBUTTONUP, WM_SETFONT, WM_SETICON, WM_SETREDRAW, WM_SETTINGCHANGE, WM_SHOWWINDOW,
-    WM_SIZE, WM_SIZING, WM_THEMECHANGED, WM_TIMER, WNDCLASSW, WS_CHILD, WS_VISIBLE, WS_VSCROLL,
+    WM_QUIT, WM_RBUTTONUP, WM_SETFONT, WM_SETREDRAW, WM_SETTINGCHANGE, WM_SHOWWINDOW, WM_SIZE,
+    WM_SIZING, WM_THEMECHANGED, WM_TIMER, WNDCLASSW, WS_CHILD, WS_VISIBLE, WS_VSCROLL,
 };
 use windows::core::{PCWSTR, w};
 
-mod checkbox_tint;
+mod checkbox;
 mod constants;
 mod controls;
 mod drawing;
@@ -91,8 +91,8 @@ mod window_position;
 use constants::*;
 use controls::Controls;
 use drawing::{
-    centered_pixel_span_exact, draw_glyph_at_visual_center, draw_target_identity_line,
-    draw_text_line, leading_glyph_center_twice,
+    centered_pixel_span, draw_glyph_at_visual_center, draw_target_identity_line, draw_text_line,
+    text_optical_center_twice,
 };
 use issue_diagnostics::IssueDiagnostics;
 use language_prompt::prompt_initial_language;
@@ -128,9 +128,9 @@ use theme::{
     apply_native_control_theme, apply_window_theme, px, resolve_theme, set_active_theme,
 };
 use win32::{
-    WindowClassRegistration, add_list_item_with_buffer, button_is_hovered, copy_wide_fixed,
-    create_button, create_control, default_button_message_result, get_message, hiword,
-    load_app_icon, load_tray_icon, loword, measure_text_width, move_window, reserve_list_items,
+    AppIcons, WindowClassRegistration, add_list_item_with_buffer, button_is_hovered,
+    copy_wide_fixed, create_button, create_control, default_button_message_result, get_message,
+    hiword, load_app_icons, loword, measure_text_width, move_window, reserve_list_items,
     set_flat_button_full_height, set_text, to_wide, window_text_into, write_wide_buffer,
 };
 use window_position::{
@@ -185,7 +185,7 @@ const PROCESS_PICKER_REDRAW_TOP: i32 = PROCESS_PICKER_ROW_Y - 8;
 const GITHUB_PAGE_URL: &str = "https://github.com/ilsd7/UnfocusMute";
 const SETTINGS_ICON_SIZE: i32 = 16;
 const SETTINGS_BUTTON_TEXT_GAP: i32 = 6;
-const SETTINGS_BUTTON_TEXT_SLACK: i32 = 12;
+const SETTINGS_BUTTON_TEXT_SLACK: i32 = 3;
 const TARGET_LIST_SUBCLASS_ID: usize = 1;
 const EM_SETSEL_MESSAGE: u32 = 0x00B1;
 const LB_SETITEMHEIGHT_MESSAGE: u32 = 0x01A0;
@@ -239,8 +239,7 @@ unsafe fn run_window() -> Result<()> {
 
     let module = unsafe { GetModuleHandleW(None).context("get module handle")? };
     let instance = HINSTANCE(module.0);
-    let icon = unsafe { load_app_icon(instance) };
-    let tray_icon = unsafe { load_tray_icon(instance) };
+    let icons = unsafe { load_app_icons(instance) };
     let cursor = unsafe { LoadCursorW(None, IDC_ARROW).context("load cursor")? };
     let class_name_wide = main_window_class_name(instance_scope);
     let class_name = PCWSTR(class_name_wide.as_ptr());
@@ -277,7 +276,7 @@ unsafe fn run_window() -> Result<()> {
     let mut accepted_initial_preferences = false;
     if first_run
         && let Some(preferences) =
-            unsafe { prompt_initial_language(instance, icon, config.language, config.theme)? }
+            unsafe { prompt_initial_language(instance, icons, config.language, config.theme)? }
     {
         accepted_initial_preferences = true;
         config.language = preferences.language;
@@ -307,6 +306,7 @@ unsafe fn run_window() -> Result<()> {
     #[cfg(debug_assertions)]
     inject_preview_issue(&mut initial_issues, &mut initial_issue_diagnostics);
 
+    let icon = icons.main();
     let background = OwnedBrush::solid(active_palette().page);
     let class = WNDCLASSW {
         style: Default::default(),
@@ -337,10 +337,6 @@ unsafe fn run_window() -> Result<()> {
     } = initial_window_placement(&config);
     let title = to_wide(APP_TITLE);
     let taskbar_created_message = unsafe { RegisterWindowMessageW(w!("TaskbarCreated")) };
-    let icons = AppIcons {
-        main: icon,
-        tray: tray_icon,
-    };
     let mut app = Box::new(AppWindow::new(
         config,
         icons,
@@ -785,11 +781,6 @@ struct AppWindow {
     create_error: Option<String>,
 }
 
-struct AppIcons {
-    main: HICON,
-    tray: HICON,
-}
-
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 struct ProcessPickerWidths {
     combo: i32,
@@ -1000,20 +991,7 @@ impl AppWindow {
     unsafe fn on_create(&mut self, hwnd: HWND) -> Result<()> {
         self.hwnd = hwnd;
         apply_window_theme(hwnd);
-        unsafe {
-            SendMessageW(
-                hwnd,
-                WM_SETICON,
-                Some(WPARAM(ICON_BIG as usize)),
-                Some(LPARAM(self.icons.main.0 as isize)),
-            );
-            SendMessageW(
-                hwnd,
-                WM_SETICON,
-                Some(WPARAM(ICON_SMALL as usize)),
-                Some(LPARAM(self.icons.tray.0 as isize)),
-            );
-        }
+        self.icons.apply_to(hwnd);
 
         unsafe {
             self.create_controls()?;
@@ -1328,7 +1306,7 @@ impl AppWindow {
             );
             set_text(self.controls.add_selected_button, self.strings.add_selected);
 
-            if let Some(process_picker) = &self.process_picker {
+            if let Some(process_picker) = &mut self.process_picker {
                 process_picker.set_cue_banner(self.strings.process_search_placeholder);
             }
         }
@@ -1377,7 +1355,6 @@ impl AppWindow {
             return;
         };
         let hwnd = self.hwnd;
-        let icon = self.icons.main;
         let language = self.config.language;
         let initial = SettingsPreferences {
             language,
@@ -1388,20 +1365,17 @@ impl AppWindow {
             restore_on_exit: self.config.restore_muted_on_exit,
         };
         self.settings_window_open = true;
-        let result = unsafe {
-            prompt_settings(
-                hwnd,
-                HINSTANCE(module.0),
-                icon,
-                initial,
-                |update| match update {
-                    SettingsLiveUpdate::Language(language) => {
-                        self.apply_settings_language(language)
+        let result =
+            unsafe {
+                prompt_settings(hwnd, HINSTANCE(module.0), self.icons, initial, |update| {
+                    match update {
+                        SettingsLiveUpdate::Language(language) => {
+                            self.apply_settings_language(language)
+                        }
+                        SettingsLiveUpdate::Theme(theme) => self.apply_settings_theme(theme),
                     }
-                    SettingsLiveUpdate::Theme(theme) => self.apply_settings_theme(theme),
-                },
-            )
-        };
+                })
+            };
         self.finish_settings_window_modal();
         let Ok(Some(preferences)) = result else {
             return;
@@ -1971,6 +1945,7 @@ impl AppWindow {
                     set_edit_caret_to_end(edit, &self.process_query);
                 }
             }
+            process_picker.sync_cue_visibility();
             SendMessageW(edit, WM_SETREDRAW, Some(WPARAM(1)), None);
             let _ = RedrawWindow(Some(edit), None, None, RDW_INVALIDATE | RDW_ERASE);
             self.updating_process_picker = false;
@@ -2891,6 +2866,7 @@ impl AppWindow {
         };
         unsafe {
             window_text_into(process_picker.edit(), &mut self.display_text_buffer);
+            process_picker.sync_cue_visibility();
         }
         if !replace_text_if_changed(&mut self.process_query, &mut self.display_text_buffer) {
             self.update_action_buttons();
@@ -2995,6 +2971,7 @@ impl AppWindow {
         self.updating_process_picker = true;
         unsafe {
             set_text(edit, &display_name);
+            process_picker.sync_cue_visibility();
             set_edit_caret_to_end(edit, &display_name);
             let _ = SetFocus(Some(edit));
             process_picker.hide_popup();
@@ -3025,6 +3002,7 @@ impl AppWindow {
                 process_picker.clear_selection();
                 process_picker.hide_popup();
                 set_text(process_picker.edit(), "");
+                process_picker.sync_cue_visibility();
                 self.updating_process_picker = false;
             }
         }
@@ -3094,7 +3072,7 @@ impl AppWindow {
             prompt_target_note(
                 self.hwnd,
                 HINSTANCE(module.0),
-                self.icons.main,
+                self.icons.main(),
                 self.config.language,
                 &display_name,
                 current_note,
@@ -3521,7 +3499,7 @@ impl AppWindow {
             uID: TRAY_ID,
             uFlags: NIF_MESSAGE | NIF_ICON | NIF_TIP,
             uCallbackMessage: WM_TRAY_ICON,
-            hIcon: self.icons.tray,
+            hIcon: self.icons.small(),
             ..Default::default()
         };
         copy_wide_fixed(tip, &mut data.szTip);
@@ -3605,7 +3583,13 @@ impl AppWindow {
         let child = HWND(lparam.0 as *mut c_void);
         unsafe {
             match message {
-                WM_CTLCOLOREDIT | WM_CTLCOLORLISTBOX => {
+                WM_CTLCOLOREDIT => {
+                    let _ = SetBkMode(hdc, TRANSPARENT);
+                    let _ = SetTextColor(hdc, self.theme.palette.text);
+                    let _ = SetBkColor(hdc, self.theme.palette.input);
+                    LRESULT(self.theme.input_brush.handle().0 as isize)
+                }
+                WM_CTLCOLORLISTBOX => {
                     let _ = SetBkMode(hdc, TRANSPARENT);
                     let _ = SetTextColor(hdc, self.theme.palette.text);
                     let _ = SetBkColor(hdc, self.theme.palette.panel);
@@ -3709,8 +3693,8 @@ impl AppWindow {
         self.draw_status_action_icon(
             draw.hDC,
             icon_rect,
-            status,
-            text_rect,
+            text_optical_center_twice(draw.hDC, self.theme.font.handle(), text_rect)
+                .unwrap_or(text_rect.top + text_rect.bottom - 1),
             if hovered {
                 self.theme.palette.text
             } else {
@@ -3773,20 +3757,11 @@ impl AppWindow {
         &self,
         hdc: HDC,
         rect: RECT,
-        status_text: &str,
-        status_text_rect: RECT,
+        visual_center_twice: i32,
         color: COLORREF,
     ) {
         let center_x = (rect.left + rect.right) / 2;
-        let visual_center_twice = leading_glyph_center_twice(
-            hdc,
-            self.theme.font.handle(),
-            status_text,
-            status_text_rect,
-        )
-        .unwrap_or(rect.top + rect.bottom - 1);
-        let (shape_top, shape_bottom) =
-            centered_pixel_span_exact(visual_center_twice, px(8).max(6));
+        let (shape_top, shape_bottom) = centered_pixel_span(visual_center_twice, px(8).max(6));
         let shape_bottom_inclusive = shape_bottom - 1;
         let shape_center_y = (shape_top + shape_bottom_inclusive) / 2;
         unsafe {
@@ -3843,7 +3818,9 @@ impl AppWindow {
 
         let draw = unsafe { &*(lparam.0 as *const DRAWITEMSTRUCT) };
         if let Some(process_picker) = &self.process_picker
-            && (process_picker.draw_frame(draw) || process_picker.draw_toggle(draw))
+            && (process_picker.draw_frame(draw)
+                || process_picker.draw_cue(draw)
+                || process_picker.draw_toggle(draw))
         {
             return true;
         }
@@ -3885,17 +3862,24 @@ impl AppWindow {
             .copied()
             .unwrap_or_else(|| target_has_managed_mute(target, &self.muted_by_app));
         let status_text = target_status_text(target, target_muted, self.strings);
-        let primary_color = if target.enabled {
+        let identity_color = if !target.enabled {
+            self.theme.palette.status_paused
+        } else if note.is_empty() {
+            self.theme.palette.text
+        } else {
+            self.theme.palette.subtle_text
+        };
+        let note_color = if target.enabled {
             self.theme.palette.text
         } else {
             self.theme.palette.disabled_text
         };
         let status_color = if !target.enabled {
-            self.theme.palette.disabled_text
+            self.theme.palette.status_paused
         } else if target_muted {
-            self.theme.palette.warning
+            self.theme.palette.status_muted
         } else {
-            self.theme.palette.accent
+            self.theme.palette.status_active
         };
         let selected = draw.itemState.0 & ODS_SELECTED.0 != 0;
         let background = if selected {
@@ -3927,7 +3911,7 @@ impl AppWindow {
                     left: content_left,
                     ..primary_text_rect
                 },
-                primary_color,
+                identity_color,
                 DT_LEFT | DT_SINGLELINE | DT_VCENTER | DT_END_ELLIPSIS | DT_NOPREFIX,
             );
         } else {
@@ -3939,7 +3923,7 @@ impl AppWindow {
                     left: content_left,
                     ..primary_text_rect
                 },
-                primary_color,
+                note_color,
                 DT_LEFT | DT_SINGLELINE | DT_VCENTER | DT_END_ELLIPSIS | DT_NOPREFIX,
             );
 
@@ -3951,7 +3935,7 @@ impl AppWindow {
                     left: content_left,
                     ..secondary_text_rect
                 },
-                self.theme.palette.subtle_text,
+                identity_color,
                 DT_LEFT | DT_SINGLELINE | DT_VCENTER | DT_END_ELLIPSIS | DT_NOPREFIX,
             );
         }
@@ -4012,22 +3996,17 @@ impl AppWindow {
             bottom: draw.rcItem.bottom,
         };
         let icon = SETTINGS_ICON_GLYPH.chars().next().unwrap_or('\u{e713}');
-        let icon_aligned = leading_glyph_center_twice(
-            draw.hDC,
-            self.theme.font.handle(),
-            self.strings.settings_title,
-            text_rect,
-        )
-        .is_some_and(|center| {
-            draw_glyph_at_visual_center(
-                draw.hDC,
-                self.theme.icon_font.handle(),
-                icon,
-                icon_rect,
-                center,
-                content_color,
-            )
-        });
+        let icon_aligned = text_optical_center_twice(draw.hDC, self.theme.font.handle(), text_rect)
+            .is_some_and(|center| {
+                draw_glyph_at_visual_center(
+                    draw.hDC,
+                    self.theme.icon_font.handle(),
+                    icon,
+                    icon_rect,
+                    center,
+                    content_color,
+                )
+            });
         if !icon_aligned {
             draw_text_line(
                 draw.hDC,

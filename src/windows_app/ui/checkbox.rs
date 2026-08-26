@@ -1,33 +1,48 @@
-use super::theme::{ResolvedTheme, active_palette, active_theme};
+use super::drawing::{centered_pixel_span, draw_wide_text_line_at_visual_center};
+use super::theme::{ResolvedTheme, active_palette, active_theme, px, ui_dpi};
 use super::win32::is_checked;
 use std::ffi::c_void;
 use std::mem::size_of;
-use windows::Win32::Foundation::{COLORREF, HWND, LPARAM, LRESULT};
+use windows::Win32::Foundation::{COLORREF, HWND, LPARAM, LRESULT, SIZE};
 use windows::Win32::Graphics::Gdi::{
-    BI_RGB, BITMAPINFO, BitBlt, CreateCompatibleDC, CreateDIBSection, DIB_RGB_COLORS, DeleteDC,
-    DeleteObject, HBITMAP, HDC, HGDIOBJ, SRCCOPY, SelectObject,
+    BI_RGB, BITMAPINFO, BitBlt, CreateCompatibleDC, CreateDIBSection, DIB_RGB_COLORS,
+    DT_END_ELLIPSIS, DT_LEFT, DT_NOPREFIX, DT_SINGLELINE, DT_VCENTER, DeleteDC, DeleteObject,
+    DrawFocusRect, FillRect, GetTextExtentPoint32W, HBITMAP, HDC, HGDIOBJ, SRCCOPY, SelectObject,
 };
 use windows::Win32::UI::Accessibility::{HCF_HIGHCONTRASTON, HIGHCONTRASTW};
 use windows::Win32::UI::Controls::{
-    BP_CHECKBOX, CBS_CHECKEDNORMAL, CDDS_POSTPAINT, CDDS_PREPAINT, CDRF_DODEFAULT,
-    CDRF_NOTIFYPOSTPAINT, CloseThemeData, GetThemePartSize, HTHEME, NM_CUSTOMDRAW, NMCUSTOMDRAW,
-    NMHDR, OpenThemeData, TS_DRAW,
+    BP_CHECKBOX, CBS_CHECKEDDISABLED, CBS_CHECKEDHOT, CBS_CHECKEDNORMAL, CBS_CHECKEDPRESSED,
+    CBS_UNCHECKEDDISABLED, CBS_UNCHECKEDHOT, CBS_UNCHECKEDNORMAL, CBS_UNCHECKEDPRESSED,
+    CDDS_PREPAINT, CDIS_FOCUS, CDIS_HOT, CDIS_SELECTED, CDRF_DODEFAULT, CDRF_SKIPDEFAULT,
+    CloseThemeData, DrawThemeBackground, GetThemePartSize, HTHEME, NM_CUSTOMDRAW, NMCUSTOMDRAW,
+    NMHDR, TS_DRAW,
 };
 use windows::Win32::UI::Input::KeyboardAndMouse::IsWindowEnabled;
 use windows::Win32::UI::WindowsAndMessaging::{
-    BS_AUTOCHECKBOX, BS_TYPEMASK, GWL_STYLE, GetWindowLongPtrW, SPI_GETHIGHCONTRAST,
-    SYSTEM_PARAMETERS_INFO_UPDATE_FLAGS, SystemParametersInfoW,
+    BS_AUTOCHECKBOX, BS_TYPEMASK, GWL_STYLE, GetWindowLongPtrW, GetWindowTextW,
+    SPI_GETHIGHCONTRAST, SYSTEM_PARAMETERS_INFO_UPDATE_FLAGS, SystemParametersInfoW,
 };
-use windows::core::w;
+use windows::core::PCWSTR;
+
+#[link(name = "uxtheme")]
+unsafe extern "system" {
+    #[link_name = "OpenThemeDataForDpi"]
+    fn open_theme_data_for_dpi(hwnd: HWND, class_list: PCWSTR, dpi: u32) -> HTHEME;
+}
 
 const MIN_ACCENT_CHROMA: u8 = 16;
 const MAX_ACCENT_HUE_DISTANCE: i32 = 144;
 
-/// Lets Windows render the complete checkbox, then changes only the native
-/// accent pixels. This preserves the system check mark and every interaction
-/// state while avoiding the system's overly bright dark-mode accent.
+/// Keeps the native checkbox's input, keyboard, focus, and accessibility
+/// behavior while rendering its glyph at the app's effective UI DPI.
+///
+/// A regular `BS_AUTOCHECKBOX` only follows the system DPI, so its glyph stays
+/// small when the user enlarges the app window. Drawing the same themed part
+/// through `OpenThemeDataForDpi` keeps the native shape and states without
+/// mixing two independent scaling models.
 pub(super) unsafe fn custom_draw_result(
     lparam: LPARAM,
+    font: HGDIOBJ,
     host_background: COLORREF,
 ) -> Option<LRESULT> {
     if lparam.0 == 0 {
@@ -39,27 +54,155 @@ pub(super) unsafe fn custom_draw_result(
     }
     let draw = unsafe { &*(lparam.0 as *const NMCUSTOMDRAW) };
 
-    let tint = active_theme() == ResolvedTheme::Dark
-        && unsafe { IsWindowEnabled(draw.hdr.hwndFrom).as_bool() }
-        && unsafe { is_checked(draw.hdr.hwndFrom) }
-        && !unsafe { high_contrast_is_enabled_or_unknown() };
-
     match draw.dwDrawStage {
-        CDDS_PREPAINT if tint => Some(LRESULT(CDRF_NOTIFYPOSTPAINT as isize)),
-        CDDS_POSTPAINT if tint => {
-            let _ = unsafe {
-                tint_native_checkbox(
-                    draw.hdr.hwndFrom,
-                    draw.hdc,
-                    draw.rc,
-                    host_background,
-                    active_palette().checkbox_checked,
-                )
-            };
-            Some(LRESULT(CDRF_DODEFAULT as isize))
+        CDDS_PREPAINT if !unsafe { high_contrast_is_enabled_or_unknown() } => {
+            if unsafe { draw_scaled_checkbox(draw, font, host_background) } {
+                Some(LRESULT(CDRF_SKIPDEFAULT as isize))
+            } else {
+                Some(LRESULT(CDRF_DODEFAULT as isize))
+            }
         }
         _ => Some(LRESULT(CDRF_DODEFAULT as isize)),
     }
+}
+
+unsafe fn draw_scaled_checkbox(
+    draw: &NMCUSTOMDRAW,
+    font: HGDIOBJ,
+    host_background: COLORREF,
+) -> bool {
+    if draw.hdc.0.is_null() {
+        return false;
+    }
+
+    let hwnd = draw.hdr.hwndFrom;
+    let enabled = unsafe { IsWindowEnabled(hwnd).as_bool() };
+    let checked = unsafe { is_checked(hwnd) };
+    let hot = draw.uItemState.contains(CDIS_HOT);
+    let pressed = draw.uItemState.contains(CDIS_SELECTED);
+    let focused = draw.uItemState.contains(CDIS_FOCUS);
+    let state = match (checked, enabled, pressed, hot) {
+        (false, false, _, _) => CBS_UNCHECKEDDISABLED.0,
+        (false, true, true, _) => CBS_UNCHECKEDPRESSED.0,
+        (false, true, false, true) => CBS_UNCHECKEDHOT.0,
+        (false, true, false, false) => CBS_UNCHECKEDNORMAL.0,
+        (true, false, _, _) => CBS_CHECKEDDISABLED.0,
+        (true, true, true, _) => CBS_CHECKEDPRESSED.0,
+        (true, true, false, true) => CBS_CHECKEDHOT.0,
+        (true, true, false, false) => CBS_CHECKEDNORMAL.0,
+    };
+
+    let theme = unsafe { open_theme_data_for_dpi(hwnd, windows::core::w!("Button"), ui_dpi()) };
+    if theme.is_invalid() {
+        return false;
+    }
+    let theme = OwnedTheme(theme);
+    let Ok(size) = (unsafe {
+        GetThemePartSize(
+            theme.handle(),
+            Some(draw.hdc),
+            BP_CHECKBOX.0,
+            state,
+            None,
+            TS_DRAW,
+        )
+    }) else {
+        return false;
+    };
+
+    let control_width = draw.rc.right.saturating_sub(draw.rc.left);
+    let control_height = draw.rc.bottom.saturating_sub(draw.rc.top);
+    if control_width <= 0 || control_height <= 0 {
+        return false;
+    }
+    let glyph_width = size.cx.clamp(1, control_width);
+    let glyph_height = size.cy.clamp(1, control_height);
+    let visual_center_twice = draw.rc.top + draw.rc.bottom - 1;
+    let (glyph_top, glyph_bottom) = centered_pixel_span(visual_center_twice, glyph_height);
+    let glyph_rect = windows::Win32::Foundation::RECT {
+        left: draw.rc.left,
+        top: glyph_top,
+        right: draw.rc.left + glyph_width,
+        bottom: glyph_bottom,
+    };
+
+    unsafe {
+        let background = windows::Win32::Graphics::Gdi::CreateSolidBrush(host_background);
+        let _ = FillRect(draw.hdc, &draw.rc, background);
+        let _ = DeleteObject(background.into());
+    }
+    if unsafe {
+        DrawThemeBackground(
+            theme.handle(),
+            draw.hdc,
+            BP_CHECKBOX.0,
+            state,
+            &glyph_rect,
+            None,
+        )
+    }
+    .is_err()
+    {
+        return false;
+    }
+
+    let palette = active_palette();
+    if active_theme() == ResolvedTheme::Dark && enabled && checked {
+        let _ = unsafe {
+            tint_checkbox_rect(
+                draw.hdc,
+                glyph_rect,
+                host_background,
+                palette.checkbox_checked,
+            )
+        };
+    }
+
+    let text_rect = windows::Win32::Foundation::RECT {
+        left: glyph_rect.right + px(7),
+        top: draw.rc.top,
+        right: draw.rc.right,
+        bottom: draw.rc.bottom,
+    };
+    let mut text = [0u16; 256];
+    let text_len = unsafe { GetWindowTextW(hwnd, &mut text) }.max(0) as usize;
+    draw_wide_text_line_at_visual_center(
+        draw.hdc,
+        font,
+        &mut text[..text_len],
+        text_rect,
+        visual_center_twice,
+        if enabled {
+            palette.text
+        } else {
+            palette.disabled_text
+        },
+        DT_LEFT | DT_SINGLELINE | DT_VCENTER | DT_END_ELLIPSIS | DT_NOPREFIX,
+    );
+
+    if focused && enabled {
+        let mut text_size = SIZE::default();
+        unsafe {
+            let previous_font = SelectObject(draw.hdc, font);
+            let measured =
+                GetTextExtentPoint32W(draw.hdc, &text[..text_len], &mut text_size).as_bool();
+            if !previous_font.0.is_null() {
+                let _ = SelectObject(draw.hdc, previous_font);
+            }
+            if measured {
+                let (top, bottom) =
+                    centered_pixel_span(visual_center_twice, text_size.cy.saturating_add(px(2)));
+                let focus_rect = windows::Win32::Foundation::RECT {
+                    left: text_rect.left - px(1),
+                    top,
+                    right: (text_rect.left + text_size.cx + px(1)).min(text_rect.right),
+                    bottom,
+                };
+                let _ = DrawFocusRect(draw.hdc, &focus_rect);
+            }
+        }
+    }
+    true
 }
 
 unsafe fn is_auto_checkbox(hwnd: HWND) -> bool {
@@ -84,23 +227,17 @@ unsafe fn high_contrast_is_enabled_or_unknown() -> bool {
         || high_contrast.dwFlags.contains(HCF_HIGHCONTRASTON)
 }
 
-unsafe fn tint_native_checkbox(
-    hwnd: HWND,
+unsafe fn tint_checkbox_rect(
     destination: HDC,
-    control_rect: windows::Win32::Foundation::RECT,
+    glyph_rect: windows::Win32::Foundation::RECT,
     host_background: COLORREF,
     target: COLORREF,
 ) -> bool {
     if destination.0.is_null() {
         return false;
     }
-    let Some(glyph_width) = (unsafe { native_checkbox_width(hwnd, destination) }) else {
-        return false;
-    };
-    let width = glyph_width
-        .min(control_rect.right.saturating_sub(control_rect.left))
-        .max(1);
-    let height = control_rect.bottom.saturating_sub(control_rect.top).max(1);
+    let width = glyph_rect.right.saturating_sub(glyph_rect.left).max(1);
+    let height = glyph_rect.bottom.saturating_sub(glyph_rect.top).max(1);
     let Some(pixel_count) = (width as usize).checked_mul(height as usize) else {
         return false;
     };
@@ -132,8 +269,8 @@ unsafe fn tint_native_checkbox(
             width,
             height,
             Some(destination),
-            control_rect.left,
-            control_rect.top,
+            glyph_rect.left,
+            glyph_rect.top,
             SRCCOPY,
         )
     }
@@ -150,8 +287,8 @@ unsafe fn tint_native_checkbox(
     unsafe {
         BitBlt(
             destination,
-            control_rect.left,
-            control_rect.top,
+            glyph_rect.left,
+            glyph_rect.top,
             width,
             height,
             Some(memory_dc.handle()),
@@ -161,26 +298,6 @@ unsafe fn tint_native_checkbox(
         )
     }
     .is_ok()
-}
-
-unsafe fn native_checkbox_width(hwnd: HWND, hdc: HDC) -> Option<i32> {
-    let theme = unsafe { OpenThemeData(Some(hwnd), w!("Button")) };
-    if theme.is_invalid() {
-        return None;
-    }
-    let theme = OwnedTheme(theme);
-    unsafe {
-        GetThemePartSize(
-            theme.handle(),
-            Some(hdc),
-            BP_CHECKBOX.0,
-            CBS_CHECKEDNORMAL.0,
-            None,
-            TS_DRAW,
-        )
-    }
-    .ok()
-    .map(|size| size.cx.max(1))
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]

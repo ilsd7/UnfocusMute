@@ -9,11 +9,11 @@ use windows::Win32::Graphics::Gdi::{
 const PID_DISPLAY_DECORATION_UTF16_UNITS: usize = " (PID )".len();
 const DRAW_TEXT_STACK_BUFFER_LEN: usize = 256;
 
-/// Draws an icon-font glyph on the visible center of a neighboring label.
+/// Draws an icon-font glyph on a caller-provided visual center.
 ///
 /// `DrawTextW(DT_VCENTER)` centers a font's line box, not its visible pixels.
-/// Measuring both glyphs keeps icons and localized labels on one visual axis
-/// without language-specific or DPI-specific pixel offsets.
+/// Measuring the glyph keeps its visible pixels on a stable UI axis without
+/// font-specific or DPI-specific pixel offsets.
 pub(super) fn draw_glyph_at_visual_center(
     hdc: HDC,
     glyph_font: HGDIOBJ,
@@ -24,16 +24,15 @@ pub(super) fn draw_glyph_at_visual_center(
 ) -> bool {
     unsafe {
         let previous_font = SelectObject(hdc, glyph_font);
-        let Some(metrics) = selected_glyph_metrics(hdc, glyph) else {
+        let Some(glyph_metrics) = selected_glyph_vertical_metrics(hdc, glyph) else {
             if !previous_font.0.is_null() {
                 let _ = SelectObject(hdc, previous_font);
             }
             return false;
         };
-
         let baseline_twice =
-            target_center_twice + 2 * metrics.gmptGlyphOrigin.y - metrics.gmBlackBoxY as i32 + 1;
-        let baseline = baseline_twice.div_euclid(2);
+            target_center_twice + 2 * glyph_metrics.origin_y - glyph_metrics.black_box_height + 1;
+        let baseline = round_half_down(baseline_twice);
         let previous_alignment = SetTextAlign(hdc, TA_CENTER | TA_BASELINE);
         if previous_alignment == u32::MAX {
             if !previous_font.0.is_null() {
@@ -59,64 +58,116 @@ pub(super) fn draw_glyph_at_visual_center(
     }
 }
 
-/// Returns twice the visible center of a label's leading glyph when drawn
-/// with `DT_SINGLELINE | DT_VCENTER` in `rect`.
+/// Returns the optical center of the UI font's stable capital-height reference
+/// on the same paint DC used by `DrawTextW`.
 ///
-/// Using the complete label would let a later descender (for example, the
-/// `g` in "Monitoring") pull an adjacent icon below the label's main body.
-pub(super) fn leading_glyph_center_twice(
+/// The axis deliberately does not depend on the current label. Descenders in a
+/// word such as "Monitoring" must not move a neighboring icon.
+pub(super) fn text_optical_center_twice(hdc: HDC, font: HGDIOBJ, rect: RECT) -> Option<i32> {
+    unsafe {
+        let previous_font = SelectObject(hdc, font);
+        let mut text_metrics = TEXTMETRICW::default();
+        let center = GetTextMetricsW(hdc, &mut text_metrics)
+            .as_bool()
+            .then(|| {
+                let glyph_metrics = selected_glyph_vertical_metrics(hdc, 'H')?;
+                let line_top = rect.top
+                    + (rect.bottom - rect.top - text_metrics.tmHeight)
+                        .max(0)
+                        .div_euclid(2);
+                let baseline = line_top + text_metrics.tmAscent;
+                let glyph_top = baseline - glyph_metrics.origin_y;
+                Some(2 * glyph_top + glyph_metrics.black_box_height - 1)
+            })
+            .flatten();
+        if !previous_font.0.is_null() {
+            let _ = SelectObject(hdc, previous_font);
+        }
+        center
+    }
+}
+
+/// Draws a single text line with the font's stable visible axis on an exact
+/// device-pixel center.
+///
+/// `DT_VCENTER` centers the font's full line box, whose extra leading and pixel
+/// rounding can make button labels appear to move as the UI zoom changes. The
+/// shifted draw rectangle keeps `DrawTextW` (and therefore complex-script
+/// shaping and ellipsis behavior) while aligning the same capital-height axis
+/// used by neighboring icon glyphs.
+pub(super) fn draw_text_line_at_visual_center(
     hdc: HDC,
     font: HGDIOBJ,
     text: &str,
     rect: RECT,
-) -> Option<i32> {
-    unsafe {
-        let previous_font = SelectObject(hdc, font);
-        let mut text_metrics = TEXTMETRICW::default();
-        if !GetTextMetricsW(hdc, &mut text_metrics).as_bool() {
-            if !previous_font.0.is_null() {
-                let _ = SelectObject(hdc, previous_font);
-            }
-            return None;
-        }
-
-        let line_top = rect.top
-            + (rect.bottom - rect.top - text_metrics.tmHeight)
-                .max(0)
-                .div_euclid(2);
-        let baseline = line_top + text_metrics.tmAscent;
-        let visual_center = text
-            .chars()
-            .filter(|glyph| !glyph.is_whitespace())
-            .find_map(|glyph| selected_glyph_metrics(hdc, glyph))
-            .filter(|metrics| metrics.gmBlackBoxY > 0)
-            .map(|metrics| {
-                let top = baseline - metrics.gmptGlyphOrigin.y;
-                let bottom = top + metrics.gmBlackBoxY as i32 - 1;
-                top + bottom
-            });
-
-        if !previous_font.0.is_null() {
-            let _ = SelectObject(hdc, previous_font);
-        }
-        visual_center
+    target_center_twice: i32,
+    color: COLORREF,
+    format: DRAW_TEXT_FORMAT,
+) {
+    if text.is_empty() {
+        return;
     }
+
+    let mut stack = [0u16; DRAW_TEXT_STACK_BUFFER_LEN];
+    if let Some(wide) = encode_draw_text_stack(text, &mut stack) {
+        draw_wide_text_line_at_visual_center(
+            hdc,
+            font,
+            wide,
+            rect,
+            target_center_twice,
+            color,
+            format,
+        );
+        return;
+    }
+
+    let mut wide = text.encode_utf16().collect::<Vec<_>>();
+    draw_wide_text_line_at_visual_center(
+        hdc,
+        font,
+        &mut wide,
+        rect,
+        target_center_twice,
+        color,
+        format,
+    );
 }
 
-/// Produces an exclusive-bottom pixel span with an exact doubled center.
+pub(super) fn draw_wide_text_line_at_visual_center(
+    hdc: HDC,
+    font: HGDIOBJ,
+    wide: &mut [u16],
+    mut rect: RECT,
+    target_center_twice: i32,
+    color: COLORREF,
+    format: DRAW_TEXT_FORMAT,
+) {
+    if let Some(current_center_twice) = text_optical_center_twice(hdc, font, rect) {
+        let offset = round_half_down(target_center_twice - current_center_twice);
+        rect.top = rect.top.saturating_add(offset);
+        rect.bottom = rect.bottom.saturating_add(offset);
+    }
+    draw_wide_text_line(hdc, font, wide, rect, color, format);
+}
+
+/// Produces a fixed-height, exclusive-bottom pixel span around a doubled center.
 ///
-/// Integer pixel spans can only express one center parity for a given height.
-/// Grow the preferred height by at most one pixel when its parity differs,
-/// rather than biasing the result half a pixel upward or downward.
-pub(super) fn centered_pixel_span_exact(center_twice: i32, preferred_height: i32) -> (i32, i32) {
-    let preferred_height = preferred_height.max(1);
-    let parity_differs = (center_twice - (preferred_height - 1)).rem_euclid(2) != 0;
-    let height = preferred_height + i32::from(parity_differs);
-    let top = (center_twice - (height - 1)).div_euclid(2);
+/// Half-pixel ties choose the lower physical pixel in GDI's downward Y axis.
+/// This keeps the icon size stable as the window scale changes.
+pub(super) fn centered_pixel_span(center_twice: i32, height: i32) -> (i32, i32) {
+    let height = height.max(1);
+    let top = round_half_down(center_twice - (height - 1));
     (top, top + height)
 }
 
-unsafe fn selected_glyph_metrics(hdc: HDC, glyph: char) -> Option<GLYPHMETRICS> {
+#[derive(Clone, Copy)]
+struct GlyphVerticalMetrics {
+    origin_y: i32,
+    black_box_height: i32,
+}
+
+unsafe fn selected_glyph_vertical_metrics(hdc: HDC, glyph: char) -> Option<GlyphVerticalMetrics> {
     if glyph as u32 > u16::MAX as u32 {
         return None;
     }
@@ -138,7 +189,14 @@ unsafe fn selected_glyph_metrics(hdc: HDC, glyph: char) -> Option<GLYPHMETRICS> 
             &identity,
         )
     };
-    (result != u32::MAX).then_some(metrics)
+    (result != u32::MAX && metrics.gmBlackBoxY > 0).then_some(GlyphVerticalMetrics {
+        origin_y: metrics.gmptGlyphOrigin.y,
+        black_box_height: metrics.gmBlackBoxY as i32,
+    })
+}
+
+fn round_half_down(value_twice: i32) -> i32 {
+    (value_twice + 1).div_euclid(2)
 }
 
 pub(super) fn draw_text_line(
@@ -302,16 +360,16 @@ fn draw_wide_text_line(
 
 #[cfg(test)]
 mod tests {
-    use super::centered_pixel_span_exact;
+    use super::centered_pixel_span;
 
     fn span_center_twice(span: (i32, i32)) -> i32 {
         span.0 + span.1 - 1
     }
 
     #[test]
-    fn centered_pixel_span_keeps_preferred_height_when_parity_matches() {
-        let even_height = centered_pixel_span_exact(115, 8);
-        let odd_height = centered_pixel_span_exact(114, 9);
+    fn centered_pixel_span_keeps_requested_height() {
+        let even_height = centered_pixel_span(115, 8);
+        let odd_height = centered_pixel_span(114, 9);
 
         assert_eq!(even_height, (54, 62));
         assert_eq!(odd_height, (53, 62));
@@ -320,14 +378,14 @@ mod tests {
     }
 
     #[test]
-    fn centered_pixel_span_grows_once_when_parity_differs() {
+    fn centered_pixel_span_rounds_half_pixel_ties_down() {
         for center_twice in 108..=117 {
-            for preferred_height in 6..=11 {
-                let span = centered_pixel_span_exact(center_twice, preferred_height);
-                let actual_height = span.1 - span.0;
+            for height in 6..=11 {
+                let span = centered_pixel_span(center_twice, height);
+                let center_difference = span_center_twice(span) - center_twice;
 
-                assert_eq!(span_center_twice(span), center_twice);
-                assert!(matches!(actual_height - preferred_height, 0 | 1));
+                assert_eq!(span.1 - span.0, height);
+                assert!(matches!(center_difference, 0 | 1));
             }
         }
     }
