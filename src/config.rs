@@ -18,7 +18,7 @@ use windows::Win32::Storage::FileSystem::{
 #[cfg(windows)]
 use windows::core::PCWSTR;
 
-const CONFIG_VERSION: u32 = 6;
+const CONFIG_VERSION: u32 = 7;
 const LEGACY_DEFAULT_POLLING_INTERVAL_MS: u64 = 350;
 const EVENT_FALLBACK_DEFAULT_POLLING_INTERVAL_MS: u64 = 5_000;
 const DEFAULT_POLLING_INTERVAL_MS: u64 = 3_000;
@@ -122,11 +122,21 @@ pub struct WindowSize {
     pub height: i32,
 }
 
+#[derive(Clone, Copy, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum ThemePreference {
+    #[default]
+    System,
+    Light,
+    Dark,
+}
+
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(default)]
 pub struct AppConfig {
     pub version: u32,
     pub language: Language,
+    pub theme: ThemePreference,
     pub window_position: Option<WindowPosition>,
     pub window_size: Option<WindowSize>,
     pub polling_interval_ms: u64,
@@ -169,6 +179,7 @@ impl Default for AppConfig {
         Self {
             version: CONFIG_VERSION,
             language: Language::default(),
+            theme: ThemePreference::default(),
             window_position: None,
             window_size: None,
             polling_interval_ms: DEFAULT_POLLING_INTERVAL_MS,
@@ -440,6 +451,9 @@ pub(crate) fn merge_pending_config_changes(
     }
     if local.language != base.language {
         disk.language = local.language;
+    }
+    if local.theme != base.theme {
+        disk.theme = local.theme;
     }
     if local.window_position != base.window_position {
         disk.window_position = local.window_position;
@@ -2069,6 +2083,26 @@ mod tests {
         assert!(config.start_minimized);
         assert!(config.hide_to_tray_on_close);
         assert!(config.restore_muted_on_exit);
+    }
+
+    #[test]
+    fn theme_defaults_to_system_for_new_and_legacy_configs() {
+        assert_eq!(AppConfig::default().theme, ThemePreference::System);
+
+        let legacy: AppConfig = serde_json::from_str(r#"{"version":6}"#).unwrap();
+        assert_eq!(legacy.theme, ThemePreference::System);
+    }
+
+    #[test]
+    fn theme_preference_uses_stable_config_names() {
+        assert_eq!(
+            serde_json::to_string(&ThemePreference::System).unwrap(),
+            r#""system""#
+        );
+        assert_eq!(
+            serde_json::to_string(&ThemePreference::Dark).unwrap(),
+            r#""dark""#
+        );
     }
 
     #[test]

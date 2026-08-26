@@ -1,8 +1,5 @@
-use super::constants::{
-    DISABLED_TEXT_COLOR, PANEL_BORDER_COLOR, PANEL_COLOR, SELECTED_ROW_COLOR, SS_OWNERDRAW_STYLE,
-    SUBTLE_TEXT_COLOR, WM_PROCESS_SEARCH_RESULT_CHOSEN,
-};
-use super::theme::px;
+use super::constants::{SS_OWNERDRAW_STYLE, WM_PROCESS_SEARCH_RESULT_CHOSEN};
+use super::theme::{active_palette, apply_native_control_theme, px};
 use super::win32;
 use crate::windows_app::error::{Context, Result};
 use windows::Win32::Foundation::{HINSTANCE, HWND, LPARAM, LRESULT, POINT, RECT, WPARAM};
@@ -187,6 +184,8 @@ impl SearchPicker {
             result_row_height: px(24),
             wide_text_buffer: Vec::new(),
         };
+        apply_native_control_theme(edit);
+        apply_native_control_theme(results);
         unsafe {
             picker.set_font(font);
             let _ = picker.layout(x, y, width);
@@ -196,6 +195,11 @@ impl SearchPicker {
 
     pub(super) fn edit(&self) -> HWND {
         self.handles.edit
+    }
+
+    pub(super) fn apply_native_theme(&self) {
+        apply_native_control_theme(self.handles.edit);
+        apply_native_control_theme(self.handles.results);
     }
 
     pub(super) fn is_results_window(&self, hwnd: HWND) -> bool {
@@ -488,6 +492,7 @@ impl SearchPicker {
             return false;
         }
 
+        let palette = active_palette();
         unsafe {
             let _ = win32::draw_rounded_input_frame(draw, 6);
 
@@ -499,7 +504,7 @@ impl SearchPicker {
                 right: separator_x.saturating_add(separator_width),
                 bottom: draw.rcItem.bottom.saturating_sub(px(6)),
             };
-            let separator_brush = CreateSolidBrush(PANEL_BORDER_COLOR);
+            let separator_brush = CreateSolidBrush(palette.border);
             let _ = FillRect(draw.hDC, &separator, separator_brush);
             let _ = DeleteObject(separator_brush.into());
         }
@@ -514,17 +519,18 @@ impl SearchPicker {
         let disabled = draw.itemState.0 & ODS_DISABLED.0 != 0;
         let pressed = draw.itemState.0 & ODS_SELECTED.0 != 0;
         let hovered = unsafe { win32::button_is_hovered(draw.hwndItem) };
+        let palette = active_palette();
         let background = if pressed {
-            PANEL_BORDER_COLOR
+            palette.button_pressed
         } else if hovered {
-            SELECTED_ROW_COLOR
+            palette.button_hover
         } else {
-            PANEL_COLOR
+            palette.panel
         };
         let arrow_color = if disabled {
-            DISABLED_TEXT_COLOR
+            palette.disabled_text
         } else {
-            SUBTLE_TEXT_COLOR
+            palette.subtle_text
         };
 
         unsafe {

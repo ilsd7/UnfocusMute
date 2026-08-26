@@ -1,7 +1,9 @@
 use super::constants::SS_OWNERDRAW_STYLE;
+use super::theme::{ThemePalette, apply_native_control_theme};
 use super::win32::{
-    add_combo_item_with_buffer, create_control, install_hit_test_transparent_subclass,
-    place_control_on_top, redraw_control_now, reserve_combo_items, storage_bytes_hint,
+    add_combo_item_with_buffer, center_control_vertically, control_rect_in_parent, create_control,
+    install_hit_test_transparent_subclass, place_control_on_top, redraw_control_now,
+    reserve_combo_items, storage_bytes_hint,
 };
 use crate::i18n::Language;
 use crate::windows_app::error::Result;
@@ -9,8 +11,9 @@ use windows::Win32::Foundation::{HINSTANCE, HWND, LPARAM, WPARAM};
 use windows::Win32::Graphics::Gdi::HGDIOBJ;
 use windows::Win32::UI::Controls::{CB_SETMINVISIBLE, DRAWITEMSTRUCT};
 use windows::Win32::UI::WindowsAndMessaging::{
-    CB_GETCURSEL, CB_SETCURSEL, CBS_DROPDOWNLIST, SendMessageW, WINDOW_EX_STYLE, WINDOW_STYLE,
-    WM_SETFONT, WS_CHILD, WS_CLIPSIBLINGS, WS_EX_CLIENTEDGE, WS_TABSTOP, WS_VISIBLE,
+    CB_GETCURSEL, CB_SETCURSEL, CBS_DROPDOWNLIST, SWP_NOACTIVATE, SWP_NOSIZE, SWP_NOZORDER,
+    SendMessageW, SetWindowPos, WINDOW_EX_STYLE, WINDOW_STYLE, WM_SETFONT, WS_CHILD,
+    WS_CLIPSIBLINGS, WS_EX_CLIENTEDGE, WS_TABSTOP, WS_VISIBLE,
 };
 use windows::core::w;
 
@@ -28,6 +31,7 @@ pub(super) struct LanguageComboIds {
 pub(super) struct LanguageCombo {
     frame: HWND,
     combo: HWND,
+    on_panel: bool,
 }
 
 impl LanguageCombo {
@@ -42,6 +46,7 @@ impl LanguageCombo {
         width: i32,
         frame_height: i32,
         popup_height: i32,
+        on_panel: bool,
         selected: Language,
     ) -> Result<Self> {
         let child = WS_CHILD | WS_VISIBLE;
@@ -75,7 +80,12 @@ impl LanguageCombo {
                 ids.combo,
             )?
         };
-        let picker = Self { frame, combo };
+        let picker = Self {
+            frame,
+            combo,
+            on_panel,
+        };
+        apply_native_control_theme(combo);
         unsafe {
             picker.set_font(font);
             picker.populate(selected);
@@ -94,18 +104,82 @@ impl LanguageCombo {
             .unwrap_or(fallback)
     }
 
+    pub(super) unsafe fn center_display_vertically(
+        &self,
+        parent: HWND,
+        center_twice: i32,
+        preferred_frame_height: i32,
+    ) -> bool {
+        if !unsafe {
+            center_control_vertically(
+                parent,
+                self.frame,
+                center_twice,
+                preferred_frame_height,
+                false,
+            )
+        } {
+            return false;
+        }
+        let Some(frame_rect) = (unsafe { control_rect_in_parent(parent, self.frame) }) else {
+            return false;
+        };
+        let Some(combo_rect) = (unsafe { control_rect_in_parent(parent, self.combo) }) else {
+            return false;
+        };
+        unsafe {
+            SetWindowPos(
+                self.combo,
+                None,
+                combo_rect.left,
+                frame_rect.top,
+                0,
+                0,
+                SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE,
+            )
+            .is_ok()
+        }
+    }
+
     pub(super) unsafe fn redraw_display(&self) {
         unsafe {
             let _ = redraw_control_now(self.frame);
         }
     }
 
-    pub(super) fn draw(&self, draw: &DRAWITEMSTRUCT, font: HGDIOBJ, fallback: Language) -> bool {
+    pub(super) fn draw(
+        &self,
+        draw: &DRAWITEMSTRUCT,
+        font: HGDIOBJ,
+        fallback: Language,
+        palette: &ThemePalette,
+    ) -> bool {
         if draw.hwndItem != self.frame {
             return false;
         }
         let language = self.selected_language(fallback);
-        unsafe { super::win32::draw_rounded_combo_display(draw, font, language.native_name(), 6) }
+        let host_background = if self.on_panel {
+            palette.panel
+        } else {
+            palette.page
+        };
+        unsafe {
+            super::win32::draw_rounded_combo_display_on(
+                draw,
+                font,
+                language.native_name(),
+                6,
+                palette,
+                host_background,
+            )
+        }
+    }
+
+    pub(super) fn apply_native_theme(&self) {
+        apply_native_control_theme(self.combo);
+        unsafe {
+            let _ = redraw_control_now(self.frame);
+        }
     }
 
     unsafe fn set_font(&self, font: HGDIOBJ) {

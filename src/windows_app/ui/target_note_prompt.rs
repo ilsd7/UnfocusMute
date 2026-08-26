@@ -1,11 +1,13 @@
 use super::constants::{
     ID_TARGET_NOTE_CANCEL, ID_TARGET_NOTE_CLEAR, ID_TARGET_NOTE_EDIT, ID_TARGET_NOTE_SAVE,
-    PAGE_COLOR, PANEL_COLOR, SS_CENTERIMAGE_STYLE, SS_ENDELLIPSIS_STYLE, SS_OWNERDRAW_STYLE,
-    SUBTLE_TEXT_COLOR, TARGET_NOTE_PROMPT_CLASS_NAME, TEXT_COLOR,
+    SS_CENTERIMAGE_STYLE, SS_ENDELLIPSIS_STYLE, SS_OWNERDRAW_STYLE, TARGET_NOTE_PROMPT_CLASS_NAME,
 };
 use super::modal_window::run_modal_message_loop;
 use super::set_edit_caret_to_end;
-use super::theme::{OwnedBrush, UiFont, px, ui_font_point_size};
+use super::theme::{
+    OwnedBrush, UiFont, active_palette, apply_native_control_theme, apply_window_theme, px,
+    ui_font_point_size,
+};
 use super::win32::{
     WindowClassRegistration, centered_single_line_edit_rect, control_rect_in_parent, create_button,
     create_control, default_button_message_result, font_text_height, loword, measure_text_width,
@@ -152,8 +154,8 @@ impl<'a> TargetNotePrompt<'a> {
             language,
             target_display,
             current_note,
-            brush: OwnedBrush::solid(PAGE_COLOR),
-            input_brush: OwnedBrush::solid(PANEL_COLOR),
+            brush: OwnedBrush::solid(active_palette().page),
+            input_brush: OwnedBrush::solid(active_palette().panel),
             font: UiFont::new(ui_font_point_size()),
             input_font: UiFont::new(ui_font_point_size() + 1),
             target_font: UiFont::new(ui_font_point_size() + 2),
@@ -163,6 +165,7 @@ impl<'a> TargetNotePrompt<'a> {
 
     unsafe fn create_controls(&mut self, hwnd: HWND, instance: HINSTANCE) -> Result<()> {
         self.hwnd = hwnd;
+        apply_window_theme(hwnd);
         let child = WS_CHILD | WS_VISIBLE;
         let strings = self.language.strings();
 
@@ -226,6 +229,7 @@ impl<'a> TargetNotePrompt<'a> {
                 ID_TARGET_NOTE_EDIT,
             )?
         };
+        apply_native_control_theme(self.edit);
         self.clear_button = unsafe {
             create_button(
                 hwnd,
@@ -383,7 +387,7 @@ pub(super) unsafe fn prompt_target_note(
     current_note: Option<&str>,
 ) -> Result<Option<Option<String>>> {
     let cursor = unsafe { LoadCursorW(None, IDC_ARROW).context("load target note cursor")? };
-    let background = OwnedBrush::solid(PAGE_COLOR);
+    let background = OwnedBrush::solid(active_palette().page);
     let class = WNDCLASSW {
         style: Default::default(),
         lpfnWndProc: Some(target_note_prompt_proc),
@@ -511,25 +515,27 @@ unsafe extern "system" fn target_note_prompt_proc(
             }
             WM_CTLCOLOREDIT => {
                 let hdc = HDC(wparam.0 as *mut c_void);
+                let palette = active_palette();
                 unsafe {
-                    let _ = SetBkColor(hdc, PANEL_COLOR);
-                    let _ = SetTextColor(hdc, TEXT_COLOR);
+                    let _ = SetBkColor(hdc, palette.panel);
+                    let _ = SetTextColor(hdc, palette.text);
                 }
                 return LRESULT(prompt.input_brush.handle().0 as isize);
             }
             WM_CTLCOLORSTATIC => {
                 let hdc = HDC(wparam.0 as *mut c_void);
                 let control = HWND(lparam.0 as *mut c_void);
+                let palette = active_palette();
                 if control == prompt.edit_frame {
                     unsafe {
-                        let _ = SetBkColor(hdc, PANEL_COLOR);
+                        let _ = SetBkColor(hdc, palette.panel);
                     }
                     return LRESULT(prompt.input_brush.handle().0 as isize);
                 }
                 let color = if control == prompt.note_label {
-                    SUBTLE_TEXT_COLOR
+                    palette.subtle_text
                 } else {
-                    TEXT_COLOR
+                    palette.text
                 };
                 unsafe {
                     let _ = SetBkMode(hdc, TRANSPARENT);

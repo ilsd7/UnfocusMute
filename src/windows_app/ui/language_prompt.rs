@@ -1,31 +1,41 @@
+use super::checkbox_tint;
 use super::constants::{
     ID_LANGUAGE_PROMPT_COMBO, ID_LANGUAGE_PROMPT_COMBO_FRAME, ID_LANGUAGE_PROMPT_HIDE_ON_CLOSE,
     ID_LANGUAGE_PROMPT_OK, ID_LANGUAGE_PROMPT_RESTORE_EXIT, ID_LANGUAGE_PROMPT_START_MINIMIZED,
-    ID_LANGUAGE_PROMPT_STARTUP, LANGUAGE_PROMPT_CLASS_NAME, PAGE_COLOR, TEXT_COLOR,
+    ID_LANGUAGE_PROMPT_STARTUP, ID_LANGUAGE_PROMPT_THEME, LANGUAGE_PROMPT_CLASS_NAME,
 };
 use super::language_combo::{LanguageCombo, LanguageComboIds};
-use super::theme::{OwnedBrush, UiFont, px, ui_font_point_size};
+use super::theme::{
+    AppTheme, OwnedBrush, ResolvedTheme, active_palette, apply_native_control_theme,
+    apply_window_theme, px, resolve_theme, set_active_theme,
+};
 use super::win32::{
-    WindowClassRegistration, create_button, create_multiline_checkbox,
+    WindowClassRegistration, center_control_vertically, create_button, create_multiline_checkbox,
     default_button_message_result, get_message, hiword, is_checked, loword, measure_text_width,
     move_window, set_checkbox, set_text, to_wide, window_size_for_client_area,
 };
 use super::window_position::centered_position;
+use crate::config::ThemePreference;
 use crate::i18n::{APP_TITLE, Language};
 use crate::windows_app::error::{Context, Result};
 use std::ffi::c_void;
 use windows::Win32::Foundation::{HINSTANCE, HWND, LPARAM, LRESULT, WPARAM};
-use windows::Win32::Graphics::Gdi::{HDC, SetBkMode, SetTextColor, TRANSPARENT};
+use windows::Win32::Graphics::Gdi::{
+    FillRect, HDC, RDW_ALLCHILDREN, RDW_ERASE, RDW_INVALIDATE, RDW_UPDATENOW, RedrawWindow,
+    SetBkMode, SetTextColor, TRANSPARENT,
+};
 use windows::Win32::System::LibraryLoader::GetModuleHandleW;
 use windows::Win32::UI::Controls::DRAWITEMSTRUCT;
 use windows::Win32::UI::WindowsAndMessaging::{
     CBN_SELCHANGE, CBN_SELENDOK, CREATESTRUCTW, CreateWindowExW, DefWindowProcW, DestroyWindow,
-    DispatchMessageW, GWLP_USERDATA, GetWindowLongPtrW, GetWindowRect, HICON, IDC_ARROW,
-    IsDialogMessageW, LoadCursorW, MB_ICONINFORMATION, MB_OK, MSG, MessageBoxW, PostQuitMessage,
-    RegisterClassW, SW_SHOW, SWP_NOACTIVATE, SWP_NOOWNERZORDER, SWP_NOZORDER, SendMessageW,
-    SetForegroundWindow, SetWindowLongPtrW, SetWindowPos, ShowWindow, TranslateMessage,
-    WINDOW_EX_STYLE, WINDOW_STYLE, WM_CLOSE, WM_COMMAND, WM_CREATE, WM_CTLCOLORSTATIC, WM_DRAWITEM,
-    WM_NCCREATE, WM_NCDESTROY, WM_SETFONT, WNDCLASSW, WS_CAPTION, WS_OVERLAPPED, WS_SYSMENU,
+    DispatchMessageW, GWLP_USERDATA, GetClientRect, GetWindowLongPtrW, GetWindowRect, HICON,
+    IDC_ARROW, IsDialogMessageW, LoadCursorW, MB_ICONINFORMATION, MB_OK, MSG, MessageBoxW,
+    PostQuitMessage, RegisterClassW, SW_SHOW, SWP_NOACTIVATE, SWP_NOOWNERZORDER, SWP_NOZORDER,
+    SendMessageW, SetForegroundWindow, SetWindowLongPtrW, SetWindowPos, ShowWindow,
+    TranslateMessage, WINDOW_EX_STYLE, WINDOW_STYLE, WM_CLOSE, WM_COMMAND, WM_CREATE,
+    WM_CTLCOLORBTN, WM_CTLCOLORSTATIC, WM_DRAWITEM, WM_ERASEBKGND, WM_NCCREATE, WM_NCDESTROY,
+    WM_NOTIFY, WM_SETFONT, WM_SETTINGCHANGE, WM_THEMECHANGED, WNDCLASSW, WS_CAPTION, WS_OVERLAPPED,
+    WS_SYSMENU,
 };
 use windows::core::PCWSTR;
 
@@ -36,13 +46,15 @@ struct LanguagePrompt {
     launch_on_startup_check: HWND,
     restore_on_exit_check: HWND,
     hide_to_tray_on_close_check: HWND,
+    theme_button: HWND,
     start_button: HWND,
     done: bool,
     selected: Option<InitialPreferences>,
     default_button_id: i32,
     current: Language,
-    brush: OwnedBrush,
-    font: UiFont,
+    initial_theme_preference: ThemePreference,
+    theme_preference: ThemePreference,
+    theme: AppTheme,
 }
 
 const LANGUAGE_PROMPT_WINDOW_STYLE: WINDOW_STYLE =
@@ -55,7 +67,12 @@ const LANGUAGE_PROMPT_CONTENT_WIDTH: i32 =
     LANGUAGE_PROMPT_CLIENT_WIDTH - LANGUAGE_PROMPT_MARGIN * 2;
 const LANGUAGE_PROMPT_COMBO_Y: i32 = 28;
 const LANGUAGE_PROMPT_COMBO_WIDTH: i32 = 280;
-const LANGUAGE_PROMPT_COMBO_FRAME_HEIGHT: i32 = 23;
+const LANGUAGE_PROMPT_COMBO_FRAME_HEIGHT: i32 = 24;
+const LANGUAGE_PROMPT_THEME_BUTTON_SIZE: i32 = 32;
+const LANGUAGE_PROMPT_THEME_BUTTON_X: i32 =
+    LANGUAGE_PROMPT_CLIENT_WIDTH - LANGUAGE_PROMPT_MARGIN - LANGUAGE_PROMPT_THEME_BUTTON_SIZE;
+const LANGUAGE_PROMPT_THEME_BUTTON_Y: i32 = LANGUAGE_PROMPT_COMBO_Y
+    + (LANGUAGE_PROMPT_COMBO_FRAME_HEIGHT - LANGUAGE_PROMPT_THEME_BUTTON_SIZE) / 2;
 const LANGUAGE_PROMPT_OPTIONS_Y: i32 = 72;
 const LANGUAGE_PROMPT_OPTION_HEIGHT: i32 = 26;
 const LANGUAGE_PROMPT_OPTION_TALL_HEIGHT: i32 = 44;
@@ -79,15 +96,20 @@ const _: () = {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(super) struct InitialPreferences {
     pub(super) language: Language,
+    pub(super) theme: ThemePreference,
     pub(super) start_minimized: bool,
     pub(super) launch_on_startup: bool,
     pub(super) restore_on_exit: bool,
     pub(super) hide_to_tray_on_close: bool,
 }
 
-fn recommended_initial_preferences(language: Language) -> InitialPreferences {
+fn recommended_initial_preferences(
+    language: Language,
+    theme: ThemePreference,
+) -> InitialPreferences {
     InitialPreferences {
         language,
+        theme,
         start_minimized: true,
         launch_on_startup: true,
         restore_on_exit: true,
@@ -96,7 +118,7 @@ fn recommended_initial_preferences(language: Language) -> InitialPreferences {
 }
 
 impl LanguagePrompt {
-    fn new(current: Language) -> Self {
+    fn new(current: Language, theme_preference: ThemePreference) -> Self {
         Self {
             hwnd: HWND::default(),
             language_combo: None,
@@ -104,18 +126,21 @@ impl LanguagePrompt {
             launch_on_startup_check: HWND::default(),
             restore_on_exit_check: HWND::default(),
             hide_to_tray_on_close_check: HWND::default(),
+            theme_button: HWND::default(),
             start_button: HWND::default(),
             done: false,
             selected: None,
             default_button_id: ID_LANGUAGE_PROMPT_OK,
             current,
-            brush: OwnedBrush::solid(PAGE_COLOR),
-            font: UiFont::new(ui_font_point_size()),
+            initial_theme_preference: theme_preference,
+            theme_preference,
+            theme: AppTheme::new(),
         }
     }
 
     unsafe fn create_controls(&mut self, hwnd: HWND) -> Result<()> {
         self.hwnd = hwnd;
+        apply_window_theme(hwnd);
         let instance = HINSTANCE(unsafe { GetModuleHandleW(None)?.0 });
         let strings = self.current.strings();
 
@@ -123,7 +148,7 @@ impl LanguagePrompt {
             LanguageCombo::create(
                 hwnd,
                 instance,
-                self.font.handle(),
+                self.theme.font.handle(),
                 LanguageComboIds {
                     frame: ID_LANGUAGE_PROMPT_COMBO_FRAME,
                     combo: ID_LANGUAGE_PROMPT_COMBO,
@@ -133,9 +158,22 @@ impl LanguagePrompt {
                 LANGUAGE_PROMPT_COMBO_WIDTH,
                 LANGUAGE_PROMPT_COMBO_FRAME_HEIGHT,
                 210,
+                false,
                 self.current,
             )?
         });
+        self.theme_button = unsafe {
+            create_button(
+                hwnd,
+                instance,
+                self.theme_action_label(),
+                LANGUAGE_PROMPT_THEME_BUTTON_X,
+                LANGUAGE_PROMPT_THEME_BUTTON_Y,
+                LANGUAGE_PROMPT_THEME_BUTTON_SIZE,
+                LANGUAGE_PROMPT_THEME_BUTTON_SIZE,
+                ID_LANGUAGE_PROMPT_THEME,
+            )?
+        };
         self.start_minimized_check = unsafe {
             create_multiline_checkbox(
                 hwnd,
@@ -200,10 +238,10 @@ impl LanguagePrompt {
                 ID_LANGUAGE_PROMPT_OK,
             )?
         };
-
         unsafe {
-            self.apply_font(&self.font);
-            let recommended = recommended_initial_preferences(self.current);
+            self.apply_font();
+            self.apply_theme_to_native_controls();
+            let recommended = recommended_initial_preferences(self.current, self.theme_preference);
             set_checkbox(self.start_minimized_check, recommended.start_minimized);
             set_checkbox(self.launch_on_startup_check, recommended.launch_on_startup);
             set_checkbox(self.restore_on_exit_check, recommended.restore_on_exit);
@@ -212,12 +250,13 @@ impl LanguagePrompt {
                 recommended.hide_to_tray_on_close,
             );
             self.layout_controls(strings);
+            self.align_header_controls();
         }
 
         Ok(())
     }
 
-    unsafe fn apply_font(&self, font: &UiFont) {
+    unsafe fn apply_font(&self) {
         unsafe {
             for control in [
                 self.start_minimized_check,
@@ -226,8 +265,48 @@ impl LanguagePrompt {
                 self.hide_to_tray_on_close_check,
                 self.start_button,
             ] {
-                SendMessageW(control, WM_SETFONT, Some(font.wparam()), Some(LPARAM(1)));
+                SendMessageW(
+                    control,
+                    WM_SETFONT,
+                    Some(self.theme.font.wparam()),
+                    Some(LPARAM(1)),
+                );
             }
+        }
+    }
+
+    unsafe fn align_header_controls(&self) {
+        let center_twice = px(LANGUAGE_PROMPT_COMBO_Y)
+            + px(LANGUAGE_PROMPT_COMBO_Y + LANGUAGE_PROMPT_COMBO_FRAME_HEIGHT);
+        unsafe {
+            if let Some(combo) = &self.language_combo {
+                let _ = combo.center_display_vertically(
+                    self.hwnd,
+                    center_twice,
+                    LANGUAGE_PROMPT_COMBO_FRAME_HEIGHT,
+                );
+            }
+            let _ = center_control_vertically(
+                self.hwnd,
+                self.theme_button,
+                center_twice,
+                LANGUAGE_PROMPT_THEME_BUTTON_SIZE,
+                false,
+            );
+        }
+    }
+
+    fn apply_theme_to_native_controls(&self) {
+        for control in [
+            self.start_minimized_check,
+            self.launch_on_startup_check,
+            self.restore_on_exit_check,
+            self.hide_to_tray_on_close_check,
+        ] {
+            apply_native_control_theme(control);
+        }
+        if let Some(combo) = &self.language_combo {
+            combo.apply_native_theme();
         }
     }
 
@@ -248,9 +327,11 @@ impl LanguagePrompt {
         if self.current == language {
             return;
         }
-        let strings = language.strings();
+        self.current = language;
+        let strings = self.current.strings();
         unsafe {
             set_text(self.hwnd, strings.first_run_window_title);
+            set_text(self.theme_button, self.theme_action_label());
             set_text(self.start_minimized_check, strings.start_minimized);
             set_text(self.launch_on_startup_check, strings.launch_on_startup);
             set_text(self.restore_on_exit_check, strings.restore_on_exit);
@@ -260,8 +341,47 @@ impl LanguagePrompt {
             );
             set_text(self.start_button, strings.first_run_start);
         }
-        self.current = language;
         self.layout_controls(strings);
+    }
+
+    fn toggle_theme(&mut self) {
+        let resolved = self.theme.resolved.toggled();
+        set_active_theme(resolved);
+        self.theme_preference = resolved.preference();
+        let _ = self.theme.refresh_colors();
+        self.refresh_theme_visuals();
+    }
+
+    fn refresh_system_theme(&mut self) {
+        if self.theme_preference != ThemePreference::System {
+            return;
+        }
+        set_active_theme(resolve_theme(ThemePreference::System));
+        if !self.theme.refresh_colors() {
+            return;
+        }
+        self.refresh_theme_visuals();
+    }
+
+    fn refresh_theme_visuals(&self) {
+        apply_window_theme(self.hwnd);
+        self.apply_theme_to_native_controls();
+        unsafe {
+            set_text(self.theme_button, self.theme_action_label());
+            let _ = RedrawWindow(
+                Some(self.hwnd),
+                None,
+                None,
+                RDW_INVALIDATE | RDW_ERASE | RDW_ALLCHILDREN | RDW_UPDATENOW,
+            );
+        }
+    }
+
+    fn theme_action_label(&self) -> &'static str {
+        match self.theme.resolved {
+            ResolvedTheme::Light => self.current.strings().switch_to_dark_theme,
+            ResolvedTheme::Dark => self.current.strings().switch_to_light_theme,
+        }
     }
 
     fn layout_controls(&self, strings: &crate::i18n::Strings) {
@@ -340,12 +460,13 @@ impl LanguagePrompt {
     }
 
     fn text_width(&self, text: &str) -> i32 {
-        unsafe { measure_text_width(self.hwnd, self.font.handle(), text) }
+        unsafe { measure_text_width(self.hwnd, self.theme.font.handle(), text) }
     }
 
     fn accept(&mut self) {
         let selected = InitialPreferences {
             language: self.selected_language(),
+            theme: self.theme_preference,
             start_minimized: unsafe { is_checked(self.start_minimized_check) },
             launch_on_startup: unsafe { is_checked(self.launch_on_startup_check) },
             restore_on_exit: unsafe { is_checked(self.restore_on_exit_check) },
@@ -365,6 +486,20 @@ impl LanguagePrompt {
         }
         self.selected = Some(selected);
         self.done = true;
+    }
+
+    fn erase_background(&self, hdc: HDC) -> bool {
+        if hdc.0.is_null() {
+            return false;
+        }
+        let mut client = windows::Win32::Foundation::RECT::default();
+        unsafe {
+            if GetClientRect(self.hwnd, &mut client).is_err() {
+                return false;
+            }
+            let _ = FillRect(hdc, &client, self.theme.page_brush.handle());
+        }
+        true
     }
 }
 
@@ -393,9 +528,10 @@ pub(super) unsafe fn prompt_initial_language(
     instance: HINSTANCE,
     icon: HICON,
     current: Language,
+    theme_preference: ThemePreference,
 ) -> Result<Option<InitialPreferences>> {
     let cursor = unsafe { LoadCursorW(None, IDC_ARROW).context("load language prompt cursor")? };
-    let background = OwnedBrush::solid(PAGE_COLOR);
+    let background = OwnedBrush::solid(active_palette().page);
     let class = WNDCLASSW {
         style: Default::default(),
         lpfnWndProc: Some(language_prompt_proc),
@@ -411,7 +547,7 @@ pub(super) unsafe fn prompt_initial_language(
     let _class_registration = (unsafe { RegisterClassW(&class) } != 0)
         .then(|| WindowClassRegistration::new(LANGUAGE_PROMPT_CLASS_NAME, instance));
 
-    let mut state = Box::new(LanguagePrompt::new(current));
+    let mut state = Box::new(LanguagePrompt::new(current, theme_preference));
     let state_ptr = state.as_mut() as *mut LanguagePrompt;
     let title = to_wide(current.strings().first_run_window_title);
     let (width, height) = window_size_for_client_area(
@@ -464,6 +600,9 @@ pub(super) unsafe fn prompt_initial_language(
         }
     }
 
+    if state.selected.is_none() {
+        set_active_theme(resolve_theme(state.initial_theme_preference));
+    }
     Ok(state.selected)
 }
 
@@ -510,6 +649,8 @@ unsafe extern "system" fn language_prompt_proc(
                     unsafe {
                         let _ = DestroyWindow(hwnd);
                     }
+                } else if id == ID_LANGUAGE_PROMPT_THEME {
+                    prompt.toggle_theme();
                 } else if id == ID_LANGUAGE_PROMPT_COMBO
                     && (notification == CBN_SELCHANGE as u16 || notification == CBN_SELENDOK as u16)
                 {
@@ -517,18 +658,44 @@ unsafe extern "system" fn language_prompt_proc(
                 }
                 return LRESULT(0);
             }
+            WM_NOTIFY => {
+                if let Some(result) =
+                    unsafe { checkbox_tint::custom_draw_result(lparam, prompt.theme.palette.page) }
+                {
+                    return result;
+                }
+            }
             WM_DRAWITEM if lparam.0 != 0 => {
                 let draw = unsafe { &*(lparam.0 as *const DRAWITEMSTRUCT) };
-                if prompt
-                    .language_combo
-                    .as_ref()
-                    .is_some_and(|combo| combo.draw(draw, prompt.font.handle(), prompt.current))
-                {
+                if prompt.language_combo.as_ref().is_some_and(|combo| {
+                    combo.draw(
+                        draw,
+                        prompt.theme.font.handle(),
+                        prompt.current,
+                        &prompt.theme.palette,
+                    )
+                }) {
                     return LRESULT(1);
+                }
+                if draw.CtlID == ID_LANGUAGE_PROMPT_THEME as u32 {
+                    return LRESULT(unsafe {
+                        super::win32::draw_icon_button_on(
+                            draw,
+                            prompt.theme.action_icon_font.handle(),
+                            prompt.theme.resolved.action_glyph(),
+                            &prompt.theme.palette,
+                            prompt.theme.palette.page,
+                        )
+                    } as isize);
                 }
                 if draw.CtlID == ID_LANGUAGE_PROMPT_OK as u32 {
                     return LRESULT(unsafe {
-                        super::win32::draw_flat_button(draw, prompt.font.handle())
+                        super::win32::draw_flat_button_on(
+                            draw,
+                            prompt.theme.font.handle(),
+                            &prompt.theme.palette,
+                            prompt.theme.palette.page,
+                        )
                     } as isize);
                 }
                 return LRESULT(0);
@@ -540,13 +707,17 @@ unsafe extern "system" fn language_prompt_proc(
                 }
                 return LRESULT(0);
             }
-            WM_CTLCOLORSTATIC => {
+            WM_ERASEBKGND if prompt.erase_background(HDC(wparam.0 as *mut c_void)) => {
+                return LRESULT(1);
+            }
+            WM_SETTINGCHANGE | WM_THEMECHANGED => prompt.refresh_system_theme(),
+            WM_CTLCOLORSTATIC | WM_CTLCOLORBTN => {
                 let hdc = HDC(wparam.0 as *mut c_void);
                 unsafe {
                     let _ = SetBkMode(hdc, TRANSPARENT);
-                    let _ = SetTextColor(hdc, TEXT_COLOR);
+                    let _ = SetTextColor(hdc, prompt.theme.palette.text);
                 }
-                return LRESULT(prompt.brush.handle().0 as isize);
+                return LRESULT(prompt.theme.page_brush.handle().0 as isize);
             }
             WM_NCDESTROY => unsafe {
                 SetWindowLongPtrW(hwnd, GWLP_USERDATA, 0);
@@ -563,10 +734,19 @@ mod tests {
     use super::*;
 
     #[test]
+    fn language_and_theme_controls_share_vertical_center() {
+        assert_eq!(
+            LANGUAGE_PROMPT_COMBO_Y * 2 + LANGUAGE_PROMPT_COMBO_FRAME_HEIGHT,
+            LANGUAGE_PROMPT_THEME_BUTTON_Y * 2 + LANGUAGE_PROMPT_THEME_BUTTON_SIZE
+        );
+    }
+
+    #[test]
     fn recommended_initial_preferences_enable_every_option() {
-        let preferences = recommended_initial_preferences(Language::En);
+        let preferences = recommended_initial_preferences(Language::En, ThemePreference::System);
 
         assert_eq!(preferences.language, Language::En);
+        assert_eq!(preferences.theme, ThemePreference::System);
         assert!(preferences.start_minimized);
         assert!(preferences.launch_on_startup);
         assert!(preferences.restore_on_exit);
@@ -575,7 +755,8 @@ mod tests {
 
     #[test]
     fn startup_tray_notice_requires_both_related_options() {
-        let mut preferences = recommended_initial_preferences(Language::En);
+        let mut preferences =
+            recommended_initial_preferences(Language::En, ThemePreference::System);
         assert!(should_show_startup_tray_notice(preferences));
 
         preferences.start_minimized = false;
