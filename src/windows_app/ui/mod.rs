@@ -19,7 +19,7 @@ use std::sync::atomic::{AtomicBool, AtomicIsize, Ordering};
 use std::time::Instant;
 use windows::Win32::Foundation::{
     COLORREF, CloseHandle, ERROR_ALREADY_EXISTS, GetLastError, HANDLE, HINSTANCE, HWND, LPARAM,
-    LRESULT, POINT, RECT, WPARAM,
+    LRESULT, POINT, RECT, WAIT_OBJECT_0, WAIT_TIMEOUT, WPARAM,
 };
 use windows::Win32::Graphics::Gdi::{
     BeginPaint, CreatePen, CreateSolidBrush, DRAW_TEXT_FORMAT, DT_CENTER, DT_END_ELLIPSIS, DT_LEFT,
@@ -30,7 +30,9 @@ use windows::Win32::Graphics::Gdi::{
 };
 use windows::Win32::System::Com::{COINIT_APARTMENTTHREADED, CoInitializeEx, CoUninitialize};
 use windows::Win32::System::LibraryLoader::GetModuleHandleW;
-use windows::Win32::System::Threading::CreateMutexW;
+use windows::Win32::System::Threading::{
+    CreateMutexW, OpenProcess, PROCESS_SYNCHRONIZE, WaitForSingleObject,
+};
 use windows::Win32::UI::Accessibility::{HWINEVENTHOOK, SetWinEventHook, UnhookWinEvent};
 use windows::Win32::UI::Controls::{
     DRAWITEMSTRUCT, ICC_WIN95_CLASSES, INITCOMMONCONTROLSEX, InitCommonControlsEx,
@@ -46,21 +48,21 @@ use windows::Win32::UI::Shell::{
 use windows::Win32::UI::WindowsAndMessaging::{
     AppendMenuW, CREATESTRUCTW, CreatePopupMenu, CreateWindowExW, DefWindowProcW, DestroyMenu,
     DestroyWindow, DispatchMessageW, EN_CHANGE, EN_SETFOCUS, EVENT_SYSTEM_FOREGROUND, FindWindowW,
-    GWLP_USERDATA, GetClientRect, GetCursorPos, GetWindowRect, HICON, HMENU, ICON_BIG, ICON_SMALL,
-    IDC_ARROW, IsDialogMessageW, IsIconic, IsWindowVisible, KillTimer, LB_GETCOUNT, LB_GETCURSEL,
-    LB_RESETCONTENT, LB_SETCURSEL, LBN_DBLCLK, LBN_SELCHANGE, LBS_HASSTRINGS, LBS_NOINTEGRALHEIGHT,
-    LBS_NOTIFY, LBS_OWNERDRAWVARIABLE, LoadCursorW, MB_ICONINFORMATION, MB_ICONWARNING, MB_OK,
-    MF_GRAYED, MF_SEPARATOR, MF_STRING, MINMAXINFO, MSG, MessageBoxW, PostMessageW,
-    PostQuitMessage, RegisterClassW, RegisterWindowMessageW, SW_HIDE, SW_RESTORE, SW_SHOW,
-    SendMessageW, SetForegroundWindow, SetTimer, SetWindowLongPtrW, ShowWindow, TPM_NONOTIFY,
-    TPM_RETURNCMD, TPM_RIGHTBUTTON, TRACK_POPUP_MENU_FLAGS, TrackPopupMenu, TranslateMessage,
-    WA_INACTIVE, WINDOW_EX_STYLE, WINDOW_STYLE, WINEVENT_OUTOFCONTEXT, WM_ACTIVATE, WM_CLOSE,
-    WM_COMMAND, WM_CONTEXTMENU, WM_CREATE, WM_CTLCOLOREDIT, WM_CTLCOLORLISTBOX, WM_CTLCOLORSTATIC,
-    WM_DESTROY, WM_DRAWITEM, WM_ENTERSIZEMOVE, WM_ERASEBKGND, WM_EXITSIZEMOVE, WM_GETMINMAXINFO,
-    WM_KEYDOWN, WM_LBUTTONDBLCLK, WM_LBUTTONDOWN, WM_MEASUREITEM, WM_MOVE, WM_NCCREATE,
-    WM_NCDESTROY, WM_PAINT, WM_RBUTTONUP, WM_SETFONT, WM_SETICON, WM_SETREDRAW, WM_SETTINGCHANGE,
-    WM_SHOWWINDOW, WM_SIZE, WM_SIZING, WM_THEMECHANGED, WM_TIMER, WNDCLASSW, WS_CHILD, WS_VISIBLE,
-    WS_VSCROLL,
+    GWLP_USERDATA, GetClientRect, GetCursorPos, GetWindowRect, GetWindowThreadProcessId, HICON,
+    HMENU, ICON_BIG, ICON_SMALL, IDC_ARROW, IsDialogMessageW, IsIconic, IsWindowVisible, KillTimer,
+    LB_GETCOUNT, LB_GETCURSEL, LB_RESETCONTENT, LB_SETCURSEL, LBN_DBLCLK, LBN_SELCHANGE,
+    LBS_HASSTRINGS, LBS_NOINTEGRALHEIGHT, LBS_NOTIFY, LBS_OWNERDRAWVARIABLE, LoadCursorW,
+    MB_ICONINFORMATION, MB_ICONWARNING, MB_OK, MF_GRAYED, MF_SEPARATOR, MF_STRING, MINMAXINFO, MSG,
+    MessageBoxW, PostMessageW, PostQuitMessage, PostThreadMessageW, RegisterClassW,
+    RegisterWindowMessageW, SW_HIDE, SW_RESTORE, SW_SHOW, SendMessageW, SetForegroundWindow,
+    SetTimer, SetWindowLongPtrW, ShowWindow, TPM_NONOTIFY, TPM_RETURNCMD, TPM_RIGHTBUTTON,
+    TRACK_POPUP_MENU_FLAGS, TrackPopupMenu, TranslateMessage, WA_INACTIVE, WINDOW_EX_STYLE,
+    WINDOW_STYLE, WINEVENT_OUTOFCONTEXT, WM_ACTIVATE, WM_CLOSE, WM_COMMAND, WM_CONTEXTMENU,
+    WM_CREATE, WM_CTLCOLOREDIT, WM_CTLCOLORLISTBOX, WM_CTLCOLORSTATIC, WM_DESTROY, WM_DRAWITEM,
+    WM_ENTERSIZEMOVE, WM_ERASEBKGND, WM_EXITSIZEMOVE, WM_GETMINMAXINFO, WM_KEYDOWN,
+    WM_LBUTTONDBLCLK, WM_LBUTTONDOWN, WM_MEASUREITEM, WM_MOVE, WM_NCCREATE, WM_NCDESTROY, WM_PAINT,
+    WM_QUIT, WM_RBUTTONUP, WM_SETFONT, WM_SETICON, WM_SETREDRAW, WM_SETTINGCHANGE, WM_SHOWWINDOW,
+    WM_SIZE, WM_SIZING, WM_THEMECHANGED, WM_TIMER, WNDCLASSW, WS_CHILD, WS_VISIBLE, WS_VSCROLL,
 };
 use windows::core::{PCWSTR, w};
 
@@ -192,6 +194,7 @@ const LB_ITEMFROMPOINT_OUTSIDE_MASK: isize = 0x0001_0000;
 const LB_GETITEMRECT_MESSAGE: u32 = 0x0198;
 const LB_ERR: isize = -1;
 const SINGLE_INSTANCE_MUTEX_PREFIX: &str = "Local\\UnfocusMute.SingleInstance.";
+const INSTANCE_REPLACEMENT_TIMEOUT_MS: u32 = 5_000;
 pub fn run() -> Result<()> {
     let _com = unsafe { ComApartment::initialize()? };
     unsafe { run_window() }
@@ -224,7 +227,9 @@ unsafe fn run_window() -> Result<()> {
     } else {
         instance_scope
     };
-    let Some(_single_instance) = (unsafe { acquire_single_instance(instance_scope)? }) else {
+    let Some((_single_instance, replaced_existing_instance)) =
+        (unsafe { acquire_single_instance(instance_scope)? })
+    else {
         return Ok(());
     };
 
@@ -319,7 +324,12 @@ unsafe fn run_window() -> Result<()> {
         .then(|| WindowClassRegistration::new(class_name, instance));
 
     let forced_minimized = std::env::args_os().any(|arg| arg == "--minimized");
-    let start_hidden = should_start_hidden(first_run, forced_minimized, config.start_minimized);
+    let start_hidden = should_hide_replacement_window(
+        replaced_existing_instance,
+        first_run,
+        forced_minimized,
+        config.start_minimized,
+    );
     let InitialWindowPlacement {
         position: WindowPosition { x, y },
         width: window_width,
@@ -407,6 +417,16 @@ impl Drop for SingleInstance {
     }
 }
 
+struct ProcessExitWait(HANDLE);
+
+impl Drop for ProcessExitWait {
+    fn drop(&mut self) {
+        unsafe {
+            let _ = CloseHandle(self.0);
+        }
+    }
+}
+
 struct PopupMenu(HMENU);
 
 impl PopupMenu {
@@ -453,20 +473,95 @@ impl Drop for PaintSession {
     }
 }
 
-unsafe fn acquire_single_instance(scope: u64) -> Result<Option<SingleInstance>> {
+unsafe fn acquire_single_instance(scope: u64) -> Result<Option<(SingleInstance, bool)>> {
     let mutex_name = single_instance_mutex_name(scope);
     let handle = unsafe {
         CreateMutexW(None, false, PCWSTR(mutex_name.as_ptr())).context("create app mutex")?
     };
     let instance = SingleInstance(handle);
     if unsafe { GetLastError() } == ERROR_ALREADY_EXISTS {
-        unsafe {
-            bring_existing_window_to_front(scope);
+        let Some(hwnd) = (unsafe { find_existing_window(scope) }) else {
+            return Ok(None);
+        };
+        let mut process_id = 0;
+        let thread_id = unsafe { GetWindowThreadProcessId(hwnd, Some(&mut process_id)) };
+        if thread_id == 0 || process_id == 0 || !running_instance_is_older(process_id) {
+            show_main_window(hwnd);
+            return Ok(None);
         }
-        return Ok(None);
+
+        unsafe {
+            replace_existing_instance(thread_id, process_id)?;
+        }
+        return Ok(Some((instance, true)));
     }
 
-    Ok(Some(instance))
+    Ok(Some((instance, false)))
+}
+
+fn running_instance_is_older(process_id: u32) -> bool {
+    let Some(existing_executable) = process::process_name(process_id) else {
+        return false;
+    };
+    release_is_newer_than_executable(env!("CARGO_PKG_VERSION"), &existing_executable)
+}
+
+fn release_is_newer_than_executable(current_version: &str, existing_executable: &str) -> bool {
+    let Some(existing_version) = version_from_executable_name(existing_executable) else {
+        return false;
+    };
+    let Some(current_version) = parse_release_version(current_version) else {
+        return false;
+    };
+    current_version > existing_version
+}
+
+fn version_from_executable_name(file_name: &str) -> Option<(u32, u32, u32)> {
+    let file_name = file_name.to_ascii_lowercase();
+    let version = file_name
+        .strip_prefix("unfocusmute-v")?
+        .strip_suffix(".exe")?;
+    parse_release_version(version)
+}
+
+fn parse_release_version(version: &str) -> Option<(u32, u32, u32)> {
+    let mut parts = version.split('.');
+    let parsed = (
+        parts.next()?.parse().ok()?,
+        parts.next()?.parse().ok()?,
+        parts.next()?.parse().ok()?,
+    );
+    parts.next().is_none().then_some(parsed)
+}
+
+unsafe fn replace_existing_instance(thread_id: u32, process_id: u32) -> Result<()> {
+    let process = ProcessExitWait(
+        unsafe { OpenProcess(PROCESS_SYNCHRONIZE, false, process_id) }
+            .context("open existing app process")?,
+    );
+    unsafe { PostThreadMessageW(thread_id, WM_QUIT, WPARAM(0), LPARAM(0)) }
+        .context("request existing app exit")?;
+
+    let wait_result = unsafe { WaitForSingleObject(process.0, INSTANCE_REPLACEMENT_TIMEOUT_MS) };
+    if wait_result == WAIT_OBJECT_0 {
+        return Ok(());
+    }
+    if wait_result == WAIT_TIMEOUT {
+        return Err(message_error("existing app did not exit within 5 seconds"));
+    }
+    Err(message_error(format!(
+        "wait for existing app exit failed with WIN32 result {}",
+        wait_result.0
+    )))
+}
+
+fn should_hide_replacement_window(
+    replaced_existing_instance: bool,
+    first_run: bool,
+    forced_minimized: bool,
+    start_minimized: bool,
+) -> bool {
+    !replaced_existing_instance && should_start_hidden(first_run, forced_minimized, start_minimized)
 }
 
 #[cfg(debug_assertions)]
@@ -611,11 +706,9 @@ unsafe extern "system" fn foreground_event_proc(
     }
 }
 
-unsafe fn bring_existing_window_to_front(scope: u64) {
+unsafe fn find_existing_window(scope: u64) -> Option<HWND> {
     let class_name = main_window_class_name(scope);
-    if let Ok(hwnd) = unsafe { FindWindowW(PCWSTR(class_name.as_ptr()), PCWSTR::null()) } {
-        show_main_window(hwnd);
-    }
+    unsafe { FindWindowW(PCWSTR(class_name.as_ptr()), PCWSTR::null()) }.ok()
 }
 
 fn show_main_window(hwnd: HWND) {
@@ -4541,6 +4634,32 @@ mod target_list_tests {
             wide_to_string(&main_window_class_name(scope)),
             "UnfocusMuteWindow.0123456789abcdef"
         );
+    }
+
+    #[test]
+    fn versioned_executable_name_parses_release_version_case_insensitively() {
+        assert_eq!(
+            version_from_executable_name("UNFOCUSMUTE-v1.5.0.EXE"),
+            Some((1, 5, 0)),
+        );
+        assert_eq!(version_from_executable_name("UnfocusMute.exe"), None);
+        assert_eq!(parse_release_version("1.5.0.1"), None);
+    }
+
+    #[test]
+    fn only_a_newer_release_replaces_the_running_version() {
+        let running = "UnfocusMute-v1.4.0.exe";
+
+        assert!(release_is_newer_than_executable("1.5.0", running));
+        assert!(!release_is_newer_than_executable("1.4.0", running));
+        assert!(!release_is_newer_than_executable("1.3.5", running));
+    }
+
+    #[test]
+    fn replacement_instance_always_starts_visible() {
+        assert!(!should_hide_replacement_window(true, false, true, true));
+        assert!(!should_hide_replacement_window(true, false, false, true));
+        assert!(should_hide_replacement_window(false, false, false, true));
     }
 
     #[test]
