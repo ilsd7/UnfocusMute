@@ -3,6 +3,8 @@
 use crate::i18n::Language;
 use serde::{Deserialize, Serialize};
 use std::borrow::Cow;
+#[cfg(windows)]
+use std::cell::RefCell;
 use std::cmp::Ordering;
 use std::env;
 use std::ffi::OsString;
@@ -12,9 +14,15 @@ use std::path::{Path, PathBuf};
 use std::sync::OnceLock;
 use std::time::{SystemTime, UNIX_EPOCH};
 #[cfg(windows)]
+use windows::Win32::Foundation::{HANDLE, WAIT_OBJECT_0, WAIT_TIMEOUT};
+#[cfg(windows)]
 use windows::Win32::Storage::FileSystem::{
+    FILE_NOTIFY_CHANGE_FILE_NAME, FILE_NOTIFY_CHANGE_LAST_WRITE, FILE_NOTIFY_CHANGE_SIZE,
+    FindCloseChangeNotification, FindFirstChangeNotificationW, FindNextChangeNotification,
     MOVEFILE_REPLACE_EXISTING, MOVEFILE_WRITE_THROUGH, MoveFileExW,
 };
+#[cfg(windows)]
+use windows::Win32::System::Threading::WaitForSingleObject;
 #[cfg(windows)]
 use windows::core::PCWSTR;
 
@@ -158,6 +166,71 @@ pub(crate) struct ConfigFileStamp {
     pub(crate) modified: SystemTime,
     pub(crate) len: u64,
     fingerprint: Option<u64>,
+}
+
+#[cfg(windows)]
+#[derive(Default)]
+struct ConfigStampCache {
+    change_notification: Option<HANDLE>,
+    stamp: Option<ConfigFileStamp>,
+}
+
+#[cfg(windows)]
+impl ConfigStampCache {
+    fn current(&mut self, path: &Path) -> Option<ConfigFileStamp> {
+        if let Some(notification) = self.change_notification {
+            match unsafe { WaitForSingleObject(notification, 0) } {
+                WAIT_TIMEOUT => return self.stamp,
+                WAIT_OBJECT_0 => {
+                    if unsafe { FindNextChangeNotification(notification) }.is_err() {
+                        self.close_notification();
+                    }
+                }
+                _ => self.close_notification(),
+            }
+        }
+
+        if self.change_notification.is_none()
+            && let Some(parent) = path.parent()
+        {
+            let parent = path_to_wide(parent);
+            let filter = FILE_NOTIFY_CHANGE_FILE_NAME
+                | FILE_NOTIFY_CHANGE_LAST_WRITE
+                | FILE_NOTIFY_CHANGE_SIZE;
+            self.change_notification =
+                unsafe { FindFirstChangeNotificationW(PCWSTR(parent.as_ptr()), false, filter) }
+                    .ok();
+        }
+
+        match try_config_file_stamp(path) {
+            Ok(stamp) => {
+                self.stamp = stamp;
+                stamp
+            }
+            Err(_) => {
+                // A sharing violation or another transient read failure must be retried on the
+                // next check even when no additional directory notification arrives.
+                self.close_notification();
+                self.stamp = None;
+                None
+            }
+        }
+    }
+
+    fn close_notification(&mut self) {
+        if let Some(notification) = self.change_notification.take() {
+            unsafe {
+                let _ = FindCloseChangeNotification(notification);
+            }
+        }
+    }
+}
+
+#[cfg(windows)]
+impl Drop for ConfigStampCache {
+    fn drop(&mut self) {
+        self.close_notification();
+    }
 }
 
 impl ConfigFileStamp {
@@ -1266,19 +1339,43 @@ pub(crate) fn cached_config_file_path() -> io::Result<&'static Path> {
 }
 
 pub(crate) fn current_config_stamp() -> Option<ConfigFileStamp> {
-    config_file_stamp(cached_config_file_path().ok()?)
+    let path = cached_config_file_path().ok()?;
+
+    #[cfg(windows)]
+    {
+        thread_local! {
+            static CONFIG_STAMP_CACHE: RefCell<ConfigStampCache> =
+                RefCell::new(ConfigStampCache::default());
+        }
+        CONFIG_STAMP_CACHE.with_borrow_mut(|cache| cache.current(path))
+    }
+
+    #[cfg(not(windows))]
+    config_file_stamp(path)
 }
 
+#[cfg(any(not(windows), test))]
 fn config_file_stamp(path: &Path) -> Option<ConfigFileStamp> {
-    let metadata = fs::metadata(path).ok()?;
+    try_config_file_stamp(path).ok().flatten()
+}
+
+fn try_config_file_stamp(path: &Path) -> io::Result<Option<ConfigFileStamp>> {
+    let metadata = match fs::metadata(path) {
+        Ok(metadata) => metadata,
+        Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(None),
+        Err(error) => return Err(error),
+    };
     let len = metadata.len();
-    Some(ConfigFileStamp {
-        modified: metadata.modified().ok()?,
+    let fingerprint = if len <= MAX_CONFIG_FILE_BYTES {
+        Some(config_file_fingerprint(path)?)
+    } else {
+        None
+    };
+    Ok(Some(ConfigFileStamp {
+        modified: metadata.modified()?,
         len,
-        fingerprint: (len <= MAX_CONFIG_FILE_BYTES)
-            .then(|| config_file_fingerprint(path).ok())
-            .flatten(),
-    })
+        fingerprint,
+    }))
 }
 
 fn config_file_fingerprint(path: &Path) -> io::Result<u64> {
@@ -1644,6 +1741,40 @@ mod tests {
         assert!(first.has_content_fingerprint());
         assert!(second.has_content_fingerprint());
         assert_ne!(first.fingerprint, second.fingerprint);
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn config_stamp_cache_refreshes_after_directory_change_notification() {
+        use std::os::windows::fs::OpenOptionsExt;
+
+        let dir = TestDir::new();
+        let path = dir.path().join("config.json");
+        fs::write(&path, "alpha").unwrap();
+        let mut cache = ConfigStampCache::default();
+        let first = cache.current(&path).unwrap();
+
+        let exclusive_file = fs::OpenOptions::new()
+            .read(true)
+            .share_mode(0)
+            .open(&path)
+            .unwrap();
+        assert_eq!(cache.current(&path), Some(first));
+        drop(exclusive_file);
+        fs::write(&path, "bravo").unwrap();
+
+        let second = (0..50).find_map(|_| {
+            let stamp = cache.current(&path);
+            if stamp != Some(first) {
+                stamp
+            } else {
+                std::thread::sleep(std::time::Duration::from_millis(10));
+                None
+            }
+        });
+
+        assert!(second.is_some());
+        assert_ne!(first.fingerprint, second.unwrap().fingerprint);
     }
 
     #[test]

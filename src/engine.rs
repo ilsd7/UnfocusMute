@@ -3,7 +3,6 @@
 #[cfg(test)]
 use crate::config::normalize_process_name;
 use crate::config::{TargetProcess, is_normalized_process_name};
-use std::borrow::Cow;
 #[cfg(test)]
 use std::collections::HashSet;
 
@@ -220,7 +219,7 @@ fn target_kind_counts(targets: &[TargetProcess]) -> (usize, usize) {
 pub struct MutePlanner<'a> {
     matcher: &'a TargetMatcher,
     foreground_pid: Option<u32>,
-    foreground_process_name: Option<Cow<'a, str>>,
+    foreground_process_name: Option<&'a str>,
 }
 
 impl<'a> MutePlanner<'a> {
@@ -228,15 +227,9 @@ impl<'a> MutePlanner<'a> {
     pub fn new(
         matcher: &'a TargetMatcher,
         foreground_pid: Option<u32>,
-        foreground_process_name: Option<&str>,
+        foreground_process_name: Option<&'a str>,
     ) -> Self {
-        Self::from_foreground(
-            matcher,
-            foreground_pid,
-            foreground_process_name
-                .and_then(normalize_process_name)
-                .map(Cow::Owned),
-        )
+        Self::new_with_normalized_foreground(matcher, foreground_pid, foreground_process_name)
     }
 
     pub(crate) fn new_with_normalized_foreground(
@@ -247,18 +240,6 @@ impl<'a> MutePlanner<'a> {
         if let Some(name) = &foreground_process_name {
             debug_assert!(is_normalized_process_name(name));
         }
-        Self::from_foreground(
-            matcher,
-            foreground_pid,
-            foreground_process_name.map(Cow::Borrowed),
-        )
-    }
-
-    fn from_foreground(
-        matcher: &'a TargetMatcher,
-        foreground_pid: Option<u32>,
-        foreground_process_name: Option<Cow<'a, str>>,
-    ) -> Self {
         Self {
             matcher,
             foreground_pid,
@@ -359,8 +340,7 @@ impl<'a> MutePlanner<'a> {
     }
 
     pub(crate) fn session_is_foreground(&self, process_name: &str, pid: u32) -> bool {
-        self.foreground_pid == Some(pid)
-            || self.foreground_process_name.as_deref() == Some(process_name)
+        self.foreground_pid == Some(pid) || self.foreground_process_name == Some(process_name)
     }
 
     pub(crate) fn can_clear_managed_target_state(
