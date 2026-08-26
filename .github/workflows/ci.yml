@@ -45,24 +45,12 @@ jobs:
       - run: cargo fmt --check
       - run: cargo test --locked --target x86_64-pc-windows-msvc
       - run: cargo clippy --locked --target x86_64-pc-windows-msvc --all-targets -- -D warnings
-      - run: powershell -NoProfile -ExecutionPolicy Bypass -File scripts\package-windows.ps1
-      - name: Select package artifacts
-        id: package_artifacts
-        shell: pwsh
-        run: |
-          $zip = "dist/UnfocusMute-windows-x64.zip"
-          $checksum = "$zip.sha256"
-          foreach ($asset in @($zip, $checksum)) {
-            if (-not (Test-Path $asset -PathType Leaf)) {
-              throw "Missing package artifact $asset"
-            }
-          }
-          Add-Content -Path $env:GITHUB_OUTPUT -Value "zip=$zip"
-          Add-Content -Path $env:GITHUB_OUTPUT -Value "checksum=$checksum"
+      - name: Build and validate Windows package
+        run: powershell -NoProfile -ExecutionPolicy Bypass -File scripts\package-windows.ps1
       - uses: actions/upload-artifact@v7.0.1
         with:
           name: UnfocusMute-windows-x64
           path: |
-            ${{ steps.package_artifacts.outputs.zip }}
-            ${{ steps.package_artifacts.outputs.checksum }}
+            dist/UnfocusMute-windows-x64.zip
+            dist/UnfocusMute-windows-x64.zip.sha256
           if-no-files-found: error

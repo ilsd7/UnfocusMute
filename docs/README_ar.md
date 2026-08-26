@@ -27,7 +27,7 @@
   </p>
 </div>
 
-<br>
+---
 
 <div dir="rtl">
 
@@ -38,11 +38,13 @@ UnfocusMute هو تطبيق Windows صغير وخفيف يعمل من علبة �
 - لا يقتصر على الألعاب؛ يمكنك أيضًا تسجيل تطبيقات عادية مثل المتصفحات، وتطبيقات المراسلة، ومشغلات الألعاب، ومشغلات الوسائط.
 - لا يطبّق كتم الصوت واستعادته إلا على الجلسات الصوتية التي غيّر UnfocusMute حالة كتمها بنفسه؛ أما الجلسات التي كتمتها أنت مسبقًا فلا يلمسها.
 
+---
+
 <p align="center">
   <img src="../assets/screenshot_ar.png" width="600" alt="نافذة UnfocusMute الرئيسية">
 </p>
 
-<br>
+---
 
 ## مفيد في الحالات التالية
 
@@ -253,7 +255,7 @@ cargo build --release --target x86_64-pc-windows-msvc --locked</code></pre>
 
 <pre dir="ltr"><code>cargo about generate about.hbs -c about.toml --locked --offline -o THIRD_PARTY_NOTICES.md</code></pre>
 
-يتم إنشاء الناتج في <code dir="ltr">dist\UnfocusMute-windows-x64.zip</code>، ومعه ملف تحقق SHA-256 في <code dir="ltr">dist\UnfocusMute-windows-x64.zip.sha256</code>. يحتوي ZIP على الملف التنفيذي الذي يتضمن رقم الإصدار (<code dir="ltr">UnfocusMute-v&lt;version&gt;.exe</code>)، و<code dir="ltr">LICENSE</code>، و<code dir="ltr">THIRD_PARTY_NOTICES.md</code>، وملفات README بصيغة <code dir="ltr">.txt</code> لكل لغة داخل مجلد <code dir="ltr">docs</code>.
+يتم إنشاء الناتج في <code dir="ltr">dist\UnfocusMute-windows-x64.zip</code>، ومعه ملف تحقق SHA-256 في <code dir="ltr">dist\UnfocusMute-windows-x64.zip.sha256</code>. يحتوي ZIP على الملف التنفيذي الذي يتضمن رقم الإصدار (<code dir="ltr">UnfocusMute-v&lt;version&gt;.exe</code>)، و<code dir="ltr">LICENSE</code>، و<code dir="ltr">THIRD_PARTY_NOTICES.md</code>.
 
 </details>
 

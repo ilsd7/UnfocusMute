@@ -25,9 +25,10 @@ jobs:
       - run: cargo fmt --check
       - run: cargo test --locked --target x86_64-pc-windows-msvc
       - run: cargo clippy --locked --target x86_64-pc-windows-msvc --all-targets -- -D warnings
-      - run: powershell -NoProfile -ExecutionPolicy Bypass -File scripts\package-windows.ps1 -ReleaseTag $env:GITHUB_REF_NAME
+      - name: Build and validate Windows package
+        run: powershell -NoProfile -ExecutionPolicy Bypass -File scripts\package-windows.ps1 -ReleaseTag $env:GITHUB_REF_NAME
       - name: Generate artifact attestations
-        uses: actions/attest@v4.1.0
+        uses: actions/attest@v4.2.2
         with:
           subject-path: |
             dist/UnfocusMute-windows-x64.zip

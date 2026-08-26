@@ -27,7 +27,7 @@
   </p>
 </div>
 
-<br>
+---
 
 UnfocusMute is a compact Windows tray app that automatically mutes selected games and apps when they go into the background, then restores their audio when they return to the foreground.
 
@@ -36,11 +36,13 @@ UnfocusMute is a compact Windows tray app that automatically mutes selected game
 - It is not limited to games; you can also register everyday apps such as browsers, messaging apps, launchers, and media players.
 - UnfocusMute only mutes and restores sessions it changed itself; sessions you had already muted manually are left untouched.
 
+---
+
 <p align="center">
   <img src="assets/screenshot_en.png" width="600" alt="UnfocusMute main window">
 </p>
 
-<br>
+---
 
 ## When to Use It
 
@@ -263,7 +265,7 @@ Refresh third-party license notices:
 cargo about generate about.hbs -c about.toml --locked --offline -o THIRD_PARTY_NOTICES.md
 ```
 
-The output is created at `dist\UnfocusMute-windows-x64.zip`, with a SHA-256 verification file at `dist\UnfocusMute-windows-x64.zip.sha256`. The ZIP includes the versioned executable (`UnfocusMute-v<version>.exe`), `LICENSE`, `THIRD_PARTY_NOTICES.md`, and localized README `.txt` files under `docs`.
+The output is created at `dist\UnfocusMute-windows-x64.zip`, with a SHA-256 verification file at `dist\UnfocusMute-windows-x64.zip.sha256`. The ZIP includes the versioned executable (`UnfocusMute-v<version>.exe`), `LICENSE`, and `THIRD_PARTY_NOTICES.md`.
 
 </details>
 

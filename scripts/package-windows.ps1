@@ -47,116 +47,6 @@ $Checksum = Join-Path $Dist "$PackageName.zip.sha256"
 $TempChecksum = Join-Path $Dist "$PackageName.$([System.Guid]::NewGuid().ToString('N')).tmp.zip.sha256"
 $Utf8NoBom = [System.Text.UTF8Encoding]::new($false)
 
-function Convert-ReadmeForPackage {
-    param(
-        [Parameter(Mandatory = $true)]
-        [string]$Content
-    )
-
-    $Content = Remove-ReadmeHeaderBlock $Content
-    $Content = Remove-ReadmeLanguageLinks $Content
-    $Content = Remove-ReadmeScreenshotBlock $Content
-    $Content = Remove-ReadmeLatestDownloadTable $Content
-    $Content = Remove-ReadmeHtmlBreaks $Content
-    $Content = Convert-ReadmeDisclosureBlocks $Content
-    return $Content.TrimStart()
-}
-
-function Convert-RootReadmeForPackage {
-    param(
-        [Parameter(Mandatory = $true)]
-        [string]$Content
-    )
-
-    $Content = Convert-ReadmeForPackage $Content
-    $Content = $Content.Replace("](LICENSE)", "](../LICENSE)")
-    $Content = $Content.Replace("](THIRD_PARTY_NOTICES.md)", "](../THIRD_PARTY_NOTICES.md)")
-    return $Content
-}
-
-function Remove-ReadmeLanguageLinks {
-    param(
-        [Parameter(Mandatory = $true)]
-        [string]$Content
-    )
-
-    return [System.Text.RegularExpressions.Regex]::Replace(
-        $Content,
-        '(?m)^[ \t]*(?=[^\r\n]*\|)(?=[^\r\n]*README)(?=[^\r\n]*\.md)[^\r\n]*(?:\r?\n[ \t]*\r?\n|\r?\n|$)',
-        ''
-    )
-}
-
-function Remove-ReadmeHeaderBlock {
-    param(
-        [Parameter(Mandatory = $true)]
-        [string]$Content
-    )
-
-    return [System.Text.RegularExpressions.Regex]::Replace(
-        $Content,
-        '(?ms)^\s*<div(?=[^>]*\balign="center")[^>]*>\s*<img src="(?:\.\./)?assets/app-icon\.png"[\s\S]*?</div>\s*(?:(?:---|<br\s*/?>)\s*)?',
-        "# UnfocusMute`r`n`r`n"
-    )
-}
-
-function Remove-ReadmeScreenshotBlock {
-    param(
-        [Parameter(Mandatory = $true)]
-        [string]$Content
-    )
-
-    return [System.Text.RegularExpressions.Regex]::Replace(
-        $Content,
-        '(?ms)^[ \t]*<p align="center">\s*<img src="(?:\.\./)?assets/screenshot(?:_[A-Za-z0-9-]+)?\.png"[^>]*>\s*</p>\s*',
-        ''
-    )
-}
-
-function Remove-ReadmeLatestDownloadTable {
-    param(
-        [Parameter(Mandatory = $true)]
-        [string]$Content
-    )
-
-    return [System.Text.RegularExpressions.Regex]::Replace(
-        $Content,
-        '(?m)^[ \t]*\|[^\r\n]*\|\r?\n[ \t]*\|[ \t]*---[ \t]*\|\r?\n[ \t]*\|[^\r\n]*releases/latest/download/UnfocusMute-windows-x64\.zip[^\r\n]*\|\r?\n[ \t]*\|[^\r\n]*releases/latest[^\r\n]*\|\r?\n(?:[ \t]*\r?\n)?',
-        ''
-    )
-}
-
-function Remove-ReadmeHtmlBreaks {
-    param(
-        [Parameter(Mandatory = $true)]
-        [string]$Content
-    )
-
-    return [System.Text.RegularExpressions.Regex]::Replace(
-        $Content,
-        '(?im)^[ \t]*<br\s*/?>[ \t]*(?:\r?\n|$)',
-        ''
-    )
-}
-
-function Convert-ReadmeDisclosureBlocks {
-    param(
-        [Parameter(Mandatory = $true)]
-        [string]$Content
-    )
-
-    $Content = [System.Text.RegularExpressions.Regex]::Replace(
-        $Content,
-        '(?im)^[ \t]*</?details>[ \t]*(?:\r?\n|$)',
-        ''
-    )
-    return [System.Text.RegularExpressions.Regex]::Replace(
-        $Content,
-        '(?im)^[ \t]*<summary>[ \t]*(.*?)[ \t]*</summary>[ \t]*$',
-        '### $1'
-    )
-}
-
 function Assert-ThirdPartyNoticesVersion {
     param(
         [Parameter(Mandatory = $true)]
@@ -297,8 +187,6 @@ function Assert-PackageZip {
         [Parameter(Mandatory = $true)]
         [string]$Path,
         [Parameter(Mandatory = $true)]
-        [string]$ExpectedExeFileName,
-        [Parameter(Mandatory = $true)]
         [string[]]$RequiredEntries
     )
 
@@ -317,9 +205,6 @@ function Assert-PackageZip {
                 continue
             }
             Assert-ZipEntryName $EntryName
-            if ([System.Text.RegularExpressions.Regex]::IsMatch($EntryName, '(^|/)README[^/]*\.md$', [System.Text.RegularExpressions.RegexOptions]::IgnoreCase)) {
-                throw "Package README must use .txt extension, found $EntryName"
-            }
             if ($Entries.ContainsKey($EntryName)) {
                 throw "Package ZIP contains duplicate entry $EntryName"
             }
@@ -339,40 +224,6 @@ function Assert-PackageZip {
         foreach ($EntryName in $Entries.Keys) {
             if (-not $ExpectedEntries.Contains($EntryName)) {
                 throw "Package ZIP contains unexpected entry $EntryName"
-            }
-        }
-
-        if (-not $Entries.ContainsKey($ExpectedExeFileName)) {
-            throw "Package ZIP is missing versioned executable $ExpectedExeFileName"
-        }
-
-        foreach ($Entry in $ZipFile.Entries) {
-            if (-not (
-                $Entry.FullName.EndsWith(".md", [System.StringComparison]::OrdinalIgnoreCase) -or
-                $Entry.FullName.EndsWith(".txt", [System.StringComparison]::OrdinalIgnoreCase)
-            )) {
-                continue
-            }
-            $Reader = [System.IO.StreamReader]::new($Entry.Open(), [System.Text.Encoding]::UTF8, $true)
-            try {
-                $Content = $Reader.ReadToEnd()
-            }
-            finally {
-                $Reader.Dispose()
-            }
-
-            if ($Content.Contains('src="assets/app-icon.png"') -or $Content.Contains('src="../assets/app-icon.png"')) {
-                throw "Package README $($Entry.FullName) still references app-icon.png"
-            }
-            if ([System.Text.RegularExpressions.Regex]::IsMatch($Content, 'src="(?:\.\./)?assets/screenshot(?:_[A-Za-z0-9-]+)?\.png"')) {
-                throw "Package README $($Entry.FullName) still references a screenshot image"
-            }
-            if ($Content.Contains("releases/latest/download/UnfocusMute-windows-x64.zip")) {
-                throw "Package README $($Entry.FullName) still references the latest ZIP download"
-            }
-            if ($Entry.FullName.EndsWith(".txt", [System.StringComparison]::OrdinalIgnoreCase) -and
-                [System.Text.RegularExpressions.Regex]::IsMatch($Content, '<br\s*/?>', [System.Text.RegularExpressions.RegexOptions]::IgnoreCase)) {
-                throw "Package README $($Entry.FullName) still contains an HTML line break"
             }
         }
     }
@@ -444,47 +295,14 @@ try {
     Copy-Item "target\$Target\release\unfocusmute.exe" (Join-Path $Stage $ExeFileName)
     Copy-Item "LICENSE" $Stage
     Copy-Item "THIRD_PARTY_NOTICES.md" $Stage
-    $DocFiles = @()
-    if (Test-Path "docs" -PathType Container) {
-        $DocFiles = @(
-            Get-ChildItem "docs" -File -Filter "README_*.md" |
-                Where-Object { $_.Name -notin @("README_en.md", "README_ko.md") } |
-                Sort-Object Name
-        )
-    }
-    $DocsStage = Join-Path $Stage "docs"
-    New-Item -ItemType Directory -Force -Path $DocsStage | Out-Null
-
-    $ReadmeEn = [System.IO.File]::ReadAllText((Join-Path $RepoRoot "README.md"), [System.Text.Encoding]::UTF8)
-    $ReadmeEn = Convert-RootReadmeForPackage $ReadmeEn
-    [System.IO.File]::WriteAllText((Join-Path $DocsStage "README_en.txt"), $ReadmeEn, $Utf8NoBom)
-
-    $ReadmeKo = [System.IO.File]::ReadAllText((Join-Path $RepoRoot "docs\README_ko.md"), [System.Text.Encoding]::UTF8)
-    $ReadmeKo = Convert-ReadmeForPackage $ReadmeKo
-    [System.IO.File]::WriteAllText((Join-Path $DocsStage "README_ko.txt"), $ReadmeKo, $Utf8NoBom)
-
-    if ($DocFiles.Count -gt 0) {
-        foreach ($DocFile in $DocFiles) {
-            $Readme = [System.IO.File]::ReadAllText($DocFile.FullName, [System.Text.Encoding]::UTF8)
-            $Readme = Convert-ReadmeForPackage $Readme
-            $DocTextName = [System.IO.Path]::ChangeExtension($DocFile.Name, ".txt")
-            [System.IO.File]::WriteAllText((Join-Path $DocsStage $DocTextName), $Readme, $Utf8NoBom)
-        }
-    }
-    $ExpectedExeEntry = "$PackageName/$ExeFileName"
     $RequiredEntries = @(
-        $ExpectedExeEntry,
+        "$PackageName/$ExeFileName",
         "$PackageName/LICENSE",
-        "$PackageName/THIRD_PARTY_NOTICES.md",
-        "$PackageName/docs/README_en.txt",
-        "$PackageName/docs/README_ko.txt"
+        "$PackageName/THIRD_PARTY_NOTICES.md"
     )
-    if ($DocFiles.Count -gt 0) {
-        $RequiredEntries += $DocFiles | ForEach-Object { "$PackageName/docs/$([System.IO.Path]::ChangeExtension($_.Name, '.txt'))" }
-    }
 
     Compress-Archive -Path $Stage -DestinationPath $TempZip -CompressionLevel Optimal
-    Assert-PackageZip $TempZip $ExpectedExeEntry $RequiredEntries
+    Assert-PackageZip $TempZip $RequiredEntries
     Write-ZipChecksum $TempZip $TempChecksum $ZipFileName
     Assert-ZipChecksum $TempZip $TempChecksum $ZipFileName
 

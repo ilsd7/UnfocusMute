@@ -27,7 +27,7 @@
   </p>
 </div>
 
-<br>
+---
 
 UnfocusMute es una aplicación pequeña y ligera que se ejecuta en la bandeja del sistema de Windows, silencia automáticamente juegos y aplicaciones seleccionados cuando pasan a segundo plano, y restaura el audio cuando vuelven al primer plano.
 
@@ -36,11 +36,13 @@ UnfocusMute es una aplicación pequeña y ligera que se ejecuta en la bandeja de
 - No se limita a juegos: también puedes registrar aplicaciones comunes como navegadores, aplicaciones de mensajería, lanzadores y reproductores multimedia.
 - El silenciamiento y la restauración solo se aplican a las sesiones que UnfocusMute cambió directamente; las sesiones que tú ya habías silenciado no se modifican.
 
+---
+
 <p align="center">
   <img src="../assets/screenshot_es.png" width="600" alt="Ventana principal de UnfocusMute">
 </p>
 
-<br>
+---
 
 ## Útil cuando
 
@@ -263,7 +265,7 @@ Actualizar avisos de licencias de terceros:
 cargo about generate about.hbs -c about.toml --locked --offline -o THIRD_PARTY_NOTICES.md
 ```
 
-El resultado se crea en `dist\UnfocusMute-windows-x64.zip`, junto con el archivo de verificación SHA-256 `dist\UnfocusMute-windows-x64.zip.sha256`. El ZIP incluye el ejecutable con versión (`UnfocusMute-v<version>.exe`), `LICENSE`, `THIRD_PARTY_NOTICES.md` y los documentos README `.txt` de cada idioma de la carpeta `docs`.
+El resultado se crea en `dist\UnfocusMute-windows-x64.zip`, junto con el archivo de verificación SHA-256 `dist\UnfocusMute-windows-x64.zip.sha256`. El ZIP incluye el ejecutable con versión (`UnfocusMute-v<version>.exe`), `LICENSE` y `THIRD_PARTY_NOTICES.md`.
 
 </details>
 

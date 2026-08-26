@@ -27,7 +27,7 @@
   </p>
 </div>
 
-<br>
+---
 
 UnfocusMuteは、選択したゲームやアプリがバックグラウンドに移ると自動でミュートし、再び前面に戻ると音を元に戻す、Windows 向けのコンパクトで軽量なタスクトレイ常駐アプリです。
 
@@ -36,11 +36,13 @@ UnfocusMuteは、選択したゲームやアプリがバックグラウンドに
 - ゲームに限らず、ブラウザ、メッセンジャー、ランチャー、メディアプレイヤーなどの一般的なアプリも登録できます。
 - ミュートと復元は、UnfocusMuteが直接変更したオーディオセッションにのみ適用されます。ユーザーが元からミュートしていたオーディオセッションには触れません。
 
+---
+
 <p align="center">
   <img src="../assets/screenshot_ja.png" width="600" alt="UnfocusMuteのメインウィンドウ">
 </p>
 
-<br>
+---
 
 ## こんなときに便利です
 
@@ -263,7 +265,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts\package-windows.ps1
 cargo about generate about.hbs -c about.toml --locked --offline -o THIRD_PARTY_NOTICES.md
 ```
 
-成果物は `dist\UnfocusMute-windows-x64.zip` に作成され、同じ場所に SHA-256 チェックサムファイル `dist\UnfocusMute-windows-x64.zip.sha256` も作成されます。ZIPには、バージョン付きの実行ファイル（`UnfocusMute-v<version>.exe`）、`LICENSE`、`THIRD_PARTY_NOTICES.md`、`docs` フォルダー内の言語別README（`.txt`形式）が含まれます。
+成果物は `dist\UnfocusMute-windows-x64.zip` に作成され、同じ場所に SHA-256 チェックサムファイル `dist\UnfocusMute-windows-x64.zip.sha256` も作成されます。ZIPには、バージョン付きの実行ファイル（`UnfocusMute-v<version>.exe`）、`LICENSE`、`THIRD_PARTY_NOTICES.md`が含まれます。
 
 </details>
 

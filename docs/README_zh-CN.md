@@ -27,7 +27,7 @@
   </p>
 </div>
 
-<br>
+---
 
 UnfocusMute 是一款小巧轻量的 Windows 托盘应用，可在选定的游戏或应用转入后台时自动静音，并在它们回到前台时恢复声音。
 
@@ -36,11 +36,13 @@ UnfocusMute 是一款小巧轻量的 Windows 托盘应用，可在选定的游�
 - 它并不局限于游戏，也可以添加浏览器、聊天工具、启动器、媒体播放器等普通应用。
 - 静音和恢复只会作用于 UnfocusMute 自己改动过的音频会话；你手动静音的音频会话不会被更改。
 
+---
+
 <p align="center">
   <img src="../assets/screenshot_zh-CN.png" width="600" alt="UnfocusMute 主窗口">
 </p>
 
-<br>
+---
 
 ## 适合这些场景
 
@@ -263,7 +265,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts\package-windows.ps1
 cargo about generate about.hbs -c about.toml --locked --offline -o THIRD_PARTY_NOTICES.md
 ```
 
-结果会生成到 `dist\UnfocusMute-windows-x64.zip`，同一位置还会生成用于 SHA-256 校验的 `dist\UnfocusMute-windows-x64.zip.sha256`。ZIP 包含带版本号的可执行文件（`UnfocusMute-v<version>.exe`）、`LICENSE`、`THIRD_PARTY_NOTICES.md`，以及 `docs` 文件夹中的各语言 README `.txt` 文件。
+结果会生成到 `dist\UnfocusMute-windows-x64.zip`，同一位置还会生成用于 SHA-256 校验的 `dist\UnfocusMute-windows-x64.zip.sha256`。ZIP 包含带版本号的可执行文件（`UnfocusMute-v<version>.exe`）、`LICENSE` 和 `THIRD_PARTY_NOTICES.md`。
 
 </details>
 

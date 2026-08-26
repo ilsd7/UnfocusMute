@@ -27,7 +27,7 @@
   </p>
 </div>
 
-<br>
+---
 
 UnfocusMute एक छोटा और हल्का Windows ट्रे ऐप है, जो चुने गए गेम या ऐप के बैकग्राउंड में जाने पर उसे अपने-आप म्यूट करता है और उसके फिर से फ़ोरग्राउंड में आने पर आवाज़ बहाल कर देता है।
 
@@ -36,11 +36,13 @@ UnfocusMute एक छोटा और हल्का Windows ट्रे ऐ�
 - यह सिर्फ गेम तक सीमित नहीं है; आप ब्राउज़र, मैसेंजर, लॉन्चर और मीडिया प्लेयर जैसे सामान्य ऐप्स भी रजिस्टर कर सकते हैं।
 - म्यूट और आवाज़ की बहाली सिर्फ उन्हीं ऑडियो सेशन पर लागू होती है जिन्हें UnfocusMute ने खुद बदला था; जिन्हें आपने पहले से म्यूट कर रखा था, उन्हें यह नहीं छूता।
 
+---
+
 <p align="center">
   <img src="../assets/screenshot_hi.png" width="600" alt="UnfocusMute मुख्य विंडो">
 </p>
 
-<br>
+---
 
 ## कब काम आता है
 
@@ -263,7 +265,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts\package-windows.ps1
 cargo about generate about.hbs -c about.toml --locked --offline -o THIRD_PARTY_NOTICES.md
 ```
 
-परिणाम `dist\UnfocusMute-windows-x64.zip` में बनता है, और उसी जगह SHA-256 जाँच फ़ाइल `dist\UnfocusMute-windows-x64.zip.sha256` भी बनती है। ZIP में संस्करण सहित `.exe` फ़ाइल (`UnfocusMute-v<version>.exe`), `LICENSE`, `THIRD_PARTY_NOTICES.md`, और `docs` फ़ोल्डर में भाषा के अनुसार README `.txt` फ़ाइलें शामिल होती हैं।
+परिणाम `dist\UnfocusMute-windows-x64.zip` में बनता है, और उसी जगह SHA-256 जाँच फ़ाइल `dist\UnfocusMute-windows-x64.zip.sha256` भी बनती है। ZIP में संस्करण सहित `.exe` फ़ाइल (`UnfocusMute-v<version>.exe`), `LICENSE` और `THIRD_PARTY_NOTICES.md` शामिल होते हैं।
 
 </details>
 

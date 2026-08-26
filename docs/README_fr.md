@@ -27,7 +27,7 @@
   </p>
 </div>
 
-<br>
+---
 
 UnfocusMute est une petite application légère qui s’exécute dans la zone de notification de Windows, coupe automatiquement le son des jeux et applications choisis lorsqu’ils passent en arrière-plan, puis le rétablit lorsqu’ils reviennent au premier plan.
 
@@ -36,11 +36,13 @@ UnfocusMute est une petite application légère qui s’exécute dans la zone de
 - Elle ne se limite pas aux jeux : vous pouvez aussi ajouter des applications courantes comme des navigateurs, des messageries, des lanceurs et des lecteurs multimédias.
 - La coupure et le rétablissement du son ne s’appliquent qu’aux sessions qu’UnfocusMute a modifiées lui-même ; les sessions dont vous aviez déjà coupé le son ne sont pas touchées.
 
+---
+
 <p align="center">
   <img src="../assets/screenshot_fr.png" width="600" alt="Fenêtre principale d’UnfocusMute">
 </p>
 
-<br>
+---
 
 ## Cas d’utilisation
 
@@ -263,7 +265,7 @@ Actualiser les mentions de licence des dépendances tierces :
 cargo about generate about.hbs -c about.toml --locked --offline -o THIRD_PARTY_NOTICES.md
 ```
 
-Le résultat est créé dans `dist\UnfocusMute-windows-x64.zip`, avec le fichier de vérification SHA-256 `dist\UnfocusMute-windows-x64.zip.sha256` au même emplacement. Le ZIP contient l’exécutable avec numéro de version (`UnfocusMute-v<version>.exe`), `LICENSE`, `THIRD_PARTY_NOTICES.md` et les README traduits au format `.txt` du dossier `docs`.
+Le résultat est créé dans `dist\UnfocusMute-windows-x64.zip`, avec le fichier de vérification SHA-256 `dist\UnfocusMute-windows-x64.zip.sha256` au même emplacement. Le ZIP contient l’exécutable avec numéro de version (`UnfocusMute-v<version>.exe`), `LICENSE` et `THIRD_PARTY_NOTICES.md`.
 
 </details>
 

@@ -27,7 +27,7 @@
   </p>
 </div>
 
-<br>
+---
 
 UnfocusMute는 선택한 게임이나 앱이 백그라운드로 전환되면 자동으로 음소거하고, 다시 전면으로 돌아오면 소리를 복원하는 작고 가벼운 Windows 트레이 앱입니다.
 
@@ -36,11 +36,13 @@ UnfocusMute는 선택한 게임이나 앱이 백그라운드로 전환되면 자
 - 게임에만 한정되지 않으며, 브라우저, 메신저, 런처, 미디어 플레이어 같은 일반 앱도 등록할 수 있습니다.
 - 음소거와 복원은 UnfocusMute가 직접 변경한 오디오 세션에만 적용되며, 사용자가 원래 음소거해 둔 세션은 변경하지 않습니다.
 
+---
+
 <p align="center">
   <img src="../assets/screenshot_ko.png" width="600" alt="UnfocusMute 메인 창">
 </p>
 
-<br>
+---
 
 ## 이럴 때 유용합니다
 
@@ -263,7 +265,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts\package-windows.ps1
 cargo about generate about.hbs -c about.toml --locked --offline -o THIRD_PARTY_NOTICES.md
 ```
 
-결과물은 `dist\UnfocusMute-windows-x64.zip`에 생성되며, 같은 위치에 SHA-256 확인용 `dist\UnfocusMute-windows-x64.zip.sha256`도 함께 만들어집니다. ZIP에는 버전명이 포함된 실행 파일(`UnfocusMute-v<version>.exe`), `LICENSE`, `THIRD_PARTY_NOTICES.md`, `docs` 폴더의 언어별 README `.txt` 문서가 들어 있습니다.
+결과물은 `dist\UnfocusMute-windows-x64.zip`에 생성되며, 같은 위치에 SHA-256 확인용 `dist\UnfocusMute-windows-x64.zip.sha256`도 함께 만들어집니다. ZIP에는 버전명이 포함된 실행 파일(`UnfocusMute-v<version>.exe`), `LICENSE`, `THIRD_PARTY_NOTICES.md`가 들어 있습니다.
 
 </details>
 
