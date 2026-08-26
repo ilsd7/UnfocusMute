@@ -1,12 +1,20 @@
-use super::constants::{PAGE_COLOR, PANEL_BORDER_COLOR, PANEL_COLOR, SELECTED_ROW_COLOR};
+use crate::config::ThemePreference;
+use std::ffi::c_void;
+use std::mem::size_of;
 use std::sync::OnceLock;
-use std::sync::atomic::{AtomicI32, Ordering};
-use windows::Win32::Foundation::{COLORREF, WPARAM};
+use std::sync::atomic::{AtomicI32, AtomicU8, Ordering};
+use windows::Win32::Foundation::{COLORREF, ERROR_SUCCESS, HWND, WPARAM};
+use windows::Win32::Graphics::Dwm::{DWMWA_USE_IMMERSIVE_DARK_MODE, DwmSetWindowAttribute};
 use windows::Win32::Graphics::Gdi::{
     CLIP_DEFAULT_PRECIS, CreateFontW, CreateSolidBrush, DEFAULT_CHARSET, DEFAULT_GUI_FONT,
     DEFAULT_QUALITY, DeleteObject, FF_DONTCARE, FW_NORMAL, GetStockObject, HBRUSH, HGDIOBJ,
     OUT_DEFAULT_PRECIS,
 };
+use windows::Win32::System::Registry::{
+    HKEY, HKEY_CURRENT_USER, KEY_QUERY_VALUE, REG_DWORD, REG_VALUE_TYPE, RegCloseKey,
+    RegOpenKeyExW, RegQueryValueExW,
+};
+use windows::Win32::UI::Controls::SetWindowTheme;
 use windows::Win32::UI::HiDpi::GetDpiForSystem;
 use windows::core::{PCWSTR, w};
 
@@ -17,6 +25,201 @@ const MAX_USER_UI_SCALE: i32 = 10_000;
 
 static SYSTEM_UI_SCALE: OnceLock<i32> = OnceLock::new();
 static USER_UI_SCALE: AtomicI32 = AtomicI32::new(SCALE_BASE);
+static ACTIVE_THEME: AtomicU8 = AtomicU8::new(ResolvedTheme::Light as u8);
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[repr(u8)]
+pub(super) enum ResolvedTheme {
+    Light,
+    Dark,
+}
+
+impl ResolvedTheme {
+    pub(super) fn toggled(self) -> Self {
+        match self {
+            Self::Light => Self::Dark,
+            Self::Dark => Self::Light,
+        }
+    }
+
+    pub(super) fn preference(self) -> ThemePreference {
+        match self {
+            Self::Light => ThemePreference::Light,
+            Self::Dark => ThemePreference::Dark,
+        }
+    }
+
+    pub(super) fn action_glyph(self) -> &'static str {
+        match self {
+            Self::Light => "\u{e708}",
+            Self::Dark => "\u{e706}",
+        }
+    }
+}
+
+pub(super) const SETTINGS_ICON_GLYPH: &str = "\u{e713}";
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(super) struct ThemePalette {
+    pub(super) page: COLORREF,
+    pub(super) panel: COLORREF,
+    pub(super) border: COLORREF,
+    pub(super) text: COLORREF,
+    pub(super) subtle_text: COLORREF,
+    pub(super) accent: COLORREF,
+    pub(super) warning: COLORREF,
+    pub(super) status_active: COLORREF,
+    pub(super) status_paused: COLORREF,
+    pub(super) selected_row: COLORREF,
+    pub(super) disabled_text: COLORREF,
+    pub(super) button: COLORREF,
+    pub(super) button_hover: COLORREF,
+    pub(super) button_pressed: COLORREF,
+    pub(super) button_border: COLORREF,
+    pub(super) button_disabled: COLORREF,
+    pub(super) link: COLORREF,
+    pub(super) link_hover: COLORREF,
+    pub(super) checkbox_checked: COLORREF,
+}
+
+const LIGHT_PALETTE: ThemePalette = ThemePalette {
+    page: rgb(245, 245, 247),
+    panel: rgb(255, 255, 255),
+    border: rgb(229, 229, 234),
+    text: rgb(29, 29, 31),
+    subtle_text: rgb(82, 82, 86),
+    accent: rgb(34, 134, 58),
+    warning: rgb(138, 98, 18),
+    status_active: rgb(34, 134, 58),
+    status_paused: rgb(138, 98, 18),
+    selected_row: rgb(248, 248, 250),
+    disabled_text: rgb(160, 160, 166),
+    button: rgb(255, 255, 255),
+    button_hover: rgb(248, 248, 250),
+    button_pressed: rgb(238, 238, 240),
+    button_border: rgb(218, 220, 224),
+    button_disabled: rgb(250, 250, 252),
+    link: COLORREF(0x00CC_6600),
+    link_hover: COLORREF(0x00E6_BC6A),
+    checkbox_checked: COLORREF(0x00CC_6600),
+};
+
+// Adapted from the macOS Classic Dark palette for Zed. Only UI color values
+// are mapped here; the theme file and its code are not bundled with the app.
+const DARK_PALETTE: ThemePalette = ThemePalette {
+    page: rgb(19, 19, 19),
+    panel: rgb(30, 29, 30),
+    border: rgb(64, 64, 64),
+    text: rgb(202, 204, 202),
+    subtle_text: rgb(158, 158, 158),
+    accent: rgb(98, 186, 70),
+    warning: rgb(176, 168, 120),
+    status_active: rgb(115, 173, 100),
+    status_paused: rgb(185, 173, 106),
+    selected_row: rgb(53, 52, 54),
+    disabled_text: rgb(143, 143, 143),
+    button: rgb(55, 54, 54),
+    button_hover: rgb(53, 52, 54),
+    button_pressed: rgb(71, 70, 70),
+    button_border: rgb(64, 64, 64),
+    button_disabled: rgb(30, 29, 30),
+    link: rgb(127, 174, 249),
+    link_hover: rgb(169, 200, 250),
+    checkbox_checked: rgb(111, 159, 234),
+};
+
+pub(super) fn resolve_theme(preference: ThemePreference) -> ResolvedTheme {
+    match preference {
+        ThemePreference::System if system_uses_dark_theme() => ResolvedTheme::Dark,
+        ThemePreference::Dark => ResolvedTheme::Dark,
+        ThemePreference::System | ThemePreference::Light => ResolvedTheme::Light,
+    }
+}
+
+pub(super) fn set_active_theme(theme: ResolvedTheme) -> bool {
+    ACTIVE_THEME.swap(theme as u8, Ordering::Relaxed) != theme as u8
+}
+
+pub(super) fn active_theme() -> ResolvedTheme {
+    if ACTIVE_THEME.load(Ordering::Relaxed) == ResolvedTheme::Dark as u8 {
+        ResolvedTheme::Dark
+    } else {
+        ResolvedTheme::Light
+    }
+}
+
+pub(super) fn active_palette() -> &'static ThemePalette {
+    match active_theme() {
+        ResolvedTheme::Light => &LIGHT_PALETTE,
+        ResolvedTheme::Dark => &DARK_PALETTE,
+    }
+}
+
+pub(super) fn apply_window_theme(hwnd: HWND) {
+    let dark = i32::from(active_theme() == ResolvedTheme::Dark);
+    unsafe {
+        let _ = DwmSetWindowAttribute(
+            hwnd,
+            DWMWA_USE_IMMERSIVE_DARK_MODE,
+            (&dark as *const i32).cast::<c_void>(),
+            size_of::<i32>() as u32,
+        );
+    }
+}
+
+pub(super) fn apply_native_control_theme(hwnd: HWND) {
+    unsafe {
+        if active_theme() == ResolvedTheme::Dark {
+            let _ = SetWindowTheme(hwnd, w!("DarkMode_Explorer"), PCWSTR::null());
+        } else {
+            let _ = SetWindowTheme(hwnd, PCWSTR::null(), PCWSTR::null());
+        }
+    }
+}
+
+fn system_uses_dark_theme() -> bool {
+    let mut key = HKEY::default();
+    let opened = unsafe {
+        RegOpenKeyExW(
+            HKEY_CURRENT_USER,
+            w!("Software\\Microsoft\\Windows\\CurrentVersion\\Themes\\Personalize"),
+            None,
+            KEY_QUERY_VALUE,
+            &mut key,
+        )
+    };
+    if opened != ERROR_SUCCESS {
+        return false;
+    }
+    let key = RegistryKey(key);
+    let mut value_type = REG_VALUE_TYPE::default();
+    let mut value = 1u32;
+    let mut size = size_of::<u32>() as u32;
+    let queried = unsafe {
+        RegQueryValueExW(
+            key.0,
+            w!("AppsUseLightTheme"),
+            None,
+            Some(&mut value_type),
+            Some((&mut value as *mut u32).cast::<u8>()),
+            Some(&mut size),
+        )
+    };
+    queried == ERROR_SUCCESS
+        && value_type == REG_DWORD
+        && size == size_of::<u32>() as u32
+        && value == 0
+}
+
+struct RegistryKey(HKEY);
+
+impl Drop for RegistryKey {
+    fn drop(&mut self) {
+        unsafe {
+            let _ = RegCloseKey(self.0);
+        }
+    }
+}
 
 pub(super) struct OwnedBrush {
     handle: HBRUSH,
@@ -43,31 +246,66 @@ impl Drop for OwnedBrush {
 }
 
 pub(super) struct AppTheme {
+    pub(super) resolved: ResolvedTheme,
+    pub(super) palette: ThemePalette,
     pub(super) page_brush: OwnedBrush,
     pub(super) panel_brush: OwnedBrush,
     pub(super) border_brush: OwnedBrush,
     pub(super) selected_row_brush: OwnedBrush,
     pub(super) font: UiFont,
+    pub(super) icon_font: UiFont,
+    pub(super) action_icon_font: UiFont,
 }
 
 impl AppTheme {
     pub(super) fn new() -> Self {
+        let resolved = active_theme();
+        let palette = *active_palette();
         Self {
-            page_brush: OwnedBrush::solid(PAGE_COLOR),
-            panel_brush: OwnedBrush::solid(PANEL_COLOR),
-            border_brush: OwnedBrush::solid(PANEL_BORDER_COLOR),
-            selected_row_brush: OwnedBrush::solid(SELECTED_ROW_COLOR),
+            resolved,
+            palette,
+            page_brush: OwnedBrush::solid(palette.page),
+            panel_brush: OwnedBrush::solid(palette.panel),
+            border_brush: OwnedBrush::solid(palette.border),
+            selected_row_brush: OwnedBrush::solid(palette.selected_row),
             font: Self::scaled_font(),
+            icon_font: Self::scaled_icon_font(),
+            action_icon_font: Self::scaled_action_icon_font(),
         }
+    }
+
+    pub(super) fn refresh_colors(&mut self) -> bool {
+        let resolved = active_theme();
+        if self.resolved == resolved {
+            return false;
+        }
+        let palette = *active_palette();
+        self.resolved = resolved;
+        self.palette = palette;
+        self.page_brush = OwnedBrush::solid(palette.page);
+        self.panel_brush = OwnedBrush::solid(palette.panel);
+        self.border_brush = OwnedBrush::solid(palette.border);
+        self.selected_row_brush = OwnedBrush::solid(palette.selected_row);
+        true
     }
 
     pub(super) fn fonts_match_current_scale(&self) -> bool {
         let font_point_size = ui_font_point_size();
         self.font.pixel_height() == font_pixel_height(font_point_size)
+            && self.icon_font.pixel_height() == font_pixel_height(font_point_size + 1)
+            && self.action_icon_font.pixel_height() == font_pixel_height(font_point_size + 3)
     }
 
     pub(super) fn scaled_font() -> UiFont {
         UiFont::new(ui_font_point_size())
+    }
+
+    pub(super) fn scaled_icon_font() -> UiFont {
+        UiFont::icon(ui_font_point_size() + 1)
+    }
+
+    pub(super) fn scaled_action_icon_font() -> UiFont {
+        UiFont::icon(ui_font_point_size() + 3)
     }
 
     /// Returns the previous font so its handle remains valid until every child
@@ -75,6 +313,16 @@ impl AppTheme {
     #[must_use]
     pub(super) fn replace_font(&mut self, font: UiFont) -> UiFont {
         std::mem::replace(&mut self.font, font)
+    }
+
+    #[must_use]
+    pub(super) fn replace_icon_font(&mut self, font: UiFont) -> UiFont {
+        std::mem::replace(&mut self.icon_font, font)
+    }
+
+    #[must_use]
+    pub(super) fn replace_action_icon_font(&mut self, font: UiFont) -> UiFont {
+        std::mem::replace(&mut self.action_icon_font, font)
     }
 }
 
@@ -87,6 +335,10 @@ pub(super) struct UiFont {
 impl UiFont {
     pub(super) fn new(point_size: i32) -> Self {
         Self::new_with_face(point_size, FW_NORMAL.0 as i32, w!("Segoe UI"))
+    }
+
+    pub(super) fn icon(point_size: i32) -> Self {
+        Self::new_with_face(point_size, FW_NORMAL.0 as i32, w!("Segoe MDL2 Assets"))
     }
 
     fn new_with_face(point_size: i32, weight: i32, face: PCWSTR) -> Self {
@@ -214,5 +466,25 @@ fn scale_i32(value: i32, scale: i32) -> i32 {
         ((value as i64 * scale as i64 + (SCALE_BASE / 2) as i64) / SCALE_BASE as i64) as i32
     } else {
         -scale_i32(value.saturating_abs(), scale)
+    }
+}
+
+const fn rgb(red: u8, green: u8, blue: u8) -> COLORREF {
+    COLORREF((red as u32) | ((green as u32) << 8) | ((blue as u32) << 16))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn dark_palette_matches_selected_visual_reference() {
+        assert_eq!(DARK_PALETTE.page, rgb(19, 19, 19));
+        assert_eq!(DARK_PALETTE.panel, rgb(30, 29, 30));
+        assert_eq!(DARK_PALETTE.text, rgb(202, 204, 202));
+        assert_eq!(DARK_PALETTE.accent, rgb(98, 186, 70));
+        assert_eq!(DARK_PALETTE.status_active, rgb(115, 173, 100));
+        assert_eq!(DARK_PALETTE.status_paused, rgb(185, 173, 106));
+        assert_eq!(DARK_PALETTE.checkbox_checked, rgb(111, 159, 234));
     }
 }

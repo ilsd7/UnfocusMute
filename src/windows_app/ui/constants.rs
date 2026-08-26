@@ -1,5 +1,4 @@
 use std::time::Duration;
-use windows::Win32::Foundation::COLORREF;
 use windows::Win32::UI::WindowsAndMessaging::{
     WINDOW_STYLE, WM_APP, WS_CAPTION, WS_CLIPCHILDREN, WS_MINIMIZEBOX, WS_OVERLAPPED, WS_SYSMENU,
     WS_THICKFRAME,
@@ -53,6 +52,7 @@ pub(super) const ID_LANGUAGE_PROMPT_START_MINIMIZED: i32 = 2004;
 pub(super) const ID_LANGUAGE_PROMPT_RESTORE_EXIT: i32 = 2005;
 pub(super) const ID_LANGUAGE_PROMPT_HIDE_ON_CLOSE: i32 = 2006;
 pub(super) const ID_LANGUAGE_PROMPT_COMBO_FRAME: i32 = 2007;
+pub(super) const ID_LANGUAGE_PROMPT_THEME: i32 = 2008;
 pub(super) const ID_TARGET_NOTE_EDIT: i32 = 2101;
 pub(super) const ID_TARGET_NOTE_SAVE: i32 = 2102;
 pub(super) const ID_TARGET_NOTE_CLEAR: i32 = 2103;
@@ -66,24 +66,11 @@ pub(super) const ID_SETTINGS_WINDOW_GITHUB: i32 = 2206;
 pub(super) const ID_SETTINGS_WINDOW_GITHUB_TOOLTIP: i32 = 2207;
 pub(super) const ID_SETTINGS_WINDOW_HIDE_ON_CLOSE: i32 = 2208;
 pub(super) const ID_SETTINGS_WINDOW_LANGUAGE_FRAME: i32 = 2209;
+pub(super) const ID_SETTINGS_WINDOW_THEME: i32 = 2210;
 pub(super) const ID_TARGET_CONTEXT_TOGGLE_ENABLED: i32 = 3100;
 pub(super) const ID_TARGET_CONTEXT_EDIT_NOTE: i32 = 3101;
 
-pub(super) const PAGE_COLOR: COLORREF = rgb(245, 245, 247);
-pub(super) const PANEL_COLOR: COLORREF = rgb(255, 255, 255);
-pub(super) const PANEL_BORDER_COLOR: COLORREF = rgb(229, 229, 234);
-pub(super) const TEXT_COLOR: COLORREF = rgb(29, 29, 31);
-pub(super) const SUBTLE_TEXT_COLOR: COLORREF = rgb(82, 82, 86);
-pub(super) const ACCENT_COLOR: COLORREF = rgb(34, 134, 58);
-pub(super) const WARNING_COLOR: COLORREF = rgb(138, 98, 18);
-pub(super) const SELECTED_ROW_COLOR: COLORREF = rgb(248, 248, 250);
-pub(super) const DISABLED_TEXT_COLOR: COLORREF = rgb(160, 160, 166);
 pub(super) const SS_CENTER_STYLE: WINDOW_STYLE = WINDOW_STYLE(1);
-pub(super) const SS_RIGHT_STYLE: WINDOW_STYLE = WINDOW_STYLE(2);
 pub(super) const SS_OWNERDRAW_STYLE: WINDOW_STYLE = WINDOW_STYLE(0x0000_000D);
 pub(super) const SS_CENTERIMAGE_STYLE: WINDOW_STYLE = WINDOW_STYLE(0x0000_0200);
 pub(super) const SS_ENDELLIPSIS_STYLE: WINDOW_STYLE = WINDOW_STYLE(0x0000_4000);
-
-const fn rgb(red: u8, green: u8, blue: u8) -> COLORREF {
-    COLORREF((red as u32) | ((green as u32) << 8) | ((blue as u32) << 16))
-}

@@ -1,15 +1,12 @@
-use super::constants::{
-    PAGE_COLOR, PANEL_BORDER_COLOR, PANEL_COLOR, SUBTLE_TEXT_COLOR, TEXT_COLOR,
-};
 use super::drawing::draw_text_line;
-use super::theme::{logical_px, px};
+use super::theme::{ThemePalette, active_palette, logical_px, px};
 use crate::windows_app::error::{Context, Result, message_error};
 use std::borrow::Cow;
 use std::ffi::c_void;
 use std::os::windows::ffi::OsStrExt;
 use std::path::Path;
 use windows::Win32::Foundation::{
-    COLORREF, HANDLE, HINSTANCE, HWND, LPARAM, LRESULT, POINT, RECT, SIZE, WPARAM,
+    HANDLE, HINSTANCE, HWND, LPARAM, LRESULT, POINT, RECT, SIZE, WPARAM,
 };
 use windows::Win32::Graphics::Gdi::{
     CreatePen, CreateSolidBrush, DT_CENTER, DT_LEFT, DT_NOPREFIX, DT_SINGLELINE, DT_VCENTER,
@@ -30,9 +27,9 @@ use windows::Win32::UI::Input::KeyboardAndMouse::{
 use windows::Win32::UI::Shell::{DefSubclassProc, RemoveWindowSubclass, SetWindowSubclass};
 use windows::Win32::UI::WindowsAndMessaging::{
     BM_GETCHECK, BM_SETCHECK, BS_AUTOCHECKBOX, BS_MULTILINE, BS_OWNERDRAW, CB_ADDSTRING,
-    CB_INITSTORAGE, CreateWindowExW, DestroyIcon, GetMessageW, GetPropW, GetSystemMetrics,
-    GetWindowRect, GetWindowTextLengthW, GetWindowTextW, HICON, HMENU, HTCLIENT, HTTRANSPARENT,
-    HWND_TOP, IDC_HAND, IDI_APPLICATION, IMAGE_ICON, LB_ADDSTRING, LB_INITSTORAGE, LR_DEFAULTCOLOR,
+    CB_INITSTORAGE, CreateWindowExW, GetMessageW, GetPropW, GetSystemMetrics, GetWindowRect,
+    GetWindowTextLengthW, GetWindowTextW, HICON, HMENU, HTCLIENT, HTTRANSPARENT, HWND_TOP,
+    IDC_HAND, IDI_APPLICATION, IMAGE_ICON, LB_ADDSTRING, LB_INITSTORAGE, LR_DEFAULTCOLOR,
     LR_SHARED, LoadCursorW, LoadIconW, LoadImageW, MSG, MoveWindow, RemovePropW, SM_CXICON,
     SM_CXSMICON, SM_CYICON, SM_CYSMICON, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE, SendMessageW,
     SetCursor, SetPropW, SetWindowPos, SetWindowTextW, UnregisterClassW, WINDOW_EX_STYLE,
@@ -61,28 +58,6 @@ const FULL_HEIGHT_BUTTON_PROPERTY: PCWSTR = w!("UnfocusMute.FullHeightButton");
 pub(super) struct WindowClassRegistration {
     class_name: PCWSTR,
     instance: HINSTANCE,
-}
-
-pub(super) struct OwnedIcon {
-    handle: HICON,
-}
-
-impl OwnedIcon {
-    fn new(handle: HICON) -> Option<Self> {
-        (!handle.0.is_null()).then_some(Self { handle })
-    }
-
-    pub(super) fn handle(&self) -> HICON {
-        self.handle
-    }
-}
-
-impl Drop for OwnedIcon {
-    fn drop(&mut self) {
-        unsafe {
-            let _ = DestroyIcon(self.handle);
-        }
-    }
 }
 
 impl WindowClassRegistration {
@@ -500,6 +475,54 @@ pub(super) unsafe fn move_window(
     unsafe { MoveWindow(hwnd, x, y, width, height, repaint).is_ok() }
 }
 
+/// Repositions a child control around an exact device-pixel center while
+/// preserving its current horizontal span.
+///
+/// Independently scaling a logical top and height can leave controls with
+/// different height parity half a pixel apart. Adjusting the preferred height
+/// by at most one device pixel keeps paired controls on the same exact center.
+pub(super) unsafe fn center_control_vertically(
+    parent: HWND,
+    control: HWND,
+    center_twice: i32,
+    preferred_logical_height: i32,
+    repaint: bool,
+) -> bool {
+    let (top, height) = centered_control_span_exact(center_twice, px(preferred_logical_height));
+    unsafe { move_control_vertical_span(parent, control, top, height, repaint) }
+}
+
+pub(super) unsafe fn move_control_vertical_span(
+    parent: HWND,
+    control: HWND,
+    top: i32,
+    height: i32,
+    repaint: bool,
+) -> bool {
+    let Some(rect) = (unsafe { control_rect_in_parent(parent, control) }) else {
+        return false;
+    };
+    unsafe {
+        MoveWindow(
+            control,
+            rect.left,
+            top,
+            rect.right.saturating_sub(rect.left).max(1),
+            height.max(1),
+            repaint,
+        )
+        .is_ok()
+    }
+}
+
+pub(super) fn centered_control_span_exact(center_twice: i32, preferred_height: i32) -> (i32, i32) {
+    let preferred_height = preferred_height.max(1);
+    let parity_differs = (center_twice - preferred_height).rem_euclid(2) != 0;
+    let height = preferred_height + i32::from(parity_differs);
+    let top = (center_twice - height).div_euclid(2);
+    (top, height)
+}
+
 pub(super) unsafe fn redraw_control_now(hwnd: HWND) -> bool {
     unsafe { RedrawWindow(Some(hwnd), None, None, RDW_INVALIDATE | RDW_UPDATENOW).as_bool() }
 }
@@ -721,22 +744,6 @@ pub(super) unsafe fn load_tray_icon(instance: HINSTANCE) -> HICON {
     unsafe { load_sized_app_icon(instance, size).unwrap_or_else(|| load_app_icon(instance)) }
 }
 
-pub(super) unsafe fn load_settings_icon(instance: HINSTANCE, size: i32) -> Option<OwnedIcon> {
-    unsafe {
-        LoadImageW(
-            Some(instance),
-            int_resource(3),
-            IMAGE_ICON,
-            size,
-            size,
-            LR_DEFAULTCOLOR,
-        )
-        .ok()
-        .map(|handle| HICON(handle.0))
-        .and_then(OwnedIcon::new)
-    }
-}
-
 unsafe fn load_sized_app_icon(instance: HINSTANCE, size: i32) -> Option<HICON> {
     unsafe {
         LoadImageW(
@@ -938,6 +945,16 @@ pub(super) fn default_button_message_result(
 }
 
 pub(super) unsafe fn draw_flat_button(draw: &DRAWITEMSTRUCT, font: HGDIOBJ) -> bool {
+    let palette = active_palette();
+    unsafe { draw_flat_button_on(draw, font, palette, palette.page) }
+}
+
+pub(super) unsafe fn draw_flat_button_on(
+    draw: &DRAWITEMSTRUCT,
+    font: HGDIOBJ,
+    palette: &ThemePalette,
+    host_background: windows::Win32::Foundation::COLORREF,
+) -> bool {
     let hwnd = draw.hwndItem;
     let hdc = draw.hDC;
 
@@ -950,22 +967,22 @@ pub(super) unsafe fn draw_flat_button(draw: &DRAWITEMSTRUCT, font: HGDIOBJ) -> b
     let hovered = unsafe { !GetPropW(hwnd, w!("ButtonHovered")).0.is_null() };
     let full_height = unsafe { !GetPropW(hwnd, FULL_HEIGHT_BUTTON_PROPERTY).0.is_null() };
 
-    let rgb = |r: u8, g: u8, b: u8| -> COLORREF {
-        COLORREF((r as u32) | ((g as u32) << 8) | ((b as u32) << 16))
-    };
-
     let (bg_color, border_color, text_color) = if disabled {
-        (rgb(250, 250, 252), rgb(229, 229, 234), rgb(160, 160, 166))
+        (
+            palette.button_disabled,
+            palette.border,
+            palette.disabled_text,
+        )
     } else if pressed {
-        (rgb(238, 238, 240), rgb(218, 220, 224), rgb(29, 29, 31))
+        (palette.button_pressed, palette.button_border, palette.text)
     } else if hovered {
-        (rgb(248, 248, 250), rgb(218, 220, 224), rgb(29, 29, 31))
+        (palette.button_hover, palette.button_border, palette.text)
     } else {
-        (rgb(255, 255, 255), rgb(218, 220, 224), rgb(29, 29, 31))
+        (palette.button, palette.button_border, palette.text)
     };
 
     unsafe {
-        let clean_brush = CreateSolidBrush(rgb(245, 245, 247));
+        let clean_brush = CreateSolidBrush(host_background);
         let _ = FillRect(hdc, &draw.rcItem, clean_brush);
         let _ = DeleteObject(clean_brush.into());
 
@@ -1028,13 +1045,23 @@ pub(super) unsafe fn draw_flat_button(draw: &DRAWITEMSTRUCT, font: HGDIOBJ) -> b
 }
 
 pub(super) unsafe fn draw_rounded_input_frame(draw: &DRAWITEMSTRUCT, radius: i32) -> bool {
+    let palette = active_palette();
+    unsafe { draw_rounded_input_frame_on(draw, radius, palette, palette.page) }
+}
+
+pub(super) unsafe fn draw_rounded_input_frame_on(
+    draw: &DRAWITEMSTRUCT,
+    radius: i32,
+    palette: &ThemePalette,
+    host_background: windows::Win32::Foundation::COLORREF,
+) -> bool {
     unsafe {
-        let background = CreateSolidBrush(PAGE_COLOR);
+        let background = CreateSolidBrush(host_background);
         let _ = FillRect(draw.hDC, &draw.rcItem, background);
         let _ = DeleteObject(background.into());
 
-        let brush = CreateSolidBrush(PANEL_COLOR);
-        let pen = CreatePen(PS_INSIDEFRAME, px(1).max(1), PANEL_BORDER_COLOR);
+        let brush = CreateSolidBrush(palette.panel);
+        let pen = CreatePen(PS_INSIDEFRAME, px(1).max(1), palette.border);
         let previous_brush = SelectObject(draw.hDC, brush.into());
         let previous_pen = SelectObject(draw.hDC, pen.into());
         let diameter = px(radius).saturating_mul(2).max(1);
@@ -1055,14 +1082,16 @@ pub(super) unsafe fn draw_rounded_input_frame(draw: &DRAWITEMSTRUCT, radius: i32
     true
 }
 
-pub(super) unsafe fn draw_rounded_combo_display(
+pub(super) unsafe fn draw_rounded_combo_display_on(
     draw: &DRAWITEMSTRUCT,
     font: HGDIOBJ,
     text: &str,
     radius: i32,
+    palette: &ThemePalette,
+    host_background: windows::Win32::Foundation::COLORREF,
 ) -> bool {
     unsafe {
-        let _ = draw_rounded_input_frame(draw, radius);
+        let _ = draw_rounded_input_frame_on(draw, radius, palette, host_background);
 
         let horizontal_padding = px(8);
         let arrow_area_width = px(28);
@@ -1077,7 +1106,7 @@ pub(super) unsafe fn draw_rounded_combo_display(
             font,
             text,
             text_rect,
-            TEXT_COLOR,
+            palette.text,
             DT_LEFT | DT_SINGLELINE | DT_VCENTER | DT_NOPREFIX,
         );
 
@@ -1099,8 +1128,8 @@ pub(super) unsafe fn draw_rounded_combo_display(
                 y: center_y + half_height,
             },
         ];
-        let brush = CreateSolidBrush(SUBTLE_TEXT_COLOR);
-        let pen = CreatePen(PS_SOLID, px(1).max(1), SUBTLE_TEXT_COLOR);
+        let brush = CreateSolidBrush(palette.subtle_text);
+        let pen = CreatePen(PS_SOLID, px(1).max(1), palette.subtle_text);
         let previous_brush = SelectObject(draw.hDC, brush.into());
         let previous_pen = SelectObject(draw.hDC, pen.into());
         let _ = Polygon(draw.hDC, &points);
@@ -1109,6 +1138,76 @@ pub(super) unsafe fn draw_rounded_combo_display(
         let _ = DeleteObject(brush.into());
         let _ = DeleteObject(pen.into());
     }
+    true
+}
+
+pub(super) unsafe fn draw_icon_button_on(
+    draw: &DRAWITEMSTRUCT,
+    icon_font: HGDIOBJ,
+    glyph: &str,
+    palette: &ThemePalette,
+    host_background: windows::Win32::Foundation::COLORREF,
+) -> bool {
+    let pressed = draw.itemState.0 & ODS_SELECTED.0 != 0;
+    let disabled = draw.itemState.0 & ODS_DISABLED.0 != 0;
+    let focused = draw.itemState.0 & ODS_FOCUS.0 != 0;
+    let hovered = unsafe { button_is_hovered(draw.hwndItem) };
+
+    unsafe {
+        let clean_brush = CreateSolidBrush(host_background);
+        let _ = FillRect(draw.hDC, &draw.rcItem, clean_brush);
+        let _ = DeleteObject(clean_brush.into());
+
+        if hovered || pressed || focused {
+            let background = if pressed {
+                palette.button_pressed
+            } else {
+                palette.selected_row
+            };
+            let brush = CreateSolidBrush(background);
+            let pen = CreatePen(PS_SOLID, px(1).max(1), background);
+            let old_brush = SelectObject(draw.hDC, brush.into());
+            let old_pen = SelectObject(draw.hDC, pen.into());
+            let inset = px(2);
+            let radius = px(6).max(1);
+            let _ = RoundRect(
+                draw.hDC,
+                draw.rcItem.left + inset,
+                draw.rcItem.top + inset,
+                draw.rcItem.right - inset,
+                draw.rcItem.bottom - inset,
+                radius * 2,
+                radius * 2,
+            );
+            let _ = SelectObject(draw.hDC, old_brush);
+            let _ = SelectObject(draw.hDC, old_pen);
+            let _ = DeleteObject(brush.into());
+            let _ = DeleteObject(pen.into());
+        }
+    }
+
+    let color = if disabled {
+        palette.disabled_text
+    } else if hovered {
+        palette.text
+    } else {
+        palette.subtle_text
+    };
+    let offset = i32::from(pressed) * px(1);
+    draw_text_line(
+        draw.hDC,
+        icon_font,
+        glyph,
+        RECT {
+            left: draw.rcItem.left + offset,
+            top: draw.rcItem.top + offset,
+            right: draw.rcItem.right + offset,
+            bottom: draw.rcItem.bottom + offset,
+        },
+        color,
+        DT_CENTER | DT_SINGLELINE | DT_VCENTER | DT_NOPREFIX,
+    );
+
     true
 }
 
@@ -1158,6 +1257,18 @@ mod tests {
         assert_eq!(rect.right, 204);
         assert_eq!(rect.top, 28);
         assert_eq!(rect.bottom, 46);
+    }
+
+    #[test]
+    fn centered_control_span_matches_every_center_and_height_parity() {
+        for center_twice in 108..=117 {
+            for preferred_height in 6..=11 {
+                let (top, height) = centered_control_span_exact(center_twice, preferred_height);
+
+                assert_eq!(top * 2 + height, center_twice);
+                assert!(matches!(height - preferred_height, 0 | 1));
+            }
+        }
     }
 
     #[test]
