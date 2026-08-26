@@ -79,17 +79,25 @@ function Replace-PackageOutputs {
         [string]$ZipFileName
     )
 
+    $BackupId = [System.Guid]::NewGuid().ToString('N')
+    $ZipBackup = "$DestinationZip.$BackupId.backup"
+    $ChecksumBackup = "$DestinationChecksum.$BackupId.backup"
+    $ZipBackedUp = $false
+    $ChecksumBackedUp = $false
     $ZipInstalled = $false
     $ChecksumInstalled = $false
     try {
         if (Test-Path -LiteralPath $DestinationZip -PathType Leaf) {
-            Remove-Item -LiteralPath $DestinationZip -Force
+            Move-Item -LiteralPath $DestinationZip -Destination $ZipBackup
+            $ZipBackedUp = $true
         }
+        if (Test-Path -LiteralPath $DestinationChecksum -PathType Leaf) {
+            Move-Item -LiteralPath $DestinationChecksum -Destination $ChecksumBackup
+            $ChecksumBackedUp = $true
+        }
+
         Move-Item -LiteralPath $SourceZip -Destination $DestinationZip
         $ZipInstalled = $true
-        if (Test-Path -LiteralPath $DestinationChecksum -PathType Leaf) {
-            Remove-Item -LiteralPath $DestinationChecksum -Force
-        }
         Move-Item -LiteralPath $SourceChecksum -Destination $DestinationChecksum
         $ChecksumInstalled = $true
 
@@ -97,13 +105,40 @@ function Replace-PackageOutputs {
     }
     catch {
         $ReplaceError = $_
-        if ($ChecksumInstalled -and (Test-Path -LiteralPath $DestinationChecksum -PathType Leaf)) {
-            Remove-Item -LiteralPath $DestinationChecksum -Force -ErrorAction SilentlyContinue
+        $RollbackErrors = [System.Collections.Generic.List[string]]::new()
+        try {
+            if ($ZipInstalled -and (Test-Path -LiteralPath $DestinationZip -PathType Leaf)) {
+                Remove-Item -LiteralPath $DestinationZip -Force
+            }
+            if ($ZipBackedUp) {
+                Move-Item -LiteralPath $ZipBackup -Destination $DestinationZip
+            }
         }
-        if ($ZipInstalled -and (Test-Path -LiteralPath $DestinationZip -PathType Leaf)) {
-            Remove-Item -LiteralPath $DestinationZip -Force -ErrorAction SilentlyContinue
+        catch {
+            $RollbackErrors.Add("ZIP: $($_.Exception.Message)")
+        }
+        try {
+            if ($ChecksumInstalled -and (Test-Path -LiteralPath $DestinationChecksum -PathType Leaf)) {
+                Remove-Item -LiteralPath $DestinationChecksum -Force
+            }
+            if ($ChecksumBackedUp) {
+                Move-Item -LiteralPath $ChecksumBackup -Destination $DestinationChecksum
+            }
+        }
+        catch {
+            $RollbackErrors.Add("checksum: $($_.Exception.Message)")
+        }
+        if ($RollbackErrors.Count -gt 0) {
+            throw "Package replacement failed: $($ReplaceError.Exception.Message). Rollback also failed: $($RollbackErrors -join '; ')"
         }
         throw $ReplaceError
+    }
+
+    if ($ZipBackedUp) {
+        Remove-Item -LiteralPath $ZipBackup -Force -ErrorAction SilentlyContinue
+    }
+    if ($ChecksumBackedUp) {
+        Remove-Item -LiteralPath $ChecksumBackup -Force -ErrorAction SilentlyContinue
     }
 }
 

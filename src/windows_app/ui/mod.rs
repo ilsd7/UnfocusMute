@@ -19,8 +19,8 @@ use std::path::Path;
 use std::sync::atomic::{AtomicBool, AtomicIsize, Ordering};
 use std::time::Instant;
 use windows::Win32::Foundation::{
-    COLORREF, CloseHandle, ERROR_ALREADY_EXISTS, GetLastError, HANDLE, HINSTANCE, HWND, LPARAM,
-    LRESULT, POINT, RECT, WAIT_OBJECT_0, WAIT_TIMEOUT, WPARAM,
+    COLORREF, CloseHandle, GetLastError, HANDLE, HINSTANCE, HWND, LPARAM, LRESULT, POINT, RECT,
+    WAIT_ABANDONED, WAIT_OBJECT_0, WAIT_TIMEOUT, WPARAM,
 };
 use windows::Win32::Graphics::Gdi::{
     BeginPaint, CreatePen, CreateSolidBrush, DRAW_TEXT_FORMAT, DT_CENTER, DT_END_ELLIPSIS, DT_LEFT,
@@ -32,7 +32,7 @@ use windows::Win32::Graphics::Gdi::{
 use windows::Win32::System::Com::{COINIT_APARTMENTTHREADED, CoInitializeEx, CoUninitialize};
 use windows::Win32::System::LibraryLoader::GetModuleHandleW;
 use windows::Win32::System::Threading::{
-    CreateMutexW, OpenProcess, PROCESS_SYNCHRONIZE, WaitForSingleObject,
+    CreateMutexW, OpenProcess, PROCESS_SYNCHRONIZE, ReleaseMutex, WaitForSingleObject,
 };
 use windows::Win32::UI::Accessibility::{HWINEVENTHOOK, SetWinEventHook, UnhookWinEvent};
 use windows::Win32::UI::Controls::{
@@ -231,7 +231,7 @@ unsafe fn run_window() -> Result<()> {
     } else {
         instance_scope
     };
-    let Some((_single_instance, replaced_existing_instance)) =
+    let Some((mut single_instance, replaced_existing_instance)) =
         (unsafe { acquire_single_instance(instance_scope)? })
     else {
         return Ok(());
@@ -382,6 +382,7 @@ unsafe fn run_window() -> Result<()> {
             let _ = ShowWindow(hwnd, SW_SHOW);
         }
     }
+    single_instance.release_startup_lock()?;
 
     let mut msg = MSG::default();
     while unsafe { get_message(&mut msg)? } {
@@ -422,12 +423,54 @@ unsafe fn initialize_common_controls() -> Result<()> {
     }
 }
 
-struct SingleInstance(HANDLE);
+struct SingleInstance {
+    handle: HANDLE,
+    owns_startup_lock: bool,
+}
+
+impl SingleInstance {
+    fn new(handle: HANDLE) -> Self {
+        Self {
+            handle,
+            owns_startup_lock: false,
+        }
+    }
+
+    fn acquire_startup_lock(&mut self) -> Result<()> {
+        let wait_result =
+            unsafe { WaitForSingleObject(self.handle, INSTANCE_REPLACEMENT_TIMEOUT_MS) };
+        if wait_result == WAIT_OBJECT_0 || wait_result == WAIT_ABANDONED {
+            self.owns_startup_lock = true;
+            return Ok(());
+        }
+        if wait_result == WAIT_TIMEOUT {
+            return Err(message_error(
+                "another app startup did not finish within 5 seconds",
+            ));
+        }
+        Err(message_error(format!(
+            "wait for app startup lock failed with WIN32 result {}",
+            wait_result.0
+        )))
+    }
+
+    fn release_startup_lock(&mut self) -> Result<()> {
+        if !self.owns_startup_lock {
+            return Ok(());
+        }
+        unsafe { ReleaseMutex(self.handle) }.context("release app startup lock")?;
+        self.owns_startup_lock = false;
+        Ok(())
+    }
+}
 
 impl Drop for SingleInstance {
     fn drop(&mut self) {
         unsafe {
-            let _ = CloseHandle(self.0);
+            if self.owns_startup_lock {
+                let _ = ReleaseMutex(self.handle);
+            }
+            let _ = CloseHandle(self.handle);
         }
     }
 }
@@ -493,25 +536,22 @@ unsafe fn acquire_single_instance(scope: u64) -> Result<Option<(SingleInstance, 
     let handle = unsafe {
         CreateMutexW(None, false, PCWSTR(mutex_name.as_ptr())).context("create app mutex")?
     };
-    let instance = SingleInstance(handle);
-    if unsafe { GetLastError() } == ERROR_ALREADY_EXISTS {
-        let Some(hwnd) = (unsafe { find_existing_window(scope) }) else {
-            return Ok(None);
-        };
-        let mut process_id = 0;
-        let thread_id = unsafe { GetWindowThreadProcessId(hwnd, Some(&mut process_id)) };
-        if thread_id == 0 || process_id == 0 || !running_instance_is_older(process_id) {
-            show_main_window(hwnd);
-            return Ok(None);
-        }
-
-        unsafe {
-            replace_existing_instance(thread_id, process_id)?;
-        }
-        return Ok(Some((instance, true)));
+    let mut instance = SingleInstance::new(handle);
+    instance.acquire_startup_lock()?;
+    let Some(hwnd) = (unsafe { find_existing_window(scope) }) else {
+        return Ok(Some((instance, false)));
+    };
+    let mut process_id = 0;
+    let thread_id = unsafe { GetWindowThreadProcessId(hwnd, Some(&mut process_id)) };
+    if thread_id == 0 || process_id == 0 || !running_instance_is_older(process_id) {
+        show_main_window(hwnd);
+        return Ok(None);
     }
 
-    Ok(Some((instance, false)))
+    unsafe {
+        replace_existing_instance(thread_id, process_id)?;
+    }
+    Ok(Some((instance, true)))
 }
 
 fn running_instance_is_older(process_id: u32) -> bool {
@@ -554,6 +594,9 @@ unsafe fn replace_existing_instance(thread_id: u32, process_id: u32) -> Result<(
         unsafe { OpenProcess(PROCESS_SYNCHRONIZE, false, process_id) }
             .context("open existing app process")?,
     );
+    // Replacement is a handoff, not a normal user exit. Stop the old message loop
+    // directly so it keeps the managed mute state intact for the successor and
+    // avoids an audible unmute/remute gap during the upgrade.
     unsafe { PostThreadMessageW(thread_id, WM_QUIT, WPARAM(0), LPARAM(0)) }
         .context("request existing app exit")?;
 
