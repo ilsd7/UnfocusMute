@@ -69,7 +69,7 @@ UnfocusMute is a standalone app that does not need to be installed. You also do 
 
 UnfocusMute uses the process names, foreground window information, and CoreAudio sessions provided by Windows. If a driver, permission setting, or security tool limits session access, muting may not work correctly.
 
-We recommend leaving UnfocusMute running in the system tray instead of closing it. If a registered app closes while muted, its last mute state may remain. While UnfocusMute is running, it automatically restores the sound when you reopen the app and bring it to the foreground. If you also quit UnfocusMute, the app may have no sound; in that case, unmute it manually in the Windows `Volume mixer`.
+We recommend leaving UnfocusMute running in the system tray instead of quitting it. If a registered app closes while muted, its last mute state may remain. While UnfocusMute is running, it automatically restores the sound when you reopen the app and bring it to the foreground. If you also quit UnfocusMute, the app may have no sound; in that case, unmute it manually in the Windows `Volume mixer`.
 
 **PID registration behavior:** Windows does not always report the same PID for an audio session and the foreground window. To compensate for this, UnfocusMute treats the app as having returned to the foreground when the `.exe` name of the registered PID matches the current foreground window's `.exe` name.
 
@@ -189,10 +189,10 @@ To address these supply chain risks transparently, UnfocusMute publishes a metho
 <details>
 <summary>Show the release file verification steps</summary>
 
-First install the [GitHub CLI](https://cli.github.com/), enter the actual release version, and then run the commands in PowerShell.
+First install the [GitHub CLI](https://cli.github.com/). Then run the commands below in PowerShell and enter the release version when prompted.
 
 ```powershell
-$version = Read-Host "Enter the release version (for example, v1.3.5)"
+$version = Read-Host "Enter the release version (for example, v1.5.0)"
 $sourceRef = "refs/tags/$version"
 $workflow = "ilsd7/UnfocusMute/.github/workflows/release.yml"
 

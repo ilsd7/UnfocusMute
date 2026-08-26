@@ -82,7 +82,7 @@ UnfocusMute는 종료하지 않고 트레이에서 계속 실행해 두는 것�
 ## 사용 방법
 
 1. UnfocusMute를 실행하세요.
-2. 사용할 언어를 선택하세요. 옵션은 기본값 사용을 권장합니다.
+2. 사용할 언어를 선택하세요. 나머지 옵션은 기본값을 유지하는 것을 권장합니다.
 3. 등록할 게임이나 앱을 실행하세요.
 4. 목록에서 앱을 선택하거나 정확한 `.exe` 이름을 입력한 뒤 `등록`을 누르세요. 앱이 아직 오디오 세션을 생성하지 않았다면 `모든 프로세스`로 전환하여 실행 중인 모든 프로세스 목록을 살펴볼 수 있습니다.
 5. 특정 PID만 등록하려면 `PID 보기`를 눌러 개별 항목을 선택하세요. PID 등록은 현재 실행 중인 인스턴스에만 유효하므로, 앱을 다시 실행해 PID가 바뀌면 새로 등록해야 합니다.
@@ -176,7 +176,7 @@ UnfocusMute는 동작에 필요한 설정만 `%APPDATA%\UnfocusMute\config.json`
 
 ## 투명성 및 배포 파일 검증
 
-UnfocusMute는 일반적인 환경에서 안전하게 사용할 수 있도록 설계되었으므로, 대부분의 사용자는 아래 검증 절차를 별도로 수행하지 않아도 됩니다. 개발자를 신뢰하기 어렵거나 소프트웨어 공급망 보안을 중요하게 고려한다면, 공개된 절차를 통해 다운로드한 파일의 출처와 무결성을 확인할 수 있습니다.
+UnfocusMute는 일반적인 환경에서 안전하게 사용할 수 있도록 설계되었으므로, 대부분의 사용자는 아래 검증 절차를 별도로 수행하지 않아도 됩니다. 개발자에 대한 신뢰에만 의존하고 싶지 않거나 소프트웨어 공급망 보안을 중요하게 고려한다면, 공개된 절차를 통해 다운로드한 파일의 출처와 무결성을 확인할 수 있습니다.
 
 ### 왜 별도 검증이 필요한가
 
@@ -189,10 +189,10 @@ SHA-256 해시 비교는 다운로드한 파일이 게시된 체크섬과 일치
 <details>
 <summary>배포 파일 검증 절차 보기</summary>
 
-먼저 [GitHub CLI](https://cli.github.com/)를 설치하고 실제 버전을 입력한 뒤 PowerShell에서 실행합니다.
+먼저 [GitHub CLI](https://cli.github.com/)를 설치하세요. 그런 다음 아래 명령을 PowerShell에서 실행하고, 프롬프트가 나타나면 실제 릴리스 버전을 입력하세요.
 
 ```powershell
-$version = Read-Host "릴리스 버전을 입력하세요 (예: v1.3.5)"
+$version = Read-Host "릴리스 버전을 입력하세요 (예: v1.5.0)"
 $sourceRef = "refs/tags/$version"
 $workflow = "ilsd7/UnfocusMute/.github/workflows/release.yml"
 
@@ -202,7 +202,7 @@ gh attestation verify .\UnfocusMute-windows-x64.zip `
   --signer-workflow $workflow
 ```
 
-이 명령은 GitHub attestation 서비스에 접속해 로컬 ZIP의 SHA-256이 GitHub Actions가 서명한 빌드 출처에 기록된 값과 일치하는지 확인합니다.
+이 명령은 GitHub attestation 서비스에 접속해 로컬 ZIP의 SHA-256이 GitHub Actions가 서명한 빌드 출처 증명(attestation)에 기록된 값과 일치하는지 확인합니다.
 
 릴리스의 SHA-256 해시와도 비교할 수 있습니다.
 

@@ -84,7 +84,7 @@ Por eso, si hay varias instancias del mismo `.exe` ejecutándose a la vez, no si
 1. Abre UnfocusMute.
 2. Elige el idioma. Recomendamos dejar las opciones con sus valores predeterminados.
 3. Inicia el juego o la aplicación que quieres registrar.
-4. Selecciona una aplicación de la lista o escribe su nombre `.exe` exacto y, después, haz clic en `Registrar`. Si la aplicación aún no ha creado una sesión de audio, cambia a `Todos los procesos` para ver todos los procesos en ejecución.
+4. Selecciona una aplicación de la lista o escribe el nombre exacto de su archivo `.exe` y, después, haz clic en `Registrar`. Si la aplicación aún no ha creado una sesión de audio, cambia a `Todos los procesos` para ver todos los procesos en ejecución.
 5. Si necesitas registrar solo un PID concreto, haz clic en `Vista PID` y elige la entrada correspondiente. Las entradas por PID solo se aplican a la instancia que está en ejecución; si la aplicación se reinicia con otro PID, tendrás que registrarla de nuevo.
 6. Haz clic con el botón derecho en una aplicación registrada para editar su nota o usar `Pausar` solo en esa aplicación.
 7. Haz clic en el estado `Supervisando` de la parte superior para pausar o reanudar toda la supervisión.
@@ -176,7 +176,7 @@ Si alguna vez activaste el inicio automático, borra también el valor `UnfocusM
 
 ## Transparencia y verificación de archivos de la versión
 
-UnfocusMute está diseñado para usarse de forma segura en entornos habituales, por lo que la mayoría de los usuarios no necesitan realizar los pasos de verificación que se indican a continuación. Si prefieres no confiar únicamente en el desarrollador o das especial importancia a la seguridad de la cadena de suministro de software, puedes usar este procedimiento público para verificar el origen y la integridad de los archivos descargados.
+UnfocusMute está diseñado para usarse de forma segura en entornos habituales, por lo que la mayoría de los usuarios no necesitan realizar los pasos de verificación que se indican a continuación. Si no quieres depender únicamente de la confianza en el desarrollador o das especial importancia a la seguridad de la cadena de suministro de software, puedes usar este procedimiento público para verificar el origen y la integridad de los archivos descargados.
 
 ### Por qué se necesita una verificación independiente
 
@@ -189,10 +189,10 @@ Para abordar de forma transparente estos riesgos de la cadena de suministro, Unf
 <details>
 <summary>Mostrar los pasos de verificación</summary>
 
-Primero instala [GitHub CLI](https://cli.github.com/), indica la versión que descargaste y ejecuta el comando en PowerShell.
+Primero instala [GitHub CLI](https://cli.github.com/). Después, ejecuta los comandos siguientes en PowerShell e introduce la versión publicada cuando se solicite.
 
 ```powershell
-$version = Read-Host "Introduce la versión publicada (por ejemplo, v1.3.5)"
+$version = Read-Host "Introduce la versión publicada (por ejemplo, v1.5.0)"
 $sourceRef = "refs/tags/$version"
 $workflow = "ilsd7/UnfocusMute/.github/workflows/release.yml"
 
@@ -217,7 +217,7 @@ if ($actualHash -ne $expectedHash) {
 "SHA-256 verificado: $actualHash"
 ```
 
-Si la verificación se completa correctamente, puedes confirmar que el ZIP descargado fue generado para la etiqueta especificada por el flujo de trabajo de GitHub Actions indicado y que coincide con el hash registrado en su atestación.
+Si la verificación se completa correctamente, puedes confirmar que el ZIP descargado fue generado por el flujo de trabajo de GitHub Actions indicado para la etiqueta de versión especificada y que coincide con el hash registrado en su atestación.
 
 Esto no demuestra que el código fuente sea seguro, que todo el entorno de GitHub esté intacto ni que la compilación pueda reproducirse byte por byte en otro equipo.
 

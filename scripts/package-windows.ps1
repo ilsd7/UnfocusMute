@@ -58,6 +58,7 @@ function Convert-ReadmeForPackage {
     $Content = Remove-ReadmeScreenshotBlock $Content
     $Content = Remove-ReadmeLatestDownloadTable $Content
     $Content = Remove-ReadmeHtmlBreaks $Content
+    $Content = Convert-ReadmeDisclosureBlocks $Content
     return $Content.TrimStart()
 }
 
@@ -135,6 +136,24 @@ function Remove-ReadmeHtmlBreaks {
         $Content,
         '(?im)^[ \t]*<br\s*/?>[ \t]*(?:\r?\n|$)',
         ''
+    )
+}
+
+function Convert-ReadmeDisclosureBlocks {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$Content
+    )
+
+    $Content = [System.Text.RegularExpressions.Regex]::Replace(
+        $Content,
+        '(?im)^[ \t]*</?details>[ \t]*(?:\r?\n|$)',
+        ''
+    )
+    return [System.Text.RegularExpressions.Regex]::Replace(
+        $Content,
+        '(?im)^[ \t]*<summary>[ \t]*(.*?)[ \t]*</summary>[ \t]*$',
+        '### $1'
     )
 }
 

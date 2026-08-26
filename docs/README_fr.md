@@ -84,10 +84,10 @@ Si plusieurs instances du même `.exe` sont ouvertes en même temps, il n’est 
 1. Lancez UnfocusMute.
 2. Choisissez la langue. Nous vous recommandons de conserver les réglages par défaut.
 3. Lancez le jeu ou l’application à ajouter.
-4. Sélectionnez une application dans la liste ou saisissez son nom `.exe` exact, puis cliquez sur `Ajouter`. Si l’application n’a pas encore créé de session audio, passez à `Tous les processus` pour parcourir tous les processus en cours d’exécution.
+4. Sélectionnez une application dans la liste ou saisissez le nom exact de son fichier `.exe`, puis cliquez sur `Ajouter`. Si l’application n’a pas encore créé de session audio, passez à `Tous les processus` pour parcourir tous les processus en cours d’exécution.
 5. Si vous devez ajouter seulement un PID précis, cliquez sur `Vue PID` et choisissez l’entrée concernée. Un ajout par PID n’est valable que pour l’instance actuellement ouverte ; si l’application redémarre avec un autre PID, ajoutez-la à nouveau.
 6. Faites un clic droit sur une application ajoutée pour modifier sa note ou utiliser `Mettre en pause` uniquement pour cette application.
-7. Cliquez sur l’état `Surveillance active` en haut pour suspendre ou reprendre toute la surveillance.
+7. Cliquez sur l’état `Surveillance en cours` en haut pour suspendre ou reprendre toute la surveillance.
 8. Ouvrez `Paramètres` pour modifier les options, notamment le comportement à la fermeture de la fenêtre.
 9. Par défaut, fermer la fenêtre laisse UnfocusMute actif dans la zone de notification. Pour quitter complètement l’application, faites un clic droit sur son icône dans la zone de notification, puis choisissez `Quitter`. Vous pouvez modifier le comportement du bouton de fermeture dans `Paramètres`.
 
@@ -176,7 +176,7 @@ Si vous avez déjà activé le démarrage automatique, supprimez aussi la valeur
 
 ## Transparence et vérification des fichiers publiés
 
-UnfocusMute est conçu pour être utilisé en toute sécurité dans les environnements courants. La plupart des utilisateurs n’ont donc pas besoin de suivre les étapes de vérification ci-dessous. Si vous ne souhaitez pas vous fier uniquement au développeur ou si vous accordez une importance particulière à la sécurité de la chaîne d’approvisionnement logicielle, vous pouvez suivre cette procédure publique pour vérifier l’origine et l’intégrité des fichiers téléchargés.
+UnfocusMute est conçu pour être utilisé en toute sécurité dans les environnements courants. La plupart des utilisateurs n’ont donc pas besoin de suivre les étapes de vérification ci-dessous. Si vous ne souhaitez pas dépendre uniquement de la confiance accordée au développeur ou si vous accordez une importance particulière à la sécurité de la chaîne d’approvisionnement logicielle, vous pouvez suivre cette procédure publique pour vérifier l’origine et l’intégrité des fichiers téléchargés.
 
 ### Pourquoi une vérification distincte est nécessaire
 
@@ -189,10 +189,10 @@ Afin de traiter ces risques de chaîne d’approvisionnement de façon transpare
 <details>
 <summary>Afficher la procédure de vérification</summary>
 
-Installez d’abord [GitHub CLI](https://cli.github.com/), indiquez la version que vous avez téléchargée, puis exécutez la commande dans PowerShell.
+Installez d’abord [GitHub CLI](https://cli.github.com/). Exécutez ensuite les commandes ci-dessous dans PowerShell et saisissez la version publiée lorsque vous y êtes invité.
 
 ```powershell
-$version = Read-Host "Saisissez la version publiée (par exemple, v1.3.5)"
+$version = Read-Host "Saisissez la version publiée (par exemple, v1.5.0)"
 $sourceRef = "refs/tags/$version"
 $workflow = "ilsd7/UnfocusMute/.github/workflows/release.yml"
 
@@ -217,7 +217,7 @@ if ($actualHash -ne $expectedHash) {
 "SHA-256 vérifié : $actualHash"
 ```
 
-Une vérification réussie confirme que le ZIP téléchargé a été généré pour le tag indiqué par le workflow GitHub Actions concerné et qu’il correspond au hachage enregistré dans son attestation.
+Une vérification réussie confirme que le ZIP téléchargé a été généré par le workflow GitHub Actions indiqué pour le tag de version spécifié et qu’il correspond au hachage enregistré dans son attestation.
 
 Elle ne prouve pas que le code source lui-même est sûr, que l’ensemble de l’environnement GitHub est intact, ni que la compilation est reproductible octet par octet sur un autre ordinateur.
 

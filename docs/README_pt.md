@@ -84,7 +84,7 @@ Assim, se houver várias instâncias do mesmo `.exe` em execução ao mesmo temp
 1. Abra o UnfocusMute.
 2. Escolha o idioma. Recomendamos manter as opções nos valores padrão.
 3. Inicie o jogo ou app que você quer registrar.
-4. Selecione um app na lista ou digite o nome `.exe` exato e clique em `Registrar`. Se o app ainda não tiver criado uma sessão de áudio, mude para `Todos os processos` para ver todos os processos em execução.
+4. Selecione um app na lista ou digite o nome exato do arquivo `.exe` e clique em `Registrar`. Se o app ainda não tiver criado uma sessão de áudio, mude para `Todos os processos` para ver todos os processos em execução.
 5. Se precisar registrar apenas um PID específico, clique em `Ver por PID` e escolha a entrada individual. Registros por PID valem apenas para a instância em execução; se o app reiniciar com outro PID, registre-o novamente.
 6. Clique com o botão direito em um app registrado para editar sua nota ou usar `Pausar` apenas nesse app.
 7. Clique no status `Monitorando` na parte superior para pausar ou retomar todo o monitoramento.
@@ -176,7 +176,7 @@ Se você já ativou o início automático, apague também o valor `UnfocusMute` 
 
 ## Transparência e verificação dos arquivos de distribuição
 
-O UnfocusMute foi projetado para ser usado com segurança em ambientes comuns, portanto a maioria dos usuários não precisa seguir as etapas de verificação abaixo. Se você não quiser confiar apenas no desenvolvedor ou der especial importância à segurança da cadeia de fornecimento de software, poderá usar este procedimento público para verificar a origem e a integridade dos arquivos baixados.
+O UnfocusMute foi projetado para ser usado com segurança em ambientes comuns, portanto a maioria dos usuários não precisa seguir as etapas de verificação abaixo. Se você não quiser depender apenas da confiança no desenvolvedor ou der especial importância à segurança da cadeia de fornecimento de software, poderá usar este procedimento público para verificar a origem e a integridade dos arquivos baixados.
 
 ### Por que uma verificação separada é necessária
 
@@ -189,10 +189,10 @@ Para tratar esses riscos da cadeia de fornecimento com transparência, o Unfocus
 <details>
 <summary>Mostrar as etapas de verificação</summary>
 
-Primeiro, instale o [GitHub CLI](https://cli.github.com/), informe a versão que você baixou e execute o comando no PowerShell.
+Primeiro, instale o [GitHub CLI](https://cli.github.com/). Em seguida, execute os comandos abaixo no PowerShell e informe a versão publicada quando solicitado.
 
 ```powershell
-$version = Read-Host "Digite a versão publicada (por exemplo, v1.3.5)"
+$version = Read-Host "Digite a versão publicada (por exemplo, v1.5.0)"
 $sourceRef = "refs/tags/$version"
 $workflow = "ilsd7/UnfocusMute/.github/workflows/release.yml"
 
@@ -217,7 +217,7 @@ if ($actualHash -ne $expectedHash) {
 "SHA-256 verificado: $actualHash"
 ```
 
-Uma verificação bem-sucedida confirma que o ZIP baixado foi gerado para a tag especificada pelo workflow do GitHub Actions indicado e corresponde ao hash registrado em sua atestação.
+Uma verificação bem-sucedida confirma que o ZIP baixado foi gerado pelo workflow indicado do GitHub Actions para a tag de versão especificada e corresponde ao hash registrado em sua atestação.
 
 Isso não prova que o código-fonte em si é seguro, que todo o ambiente do GitHub está íntegro ou que a compilação possa ser reproduzida byte por byte em outro computador.
 

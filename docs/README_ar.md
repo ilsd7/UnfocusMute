@@ -191,9 +191,9 @@ UnfocusMute تطبيق يعمل محليًا بالكامل. يعمل بشكل �
 <details>
 <summary>عرض خطوات التحقق من ملفات الإصدار</summary>
 
-ثبّت أولًا [GitHub CLI](https://cli.github.com/)، وأدخل رقم الإصدار الفعلي، ثم نفّذ الأوامر في PowerShell.
+ثبّت أولًا [GitHub CLI](https://cli.github.com/). ثم نفّذ الأوامر التالية في PowerShell وأدخل إصدار النشر الفعلي عند ظهور المطالبة.
 
-<pre dir="ltr"><code>$version = Read-Host "أدخل إصدار النشر (مثال: v1.3.5)"
+<pre dir="ltr"><code>$version = Read-Host "أدخل إصدار النشر (مثال: v1.5.0)"
 $sourceRef = "refs/tags/$version"
 $workflow = "ilsd7/UnfocusMute/.github/workflows/release.yml"
 
@@ -202,7 +202,7 @@ gh attestation verify .\UnfocusMute-windows-x64.zip `
   --source-ref $sourceRef `
   --signer-workflow $workflow</code></pre>
 
-يتصل هذا الأمر بخدمة attestations في GitHub ويتحقق من أن تجزئة SHA-256 لملف ZIP المحلي تطابق القيمة المسجلة في بيان مصدر البناء الذي وقّعته GitHub Actions.
+يتصل هذا الأمر بخدمة attestations في GitHub ويتحقق من أن تجزئة SHA-256 لملف ZIP المحلي تطابق القيمة المسجلة في إثبات منشأ البناء الموقّع من GitHub Actions.
 
 ويمكنك أيضًا مطابقة تجزئة ملف ZIP مع قيمة SHA-256 المنشورة ضمن الإصدار.
 
