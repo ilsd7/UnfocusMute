@@ -86,7 +86,7 @@ Por eso, si hay varias instancias del mismo `.exe` ejecutándose a la vez, no si
 1. Abre UnfocusMute.
 2. Elige el idioma. Recomendamos dejar las opciones con sus valores predeterminados.
 3. Inicia el juego o la aplicación que quieres registrar.
-4. Selecciona una aplicación de la lista o escribe el nombre exacto de su archivo `.exe` y, después, haz clic en `Registrar`. Al registrar por `.exe`, se gestionan juntas todas las sesiones de audio de esa aplicación; usa el registro por PID si quieres gestionar solo una instancia concreta en ejecución. Si la aplicación aún no ha creado una sesión de audio, cambia a `Todos los procesos` para ver todos los procesos en ejecución.
+4. Selecciona una aplicación de la lista o escribe el nombre exacto de su archivo `.exe` y, después, haz clic en `Registrar`. Al registrar por `.exe`, se gestionan juntas todas las sesiones de audio de esa aplicación. Si la aplicación aún no ha creado una sesión de audio, cambia a `Todos los procesos` para ver todos los procesos en ejecución.
 5. Si necesitas registrar solo un PID concreto, haz clic en `Vista PID` y elige la entrada correspondiente. Las entradas por PID solo se aplican a la instancia que está en ejecución; si la aplicación se reinicia con otro PID, tendrás que registrarla de nuevo.
 6. Haz clic con el botón derecho en una aplicación registrada para editar su nota o usar `Pausar` solo en esa aplicación.
 7. Haz clic en el estado `Supervisando` de la parte superior para pausar o reanudar toda la supervisión.

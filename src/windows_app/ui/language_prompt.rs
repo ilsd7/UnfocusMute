@@ -36,9 +36,9 @@ use windows::Win32::UI::WindowsAndMessaging::{
     IDCANCEL, IsDialogMessageW, LoadCursorW, MSG, PostQuitMessage, RegisterClassW, SW_SHOW,
     SWP_NOACTIVATE, SWP_NOOWNERZORDER, SWP_NOZORDER, SendMessageW, SetForegroundWindow,
     SetWindowLongPtrW, SetWindowPos, ShowWindow, TranslateMessage, WINDOW_EX_STYLE, WINDOW_STYLE,
-    WM_CLOSE, WM_COMMAND, WM_CREATE, WM_CTLCOLORBTN, WM_CTLCOLORSTATIC, WM_DRAWITEM, WM_ERASEBKGND,
-    WM_NCCREATE, WM_NCDESTROY, WM_NOTIFY, WM_SETFONT, WM_SETTINGCHANGE, WM_THEMECHANGED, WNDCLASSW,
-    WS_CAPTION, WS_OVERLAPPED, WS_SYSMENU,
+    WM_CLOSE, WM_COMMAND, WM_CREATE, WM_CTLCOLORBTN, WM_CTLCOLORLISTBOX, WM_CTLCOLORSTATIC,
+    WM_DRAWITEM, WM_ERASEBKGND, WM_NCCREATE, WM_NCDESTROY, WM_NOTIFY, WM_SETFONT, WM_SETTINGCHANGE,
+    WM_THEMECHANGED, WNDCLASSW, WS_CAPTION, WS_OVERLAPPED, WS_SYSMENU,
 };
 use windows::core::PCWSTR;
 
@@ -626,13 +626,19 @@ unsafe extern "system" fn language_prompt_proc(
         }
         return LRESULT(0);
     }
-    if message == WM_CTLCOLORBTN {
+    if message == WM_CTLCOLORBTN || message == WM_CTLCOLORLISTBOX {
         let palette = active_palette();
         if let Some(result) =
             unsafe { super::win32::themed_control_color(wparam, palette.text, palette.page) }
         {
             return result;
         }
+    }
+    if message == WM_NOTIFY
+        && let Some(result) =
+            unsafe { checkbox::custom_draw_result(lparam, checkbox::HostSurface::Page) }
+    {
+        return result;
     }
 
     let state = unsafe {
@@ -693,18 +699,6 @@ unsafe extern "system" fn language_prompt_proc(
                     prompt.refresh_prompt_text();
                 }
                 return LRESULT(0);
-            }
-            WM_NOTIFY => {
-                if let Some(result) = unsafe {
-                    checkbox::custom_draw_result(
-                        lparam,
-                        prompt.theme.font.handle(),
-                        &prompt.theme,
-                        prompt.theme.palette.page,
-                    )
-                } {
-                    return result;
-                }
             }
             WM_DRAWITEM if lparam.0 != 0 => {
                 let draw = unsafe { &*(lparam.0 as *const DRAWITEMSTRUCT) };

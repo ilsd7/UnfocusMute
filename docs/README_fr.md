@@ -86,7 +86,7 @@ Si plusieurs instances du même `.exe` sont ouvertes en même temps, il n’est 
 1. Lancez UnfocusMute.
 2. Choisissez la langue. Nous vous recommandons de conserver les réglages par défaut.
 3. Lancez le jeu ou l’application à ajouter.
-4. Sélectionnez une application dans la liste ou saisissez le nom exact de son fichier `.exe`, puis cliquez sur `Ajouter`. L’ajout par nom `.exe` gère ensemble toutes les sessions audio de l’application ; utilisez l’ajout par PID si vous souhaitez gérer uniquement une instance en cours d’exécution. Si l’application n’a pas encore créé de session audio, passez à `Tous les processus` pour parcourir tous les processus en cours d’exécution.
+4. Sélectionnez une application dans la liste ou saisissez le nom exact de son fichier `.exe`, puis cliquez sur `Ajouter`. L’ajout par nom `.exe` gère ensemble toutes les sessions audio de l’application. Si l’application n’a pas encore créé de session audio, passez à `Tous les processus` pour parcourir tous les processus en cours d’exécution.
 5. Si vous devez ajouter seulement un PID précis, cliquez sur `Vue PID` et choisissez l’entrée concernée. Un ajout par PID n’est valable que pour l’instance actuellement ouverte ; si l’application redémarre avec un autre PID, ajoutez-la à nouveau.
 6. Faites un clic droit sur une application ajoutée pour modifier sa note ou utiliser `Mettre en pause` uniquement pour cette application.
 7. Cliquez sur l’état `Surveillance en cours` en haut pour suspendre ou reprendre toute la surveillance.

@@ -9,7 +9,9 @@ use crate::i18n::Language;
 use crate::windows_app::error::{Result, message_error};
 use windows::Win32::Foundation::{HINSTANCE, HWND, LPARAM, LRESULT, WPARAM};
 use windows::Win32::Graphics::Gdi::HGDIOBJ;
-use windows::Win32::UI::Controls::{CB_SETMINVISIBLE, DRAWITEMSTRUCT};
+use windows::Win32::UI::Controls::{
+    CB_SETMINVISIBLE, COMBOBOXINFO, DRAWITEMSTRUCT, GetComboBoxInfo,
+};
 use windows::Win32::UI::Input::KeyboardAndMouse::GetFocus;
 use windows::Win32::UI::Shell::{DefSubclassProc, RemoveWindowSubclass, SetWindowSubclass};
 use windows::Win32::UI::WindowsAndMessaging::{
@@ -89,7 +91,7 @@ impl LanguageCombo {
             combo,
             on_panel,
         };
-        apply_native_control_theme(combo);
+        picker.apply_native_theme();
         unsafe {
             picker.set_font(font);
             picker.populate(selected);
@@ -192,8 +194,23 @@ impl LanguageCombo {
 
     pub(super) fn apply_native_theme(&self) {
         apply_native_control_theme(self.combo);
+        if let Some(list) = self.popup_list() {
+            apply_native_control_theme(list);
+        }
         unsafe {
             let _ = invalidate_control(self.frame);
+        }
+    }
+
+    fn popup_list(&self) -> Option<HWND> {
+        let mut info = COMBOBOXINFO {
+            cbSize: std::mem::size_of::<COMBOBOXINFO>() as u32,
+            ..Default::default()
+        };
+        if unsafe { GetComboBoxInfo(self.combo, &mut info) }.is_err() || info.hwndList.0.is_null() {
+            None
+        } else {
+            Some(info.hwndList)
         }
     }
 

@@ -86,7 +86,7 @@ If several instances of the same `.exe` are running at the same time, UnfocusMut
 1. Launch UnfocusMute.
 2. Choose a language. We recommend keeping the options at their defaults.
 3. Start the game or app you want to register.
-4. Select an app from the list or enter its exact `.exe` name, then click `Register`. Registering by `.exe` manages all audio sessions for that app; use PID registration to manage only a specific running instance. If the app has not created an audio session yet, switch to `All processes` to browse all running processes.
+4. Select an app from the list or enter its exact `.exe` name, then click `Register`. Registering by `.exe` manages all audio sessions for that app. If the app has not created an audio session yet, switch to `All processes` to browse all running processes.
 5. If you need to register only one specific PID, click `PID view` and choose the individual entry. PID registrations apply only to the currently running instance, so register it again if the app restarts and receives a different PID.
 6. Right-click a registered app to edit its note or use `Pause` for that app only.
 7. Click the monitoring status at the top to pause or resume monitoring.

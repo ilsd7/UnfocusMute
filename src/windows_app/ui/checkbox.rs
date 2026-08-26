@@ -2,7 +2,7 @@ use super::drawing::{
     centered_pixel_span, draw_wide_text_block_vertically_centered,
     draw_wide_text_line_at_visual_center,
 };
-use super::theme::{AppTheme, ResolvedTheme, px, ui_dpi};
+use super::theme::{ResolvedTheme, ThemePalette, active_palette, active_theme, px, ui_dpi};
 use super::win32::is_checked;
 use std::ffi::c_void;
 use std::mem::size_of;
@@ -24,8 +24,8 @@ use windows::Win32::UI::Controls::{
 use windows::Win32::UI::Input::KeyboardAndMouse::IsWindowEnabled;
 use windows::Win32::UI::WindowsAndMessaging::{
     BS_AUTOCHECKBOX, BS_MULTILINE, BS_TYPEMASK, GWL_STYLE, GetWindowLongPtrW, GetWindowTextLengthW,
-    GetWindowTextW, SPI_GETHIGHCONTRAST, SYSTEM_PARAMETERS_INFO_UPDATE_FLAGS,
-    SystemParametersInfoW,
+    GetWindowTextW, SPI_GETHIGHCONTRAST, SYSTEM_PARAMETERS_INFO_UPDATE_FLAGS, SendMessageW,
+    SystemParametersInfoW, WM_GETFONT,
 };
 use windows::core::PCWSTR;
 
@@ -38,6 +38,12 @@ unsafe extern "system" {
 const MIN_ACCENT_CHROMA: u8 = 16;
 const MAX_ACCENT_HUE_DISTANCE: i32 = 144;
 
+#[derive(Clone, Copy)]
+pub(super) enum HostSurface {
+    Page,
+    Panel,
+}
+
 /// Keeps the native checkbox's input, keyboard, focus, and accessibility
 /// behavior while rendering its glyph at the app's effective UI DPI.
 ///
@@ -47,9 +53,7 @@ const MAX_ACCENT_HUE_DISTANCE: i32 = 144;
 /// mixing two independent scaling models.
 pub(super) unsafe fn custom_draw_result(
     lparam: LPARAM,
-    font: HGDIOBJ,
-    theme: &AppTheme,
-    host_background: COLORREF,
+    host_surface: HostSurface,
 ) -> Option<LRESULT> {
     if lparam.0 == 0 {
         return None;
@@ -60,10 +64,28 @@ pub(super) unsafe fn custom_draw_result(
     }
     let style = (unsafe { auto_checkbox_style(header.hwndFrom) })?;
     let draw = unsafe { &*(lparam.0 as *const NMCUSTOMDRAW) };
+    let font = unsafe { SendMessageW(header.hwndFrom, WM_GETFONT, None, None) }.0;
+    if font == 0 {
+        return Some(LRESULT(CDRF_DODEFAULT as isize));
+    }
+    let palette = *active_palette();
+    let host_background = match host_surface {
+        HostSurface::Page => palette.page,
+        HostSurface::Panel => palette.panel,
+    };
 
     match draw.dwDrawStage {
         CDDS_PREPAINT if !unsafe { high_contrast_is_enabled_or_unknown() } => {
-            if unsafe { draw_scaled_checkbox(draw, font, style, theme, host_background) } {
+            if unsafe {
+                draw_scaled_checkbox(
+                    draw,
+                    HGDIOBJ(font as *mut c_void),
+                    style,
+                    active_theme(),
+                    &palette,
+                    host_background,
+                )
+            } {
                 Some(LRESULT(CDRF_SKIPDEFAULT as isize))
             } else {
                 Some(LRESULT(CDRF_DODEFAULT as isize))
@@ -77,7 +99,8 @@ unsafe fn draw_scaled_checkbox(
     draw: &NMCUSTOMDRAW,
     font: HGDIOBJ,
     style: u32,
-    theme_context: &AppTheme,
+    resolved_theme: ResolvedTheme,
+    palette: &ThemePalette,
     host_background: COLORREF,
 ) -> bool {
     if draw.hdc.0.is_null() {
@@ -154,8 +177,7 @@ unsafe fn draw_scaled_checkbox(
         return false;
     }
 
-    let palette = &theme_context.palette;
-    if theme_context.resolved == ResolvedTheme::Dark && enabled && checked {
+    if resolved_theme == ResolvedTheme::Dark && enabled && checked {
         let _ = unsafe {
             tint_checkbox_rect(
                 draw.hdc,

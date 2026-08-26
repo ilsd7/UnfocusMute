@@ -48,8 +48,8 @@ use windows::Win32::UI::WindowsAndMessaging::{
     LoadCursorW, MB_ICONWARNING, MB_OK, MessageBoxW, MoveWindow, RegisterClassW, SW_HIDE, SW_SHOW,
     SW_SHOWNOACTIVATE, SendMessageW, SetWindowLongPtrW, ShowWindow, WA_INACTIVE, WINDOW_EX_STYLE,
     WINDOW_STYLE, WM_ACTIVATE, WM_APP, WM_CLOSE, WM_COMMAND, WM_CREATE, WM_CTLCOLORBTN,
-    WM_CTLCOLORSTATIC, WM_DRAWITEM, WM_ERASEBKGND, WM_MOUSEMOVE, WM_NCCREATE, WM_NCDESTROY,
-    WM_NOTIFY, WM_PAINT, WM_PRINTCLIENT, WM_SETCURSOR, WM_SETFONT, WM_SETTINGCHANGE,
+    WM_CTLCOLORLISTBOX, WM_CTLCOLORSTATIC, WM_DRAWITEM, WM_ERASEBKGND, WM_MOUSEMOVE, WM_NCCREATE,
+    WM_NCDESTROY, WM_NOTIFY, WM_PAINT, WM_PRINTCLIENT, WM_SETCURSOR, WM_SETFONT, WM_SETTINGCHANGE,
     WM_THEMECHANGED, WNDCLASSW, WS_CAPTION, WS_CHILD, WS_EX_TOOLWINDOW, WS_OVERLAPPED, WS_POPUP,
     WS_SYSMENU, WS_TABSTOP, WS_VISIBLE,
 };
@@ -1159,13 +1159,19 @@ unsafe extern "system" fn settings_window_proc(
         }
         return LRESULT(0);
     }
-    if message == WM_CTLCOLORBTN {
+    if message == WM_CTLCOLORBTN || message == WM_CTLCOLORLISTBOX {
         let palette = active_palette();
         if let Some(result) =
             unsafe { super::win32::themed_control_color(wparam, palette.text, palette.panel) }
         {
             return result;
         }
+    }
+    if message == WM_NOTIFY
+        && let Some(result) =
+            unsafe { checkbox::custom_draw_result(lparam, checkbox::HostSurface::Panel) }
+    {
+        return result;
     }
 
     let state = unsafe {
@@ -1212,18 +1218,6 @@ unsafe extern "system" fn settings_window_proc(
                     execute_settings_external_action(action);
                 }
                 return LRESULT(0);
-            }
-            WM_NOTIFY => {
-                if let Some(result) = unsafe {
-                    checkbox::custom_draw_result(
-                        lparam,
-                        settings.theme.font.handle(),
-                        &settings.theme,
-                        settings.theme.palette.panel,
-                    )
-                } {
-                    return result;
-                }
             }
             WM_SETTINGS_GITHUB_HOVER => {
                 settings.set_github_link_hot(wparam.0 != 0);
