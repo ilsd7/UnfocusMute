@@ -1,7 +1,6 @@
 use crate::config::{
-    AppConfig, AppConfigLoad, ConfigFileStamp, TargetProcess, ThemePreference, WindowPosition,
-    config_dir, config_reload_needed, current_config_stamp, is_normalized_process_name,
-    is_supported_normalized_target_process_name, merge_pending_config_changes,
+    AppConfig, AppConfigLoad, ConfigSourceStamp, TargetProcess, ThemePreference, WindowPosition,
+    is_normalized_process_name, is_supported_normalized_target_process_name,
     normalize_manual_process_name, target_index_by_identity,
 };
 use crate::engine::{AudioSessionKey, TargetMatcher};
@@ -12,15 +11,11 @@ use crate::windows_app::process::{self, ProcessInfo, ProcessRefreshOutcome};
 use std::cell::RefCell;
 use std::collections::HashSet;
 use std::ffi::c_void;
-use std::io::ErrorKind;
 use std::mem::size_of;
-use std::os::windows::ffi::OsStrExt;
-use std::path::Path;
 use std::sync::atomic::{AtomicBool, AtomicIsize, Ordering};
 use std::time::Instant;
 use windows::Win32::Foundation::{
-    COLORREF, CloseHandle, GetLastError, HANDLE, HINSTANCE, HWND, LPARAM, LRESULT, POINT, RECT,
-    WAIT_ABANDONED, WAIT_OBJECT_0, WAIT_TIMEOUT, WPARAM,
+    COLORREF, GetLastError, HINSTANCE, HWND, LPARAM, LRESULT, POINT, RECT, WPARAM,
 };
 use windows::Win32::Graphics::Gdi::{
     BeginPaint, CreatePen, CreateSolidBrush, DRAW_TEXT_FORMAT, DT_CENTER, DT_END_ELLIPSIS, DT_LEFT,
@@ -31,9 +26,6 @@ use windows::Win32::Graphics::Gdi::{
 };
 use windows::Win32::System::Com::{COINIT_APARTMENTTHREADED, CoInitializeEx, CoUninitialize};
 use windows::Win32::System::LibraryLoader::GetModuleHandleW;
-use windows::Win32::System::Threading::{
-    CreateMutexW, OpenProcess, PROCESS_SYNCHRONIZE, ReleaseMutex, WaitForSingleObject,
-};
 use windows::Win32::UI::Accessibility::{HWINEVENTHOOK, SetWinEventHook, UnhookWinEvent};
 use windows::Win32::UI::Controls::{
     DRAWITEMSTRUCT, ICC_WIN95_CLASSES, INITCOMMONCONTROLSEX, InitCommonControlsEx,
@@ -49,26 +41,26 @@ use windows::Win32::UI::Shell::{
 use windows::Win32::UI::WindowsAndMessaging::{
     AppendMenuW, CREATESTRUCTW, CreatePopupMenu, CreateWindowExW, DefWindowProcW, DestroyMenu,
     DestroyWindow, DispatchMessageW, EN_CHANGE, EN_KILLFOCUS, EN_SETFOCUS, EVENT_SYSTEM_FOREGROUND,
-    FindWindowW, GWLP_USERDATA, GetClientRect, GetCursorPos, GetDlgCtrlID, GetWindowRect,
-    GetWindowThreadProcessId, HMENU, IDC_ARROW, IsDialogMessageW, IsIconic, IsWindowVisible,
-    KillTimer, LB_GETCOUNT, LB_GETCURSEL, LB_RESETCONTENT, LB_SETCURSEL, LBN_DBLCLK, LBN_SELCHANGE,
-    LBS_HASSTRINGS, LBS_NOINTEGRALHEIGHT, LBS_NOTIFY, LBS_OWNERDRAWVARIABLE, LoadCursorW,
-    MB_ICONWARNING, MB_OK, MESSAGEBOX_STYLE, MF_GRAYED, MF_SEPARATOR, MF_STRING, MINMAXINFO, MSG,
-    MessageBoxW, PostMessageW, PostQuitMessage, PostThreadMessageW, RegisterClassW,
-    RegisterWindowMessageW, SW_HIDE, SW_RESTORE, SW_SHOW, SendMessageW, SetForegroundWindow,
-    SetTimer, SetWindowLongPtrW, ShowWindow, TPM_NONOTIFY, TPM_RETURNCMD, TPM_RIGHTBUTTON,
-    TRACK_POPUP_MENU_FLAGS, TrackPopupMenu, TranslateMessage, WA_INACTIVE, WINDOW_EX_STYLE,
-    WINDOW_STYLE, WINEVENT_OUTOFCONTEXT, WM_ACTIVATE, WM_CLOSE, WM_COMMAND, WM_CONTEXTMENU,
-    WM_CREATE, WM_CTLCOLORBTN, WM_CTLCOLOREDIT, WM_CTLCOLORLISTBOX, WM_CTLCOLORSTATIC, WM_DESTROY,
-    WM_DRAWITEM, WM_ENTERSIZEMOVE, WM_ERASEBKGND, WM_EXITSIZEMOVE, WM_GETFONT, WM_GETMINMAXINFO,
-    WM_KEYDOWN, WM_LBUTTONDBLCLK, WM_LBUTTONDOWN, WM_MEASUREITEM, WM_MOVE, WM_NCCREATE,
-    WM_NCDESTROY, WM_NULL, WM_PAINT, WM_QUIT, WM_RBUTTONUP, WM_SETFONT, WM_SETREDRAW,
+    GWLP_USERDATA, GetClientRect, GetCursorPos, GetDlgCtrlID, GetWindowRect, HMENU, IDC_ARROW,
+    IsDialogMessageW, IsIconic, IsWindowVisible, KillTimer, LB_GETCOUNT, LB_GETCURSEL,
+    LB_RESETCONTENT, LB_SETCURSEL, LBN_DBLCLK, LBN_SELCHANGE, LBS_HASSTRINGS, LBS_NOINTEGRALHEIGHT,
+    LBS_NOTIFY, LBS_OWNERDRAWVARIABLE, LoadCursorW, MB_ICONWARNING, MB_OK, MESSAGEBOX_STYLE,
+    MF_GRAYED, MF_SEPARATOR, MF_STRING, MINMAXINFO, MSG, MessageBoxW, PostMessageW,
+    PostQuitMessage, RegisterClassW, RegisterWindowMessageW, SW_HIDE, SW_SHOW, SendMessageW,
+    SetForegroundWindow, SetTimer, SetWindowLongPtrW, ShowWindow, TPM_NONOTIFY, TPM_RETURNCMD,
+    TPM_RIGHTBUTTON, TRACK_POPUP_MENU_FLAGS, TrackPopupMenu, TranslateMessage, WA_INACTIVE,
+    WINDOW_EX_STYLE, WINDOW_STYLE, WINEVENT_OUTOFCONTEXT, WM_ACTIVATE, WM_CLOSE, WM_COMMAND,
+    WM_CONTEXTMENU, WM_CREATE, WM_CTLCOLORBTN, WM_CTLCOLOREDIT, WM_CTLCOLORLISTBOX,
+    WM_CTLCOLORSTATIC, WM_DESTROY, WM_DRAWITEM, WM_ENTERSIZEMOVE, WM_ERASEBKGND, WM_EXITSIZEMOVE,
+    WM_GETFONT, WM_GETMINMAXINFO, WM_KEYDOWN, WM_LBUTTONDBLCLK, WM_LBUTTONDOWN, WM_MEASUREITEM,
+    WM_MOVE, WM_NCCREATE, WM_NCDESTROY, WM_NULL, WM_PAINT, WM_RBUTTONUP, WM_SETFONT, WM_SETREDRAW,
     WM_SETTINGCHANGE, WM_SHOWWINDOW, WM_SIZE, WM_SIZING, WM_THEMECHANGED, WM_TIMER, WNDCLASSW,
     WS_CHILD, WS_TABSTOP, WS_VISIBLE, WS_VSCROLL,
 };
 use windows::core::{PCWSTR, w};
 
 mod checkbox;
+mod config_store;
 mod constants;
 mod controls;
 mod drawing;
@@ -82,6 +74,7 @@ mod process_choice;
 mod runtime_logic;
 mod search_picker;
 mod settings_window;
+mod single_instance;
 mod startup_sync;
 mod state;
 mod status_text;
@@ -91,6 +84,7 @@ mod theme;
 mod win32;
 mod window_position;
 
+use config_store::{ConfigMerge, ConfigReload, ConfigSave, ConfigStore};
 use constants::*;
 use controls::Controls;
 use drawing::{
@@ -112,7 +106,8 @@ use runtime_logic::{
     process_refresh_is_stale, replace_text_if_changed,
 };
 use search_picker::{SEARCH_PICKER_HEIGHT, SearchPicker, SearchPickerIds, SearchSelectionRequest};
-use settings_window::{SettingsLiveUpdate, SettingsPreferences, prompt_settings};
+use settings_window::{SettingsChanges, SettingsLiveUpdate, SettingsPreferences, prompt_settings};
+use single_instance::{main_window_class_name, show_main_window};
 use startup_sync::{
     StartupSyncResult, apply_external_startup_config as sync_external_startup_config,
     apply_startup_command_preference, apply_startup_preference, should_save_startup_config,
@@ -139,8 +134,8 @@ use win32::{
 };
 use window_position::{
     InitialWindowPlacement, apply_window_minmax_info, constrain_sizing_rect,
-    current_logical_window_size, initial_window_placement, should_start_hidden,
-    update_user_scale_from_window, window_position_is_visible,
+    current_logical_window_size, initial_window_placement, update_user_scale_from_window,
+    window_position_is_visible,
 };
 
 static FOREGROUND_EVENT_HWND: AtomicIsize = AtomicIsize::new(0);
@@ -197,8 +192,6 @@ const LB_ITEMFROMPOINT_MESSAGE: u32 = 0x01A9;
 const LB_ITEMFROMPOINT_OUTSIDE_MASK: isize = 0x0001_0000;
 const LB_GETITEMRECT_MESSAGE: u32 = 0x0198;
 const LB_ERR: isize = -1;
-const SINGLE_INSTANCE_MUTEX_PREFIX: &str = "Local\\UnfocusMute.SingleInstance.";
-const INSTANCE_REPLACEMENT_TIMEOUT_MS: u32 = 5_000;
 pub fn run() -> Result<()> {
     let _com = unsafe { ComApartment::initialize()? };
     unsafe { run_window() }
@@ -224,18 +217,17 @@ impl Drop for ComApartment {
 }
 
 unsafe fn run_window() -> Result<()> {
-    let instance_scope = single_instance_scope();
+    let instance_scope = single_instance::scope();
     #[cfg(debug_assertions)]
     let instance_scope = if preview_issue_requested() {
-        instance_scope ^ hash_text_for_mutex_scope("preview-issue")
+        single_instance::scope_with_discriminator(instance_scope, "preview-issue")
     } else {
         instance_scope
     };
-    let Some((mut single_instance, replaced_existing_instance)) =
-        (unsafe { acquire_single_instance(instance_scope)? })
-    else {
+    let Some(mut startup_lease) = single_instance::acquire(instance_scope)? else {
         return Ok(());
     };
+    let replacement_pending = startup_lease.replacement_pending();
 
     unsafe {
         initialize_common_controls()?;
@@ -249,9 +241,24 @@ unsafe fn run_window() -> Result<()> {
     let class_name = PCWSTR(class_name_wide.as_ptr());
 
     let mut initial_issue_diagnostics = IssueDiagnostics::default();
-    let (config_load, mut initial_issues, can_sync_startup) =
-        match AppConfig::load_or_default_with_status() {
-            Ok(config_load) => (config_load, IssueState::default(), true),
+    let config_result = if replacement_pending {
+        AppConfig::load_existing().map(|config| AppConfigLoad {
+            config,
+            first_run: false,
+            recovered_invalid_config: false,
+            source_stamp: ConfigSourceStamp::Unknown,
+        })
+    } else {
+        AppConfig::load_or_default_with_status()
+    };
+    let (config_load, mut initial_issues, can_sync_startup, initial_config_load_failed) =
+        match config_result {
+            Ok(config_load) => (config_load, IssueState::default(), true, false),
+            Err(error) if replacement_pending => {
+                return Err(message_error(format!(
+                    "prepare replacement config: {error}"
+                )));
+            }
             Err(error) => {
                 let mut issues = IssueState::default();
                 issues.set(StatusIssue::ConfigLoadFailed);
@@ -261,9 +268,11 @@ unsafe fn run_window() -> Result<()> {
                         config: AppConfig::default(),
                         first_run: false,
                         recovered_invalid_config: false,
+                        source_stamp: ConfigSourceStamp::Unknown,
                     },
                     issues,
                     false,
+                    true,
                 )
             }
         };
@@ -274,6 +283,7 @@ unsafe fn run_window() -> Result<()> {
             RECOVERED_INVALID_CONFIG_DETAIL,
         );
     }
+    let config_source_stamp = config_load.source_stamp;
     let first_run = config_load.first_run;
     let mut config = config_load.config;
     set_active_theme(resolve_theme(config.theme));
@@ -290,7 +300,8 @@ unsafe fn run_window() -> Result<()> {
         config.hide_to_tray_on_close = preferences.hide_to_tray_on_close;
         config.restore_muted_on_exit = preferences.restore_on_exit;
     }
-    let startup_sync = if can_sync_startup
+    let startup_sync = if !replacement_pending
+        && can_sync_startup
         && should_sync_startup_setting(first_run, accepted_initial_preferences)
     {
         sync_startup_setting(&mut config)
@@ -302,8 +313,13 @@ unsafe fn run_window() -> Result<()> {
         initial_issue_diagnostics.set(StatusIssue::StartupUpdateFailed, detail.clone());
     }
     if should_save_startup_config(accepted_initial_preferences, startup_sync.config_changed)
-        && let Err(error) = config.save()
+        && let Err(error) = config.save_from_source(config_source_stamp)
     {
+        if replacement_pending {
+            return Err(message_error(format!(
+                "prepare replacement config: {error}"
+            )));
+        }
         initial_issues.set(StatusIssue::ConfigSaveFailed);
         initial_issue_diagnostics.set(StatusIssue::ConfigSaveFailed, error.to_string());
     }
@@ -329,8 +345,8 @@ unsafe fn run_window() -> Result<()> {
         .then(|| WindowClassRegistration::new(class_name, instance));
 
     let forced_minimized = std::env::args_os().any(|arg| arg == "--minimized");
-    let start_hidden = should_hide_replacement_window(
-        replaced_existing_instance,
+    let start_hidden = single_instance::should_hide_window(
+        replacement_pending,
         first_run,
         forced_minimized,
         config.start_minimized,
@@ -348,6 +364,8 @@ unsafe fn run_window() -> Result<()> {
         taskbar_created_message,
         initial_issues,
         initial_issue_diagnostics,
+        initial_config_load_failed,
+        !replacement_pending,
     )?));
     let app_ptr = app.as_ref() as *const RefCell<AppWindow> as *mut RefCell<AppWindow>;
     let hwnd = match unsafe {
@@ -377,12 +395,23 @@ unsafe fn run_window() -> Result<()> {
         }
     };
 
+    // A replacement window completes WM_CREATE without starting its runtime.
+    // Only retire the old process after that preparation succeeds.
+    if let Err(error) = startup_lease.commit_replacement() {
+        unsafe {
+            let _ = DestroyWindow(hwnd);
+        }
+        return Err(error);
+    }
+    if replacement_pending {
+        app.borrow_mut().activate_replacement_runtime();
+    }
     if !start_hidden || !app.borrow().tray_added {
         unsafe {
             let _ = ShowWindow(hwnd, SW_SHOW);
         }
     }
-    single_instance.release_startup_lock()?;
+    startup_lease.release_startup_lock();
 
     let mut msg = MSG::default();
     while unsafe { get_message(&mut msg)? } {
@@ -420,68 +449,6 @@ unsafe fn initialize_common_controls() -> Result<()> {
         Ok(())
     } else {
         Err(message_error("initialize common controls"))
-    }
-}
-
-struct SingleInstance {
-    handle: HANDLE,
-    owns_startup_lock: bool,
-}
-
-impl SingleInstance {
-    fn new(handle: HANDLE) -> Self {
-        Self {
-            handle,
-            owns_startup_lock: false,
-        }
-    }
-
-    fn acquire_startup_lock(&mut self) -> Result<()> {
-        let wait_result =
-            unsafe { WaitForSingleObject(self.handle, INSTANCE_REPLACEMENT_TIMEOUT_MS) };
-        if wait_result == WAIT_OBJECT_0 || wait_result == WAIT_ABANDONED {
-            self.owns_startup_lock = true;
-            return Ok(());
-        }
-        if wait_result == WAIT_TIMEOUT {
-            return Err(message_error(
-                "another app startup did not finish within 5 seconds",
-            ));
-        }
-        Err(message_error(format!(
-            "wait for app startup lock failed with WIN32 result {}",
-            wait_result.0
-        )))
-    }
-
-    fn release_startup_lock(&mut self) -> Result<()> {
-        if !self.owns_startup_lock {
-            return Ok(());
-        }
-        unsafe { ReleaseMutex(self.handle) }.context("release app startup lock")?;
-        self.owns_startup_lock = false;
-        Ok(())
-    }
-}
-
-impl Drop for SingleInstance {
-    fn drop(&mut self) {
-        unsafe {
-            if self.owns_startup_lock {
-                let _ = ReleaseMutex(self.handle);
-            }
-            let _ = CloseHandle(self.handle);
-        }
-    }
-}
-
-struct ProcessExitWait(HANDLE);
-
-impl Drop for ProcessExitWait {
-    fn drop(&mut self) {
-        unsafe {
-            let _ = CloseHandle(self.0);
-        }
     }
 }
 
@@ -531,97 +498,6 @@ impl Drop for PaintSession {
     }
 }
 
-unsafe fn acquire_single_instance(scope: u64) -> Result<Option<(SingleInstance, bool)>> {
-    let mutex_name = single_instance_mutex_name(scope);
-    let handle = unsafe {
-        CreateMutexW(None, false, PCWSTR(mutex_name.as_ptr())).context("create app mutex")?
-    };
-    let mut instance = SingleInstance::new(handle);
-    instance.acquire_startup_lock()?;
-    let Some(hwnd) = (unsafe { find_existing_window(scope) }) else {
-        return Ok(Some((instance, false)));
-    };
-    let mut process_id = 0;
-    let thread_id = unsafe { GetWindowThreadProcessId(hwnd, Some(&mut process_id)) };
-    if thread_id == 0 || process_id == 0 || !running_instance_is_older(process_id) {
-        show_main_window(hwnd);
-        return Ok(None);
-    }
-
-    unsafe {
-        replace_existing_instance(thread_id, process_id)?;
-    }
-    Ok(Some((instance, true)))
-}
-
-fn running_instance_is_older(process_id: u32) -> bool {
-    let Some(existing_executable) = process::process_name(process_id) else {
-        return false;
-    };
-    release_is_newer_than_executable(env!("CARGO_PKG_VERSION"), &existing_executable)
-}
-
-fn release_is_newer_than_executable(current_version: &str, existing_executable: &str) -> bool {
-    let Some(existing_version) = version_from_executable_name(existing_executable) else {
-        return false;
-    };
-    let Some(current_version) = parse_release_version(current_version) else {
-        return false;
-    };
-    current_version > existing_version
-}
-
-fn version_from_executable_name(file_name: &str) -> Option<(u32, u32, u32)> {
-    let file_name = file_name.to_ascii_lowercase();
-    let version = file_name
-        .strip_prefix("unfocusmute-v")?
-        .strip_suffix(".exe")?;
-    parse_release_version(version)
-}
-
-fn parse_release_version(version: &str) -> Option<(u32, u32, u32)> {
-    let mut parts = version.split('.');
-    let parsed = (
-        parts.next()?.parse().ok()?,
-        parts.next()?.parse().ok()?,
-        parts.next()?.parse().ok()?,
-    );
-    parts.next().is_none().then_some(parsed)
-}
-
-unsafe fn replace_existing_instance(thread_id: u32, process_id: u32) -> Result<()> {
-    let process = ProcessExitWait(
-        unsafe { OpenProcess(PROCESS_SYNCHRONIZE, false, process_id) }
-            .context("open existing app process")?,
-    );
-    // Replacement is a handoff, not a normal user exit. Stop the old message loop
-    // directly so it keeps the managed mute state intact for the successor and
-    // avoids an audible unmute/remute gap during the upgrade.
-    unsafe { PostThreadMessageW(thread_id, WM_QUIT, WPARAM(0), LPARAM(0)) }
-        .context("request existing app exit")?;
-
-    let wait_result = unsafe { WaitForSingleObject(process.0, INSTANCE_REPLACEMENT_TIMEOUT_MS) };
-    if wait_result == WAIT_OBJECT_0 {
-        return Ok(());
-    }
-    if wait_result == WAIT_TIMEOUT {
-        return Err(message_error("existing app did not exit within 5 seconds"));
-    }
-    Err(message_error(format!(
-        "wait for existing app exit failed with WIN32 result {}",
-        wait_result.0
-    )))
-}
-
-fn should_hide_replacement_window(
-    replaced_existing_instance: bool,
-    first_run: bool,
-    forced_minimized: bool,
-    start_minimized: bool,
-) -> bool {
-    !replaced_existing_instance && should_start_hidden(first_run, forced_minimized, start_minimized)
-}
-
 #[cfg(debug_assertions)]
 fn preview_issue_requested() -> bool {
     std::env::args_os().any(|arg| arg == "--preview-issue")
@@ -638,57 +514,6 @@ fn inject_preview_issue(issues: &mut IssueState, diagnostics: &mut IssueDiagnost
         StatusIssue::StartupUpdateFailed,
         "테스트용 진단 정보입니다. 세부 정보 버튼과 팝업 표시를 확인하세요.",
     );
-}
-
-fn single_instance_scope() -> u64 {
-    config_dir()
-        .map(|path| hash_path_for_mutex_scope(&path))
-        .unwrap_or_else(|_| hash_text_for_mutex_scope("default"))
-}
-
-fn single_instance_mutex_name(scope: u64) -> Vec<u16> {
-    let mut name = String::from(SINGLE_INSTANCE_MUTEX_PREFIX);
-    push_hex_u64(&mut name, scope);
-    to_wide(&name)
-}
-
-fn main_window_class_name(scope: u64) -> Vec<u16> {
-    let mut name = String::from(MAIN_WINDOW_CLASS_NAME_PREFIX);
-    push_hex_u64(&mut name, scope);
-    to_wide(&name)
-}
-
-fn hash_path_for_mutex_scope(path: &Path) -> u64 {
-    let mut hash = fnv_offset_basis();
-    for code_unit in path.as_os_str().encode_wide() {
-        hash = fnv1a_update(hash, &code_unit.to_ne_bytes());
-    }
-    hash
-}
-
-fn hash_text_for_mutex_scope(text: &str) -> u64 {
-    fnv1a_update(fnv_offset_basis(), text.as_bytes())
-}
-
-fn fnv_offset_basis() -> u64 {
-    0xcbf2_9ce4_8422_2325
-}
-
-fn fnv1a_update(mut hash: u64, bytes: &[u8]) -> u64 {
-    const FNV_PRIME: u64 = 0x0000_0100_0000_01b3;
-    for byte in bytes {
-        hash ^= u64::from(*byte);
-        hash = hash.wrapping_mul(FNV_PRIME);
-    }
-    hash
-}
-
-fn push_hex_u64(output: &mut String, value: u64) {
-    const HEX: &[u8; 16] = b"0123456789abcdef";
-    for shift in (0..16).rev() {
-        let nibble = ((value >> (shift * 4)) & 0x0f) as usize;
-        output.push(HEX[nibble] as char);
-    }
 }
 
 struct ForegroundEventHook {
@@ -764,18 +589,6 @@ unsafe extern "system" fn foreground_event_proc(
     }
 }
 
-unsafe fn find_existing_window(scope: u64) -> Option<HWND> {
-    let class_name = main_window_class_name(scope);
-    unsafe { FindWindowW(PCWSTR(class_name.as_ptr()), PCWSTR::null()) }.ok()
-}
-
-fn show_main_window(hwnd: HWND) {
-    unsafe {
-        let _ = ShowWindow(hwnd, SW_RESTORE);
-        let _ = SetForegroundWindow(hwnd);
-    }
-}
-
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum ProcessListSource {
     AudioSessions,
@@ -796,7 +609,7 @@ struct AppWindow {
     controls: Controls,
     process_picker: Option<SearchPicker>,
     config: AppConfig,
-    persisted_config: AppConfig,
+    config_store: ConfigStore,
     target_matcher: TargetMatcher,
     strings: &'static Strings,
     audio: Option<AudioController>,
@@ -825,6 +638,7 @@ struct AppWindow {
     muted_target_count: usize,
     paused: bool,
     show_process_details: bool,
+    runtime_active: bool,
     tray_added: bool,
     config_reload_timer_ready: bool,
     audio_fallback_timer_interval_ms: Option<u32>,
@@ -834,8 +648,6 @@ struct AppWindow {
     last_status: Option<StatusSnapshot>,
     last_action_buttons: Option<ActionButtonState>,
     target_status_width: i32,
-    config_stamp: Option<ConfigFileStamp>,
-    next_config_check: Instant,
     window_placement_dirty: bool,
     theme: AppTheme,
     taskbar_created_message: u32,
@@ -1063,17 +875,23 @@ impl AppWindow {
         taskbar_created_message: u32,
         initial_issues: IssueState,
         initial_issue_diagnostics: IssueDiagnostics,
+        initial_config_load_failed: bool,
+        runtime_active: bool,
     ) -> Result<Self> {
         let strings = config.language.strings();
         let managed_mute_fast_retry_remaining =
             initial_managed_mute_fast_retry_count(&config.targets);
-        let persisted_config = config.clone();
+        let config_store = ConfigStore::new(
+            &config,
+            CONFIG_RELOAD_CHECK_INTERVAL,
+            initial_config_load_failed,
+        );
         Ok(Self {
             hwnd: HWND::default(),
             controls: Controls::default(),
             process_picker: None,
             target_matcher: TargetMatcher::new(&config.targets),
-            persisted_config,
+            config_store,
             config,
             strings,
             audio: None,
@@ -1102,6 +920,7 @@ impl AppWindow {
             muted_target_count: 0,
             paused: false,
             show_process_details: false,
+            runtime_active,
             tray_added: false,
             config_reload_timer_ready: false,
             audio_fallback_timer_interval_ms: None,
@@ -1111,8 +930,6 @@ impl AppWindow {
             last_status: None,
             last_action_buttons: None,
             target_status_width: 0,
-            config_stamp: current_config_stamp(),
-            next_config_check: Instant::now() + CONFIG_RELOAD_CHECK_INTERVAL,
             window_placement_dirty: false,
             theme: AppTheme::new(),
             taskbar_created_message,
@@ -1131,9 +948,32 @@ impl AppWindow {
         }
         self.apply_process_filter();
         self.refresh_text();
+        if self.runtime_active {
+            self.reset_timers();
+            self.tick();
+        }
+        Ok(())
+    }
+
+    fn activate_replacement_runtime(&mut self) {
+        if self.runtime_active {
+            return;
+        }
+        self.runtime_active = true;
+        self.last_status = None;
+        let reload = self.config_store.reload_now();
+        self.apply_config_reload_without_startup_sync(reload);
+        let startup_sync = sync_startup_setting(&mut self.config);
+        self.issues.merge(startup_sync.issues);
+        if let Some(detail) = startup_sync.issue_detail {
+            self.issue_diagnostics
+                .set(StatusIssue::StartupUpdateFailed, detail);
+        }
+        if startup_sync.config_changed {
+            self.save_config();
+        }
         self.reset_timers();
         self.tick();
-        Ok(())
     }
 
     unsafe fn create_controls(&mut self) -> Result<()> {
@@ -1532,21 +1372,23 @@ impl AppWindow {
         self.save_config();
     }
 
-    fn apply_settings_preferences(&mut self, preferences: SettingsPreferences) {
+    fn apply_settings_changes(&mut self, changes: SettingsChanges) {
         self.reload_config_if_changed();
         let mut changed = false;
-        let start_minimized_changed = self.config.start_minimized != preferences.start_minimized;
-        let language_changed = self.config.language != preferences.language;
-        let theme_changed = self.config.theme != preferences.theme;
+        let start_minimized_changed = changes
+            .start_minimized
+            .is_some_and(|value| self.config.start_minimized != value);
 
-        if start_minimized_changed {
-            self.config.start_minimized = preferences.start_minimized;
+        if let Some(start_minimized) = changes.start_minimized
+            && self.config.start_minimized != start_minimized
+        {
+            self.config.start_minimized = start_minimized;
             changed = true;
         }
-        if self.config.launch_on_startup != preferences.launch_on_startup {
-            if let Err(error) =
-                apply_startup_preference(&mut self.config, preferences.launch_on_startup)
-            {
+        if let Some(launch_on_startup) = changes.launch_on_startup
+            && self.config.launch_on_startup != launch_on_startup
+        {
+            if let Err(error) = apply_startup_preference(&mut self.config, launch_on_startup) {
                 self.set_issue_with_detail(StatusIssue::StartupUpdateFailed, error);
             } else {
                 self.clear_issue(StatusIssue::StartupUpdateFailed);
@@ -1559,21 +1401,16 @@ impl AppWindow {
                 self.clear_issue(StatusIssue::StartupUpdateFailed);
             }
         }
-        if self.config.restore_muted_on_exit != preferences.restore_on_exit {
-            self.config.restore_muted_on_exit = preferences.restore_on_exit;
+        if let Some(restore_on_exit) = changes.restore_on_exit
+            && self.config.restore_muted_on_exit != restore_on_exit
+        {
+            self.config.restore_muted_on_exit = restore_on_exit;
             changed = true;
         }
-        if self.config.hide_to_tray_on_close != preferences.hide_to_tray_on_close {
-            self.config.hide_to_tray_on_close = preferences.hide_to_tray_on_close;
-            changed = true;
-        }
-        if language_changed {
-            self.config.language = preferences.language;
-            changed = true;
-        }
-        if theme_changed {
-            self.config.theme = preferences.theme;
-            self.apply_resolved_theme(resolve_theme(preferences.theme));
+        if let Some(hide_to_tray_on_close) = changes.hide_to_tray_on_close
+            && self.config.hide_to_tray_on_close != hide_to_tray_on_close
+        {
+            self.config.hide_to_tray_on_close = hide_to_tray_on_close;
             changed = true;
         }
 
@@ -1581,11 +1418,7 @@ impl AppWindow {
             return;
         }
         self.save_config();
-        if language_changed {
-            self.refresh_text();
-        } else {
-            self.update_status();
-        }
+        self.update_status();
     }
 
     fn refresh_target_status_width(&mut self) {
@@ -2246,8 +2079,10 @@ impl AppWindow {
         self.layout_header(snapshot.issue.is_some(), snapshot.issue_detail_visible);
         self.redraw_header();
         self.last_status = Some(snapshot);
-        let tray_data = self.tray_data(&self.tray_tip_text_buffer);
-        self.add_tray_icon_data(&tray_data);
+        if self.runtime_active {
+            let tray_data = self.tray_data(&self.tray_tip_text_buffer);
+            self.add_tray_icon_data(&tray_data);
+        }
     }
 
     fn reset_audio_after_endpoint_change(&mut self) {
@@ -2543,50 +2378,55 @@ impl AppWindow {
     }
 
     fn reload_config_if_due(&mut self) -> ConfigReloadResult {
-        let now = Instant::now();
-        if now < self.next_config_check {
-            return ConfigReloadResult::UNCHANGED;
-        }
-        self.next_config_check = now + CONFIG_RELOAD_CHECK_INTERVAL;
-        self.reload_config_if_changed()
+        let reload = self.config_store.reload_if_due();
+        self.apply_config_reload(reload)
     }
 
     fn reload_config_if_changed(&mut self) -> ConfigReloadResult {
-        let stamp = current_config_stamp();
-        if !config_reload_needed(
-            stamp,
-            self.config_stamp,
-            self.issues.contains(StatusIssue::ConfigLoadFailed),
-        ) {
-            return ConfigReloadResult::UNCHANGED;
-        }
+        let reload = self.config_store.reload_if_changed();
+        self.apply_config_reload(reload)
+    }
 
-        match AppConfig::load_existing() {
-            Ok(config) => {
-                self.config_stamp = stamp;
+    fn apply_config_reload(&mut self, reload: ConfigReload) -> ConfigReloadResult {
+        self.apply_config_reload_with_startup_sync(reload, true)
+    }
+
+    fn apply_config_reload_without_startup_sync(
+        &mut self,
+        reload: ConfigReload,
+    ) -> ConfigReloadResult {
+        self.apply_config_reload_with_startup_sync(reload, false)
+    }
+
+    fn apply_config_reload_with_startup_sync(
+        &mut self,
+        reload: ConfigReload,
+        sync_startup: bool,
+    ) -> ConfigReloadResult {
+        match reload {
+            ConfigReload::Unchanged => ConfigReloadResult::UNCHANGED,
+            ConfigReload::Loaded(config) => {
                 if self.issues.clear(StatusIssue::ConfigLoadFailed) {
                     self.last_status = None;
                 }
-                let target_matcher_changed = self.apply_external_config(config);
-                self.persisted_config = self.config.clone();
+                let target_matcher_changed = self.apply_external_config(config, sync_startup);
+                self.config_store.accept_loaded(&self.config);
                 ConfigReloadResult::changed(target_matcher_changed)
             }
-            Err(error) if error.kind() == ErrorKind::NotFound => {
-                self.config_stamp = None;
+            ConfigReload::Missing => {
                 self.clear_issue(StatusIssue::ConfigLoadFailed);
                 ConfigReloadResult::UNCHANGED
             }
-            Err(error) => {
-                self.config_stamp = stamp;
+            ConfigReload::Failed(error) => {
                 self.set_issue_with_detail(StatusIssue::ConfigLoadFailed, error.to_string());
                 ConfigReloadResult::UNCHANGED
             }
         }
     }
 
-    fn apply_external_config(&mut self, mut config: AppConfig) -> bool {
+    fn apply_external_config(&mut self, mut config: AppConfig, sync_startup: bool) -> bool {
         let previous_config = self.config.clone();
-        if startup_setting_changed(&previous_config, &config) {
+        if sync_startup && startup_setting_changed(&previous_config, &config) {
             let startup_sync =
                 sync_external_startup_config(&mut config, previous_config.launch_on_startup);
             self.update_startup_sync_issue(startup_sync);
@@ -2748,53 +2588,41 @@ impl AppWindow {
     }
 
     fn save_config(&mut self) -> bool {
-        let current_stamp = current_config_stamp();
-        self.merge_external_config_before_save(current_stamp);
-        let current_stamp = current_config_stamp();
-        let can_trust_existing_file = current_stamp.is_some_and(|stamp| {
-            Some(stamp) == self.config_stamp && stamp.has_content_fingerprint()
-        }) && !self.issues.contains(StatusIssue::ConfigLoadFailed);
-        let result = if can_trust_existing_file {
-            self.config.save_trusting_existing_file()
-        } else {
-            self.config.save()
-        };
-        match result {
-            Ok(()) => {
-                self.config_stamp = current_config_stamp();
-                self.persisted_config = self.config.clone();
-                self.next_config_check = Instant::now() + CONFIG_RELOAD_CHECK_INTERVAL;
-                self.window_placement_dirty = false;
-                self.clear_config_issues();
-                true
+        const SAVE_RETRY_LIMIT: usize = 3;
+
+        for _ in 0..SAVE_RETRY_LIMIT {
+            match self.config_store.merge_external_before_save(&self.config) {
+                Ok(ConfigMerge::Ready(Some(disk_config))) => {
+                    let previous_config = std::mem::replace(&mut self.config, disk_config);
+                    self.refresh_after_external_save_merge(&previous_config);
+                }
+                Ok(ConfigMerge::Ready(None)) => {}
+                Ok(ConfigMerge::Retry) => continue,
+                Err(error) => {
+                    self.set_issue_with_detail(StatusIssue::ConfigSaveFailed, error.to_string());
+                    return false;
+                }
             }
-            Err(error) => {
-                self.set_issue_with_detail(StatusIssue::ConfigSaveFailed, error.to_string());
-                false
+
+            match self.config_store.save(&self.config) {
+                Ok(ConfigSave::Saved) => {
+                    self.window_placement_dirty = false;
+                    self.clear_config_issues();
+                    return true;
+                }
+                Ok(ConfigSave::Retry) => {}
+                Err(error) => {
+                    self.set_issue_with_detail(StatusIssue::ConfigSaveFailed, error.to_string());
+                    return false;
+                }
             }
         }
-    }
 
-    fn merge_external_config_before_save(&mut self, current_stamp: Option<ConfigFileStamp>) {
-        if self.issues.contains(StatusIssue::ConfigLoadFailed)
-            || !config_reload_needed(current_stamp, self.config_stamp, false)
-        {
-            return;
-        }
-
-        let Ok(mut disk_config) = AppConfig::load_existing() else {
-            return;
-        };
-        let previous_config = self.config.clone();
-        merge_pending_config_changes(&self.persisted_config, &self.config, &mut disk_config);
-        if disk_config == self.config {
-            self.config_stamp = current_stamp;
-            return;
-        }
-
-        self.config = disk_config;
-        self.config_stamp = current_stamp;
-        self.refresh_after_external_save_merge(&previous_config);
+        self.set_issue_with_detail(
+            StatusIssue::ConfigSaveFailed,
+            "config file kept changing while the app was saving",
+        );
+        false
     }
 
     fn refresh_after_external_save_merge(&mut self, previous_config: &AppConfig) {
@@ -3600,6 +3428,9 @@ impl AppWindow {
     }
 
     fn restore_tray_icon(&mut self) {
+        if !self.runtime_active {
+            return;
+        }
         self.tray_added = false;
         self.add_tray_icon();
         if !self.tray_added && !unsafe { IsWindowVisible(self.hwnd).as_bool() } {
@@ -4384,8 +4215,8 @@ unsafe fn execute_main_window_action(state: &RefCell<AppWindow>, action: MainWin
             };
             let mut app = state.borrow_mut();
             app.finish_settings_window_modal();
-            if let Ok(Some(preferences)) = result {
-                app.apply_settings_preferences(preferences);
+            if let Ok(Some(changes)) = result {
+                app.apply_settings_changes(changes);
             }
         }
         MainWindowAction::EditTargetNote(request) => {
@@ -5007,46 +4838,6 @@ mod target_list_tests {
     }
 
     #[test]
-    fn single_instance_window_class_uses_same_scope_as_mutex() {
-        let scope = 0x0123_4567_89ab_cdef;
-
-        assert_eq!(
-            wide_to_string(&single_instance_mutex_name(scope)),
-            "Local\\UnfocusMute.SingleInstance.0123456789abcdef"
-        );
-        assert_eq!(
-            wide_to_string(&main_window_class_name(scope)),
-            "UnfocusMuteWindow.0123456789abcdef"
-        );
-    }
-
-    #[test]
-    fn versioned_executable_name_parses_release_version_case_insensitively() {
-        assert_eq!(
-            version_from_executable_name("UNFOCUSMUTE-v1.5.0.EXE"),
-            Some((1, 5, 0)),
-        );
-        assert_eq!(version_from_executable_name("UnfocusMute.exe"), None);
-        assert_eq!(parse_release_version("1.5.0.1"), None);
-    }
-
-    #[test]
-    fn only_a_newer_release_replaces_the_running_version() {
-        let running = "UnfocusMute-v1.4.0.exe";
-
-        assert!(release_is_newer_than_executable("1.5.0", running));
-        assert!(!release_is_newer_than_executable("1.4.0", running));
-        assert!(!release_is_newer_than_executable("1.3.5", running));
-    }
-
-    #[test]
-    fn replacement_instance_always_starts_visible() {
-        assert!(!should_hide_replacement_window(true, false, true, true));
-        assert!(!should_hide_replacement_window(true, false, false, true));
-        assert!(should_hide_replacement_window(false, false, false, true));
-    }
-
-    #[test]
     fn committed_process_picker_selection_trusts_combo_index() {
         let indices = vec![0, 1];
 
@@ -5156,10 +4947,5 @@ mod target_list_tests {
             issue_message_body("Could not change mute state", Some("  ")),
             "Could not change mute state"
         );
-    }
-
-    fn wide_to_string(value: &[u16]) -> String {
-        assert_eq!(value.last(), Some(&0));
-        String::from_utf16(&value[..value.len() - 1]).unwrap()
     }
 }

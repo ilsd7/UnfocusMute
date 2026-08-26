@@ -9,7 +9,7 @@ use std::cmp::Ordering;
 use std::env;
 use std::ffi::OsString;
 use std::fs;
-use std::io::{self, BufReader, BufWriter, Read, Write};
+use std::io::{self, BufWriter, Read, Write};
 use std::path::{Path, PathBuf};
 use std::sync::OnceLock;
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -159,6 +159,25 @@ pub struct AppConfigLoad {
     pub config: AppConfig,
     pub first_run: bool,
     pub recovered_invalid_config: bool,
+    pub(crate) source_stamp: ConfigSourceStamp,
+}
+
+#[derive(Clone, Copy)]
+pub(crate) enum ConfigSourceStamp {
+    Unknown,
+    Known(Option<ConfigFileStamp>),
+}
+
+#[derive(Clone, Copy)]
+enum ExistingConfigGuard {
+    #[cfg(test)]
+    Any,
+    Unchanged(Option<ConfigFileStamp>),
+}
+
+struct ExistingConfigValidation {
+    stamp: Option<ConfigFileStamp>,
+    invalid_backup: Option<PathBuf>,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -234,11 +253,13 @@ impl Drop for ConfigStampCache {
 }
 
 impl ConfigFileStamp {
+    #[cfg(test)]
     pub(crate) fn has_content_fingerprint(self) -> bool {
         self.fingerprint.is_some()
     }
 }
 
+#[cfg(test)]
 pub(crate) fn config_reload_needed(
     current: Option<ConfigFileStamp>,
     cached: Option<ConfigFileStamp>,
@@ -271,6 +292,7 @@ impl Default for AppConfigLoad {
             config: AppConfig::default(),
             first_run: true,
             recovered_invalid_config: false,
+            source_stamp: ConfigSourceStamp::Known(None),
         }
     }
 }
@@ -288,20 +310,49 @@ impl AppConfig {
         Ok(config)
     }
 
-    pub fn save(&self) -> io::Result<()> {
-        self.save_with_existing_validation(true)
+    pub(crate) fn save_from_source(&self, source_stamp: ConfigSourceStamp) -> io::Result<()> {
+        let ConfigSourceStamp::Known(expected_stamp) = source_stamp else {
+            return Err(io::Error::new(
+                io::ErrorKind::WouldBlock,
+                "config source changed before startup settings could be saved",
+            ));
+        };
+        if self.save_if_unchanged(expected_stamp)? {
+            return Ok(());
+        }
+        Err(io::Error::new(
+            io::ErrorKind::WouldBlock,
+            "config file changed before startup settings could be saved",
+        ))
     }
 
-    pub(crate) fn save_trusting_existing_file(&self) -> io::Result<()> {
-        self.save_with_existing_validation(false)
-    }
-
-    fn save_with_existing_validation(&self, validate_existing: bool) -> io::Result<()> {
+    pub(crate) fn save_if_unchanged(
+        &self,
+        expected_stamp: Option<ConfigFileStamp>,
+    ) -> io::Result<bool> {
         let path = cached_config_file_path()?;
-        self.save_to_path(path, validate_existing)
+        self.save_to_path_guarded(path, true, ExistingConfigGuard::Unchanged(expected_stamp))
     }
 
+    #[cfg(test)]
     fn save_to_path(&self, path: &Path, validate_existing: bool) -> io::Result<()> {
+        for _ in 0..3 {
+            if self.save_to_path_guarded(path, validate_existing, ExistingConfigGuard::Any)? {
+                return Ok(());
+            }
+        }
+        Err(io::Error::new(
+            io::ErrorKind::WouldBlock,
+            "config file kept changing while the app was saving",
+        ))
+    }
+
+    fn save_to_path_guarded(
+        &self,
+        path: &Path,
+        validate_existing: bool,
+        guard: ExistingConfigGuard,
+    ) -> io::Result<bool> {
         if let Some(parent) = path.parent() {
             fs::create_dir_all(parent)?;
         }
@@ -310,10 +361,6 @@ impl AppConfig {
         config.sanitize();
 
         let config_bytes = serialized_config_bytes(&config)?;
-        if validate_existing {
-            backup_invalid_existing_config(path)?;
-        }
-
         let (mut temp_file, temp_path) = create_temp_config_file(path)?;
         let write_result = {
             let mut writer = BufWriter::new(&mut temp_file);
@@ -330,7 +377,58 @@ impl AppConfig {
             return Err(error);
         }
         drop(temp_file);
-        replace_file(&temp_path, path)
+        match existing_config_matches_guard(path, guard) {
+            Ok(true) => {}
+            Ok(false) => {
+                let _ = fs::remove_file(&temp_path);
+                return Ok(false);
+            }
+            Err(error) => {
+                let _ = fs::remove_file(&temp_path);
+                return Err(error);
+            }
+        }
+        let validation = if validate_existing {
+            match validate_existing_config(path) {
+                Ok(validation) => Some(validation),
+                Err(error) => {
+                    let _ = fs::remove_file(&temp_path);
+                    return Err(error);
+                }
+            }
+        } else {
+            None
+        };
+        match existing_config_matches_guard(path, guard) {
+            Ok(true) => {}
+            Ok(false) => {
+                let _ = fs::remove_file(&temp_path);
+                discard_invalid_backup(validation.as_ref());
+                return Ok(false);
+            }
+            Err(error) => {
+                let _ = fs::remove_file(&temp_path);
+                discard_invalid_backup(validation.as_ref());
+                return Err(error);
+            }
+        }
+        if let Some(validation) = &validation {
+            match try_config_file_stamp(path) {
+                Ok(stamp) if stamp == validation.stamp => {}
+                Ok(_) => {
+                    let _ = fs::remove_file(&temp_path);
+                    discard_invalid_backup(Some(validation));
+                    return Ok(false);
+                }
+                Err(error) => {
+                    let _ = fs::remove_file(&temp_path);
+                    discard_invalid_backup(Some(validation));
+                    return Err(error);
+                }
+            }
+        }
+        replace_file(&temp_path, path)?;
+        Ok(true)
     }
 
     #[cfg(test)]
@@ -569,48 +667,28 @@ fn merge_pending_target_changes(
             target_index_by_key(base, &target.name, target.pid).map(|index| &base[index]);
         match base_target {
             None => upsert_target(disk, target.clone()),
-            Some(base_target) if target_edit_fields_differ(base_target, target) => {
-                upsert_target_preserving_external_managed_mute(disk, base_target, target);
-            }
-            Some(base_target) if base_target.managed_muted != target.managed_muted => {
-                set_target_managed_muted_by_key(
-                    disk,
-                    &target.name,
-                    target.pid,
-                    target.managed_muted,
-                );
-            }
-            Some(_) => {}
+            Some(base_target) => merge_pending_target_fields(base_target, target, disk),
         }
     }
 }
 
-fn target_edit_fields_differ(left: &TargetProcess, right: &TargetProcess) -> bool {
-    left.note != right.note || left.enabled != right.enabled
-}
-
-fn upsert_target_preserving_external_managed_mute(
-    disk: &mut Vec<TargetProcess>,
+fn merge_pending_target_fields(
     base: &TargetProcess,
     local: &TargetProcess,
+    disk: &mut [TargetProcess],
 ) {
-    let mut merged = local.clone();
-    if base.managed_muted == local.managed_muted
-        && let Some(index) = target_index_by_key(disk, &local.name, local.pid)
-    {
-        merged.managed_muted = disk[index].managed_muted;
+    let Some(index) = target_index_by_key(disk, &local.name, local.pid) else {
+        return;
+    };
+    let disk_target = &mut disk[index];
+    if local.note != base.note {
+        disk_target.note.clone_from(&local.note);
     }
-    upsert_target(disk, merged);
-}
-
-fn set_target_managed_muted_by_key(
-    targets: &mut [TargetProcess],
-    name: &str,
-    pid: Option<u32>,
-    managed_muted: bool,
-) {
-    if let Some(index) = target_index_by_key(targets, name, pid) {
-        targets[index].managed_muted = managed_muted;
+    if local.enabled != base.enabled {
+        disk_target.enabled = local.enabled;
+    }
+    if local.managed_muted != base.managed_muted {
+        disk_target.managed_muted = local.managed_muted;
     }
 }
 
@@ -665,40 +743,130 @@ pub(crate) fn target_index_by_identity(
 }
 
 fn load_or_default_from_path(path: &Path) -> io::Result<AppConfigLoad> {
-    let file = match fs::File::open(path) {
-        Ok(file) => file,
-        Err(error) if error.kind() == io::ErrorKind::NotFound => {
-            return Ok(AppConfigLoad::default());
+    for _ in 0..3 {
+        let expected_stamp = try_config_file_stamp(path)?;
+        let file = match fs::File::open(path) {
+            Ok(file) => file,
+            Err(error) if error.kind() == io::ErrorKind::NotFound => {
+                if expected_stamp.is_none() {
+                    return Ok(AppConfigLoad::default());
+                }
+                continue;
+            }
+            Err(error) => return Err(error),
+        };
+        let bytes = read_config_file(file)?;
+        match parse_config_bytes(&bytes) {
+            Ok(mut config) => {
+                if try_config_file_stamp(path)? != expected_stamp {
+                    continue;
+                }
+                config.sanitize();
+                return Ok(AppConfigLoad {
+                    config,
+                    first_run: false,
+                    recovered_invalid_config: false,
+                    source_stamp: ConfigSourceStamp::Known(expected_stamp),
+                });
+            }
+            Err(error) if error.kind() == io::ErrorKind::InvalidData => {
+                if try_config_file_stamp(path)? != expected_stamp {
+                    continue;
+                }
+                if let Some(recovered) =
+                    recover_invalid_config_if_unchanged(path, expected_stamp, &bytes)?
+                {
+                    return Ok(recovered);
+                }
+            }
+            Err(error) => return Err(error),
         }
-        Err(error) => return Err(error),
-    };
-    match parse_config_file(file) {
-        Ok(mut config) => {
-            config.sanitize();
-            return Ok(AppConfigLoad {
-                config,
-                first_run: false,
-                recovered_invalid_config: false,
-            });
-        }
-        Err(error) if error.kind() == io::ErrorKind::InvalidData => {}
-        Err(error) => return Err(error),
     }
 
-    let config = AppConfig::default();
-    backup_invalid_config(path)?;
-    config.save_to_path(path, false)?;
-    Ok(AppConfigLoad {
-        config,
-        first_run: false,
-        recovered_invalid_config: true,
-    })
+    Err(io::Error::new(
+        io::ErrorKind::WouldBlock,
+        "config file kept changing while the app was loading",
+    ))
 }
 
 fn parse_config_file(file: fs::File) -> io::Result<AppConfig> {
+    let bytes = read_config_file(file)?;
+    parse_config_bytes(&bytes)
+}
+
+fn read_config_file(file: fs::File) -> io::Result<Vec<u8>> {
     reject_oversized_config_file(&file)?;
-    serde_json::from_reader(BufReader::new(file))
-        .map_err(|error| io::Error::new(io::ErrorKind::InvalidData, error))
+    let mut bytes = Vec::with_capacity(file.metadata()?.len() as usize);
+    Read::take(file, MAX_CONFIG_FILE_BYTES + 1).read_to_end(&mut bytes)?;
+    if bytes.len() as u64 > MAX_CONFIG_FILE_BYTES {
+        return Err(io::Error::new(
+            io::ErrorKind::Unsupported,
+            "config file is too large",
+        ));
+    }
+    Ok(bytes)
+}
+
+fn parse_config_bytes(bytes: &[u8]) -> io::Result<AppConfig> {
+    let value: serde_json::Value = serde_json::from_slice(bytes).map_err(json_error_to_io)?;
+    if let Some(version) = value.get("version").and_then(serde_json::Value::as_u64)
+        && version > u64::from(CONFIG_VERSION)
+    {
+        return Err(io::Error::new(
+            io::ErrorKind::Unsupported,
+            format!(
+                "config version {} is newer than supported version {CONFIG_VERSION}",
+                version
+            ),
+        ));
+    }
+    serde_json::from_value(value).map_err(json_error_to_io)
+}
+
+fn json_error_to_io(error: serde_json::Error) -> io::Error {
+    io::Error::new(
+        error.io_error_kind().unwrap_or(io::ErrorKind::InvalidData),
+        error,
+    )
+}
+
+fn recover_invalid_config_if_unchanged(
+    path: &Path,
+    expected_stamp: Option<ConfigFileStamp>,
+    invalid_bytes: &[u8],
+) -> io::Result<Option<AppConfigLoad>> {
+    if try_config_file_stamp(path)? != expected_stamp {
+        return Ok(None);
+    }
+
+    let backup_path = backup_invalid_config_bytes(path, invalid_bytes)?;
+    let config = AppConfig::default();
+    let save_result =
+        config.save_to_path_guarded(path, false, ExistingConfigGuard::Unchanged(expected_stamp));
+    match save_result {
+        Ok(true) => Ok(Some(AppConfigLoad {
+            config,
+            first_run: false,
+            recovered_invalid_config: true,
+            source_stamp: ConfigSourceStamp::Unknown,
+        })),
+        Ok(false) => {
+            let _ = fs::remove_file(backup_path);
+            Ok(None)
+        }
+        Err(error) => {
+            let _ = fs::remove_file(backup_path);
+            Err(error)
+        }
+    }
+}
+
+fn existing_config_matches_guard(path: &Path, guard: ExistingConfigGuard) -> io::Result<bool> {
+    match guard {
+        #[cfg(test)]
+        ExistingConfigGuard::Any => Ok(true),
+        ExistingConfigGuard::Unchanged(expected) => Ok(try_config_file_stamp(path)? == expected),
+    }
 }
 
 fn serialized_config_bytes(config: &AppConfig) -> io::Result<Vec<u8>> {
@@ -720,25 +888,65 @@ fn reject_oversized_config_file(file: &fs::File) -> io::Result<()> {
     }
 
     Err(io::Error::new(
-        io::ErrorKind::InvalidData,
+        io::ErrorKind::Unsupported,
         "config file is too large",
     ))
 }
 
-fn backup_invalid_existing_config(path: &Path) -> io::Result<()> {
-    match fs::File::open(path) {
-        Ok(file) => match parse_config_file(file) {
-            Ok(_) => {}
-            Err(error) if error.kind() == io::ErrorKind::InvalidData => {
-                backup_invalid_config(path)?;
+fn validate_existing_config(path: &Path) -> io::Result<ExistingConfigValidation> {
+    for _ in 0..3 {
+        let stamp_before_load = try_config_file_stamp(path)?;
+        let file = match fs::File::open(path) {
+            Ok(file) => file,
+            Err(error) if error.kind() == io::ErrorKind::NotFound => {
+                if stamp_before_load.is_none() {
+                    return Ok(ExistingConfigValidation {
+                        stamp: None,
+                        invalid_backup: None,
+                    });
+                }
+                continue;
             }
             Err(error) => return Err(error),
-        },
-        Err(error) if error.kind() == io::ErrorKind::NotFound => {}
-        Err(error) => return Err(error),
+        };
+        let bytes = read_config_file(file)?;
+        let parse_result = parse_config_bytes(&bytes);
+        if try_config_file_stamp(path)? != stamp_before_load {
+            continue;
+        }
+
+        match parse_result {
+            Ok(_) => {
+                return Ok(ExistingConfigValidation {
+                    stamp: stamp_before_load,
+                    invalid_backup: None,
+                });
+            }
+            Err(error) if error.kind() == io::ErrorKind::InvalidData => {
+                let backup_path = backup_invalid_config_bytes(path, &bytes)?;
+                if try_config_file_stamp(path)? == stamp_before_load {
+                    return Ok(ExistingConfigValidation {
+                        stamp: stamp_before_load,
+                        invalid_backup: Some(backup_path),
+                    });
+                }
+                let _ = fs::remove_file(backup_path);
+            }
+            Err(error) => return Err(error),
+        }
     }
 
-    Ok(())
+    Err(io::Error::new(
+        io::ErrorKind::WouldBlock,
+        "config file kept changing while the app was validating it",
+    ))
+}
+
+fn discard_invalid_backup(validation: Option<&ExistingConfigValidation>) {
+    if let Some(backup_path) = validation.and_then(|validation| validation.invalid_backup.as_ref())
+    {
+        let _ = fs::remove_file(backup_path);
+    }
 }
 
 fn replace_file(temp_path: &Path, destination: &Path) -> io::Result<()> {
@@ -826,20 +1034,12 @@ fn path_to_wide(path: &Path) -> Vec<u16> {
         .collect()
 }
 
-fn backup_invalid_config(path: &Path) -> io::Result<PathBuf> {
+fn backup_invalid_config_bytes(path: &Path, bytes: &[u8]) -> io::Result<PathBuf> {
     let timestamp = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map_or(0, |duration| duration.as_secs());
-    backup_invalid_config_with_timestamp(path, timestamp)
-}
-
-fn backup_invalid_config_with_timestamp(path: &Path, timestamp: u64) -> io::Result<PathBuf> {
     let parent = path.parent().unwrap_or_else(|| Path::new("."));
-    if path.metadata()?.len() > MAX_CONFIG_FILE_BYTES {
-        return move_invalid_config_with_timestamp(path, parent, timestamp);
-    }
 
-    let mut source = fs::File::open(path)?;
     for index in 0..100 {
         let backup_path = invalid_config_backup_path(parent, timestamp, index);
         let mut backup = match fs::OpenOptions::new()
@@ -851,39 +1051,11 @@ fn backup_invalid_config_with_timestamp(path: &Path, timestamp: u64) -> io::Resu
             Err(error) if error.kind() == io::ErrorKind::AlreadyExists => continue,
             Err(error) => return Err(error),
         };
-
-        if let Err(error) = io::copy(&mut source, &mut backup) {
-            discard_open_file(backup, &backup_path);
-            return Err(error);
-        }
-        if let Err(error) = backup.sync_all() {
+        if let Err(error) = backup.write_all(bytes).and_then(|()| backup.sync_all()) {
             discard_open_file(backup, &backup_path);
             return Err(error);
         }
         return Ok(backup_path);
-    }
-
-    Err(io::Error::new(
-        io::ErrorKind::AlreadyExists,
-        "could not create a unique invalid config backup path",
-    ))
-}
-
-fn move_invalid_config_with_timestamp(
-    path: &Path,
-    parent: &Path,
-    timestamp: u64,
-) -> io::Result<PathBuf> {
-    for index in 0..100 {
-        let backup_path = invalid_config_backup_path(parent, timestamp, index);
-        if backup_path.exists() {
-            continue;
-        }
-        match fs::rename(path, &backup_path) {
-            Ok(()) => return Ok(backup_path),
-            Err(error) if error.kind() == io::ErrorKind::AlreadyExists => continue,
-            Err(error) => return Err(error),
-        }
     }
 
     Err(io::Error::new(
@@ -1778,7 +1950,7 @@ mod tests {
     }
 
     #[test]
-    fn oversized_config_files_are_rejected_before_json_parsing() {
+    fn oversized_config_files_are_preserved_without_json_parsing() {
         let dir = TestDir::new();
         let path = dir.path().join("config.json");
         let file = fs::File::create(&path).unwrap();
@@ -1787,7 +1959,7 @@ mod tests {
 
         let error = parse_config_file(fs::File::open(&path).unwrap()).unwrap_err();
 
-        assert_eq!(error.kind(), io::ErrorKind::InvalidData);
+        assert_eq!(error.kind(), io::ErrorKind::Unsupported);
     }
 
     #[test]
@@ -2363,59 +2535,18 @@ mod tests {
     }
 
     #[test]
-    fn invalid_config_backup_preserves_original_contents() {
+    fn oversized_future_config_load_preserves_original_in_place() {
         let dir = TestDir::new();
         let config_path = dir.path().join("config.json");
-        fs::write(&config_path, "{not valid json").unwrap();
+        let mut future_config = format!(r#"{{"version":{}}}"#, CONFIG_VERSION + 1).into_bytes();
+        future_config.resize(MAX_CONFIG_FILE_BYTES as usize + 1, b' ');
+        fs::write(&config_path, &future_config).unwrap();
 
-        let backup_path = backup_invalid_config(&config_path).unwrap();
+        let error = load_or_default_from_path(&config_path).err().unwrap();
 
-        assert_ne!(backup_path, config_path);
-        assert_eq!(fs::read_to_string(backup_path).unwrap(), "{not valid json");
-        assert_eq!(fs::read_to_string(config_path).unwrap(), "{not valid json");
-    }
-
-    #[test]
-    fn invalid_config_backup_moves_oversized_original() {
-        let dir = TestDir::new();
-        let config_path = dir.path().join("config.json");
-        let original_len = MAX_CONFIG_FILE_BYTES + 1024;
-        fs::write(&config_path, vec![b'x'; original_len as usize]).unwrap();
-
-        let backup_path = backup_invalid_config(&config_path).unwrap();
-
-        assert_eq!(fs::metadata(backup_path).unwrap().len(), original_len);
-        assert!(!config_path.exists());
-    }
-
-    #[test]
-    fn oversized_invalid_config_load_preserves_full_backup() {
-        let dir = TestDir::new();
-        let config_path = dir.path().join("config.json");
-        let original_len = MAX_CONFIG_FILE_BYTES + 1024;
-        fs::write(&config_path, vec![b'x'; original_len as usize]).unwrap();
-
-        let loaded = load_or_default_from_path(&config_path).unwrap();
-
-        assert!(loaded.recovered_invalid_config);
-        assert_eq!(loaded.config, AppConfig::default());
-        assert!(
-            fs::read_to_string(&config_path)
-                .unwrap()
-                .contains("\"version\"")
-        );
-        let backups = fs::read_dir(dir.path())
-            .unwrap()
-            .filter_map(Result::ok)
-            .filter(|entry| {
-                entry
-                    .file_name()
-                    .to_string_lossy()
-                    .starts_with("config.invalid-")
-            })
-            .collect::<Vec<_>>();
-        assert_eq!(backups.len(), 1);
-        assert_eq!(fs::metadata(backups[0].path()).unwrap().len(), original_len);
+        assert_eq!(error.kind(), io::ErrorKind::Unsupported);
+        assert_eq!(fs::read(&config_path).unwrap(), future_config);
+        assert_eq!(invalid_backup_count(dir.path()), 0);
     }
 
     #[test]
@@ -2457,6 +2588,85 @@ mod tests {
     }
 
     #[test]
+    fn future_config_version_is_preserved_instead_of_recovered() {
+        let dir = TestDir::new();
+        let config_path = dir.path().join("config.json");
+        let future_config = format!(
+            r#"{{"version":{},"start-minimized":"future-mode"}}"#,
+            CONFIG_VERSION + 1
+        );
+        fs::write(&config_path, &future_config).unwrap();
+
+        let error = load_or_default_from_path(&config_path).err().unwrap();
+
+        assert_eq!(error.kind(), io::ErrorKind::Unsupported);
+        assert_eq!(fs::read_to_string(&config_path).unwrap(), future_config);
+        assert_eq!(invalid_backup_count(dir.path()), 0);
+    }
+
+    #[test]
+    fn invalid_recovery_does_not_replace_config_changed_after_parse() {
+        let dir = TestDir::new();
+        let config_path = dir.path().join("config.json");
+        let invalid_config = b"{not valid json";
+        fs::write(&config_path, invalid_config).unwrap();
+        let expected_stamp = config_file_stamp(&config_path);
+        let future_config = format!(r#"{{"version":{}}}"#, CONFIG_VERSION + 1);
+        fs::write(&config_path, &future_config).unwrap();
+
+        let recovered =
+            recover_invalid_config_if_unchanged(&config_path, expected_stamp, invalid_config)
+                .unwrap();
+
+        assert!(recovered.is_none());
+        assert_eq!(fs::read_to_string(&config_path).unwrap(), future_config);
+        assert_eq!(invalid_backup_count(dir.path()), 0);
+    }
+
+    #[test]
+    fn save_does_not_replace_future_config_version() {
+        let dir = TestDir::new();
+        let config_path = dir.path().join("config.json");
+        let future_config = format!(
+            r#"{{"version":{},"start-minimized":"future-mode"}}"#,
+            CONFIG_VERSION + 1
+        );
+        fs::write(&config_path, &future_config).unwrap();
+
+        let error = AppConfig::default()
+            .save_to_path(&config_path, true)
+            .unwrap_err();
+
+        assert_eq!(error.kind(), io::ErrorKind::Unsupported);
+        assert_eq!(fs::read_to_string(&config_path).unwrap(), future_config);
+        assert_eq!(invalid_backup_count(dir.path()), 0);
+    }
+
+    #[test]
+    fn guarded_save_does_not_replace_config_changed_after_stamp_check() {
+        let dir = TestDir::new();
+        let config_path = dir.path().join("config.json");
+        AppConfig::default()
+            .save_to_path(&config_path, false)
+            .unwrap();
+        let expected_stamp = config_file_stamp(&config_path);
+        let future_config = format!(r#"{{"version":{}}}"#, CONFIG_VERSION + 1);
+        fs::write(&config_path, &future_config).unwrap();
+
+        let saved = AppConfig::default()
+            .save_to_path_guarded(
+                &config_path,
+                true,
+                ExistingConfigGuard::Unchanged(expected_stamp),
+            )
+            .unwrap();
+
+        assert!(!saved);
+        assert_eq!(fs::read_to_string(&config_path).unwrap(), future_config);
+        assert_eq!(invalid_backup_count(dir.path()), 0);
+    }
+
+    #[test]
     fn load_read_errors_are_not_recovered_as_invalid_config() {
         let dir = TestDir::new();
         let config_path = dir.path().join("config.json");
@@ -2467,28 +2677,13 @@ mod tests {
     }
 
     #[test]
-    fn existing_config_read_errors_are_not_backed_up_as_invalid() {
+    fn existing_config_read_errors_are_not_validated_as_invalid() {
         let dir = TestDir::new();
         let config_path = dir.path().join("config.json");
         fs::create_dir(&config_path).unwrap();
 
-        assert!(backup_invalid_existing_config(&config_path).is_err());
+        assert!(validate_existing_config(&config_path).is_err());
         assert_eq!(invalid_backup_count(dir.path()), 0);
-    }
-
-    #[test]
-    fn invalid_config_backup_does_not_overwrite_existing_backup() {
-        let dir = TestDir::new();
-        let config_path = dir.path().join("config.json");
-        let existing_backup = dir.path().join("config.invalid-7.json");
-        fs::write(&config_path, "{not valid json").unwrap();
-        fs::write(&existing_backup, "keep").unwrap();
-
-        let backup_path = backup_invalid_config_with_timestamp(&config_path, 7).unwrap();
-
-        assert_eq!(backup_path, dir.path().join("config.invalid-7-1.json"));
-        assert_eq!(fs::read_to_string(existing_backup).unwrap(), "keep");
-        assert_eq!(fs::read_to_string(backup_path).unwrap(), "{not valid json");
     }
 
     #[test]
@@ -2638,6 +2833,24 @@ mod tests {
         assert_eq!(disk.targets.len(), 1);
         assert_eq!(disk.targets[0].note.as_deref(), Some("local"));
         assert!(disk.targets[0].managed_muted);
+    }
+
+    #[test]
+    fn merge_pending_config_changes_merges_target_fields_independently() {
+        let mut base = AppConfig::default();
+        assert!(base.add_target("game.exe"));
+        assert!(base.set_target_note_at(0, Some("base".to_owned())));
+
+        let mut local = base.clone();
+        assert!(local.set_target_note_at(0, Some("local".to_owned())));
+
+        let mut disk = base.clone();
+        assert!(disk.set_target_enabled_at(0, false));
+
+        merge_pending_config_changes(&base, &local, &mut disk);
+
+        assert_eq!(disk.targets[0].note.as_deref(), Some("local"));
+        assert!(!disk.targets[0].enabled);
     }
 
     #[test]

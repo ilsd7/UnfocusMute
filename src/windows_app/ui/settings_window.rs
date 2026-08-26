@@ -158,6 +158,32 @@ pub(super) struct SettingsPreferences {
     pub(super) hide_to_tray_on_close: bool,
 }
 
+impl SettingsPreferences {
+    fn behavior_changes(self, selected: Self) -> SettingsChanges {
+        SettingsChanges {
+            start_minimized: changed_value(self.start_minimized, selected.start_minimized),
+            launch_on_startup: changed_value(self.launch_on_startup, selected.launch_on_startup),
+            restore_on_exit: changed_value(self.restore_on_exit, selected.restore_on_exit),
+            hide_to_tray_on_close: changed_value(
+                self.hide_to_tray_on_close,
+                selected.hide_to_tray_on_close,
+            ),
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub(super) struct SettingsChanges {
+    pub(super) start_minimized: Option<bool>,
+    pub(super) launch_on_startup: Option<bool>,
+    pub(super) restore_on_exit: Option<bool>,
+    pub(super) hide_to_tray_on_close: Option<bool>,
+}
+
+fn changed_value<T: Copy + Eq>(initial: T, selected: T) -> Option<T> {
+    (initial != selected).then_some(selected)
+}
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(super) enum SettingsLiveUpdate {
     Language(Language),
@@ -186,7 +212,7 @@ struct SettingsWindow {
     tooltip: HWND,
     version_label: HWND,
     done: bool,
-    selected: Option<SettingsPreferences>,
+    selected: Option<SettingsChanges>,
     language: Language,
     theme_preference: ThemePreference,
     initial: SettingsPreferences,
@@ -511,7 +537,7 @@ impl SettingsWindow {
     }
 
     fn accept(&mut self) {
-        self.selected = Some(self.selected_preferences());
+        self.selected = Some(self.initial.behavior_changes(self.selected_preferences()));
         self.done = true;
     }
 
@@ -1039,7 +1065,7 @@ pub(super) unsafe fn prompt_settings<F>(
     icons: AppIcons,
     initial: SettingsPreferences,
     mut on_live_update: F,
-) -> Result<Option<SettingsPreferences>>
+) -> Result<Option<SettingsChanges>>
 where
     F: FnMut(SettingsLiveUpdate),
 {
@@ -1352,6 +1378,44 @@ fn calculate_info_layout(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn preferences() -> SettingsPreferences {
+        SettingsPreferences {
+            language: Language::En,
+            theme: ThemePreference::System,
+            start_minimized: true,
+            launch_on_startup: true,
+            restore_on_exit: true,
+            hide_to_tray_on_close: true,
+        }
+    }
+
+    #[test]
+    fn unchanged_behavior_does_not_claim_external_settings() {
+        let initial = preferences();
+
+        assert_eq!(
+            initial.behavior_changes(initial),
+            SettingsChanges::default()
+        );
+    }
+
+    #[test]
+    fn behavior_changes_include_only_fields_changed_in_the_dialog() {
+        let initial = preferences();
+        let selected = SettingsPreferences {
+            restore_on_exit: false,
+            ..initial
+        };
+
+        assert_eq!(
+            initial.behavior_changes(selected),
+            SettingsChanges {
+                restore_on_exit: Some(false),
+                ..SettingsChanges::default()
+            }
+        );
+    }
 
     #[test]
     fn settings_cards_fit_inside_the_client_area() {
