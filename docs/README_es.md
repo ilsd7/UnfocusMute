@@ -61,7 +61,7 @@ En Windows 10/11, descarga el paquete ZIP y extráelo para ejecutar la aplicaci�
 
 Después de extraer el ZIP, mueve la carpeta `UnfocusMute-windows-x64` a la ubicación donde quieras guardar la aplicación y ejecuta `UnfocusMute-v<version>.exe` dentro de esa carpeta.
 
-UnfocusMute es una aplicación independiente que no requiere instalación. Tampoco necesitas instalar Rust, Visual Studio Build Tools, MinGW ni otras herramientas de desarrollo.
+UnfocusMute es una aplicación independiente que no requiere instalación. Tampoco necesitas instalar un entorno de ejecución independiente ni herramientas de desarrollo como Rust, Visual Studio Build Tools o MinGW.
 
 > **Nota:** Como los certificados de firma de código tienen un costo, la aplicación se distribuye actualmente sin firma de código de Windows. En el primer inicio puede aparecer un aviso de Windows SmartScreen o de "editor desconocido". Si quieres comprobar la integridad del archivo por tu cuenta, consulta [Transparencia y verificación de archivos de la versión](#transparencia-y-verificación-de-archivos-de-la-versión).
 
@@ -86,7 +86,7 @@ Por eso, si hay varias instancias del mismo `.exe` ejecutándose a la vez, no si
 1. Abre UnfocusMute.
 2. Elige el idioma. Recomendamos dejar las opciones con sus valores predeterminados.
 3. Inicia el juego o la aplicación que quieres registrar.
-4. Selecciona una aplicación de la lista o escribe el nombre exacto de su archivo `.exe` y, después, haz clic en `Registrar`. Si la aplicación aún no ha creado una sesión de audio, cambia a `Todos los procesos` para ver todos los procesos en ejecución.
+4. Selecciona una aplicación de la lista o escribe el nombre exacto de su archivo `.exe` y, después, haz clic en `Registrar`. Al registrar por `.exe`, se gestionan juntas todas las sesiones de audio de esa aplicación; usa el registro por PID si quieres gestionar solo una instancia concreta en ejecución. Si la aplicación aún no ha creado una sesión de audio, cambia a `Todos los procesos` para ver todos los procesos en ejecución.
 5. Si necesitas registrar solo un PID concreto, haz clic en `Vista PID` y elige la entrada correspondiente. Las entradas por PID solo se aplican a la instancia que está en ejecución; si la aplicación se reinicia con otro PID, tendrás que registrarla de nuevo.
 6. Haz clic con el botón derecho en una aplicación registrada para editar su nota o usar `Pausar` solo en esa aplicación.
 7. Haz clic en el estado `Supervisando` de la parte superior para pausar o reanudar toda la supervisión.
@@ -191,10 +191,10 @@ Para abordar de forma transparente estos riesgos de la cadena de suministro, Unf
 <details>
 <summary>Mostrar los pasos de verificación</summary>
 
-Primero instala [GitHub CLI](https://cli.github.com/). Después, ejecuta los comandos siguientes en PowerShell e introduce la versión publicada cuando se solicite.
+Primero instala [GitHub CLI](https://cli.github.com/). Después, cambia el valor de `$version` que aparece abajo por la etiqueta de la versión que quieras verificar y ejecuta todo el bloque de comandos en PowerShell.
 
 ```powershell
-$version = Read-Host "Introduce la versión publicada (por ejemplo, v1.5.0)"
+$version = "v1.5.0"
 $sourceRef = "refs/tags/$version"
 $workflow = "ilsd7/UnfocusMute/.github/workflows/release.yml"
 

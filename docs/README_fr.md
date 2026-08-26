@@ -61,7 +61,7 @@ Sous Windows 10/11, téléchargez l’archive ZIP puis extrayez-la pour lancer l
 
 Une fois le ZIP extrait, déplacez le dossier `UnfocusMute-windows-x64` à l’emplacement où vous souhaitez conserver l’application, puis lancez `UnfocusMute-v<version>.exe` depuis ce dossier.
 
-UnfocusMute est une application autonome qui ne nécessite aucune installation. Vous n’avez pas non plus besoin d’installer Rust, Visual Studio Build Tools, MinGW ni d’autres outils de développement.
+UnfocusMute est une application autonome qui ne nécessite aucune installation. Vous n’avez pas non plus besoin d’installer un environnement d’exécution distinct ni des outils de développement tels que Rust, Visual Studio Build Tools ou MinGW.
 
 > **Remarque :** Comme les certificats de signature de code ont un coût, l’application est actuellement distribuée sans signature de code Windows. Un avertissement Windows SmartScreen ou « éditeur inconnu » peut s’afficher au premier lancement. Pour vérifier vous-même l’intégrité du fichier, consultez [Transparence et vérification des fichiers publiés](#transparence-et-vérification-des-fichiers-publiés).
 
@@ -86,7 +86,7 @@ Si plusieurs instances du même `.exe` sont ouvertes en même temps, il n’est 
 1. Lancez UnfocusMute.
 2. Choisissez la langue. Nous vous recommandons de conserver les réglages par défaut.
 3. Lancez le jeu ou l’application à ajouter.
-4. Sélectionnez une application dans la liste ou saisissez le nom exact de son fichier `.exe`, puis cliquez sur `Ajouter`. Si l’application n’a pas encore créé de session audio, passez à `Tous les processus` pour parcourir tous les processus en cours d’exécution.
+4. Sélectionnez une application dans la liste ou saisissez le nom exact de son fichier `.exe`, puis cliquez sur `Ajouter`. L’ajout par nom `.exe` gère ensemble toutes les sessions audio de l’application ; utilisez l’ajout par PID si vous souhaitez gérer uniquement une instance en cours d’exécution. Si l’application n’a pas encore créé de session audio, passez à `Tous les processus` pour parcourir tous les processus en cours d’exécution.
 5. Si vous devez ajouter seulement un PID précis, cliquez sur `Vue PID` et choisissez l’entrée concernée. Un ajout par PID n’est valable que pour l’instance actuellement ouverte ; si l’application redémarre avec un autre PID, ajoutez-la à nouveau.
 6. Faites un clic droit sur une application ajoutée pour modifier sa note ou utiliser `Mettre en pause` uniquement pour cette application.
 7. Cliquez sur l’état `Surveillance en cours` en haut pour suspendre ou reprendre toute la surveillance.
@@ -191,10 +191,10 @@ Afin de traiter ces risques de chaîne d’approvisionnement de façon transpare
 <details>
 <summary>Afficher la procédure de vérification</summary>
 
-Installez d’abord [GitHub CLI](https://cli.github.com/). Exécutez ensuite les commandes ci-dessous dans PowerShell et saisissez la version publiée lorsque vous y êtes invité.
+Installez d’abord [GitHub CLI](https://cli.github.com/). Remplacez ensuite la valeur de `$version` ci-dessous par le tag de la version à vérifier, puis exécutez l’ensemble du bloc de commandes dans PowerShell.
 
 ```powershell
-$version = Read-Host "Saisissez la version publiée (par exemple, v1.5.0)"
+$version = "v1.5.0"
 $sourceRef = "refs/tags/$version"
 $workflow = "ilsd7/UnfocusMute/.github/workflows/release.yml"
 

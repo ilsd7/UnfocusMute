@@ -61,7 +61,7 @@ No Windows 10/11, baixe o pacote ZIP, extraia e execute o app.
 
 Depois de extrair o ZIP, mova a pasta `UnfocusMute-windows-x64` para o local onde você quer manter o app e execute `UnfocusMute-v<version>.exe` dentro dela.
 
-UnfocusMute é um app independente que não requer instalação. Você também não precisa instalar Rust, Visual Studio Build Tools, MinGW nem outras ferramentas de desenvolvimento.
+UnfocusMute é um app independente que não requer instalação. Você também não precisa instalar um runtime separado nem ferramentas de desenvolvimento como Rust, Visual Studio Build Tools ou MinGW.
 
 > **Observação:** Como certificados de assinatura de código têm custo, o app atualmente é distribuído sem assinatura de código do Windows. No primeiro uso, podem aparecer avisos do Windows SmartScreen ou de "editor desconhecido". Se quiser verificar a integridade do arquivo por conta própria, consulte [Transparência e verificação dos arquivos de distribuição](#transparência-e-verificação-dos-arquivos-de-distribuição).
 
@@ -86,7 +86,7 @@ Assim, se houver várias instâncias do mesmo `.exe` em execução ao mesmo temp
 1. Abra o UnfocusMute.
 2. Escolha o idioma. Recomendamos manter as opções nos valores padrão.
 3. Inicie o jogo ou app que você quer registrar.
-4. Selecione um app na lista ou digite o nome exato do arquivo `.exe` e clique em `Registrar`. Se o app ainda não tiver criado uma sessão de áudio, mude para `Todos os processos` para ver todos os processos em execução.
+4. Selecione um app na lista ou digite o nome exato do arquivo `.exe` e clique em `Registrar`. Ao registrar pelo nome do `.exe`, todas as sessões de áudio desse app são gerenciadas em conjunto; use o registro por PID para gerenciar apenas uma instância específica em execução. Se o app ainda não tiver criado uma sessão de áudio, mude para `Todos os processos` para ver todos os processos em execução.
 5. Se precisar registrar apenas um PID específico, clique em `Ver por PID` e escolha a entrada individual. Registros por PID valem apenas para a instância em execução; se o app reiniciar com outro PID, registre-o novamente.
 6. Clique com o botão direito em um app registrado para editar sua nota ou usar `Pausar` apenas nesse app.
 7. Clique no status `Monitorando` na parte superior para pausar ou retomar todo o monitoramento.
@@ -191,10 +191,10 @@ Para tratar esses riscos da cadeia de fornecimento com transparência, o Unfocus
 <details>
 <summary>Mostrar as etapas de verificação</summary>
 
-Primeiro, instale o [GitHub CLI](https://cli.github.com/). Em seguida, execute os comandos abaixo no PowerShell e informe a versão publicada quando solicitado.
+Primeiro, instale o [GitHub CLI](https://cli.github.com/). Em seguida, altere o valor de `$version` abaixo para a tag da versão que deseja verificar e execute todo o bloco de comandos no PowerShell.
 
 ```powershell
-$version = Read-Host "Digite a versão publicada (por exemplo, v1.5.0)"
+$version = "v1.5.0"
 $sourceRef = "refs/tags/$version"
 $workflow = "ilsd7/UnfocusMute/.github/workflows/release.yml"
 

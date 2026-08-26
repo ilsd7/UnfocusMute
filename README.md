@@ -61,7 +61,7 @@ On Windows 10/11, download the ZIP package and extract it to run the app.
 
 After extracting the ZIP, move the `UnfocusMute-windows-x64` folder wherever you want to keep the app, then run `UnfocusMute-v<version>.exe` inside that folder.
 
-UnfocusMute is a standalone app that does not need to be installed. You also do not need Rust, Visual Studio Build Tools, MinGW, or any other development tools.
+UnfocusMute is a standalone app that does not need to be installed. You also do not need a separate runtime or development tools such as Rust, Visual Studio Build Tools, or MinGW.
 
 > **Note:** The app is currently distributed unsigned because code signing requires a paid certificate. Windows SmartScreen or an "unknown publisher" warning may appear on first run. To verify the file integrity yourself, see [Transparency and Release File Verification](#transparency-and-release-file-verification).
 
@@ -86,7 +86,7 @@ If several instances of the same `.exe` are running at the same time, UnfocusMut
 1. Launch UnfocusMute.
 2. Choose a language. We recommend keeping the options at their defaults.
 3. Start the game or app you want to register.
-4. Select an app from the list or enter its exact `.exe` name, then click `Register`. If the app has not created an audio session yet, switch to `All processes` to browse all running processes.
+4. Select an app from the list or enter its exact `.exe` name, then click `Register`. Registering by `.exe` manages all audio sessions for that app; use PID registration to manage only a specific running instance. If the app has not created an audio session yet, switch to `All processes` to browse all running processes.
 5. If you need to register only one specific PID, click `PID view` and choose the individual entry. PID registrations apply only to the currently running instance, so register it again if the app restarts and receives a different PID.
 6. Right-click a registered app to edit its note or use `Pause` for that app only.
 7. Click the monitoring status at the top to pause or resume monitoring.
@@ -191,10 +191,10 @@ To address these supply chain risks transparently, UnfocusMute publishes a metho
 <details>
 <summary>Show the release file verification steps</summary>
 
-First install the [GitHub CLI](https://cli.github.com/). Then run the commands below in PowerShell and enter the release version when prompted.
+First install the [GitHub CLI](https://cli.github.com/). Then change the `$version` value below to the release tag you want to verify and run the entire command block in PowerShell.
 
 ```powershell
-$version = Read-Host "Enter the release version (for example, v1.5.0)"
+$version = "v1.5.0"
 $sourceRef = "refs/tags/$version"
 $workflow = "ilsd7/UnfocusMute/.github/workflows/release.yml"
 

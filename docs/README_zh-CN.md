@@ -61,7 +61,7 @@ UnfocusMute 是一款小巧轻量的 Windows 托盘应用，可在选定的游�
 
 解压后，将 `UnfocusMute-windows-x64` 文件夹移动到你想保存的位置，再运行其中的 `UnfocusMute-v<version>.exe`。
 
-UnfocusMute 是免安装的独立应用。你也无需安装 Rust、Visual Studio Build Tools、MinGW 等开发工具。
+UnfocusMute 是免安装的独立应用。你也无需安装额外运行库，或 Rust、Visual Studio Build Tools、MinGW 等开发工具。
 
 > **提示：** 由于代码签名证书需要成本，目前发布文件未进行 Windows 代码签名。首次运行时，可能会出现 Windows SmartScreen 或“未知发布者”警告。如果你想自行确认文件完整性，请参阅[透明度与发布文件验证](#透明度与发布文件验证)部分。
 
@@ -86,7 +86,7 @@ UnfocusMute 基于 Windows 提供的进程名、前台窗口信息和 CoreAudio 
 1. 启动 UnfocusMute。
 2. 选择要使用的语言。建议保留各选项的默认设置。
 3. 启动你想添加的游戏或应用。
-4. 从列表中选择应用，或输入准确的 `.exe` 名称，然后点击 `添加`。如果应用尚未创建音频会话，请切换到 `所有进程`，查看当前运行的所有进程。
+4. 从列表中选择应用，或输入准确的 `.exe` 名称，然后点击 `添加`。按 `.exe` 名称添加后，该应用的所有音频会话都会统一管理；如果只想管理某个正在运行的实例，请按 PID 添加。如果应用尚未创建音频会话，请切换到 `所有进程`，查看当前运行的所有进程。
 5. 如果只需要添加某个 PID，请点击 `PID 视图` 并选择对应条目。按 PID 添加只适用于当前运行的实例；如果应用重启后 PID 变化，请重新添加。
 6. 右键点击已添加应用，可以编辑该应用的备注，或只暂停该应用。
 7. 点击顶部的 `监控中` 状态，可以暂停或恢复全部监控。
@@ -191,10 +191,10 @@ UnfocusMute 旨在一般使用环境中安全运行，因此大多数用户无�
 <details>
 <summary>查看发布文件验证步骤</summary>
 
-首先安装 [GitHub CLI](https://cli.github.com/)。然后在 PowerShell 中运行以下命令，并在出现提示时输入实际的发布版本。
+首先安装 [GitHub CLI](https://cli.github.com/)。然后将下面的 `$version` 值改为要验证的发布标签，并在 PowerShell 中运行整个命令块。
 
 ```powershell
-$version = Read-Host "请输入发布版本（例如 v1.5.0）"
+$version = "v1.5.0"
 $sourceRef = "refs/tags/$version"
 $workflow = "ilsd7/UnfocusMute/.github/workflows/release.yml"
 
