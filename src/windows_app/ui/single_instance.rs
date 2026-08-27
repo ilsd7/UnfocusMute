@@ -13,9 +13,12 @@ use windows::Win32::Foundation::{
 use windows::Win32::System::Threading::{
     CreateMutexW, OpenProcess, PROCESS_SYNCHRONIZE, ReleaseMutex, WaitForSingleObject,
 };
+use windows::Win32::UI::Input::KeyboardAndMouse::IsWindowEnabled;
 use windows::Win32::UI::WindowsAndMessaging::{
-    FindWindowW, GetWindowThreadProcessId, PostThreadMessageW, SW_RESTORE, SetForegroundWindow,
-    ShowWindow, WM_QUIT,
+    FindWindowW, GUI_INMENUMODE, GUI_POPUPMENUMODE, GUI_SYSTEMMENUMODE, GUITHREADINFO,
+    GetGUIThreadInfo, GetWindowThreadProcessId, PostThreadMessageW, SMTO_ABORTIFHUNG, SMTO_BLOCK,
+    SW_RESTORE, SendMessageTimeoutW, SetForegroundWindow, ShowWindow, ShowWindowAsync, WM_NULL,
+    WM_QUIT,
 };
 use windows::core::PCWSTR;
 
@@ -24,6 +27,7 @@ const HANDOFF_TIMEOUT_MS: u32 = 5_000;
 const WAIT_INFINITE: u32 = u32::MAX;
 
 struct ExistingInstance {
+    hwnd: HWND,
     thread_id: u32,
     process: ProcessExitWait,
 }
@@ -64,12 +68,39 @@ impl StartupLease {
         self.replacement.is_some()
     }
 
-    pub(super) fn commit_replacement(&mut self) -> Result<()> {
-        let Some(existing) = self.replacement.take() else {
+    pub(super) fn preflight_replacement(&self) -> Result<()> {
+        let Some(existing) = &self.replacement else {
             return Ok(());
         };
-        replace_existing_instance(existing)?;
+        if existing_process_has_exited(existing) {
+            return Ok(());
+        }
+        if !existing_ui_allows_handoff(existing) {
+            show_existing_window(existing.hwnd);
+            return Err(message_error(
+                "the running older version has an open dialog or menu; close it, then start this version again",
+            ));
+        }
+        if !existing_window_is_responsive(existing) && !existing_process_has_exited(existing) {
+            return Err(message_error(
+                "the running older version is not responding; close it, then start this version again",
+            ));
+        }
         Ok(())
+    }
+
+    pub(super) fn commit_replacement(&mut self) -> bool {
+        let Some(existing) = self.replacement.take() else {
+            return true;
+        };
+        if !existing_ui_allows_handoff(&existing) {
+            if existing_process_has_exited(&existing) {
+                return true;
+            }
+            show_existing_window(existing.hwnd);
+            return false;
+        }
+        replace_existing_instance(existing)
     }
 
     pub(super) fn release_startup_lock(&mut self) {
@@ -117,7 +148,7 @@ pub(super) fn acquire(scope: u64) -> Result<Option<StartupLease>> {
     let mut process_id = 0;
     let thread_id = unsafe { GetWindowThreadProcessId(hwnd, Some(&mut process_id)) };
     if thread_id == 0 || process_id == 0 || !running_instance_is_older(process_id) {
-        show_main_window(hwnd);
+        show_existing_window(hwnd);
         return Ok(None);
     }
 
@@ -125,7 +156,11 @@ pub(super) fn acquire(scope: u64) -> Result<Option<StartupLease>> {
         unsafe { OpenProcess(PROCESS_SYNCHRONIZE, false, process_id) }
             .context("open existing app process")?,
     );
-    lease.replacement = Some(ExistingInstance { thread_id, process });
+    lease.replacement = Some(ExistingInstance {
+        hwnd,
+        thread_id,
+        process,
+    });
     Ok(Some(lease))
 }
 
@@ -197,38 +232,79 @@ fn parse_release_version(version: &str) -> Option<(u32, u32, u32)> {
     parts.next().is_none().then_some(parsed)
 }
 
-fn replace_existing_instance(existing: ExistingInstance) -> Result<()> {
+fn replace_existing_instance(existing: ExistingInstance) -> bool {
     let current_state = unsafe { WaitForSingleObject(existing.process.0, 0) };
     if current_state == WAIT_OBJECT_0 {
-        return Ok(());
+        return true;
     }
     if current_state != WAIT_TIMEOUT {
-        return Err(message_error(format!(
-            "check existing app process failed with WIN32 result {}",
-            current_state.0
-        )));
+        show_existing_window(existing.hwnd);
+        return false;
     }
 
-    // This is a version handoff rather than a user-requested exit. Leaving the
-    // managed mute state intact avoids an audible unmute/remute gap.
-    if let Err(error) =
-        unsafe { PostThreadMessageW(existing.thread_id, WM_QUIT, WPARAM(0), LPARAM(0)) }
-    {
+    // This is a version handoff rather than a user-requested exit. Leave managed mute state intact
+    // so the prepared successor can take over without an audible unmute/remute gap.
+    if unsafe { PostThreadMessageW(existing.thread_id, WM_QUIT, WPARAM(0), LPARAM(0)) }.is_err() {
         if unsafe { WaitForSingleObject(existing.process.0, 0) } == WAIT_OBJECT_0 {
-            return Ok(());
+            return true;
         }
-        return Err(error).context("request existing app exit");
+        show_existing_window(existing.hwnd);
+        return false;
     }
 
-    // WM_QUIT cannot be rolled back. Once it has been posted, keep the fully
-    // prepared successor alive and wait rather than risk both versions exiting.
+    // WM_QUIT cannot be rolled back. Keep the fully prepared successor alive until the old process
+    // releases its process-scoped resources rather than risk both versions exiting.
     loop {
         if unsafe { WaitForSingleObject(existing.process.0, WAIT_INFINITE) } == WAIT_OBJECT_0 {
-            return Ok(());
+            return true;
         }
         // The handle is owned and was opened for synchronization, so a wait
         // failure is not expected. Stay in the committed state if it happens.
         std::thread::sleep(Duration::from_millis(10));
+    }
+}
+
+fn existing_window_is_responsive(existing: &ExistingInstance) -> bool {
+    let mut ignored_result = 0;
+    let sent = unsafe {
+        SendMessageTimeoutW(
+            existing.hwnd,
+            WM_NULL,
+            WPARAM(0),
+            LPARAM(0),
+            SMTO_ABORTIFHUNG | SMTO_BLOCK,
+            HANDOFF_TIMEOUT_MS,
+            Some(&mut ignored_result),
+        )
+    };
+    sent.0 != 0
+}
+
+fn existing_ui_allows_handoff(existing: &ExistingInstance) -> bool {
+    if !unsafe { IsWindowEnabled(existing.hwnd).as_bool() } {
+        return false;
+    }
+
+    let mut info = GUITHREADINFO {
+        cbSize: std::mem::size_of::<GUITHREADINFO>() as u32,
+        ..Default::default()
+    };
+    if unsafe { GetGUIThreadInfo(existing.thread_id, &mut info) }.is_err() {
+        return false;
+    }
+
+    let blocked_modes = GUI_INMENUMODE | GUI_POPUPMENUMODE | GUI_SYSTEMMENUMODE;
+    info.flags.0 & blocked_modes.0 == 0
+}
+
+fn existing_process_has_exited(existing: &ExistingInstance) -> bool {
+    (unsafe { WaitForSingleObject(existing.process.0, 0) }) == WAIT_OBJECT_0
+}
+
+fn show_existing_window(hwnd: HWND) {
+    unsafe {
+        let _ = ShowWindowAsync(hwnd, SW_RESTORE);
+        let _ = SetForegroundWindow(hwnd);
     }
 }
 

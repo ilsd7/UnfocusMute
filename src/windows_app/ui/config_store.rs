@@ -1,5 +1,5 @@
 use crate::config::{
-    AppConfig, ConfigFileStamp, ExistingConfigLoad, current_config_stamp,
+    AppConfig, ConfigDurability, ConfigFileStamp, ExistingConfigLoad, current_config_stamp,
     merge_pending_config_changes,
 };
 use std::io;
@@ -22,6 +22,12 @@ pub(super) enum ConfigSave {
     Retry,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(super) enum ConfigSaveIntent {
+    Settings,
+    RuntimeMuteState,
+}
+
 #[derive(Clone, Copy)]
 enum ConfigStampState {
     Unknown,
@@ -39,6 +45,36 @@ impl ConfigLoadState {
     fn blocks_save(self) -> bool {
         self == Self::Failed
     }
+}
+
+fn save_durability(
+    intent: ConfigSaveIntent,
+    existing_file: bool,
+    load_state: ConfigLoadState,
+    persisted: &AppConfig,
+    config: &AppConfig,
+) -> ConfigDurability {
+    if intent == ConfigSaveIntent::RuntimeMuteState
+        && existing_file
+        && load_state == ConfigLoadState::Ready
+        && configs_match_ignoring_runtime_mute(persisted, config)
+    {
+        ConfigDurability::ProcessCrashSafe
+    } else {
+        ConfigDurability::Durable
+    }
+}
+
+fn configs_match_ignoring_runtime_mute(left: &AppConfig, right: &AppConfig) -> bool {
+    let mut left = left.clone();
+    let mut right = right.clone();
+    for target in &mut left.targets {
+        target.managed_muted = false;
+    }
+    for target in &mut right.targets {
+        target.managed_muted = false;
+    }
+    left == right
 }
 
 pub(super) struct ConfigStore {
@@ -187,7 +223,11 @@ impl ConfigStore {
         ))
     }
 
-    pub(super) fn save(&mut self, config: &AppConfig) -> io::Result<ConfigSave> {
+    pub(super) fn save(
+        &mut self,
+        config: &AppConfig,
+        intent: ConfigSaveIntent,
+    ) -> io::Result<ConfigSave> {
         let current_stamp = current_config_stamp();
         let ConfigStampState::Known(expected_stamp) = self.stamp else {
             return Ok(ConfigSave::Retry);
@@ -195,7 +235,14 @@ impl ConfigStore {
         if self.load_state.blocks_save() || current_stamp != expected_stamp {
             return Ok(ConfigSave::Retry);
         }
-        if !config.save_if_unchanged(expected_stamp)? {
+        let durability = save_durability(
+            intent,
+            expected_stamp.is_some(),
+            self.load_state,
+            &self.persisted,
+            config,
+        );
+        if !config.save_if_unchanged(expected_stamp, durability)? {
             return Ok(ConfigSave::Retry);
         }
 
@@ -220,12 +267,91 @@ impl ConfigStore {
 
 #[cfg(test)]
 mod tests {
-    use super::ConfigLoadState;
+    use super::{ConfigLoadState, ConfigSaveIntent, save_durability};
+    use crate::config::{AppConfig, ConfigDurability, WindowPosition};
 
     #[test]
     fn malformed_config_is_the_only_failed_load_state_that_allows_save() {
         assert!(!ConfigLoadState::Ready.blocks_save());
         assert!(ConfigLoadState::Failed.blocks_save());
         assert!(!ConfigLoadState::RecoverMalformed.blocks_save());
+    }
+
+    #[test]
+    fn only_runtime_mute_changes_use_process_crash_safe_save() {
+        let mut persisted = AppConfig::default();
+        assert!(persisted.add_target("game.exe"));
+        let mut runtime_update = persisted.clone();
+        assert!(runtime_update.set_target_managed_muted_at(0, true));
+
+        assert_eq!(
+            save_durability(
+                ConfigSaveIntent::RuntimeMuteState,
+                true,
+                ConfigLoadState::Ready,
+                &persisted,
+                &runtime_update,
+            ),
+            ConfigDurability::ProcessCrashSafe
+        );
+        assert_eq!(
+            save_durability(
+                ConfigSaveIntent::Settings,
+                true,
+                ConfigLoadState::Ready,
+                &persisted,
+                &runtime_update,
+            ),
+            ConfigDurability::Durable
+        );
+    }
+
+    #[test]
+    fn runtime_save_is_upgraded_when_user_settings_are_pending() {
+        let mut persisted = AppConfig::default();
+        assert!(persisted.add_target("game.exe"));
+        let mut runtime_update = persisted.clone();
+        assert!(runtime_update.set_target_managed_muted_at(0, true));
+        runtime_update.window_position = Some(WindowPosition { x: 10, y: 20 });
+
+        assert_eq!(
+            save_durability(
+                ConfigSaveIntent::RuntimeMuteState,
+                true,
+                ConfigLoadState::Ready,
+                &persisted,
+                &runtime_update,
+            ),
+            ConfigDurability::Durable
+        );
+    }
+
+    #[test]
+    fn runtime_save_is_upgraded_for_missing_or_malformed_config() {
+        let mut persisted = AppConfig::default();
+        assert!(persisted.add_target("game.exe"));
+        let mut runtime_update = persisted.clone();
+        assert!(runtime_update.set_target_managed_muted_at(0, true));
+
+        assert_eq!(
+            save_durability(
+                ConfigSaveIntent::RuntimeMuteState,
+                false,
+                ConfigLoadState::Ready,
+                &persisted,
+                &runtime_update,
+            ),
+            ConfigDurability::Durable
+        );
+        assert_eq!(
+            save_durability(
+                ConfigSaveIntent::RuntimeMuteState,
+                true,
+                ConfigLoadState::RecoverMalformed,
+                &persisted,
+                &runtime_update,
+            ),
+            ConfigDurability::Durable
+        );
     }
 }

@@ -1,13 +1,15 @@
 use crate::config::normalize_supported_process_name_utf16;
 use std::mem::size_of;
 use windows::Win32::Foundation::{
-    CloseHandle, ERROR_INSUFFICIENT_BUFFER, ERROR_NO_MORE_FILES, HANDLE, HWND,
+    CloseHandle, ERROR_INSUFFICIENT_BUFFER, ERROR_NO_MORE_FILES, HANDLE, HWND, WAIT_OBJECT_0,
+    WAIT_TIMEOUT,
 };
 use windows::Win32::System::Diagnostics::ToolHelp::{
     CreateToolhelp32Snapshot, PROCESSENTRY32W, Process32FirstW, Process32NextW, TH32CS_SNAPPROCESS,
 };
 use windows::Win32::System::Threading::{
-    OpenProcess, PROCESS_NAME_WIN32, PROCESS_QUERY_LIMITED_INFORMATION, QueryFullProcessImageNameW,
+    OpenProcess, PROCESS_NAME_WIN32, PROCESS_QUERY_LIMITED_INFORMATION, PROCESS_SYNCHRONIZE,
+    QueryFullProcessImageNameW, WaitForSingleObject,
 };
 use windows::Win32::UI::WindowsAndMessaging::{GetForegroundWindow, GetWindowThreadProcessId};
 use windows::core::{Error, HRESULT, PWSTR};
@@ -20,6 +22,23 @@ const MAX_PROCESS_IMAGE_BUFFER_LEN: usize = 32_768;
 pub struct ProcessInfo {
     pub pid: u32,
     pub name: String,
+}
+
+pub(crate) struct ProcessLifetime(OwnedHandle);
+
+impl ProcessLifetime {
+    pub(crate) fn open(pid: u32) -> Option<Self> {
+        let handle = unsafe { OpenProcess(PROCESS_SYNCHRONIZE, false, pid).ok()? };
+        Some(Self(OwnedHandle(handle)))
+    }
+
+    pub(crate) fn has_exited(&self) -> Option<bool> {
+        match unsafe { WaitForSingleObject(self.0.raw(), 0) } {
+            WAIT_OBJECT_0 => Some(true),
+            WAIT_TIMEOUT => Some(false),
+            _ => None,
+        }
+    }
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -39,19 +58,11 @@ pub struct ProcessNameResolver {
     names: ProcessNameCache,
     snapshot_names: SnapshotProcessNameCache,
     unresolved_pids: ProcessIdCache,
-    prefer_snapshot: bool,
 }
 
 impl ProcessNameResolver {
     pub fn new() -> Self {
         Self::default()
-    }
-
-    pub fn snapshot_first() -> Self {
-        Self {
-            prefer_snapshot: true,
-            ..Self::default()
-        }
     }
 
     pub fn name(&mut self, pid: u32) -> Option<&str> {
@@ -66,23 +77,6 @@ impl ProcessNameResolver {
     ) -> Option<&str> {
         if self.unresolved_pids.contains(pid) {
             return None;
-        }
-
-        if self.prefer_snapshot {
-            {
-                let snapshot_names = self.snapshot_names.names(load_snapshot_names);
-                if let Some(name) = snapshot_names.and_then(|names| names.get(pid)) {
-                    return Some(name);
-                }
-            }
-
-            return match self.names.get_or_insert_with(pid, load_process_name) {
-                Some(name) => Some(name),
-                None => {
-                    self.unresolved_pids.insert(pid);
-                    None
-                }
-            };
         }
 
         if let Ok(index) = self.names.lookup(pid) {
@@ -182,11 +176,7 @@ struct ProcessIdCache {
 
 impl ProcessIdCache {
     fn contains(&self, pid: u32) -> bool {
-        match self.pids.as_slice() {
-            [] => false,
-            [cached_pid] => *cached_pid == pid,
-            pids => pids.binary_search(&pid).is_ok(),
-        }
+        self.pids.binary_search(&pid).is_ok()
     }
 
     fn insert(&mut self, pid: u32) {
@@ -209,18 +199,6 @@ impl ProcessNameCache {
 
     fn get_at(&self, index: usize) -> &str {
         self.names[index].1.as_str()
-    }
-
-    fn get_or_insert_with(
-        &mut self,
-        pid: u32,
-        load: impl FnOnce(u32) -> Option<String>,
-    ) -> Option<&str> {
-        if let Ok(index) = self.lookup(pid) {
-            return Some(self.names[index].1.as_str());
-        }
-
-        Some(self.insert_absent(pid, load(pid)?))
     }
 
     fn insert_absent(&mut self, pid: u32, name: String) -> &str {
@@ -456,6 +434,28 @@ mod tests {
     use super::*;
 
     #[test]
+    fn current_process_lifetime_is_active() {
+        let lifetime = ProcessLifetime::open(std::process::id())
+            .expect("the current process must be open for synchronization");
+
+        assert_eq!(lifetime.has_exited(), Some(false));
+    }
+
+    #[test]
+    fn process_lifetime_detects_exit_without_pid_reuse() {
+        let mut child = std::process::Command::new("cmd.exe")
+            .args(["/D", "/C", "ping -n 2 127.0.0.1 >NUL"])
+            .spawn()
+            .expect("start short-lived child process");
+        let lifetime = ProcessLifetime::open(child.id())
+            .expect("the child process must be open for synchronization");
+
+        assert_eq!(lifetime.has_exited(), Some(false));
+        assert!(child.wait().expect("wait for child process").success());
+        assert_eq!(lifetime.has_exited(), Some(true));
+    }
+
+    #[test]
     fn supported_process_names_require_exe_suffix() {
         assert_eq!(
             normalize_supported_process_name_utf16(&wide_null_terminated("Game.EXE")),
@@ -472,39 +472,6 @@ mod tests {
     }
 
     #[test]
-    fn process_name_cache_retries_failed_loads() {
-        let mut cache = ProcessNameCache::default();
-        let mut attempts = 0;
-
-        assert_eq!(
-            cache.get_or_insert_with(7, |_| {
-                attempts += 1;
-                None
-            }),
-            None
-        );
-        assert_eq!(attempts, 1);
-
-        assert_eq!(
-            cache.get_or_insert_with(7, |_| {
-                attempts += 1;
-                Some("game.exe".to_owned())
-            }),
-            Some("game.exe")
-        );
-        assert_eq!(attempts, 2);
-
-        assert_eq!(
-            cache.get_or_insert_with(7, |_| {
-                attempts += 1;
-                Some("other.exe".to_owned())
-            }),
-            Some("game.exe")
-        );
-        assert_eq!(attempts, 2);
-    }
-
-    #[test]
     fn process_name_cache_keeps_sorted_lookup() {
         let mut cache = ProcessNameCache::default();
         for (pid, name) in [
@@ -513,10 +480,7 @@ mod tests {
             (20, "second.exe"),
             (40, "fourth.exe"),
         ] {
-            assert_eq!(
-                cache.get_or_insert_with(pid, |_| Some(name.to_owned())),
-                Some(name)
-            );
+            assert_eq!(cache.insert_absent(pid, name.to_owned()), name);
         }
 
         assert_eq!(
@@ -532,16 +496,8 @@ mod tests {
                 (40, "fourth.exe")
             ]
         );
-
-        let mut attempts = 0;
-        assert_eq!(
-            cache.get_or_insert_with(20, |_| {
-                attempts += 1;
-                Some("other.exe".to_owned())
-            }),
-            Some("second.exe")
-        );
-        assert_eq!(attempts, 0);
+        assert_eq!(cache.lookup(20), Ok(1));
+        assert_eq!(cache.get_at(1), "second.exe");
     }
 
     #[test]
@@ -775,47 +731,39 @@ mod tests {
     }
 
     #[test]
-    fn process_name_resolver_caches_snapshot_first_lookup_failures() {
-        let mut resolver = ProcessNameResolver::snapshot_first();
-        let mut image_attempts = 0;
+    fn process_name_resolver_skips_snapshot_when_direct_lookup_succeeds() {
+        let mut resolver = ProcessNameResolver::new();
         let mut snapshot_attempts = 0;
 
         assert_eq!(
             resolver.name_with(
                 42,
-                |_| {
-                    image_attempts += 1;
-                    None
-                },
-                || {
-                    snapshot_attempts += 1;
-                    Some(ProcessNameSnapshot::empty())
-                },
-            ),
-            None
-        );
-        assert_eq!(
-            resolver.name_with(
-                42,
-                |_| {
-                    image_attempts += 1;
-                    Some("late.exe".to_owned())
-                },
+                |_| Some("game.exe".to_owned()),
                 || {
                     snapshot_attempts += 1;
                     Some(ProcessNameSnapshot::from_entries([(42, "snapshot.exe")]))
                 },
             ),
-            None
+            Some("game.exe")
+        );
+        assert_eq!(
+            resolver.name_with(
+                42,
+                |_| None,
+                || {
+                    snapshot_attempts += 1;
+                    Some(ProcessNameSnapshot::empty())
+                },
+            ),
+            Some("game.exe")
         );
 
-        assert_eq!(image_attempts, 1);
-        assert_eq!(snapshot_attempts, 1);
+        assert_eq!(snapshot_attempts, 0);
     }
 
     #[test]
-    fn process_name_resolver_does_not_reuse_failed_snapshot_loads_as_partial_cache() {
-        let mut resolver = ProcessNameResolver::snapshot_first();
+    fn process_name_resolver_does_not_retry_failed_snapshot_load() {
+        let mut resolver = ProcessNameResolver::new();
         let mut image_attempts = 0;
         let mut snapshot_attempts = 0;
 
@@ -853,8 +801,8 @@ mod tests {
     }
 
     #[test]
-    fn process_name_resolver_keeps_successful_snapshot_lookup_reusable() {
-        let mut resolver = ProcessNameResolver::snapshot_first();
+    fn process_name_resolver_caches_successful_snapshot_fallback() {
+        let mut resolver = ProcessNameResolver::new();
         let mut image_attempts = 0;
         let mut snapshot_attempts = 0;
 
@@ -887,7 +835,7 @@ mod tests {
             Some("game.exe")
         );
 
-        assert_eq!(image_attempts, 0);
+        assert_eq!(image_attempts, 1);
         assert_eq!(snapshot_attempts, 1);
     }
 

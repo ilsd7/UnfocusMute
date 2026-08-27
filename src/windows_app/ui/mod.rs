@@ -72,6 +72,7 @@ mod message_dialog;
 mod modal_window;
 mod process_choice;
 mod runtime_logic;
+mod runtime_state;
 mod search_picker;
 mod settings_window;
 mod single_instance;
@@ -84,7 +85,7 @@ mod theme;
 mod win32;
 mod window_position;
 
-use config_store::{ConfigMerge, ConfigReload, ConfigSave, ConfigStore};
+use config_store::{ConfigMerge, ConfigReload, ConfigSave, ConfigSaveIntent, ConfigStore};
 use constants::*;
 use controls::Controls;
 use drawing::{
@@ -93,18 +94,14 @@ use drawing::{
 };
 use issue_diagnostics::IssueDiagnostics;
 use language_prompt::prompt_initial_language;
-use managed_mute::{
-    ManagedMuteLookup, matching_session_keys_for_target, target_has_managed_mute,
-    target_matches_session_key, target_status_text,
-};
+use managed_mute::{removal_restore_targets, session_keys_exclusive_to_target, target_status_text};
 use message_dialog::{IssueDialogContent, IssueDialogResult, show_info_dialog, show_issue_dialog};
 use process_choice::{ProcessChoice, search_terms};
 use runtime_logic::{
-    MANAGED_MUTE_FOREGROUND_RETRY_TICKS, cached_foreground_process_name,
-    desired_audio_fallback_timer_interval_ms, foreground_process_cache_needs_refresh,
-    initial_managed_mute_fast_retry_count, initial_process_refresh_attempt,
+    desired_audio_fallback_timer_interval_ms, initial_process_refresh_attempt,
     process_refresh_is_stale, replace_text_if_changed,
 };
+use runtime_state::RuntimeCoordinator;
 use search_picker::{SEARCH_PICKER_HEIGHT, SearchPicker, SearchPickerIds, SearchSelectionRequest};
 use settings_window::{SettingsChanges, SettingsLiveUpdate, SettingsPreferences, prompt_settings};
 use single_instance::{main_window_class_name, show_main_window};
@@ -325,7 +322,6 @@ unsafe fn run_window() -> Result<()> {
         config.start_minimized = preferences.start_minimized;
         config.launch_on_startup = preferences.launch_on_startup;
         config.hide_to_tray_on_close = preferences.hide_to_tray_on_close;
-        config.restore_muted_on_exit = preferences.restore_on_exit;
     }
     let startup_sync = if !replacement_pending
         && can_sync_startup
@@ -385,6 +381,7 @@ unsafe fn run_window() -> Result<()> {
     } = initial_window_placement(&config);
     let title = to_wide(APP_TITLE);
     let taskbar_created_message = unsafe { RegisterWindowMessageW(w!("TaskbarCreated")) };
+    startup_lease.preflight_replacement()?;
     let app = Box::new(RefCell::new(AppWindow::new(
         config,
         icons,
@@ -424,11 +421,12 @@ unsafe fn run_window() -> Result<()> {
 
     // A replacement window completes WM_CREATE without starting its runtime.
     // Only retire the old process after that preparation succeeds.
-    if let Err(error) = startup_lease.commit_replacement() {
+    let replacement_committed = startup_lease.commit_replacement();
+    if !replacement_committed {
         unsafe {
             let _ = DestroyWindow(hwnd);
         }
-        return Err(error);
+        return Ok(());
     }
     if replacement_pending {
         app.borrow_mut().activate_replacement_runtime();
@@ -643,8 +641,7 @@ struct AppWindow {
     config_store: ConfigStore,
     target_matcher: TargetMatcher,
     strings: &'static Strings,
-    audio: Option<AudioController>,
-    foreground_hook: Option<ForegroundEventHook>,
+    runtime: RuntimeCoordinator,
     running_processes: Vec<ProcessInfo>,
     running_process_refresh_buffer: Vec<ProcessInfo>,
     all_process_choices: Vec<ProcessChoice>,
@@ -658,21 +655,12 @@ struct AppWindow {
     icons: AppIcons,
     settings_window_open: bool,
     interactive_resize: bool,
-    foreground_process_name_cache: Option<(u32, Option<String>)>,
     last_process_refresh_attempt: Instant,
     process_list_source: ProcessListSource,
     updating_process_picker: bool,
     running_process_choice_selected: bool,
-    muted_by_app: HashSet<AudioSessionKey>,
-    last_target_muted: Vec<bool>,
-    muted_target_count: usize,
-    paused: bool,
     show_process_details: bool,
-    runtime_active: bool,
     tray_added: bool,
-    config_reload_timer_ready: bool,
-    audio_fallback_timer_interval_ms: Option<u32>,
-    managed_mute_fast_retry_remaining: u8,
     issues: IssueState,
     issue_diagnostics: IssueDiagnostics,
     last_status: Option<StatusSnapshot>,
@@ -883,7 +871,7 @@ struct ConfigChangeEffects {
     target_list_changed: bool,
     target_matcher_changed: bool,
     interval_changed: bool,
-    should_start_fast_retry: bool,
+    should_schedule_managed_mute_recovery: bool,
 }
 
 impl ConfigChangeEffects {
@@ -894,7 +882,10 @@ impl ConfigChangeEffects {
             target_list_changed: previous.targets != next.targets,
             target_matcher_changed: target_matcher_inputs_changed(&previous.targets, &next.targets),
             interval_changed: previous.polling_interval_ms != next.polling_interval_ms,
-            should_start_fast_retry: next.targets.iter().any(|target| target.managed_muted)
+            should_schedule_managed_mute_recovery: next
+                .targets
+                .iter()
+                .any(|target| target.managed_muted)
                 && !previous.targets.iter().any(|target| target.managed_muted),
         }
     }
@@ -916,13 +907,13 @@ impl AppWindow {
         runtime_active: bool,
     ) -> Result<Self> {
         let strings = config.language.strings();
-        let managed_mute_fast_retry_remaining =
-            initial_managed_mute_fast_retry_count(&config.targets);
         let config_store = ConfigStore::new(
             &config,
             CONFIG_RELOAD_CHECK_INTERVAL,
             initial_config_load_failed,
         );
+        let persisted_recovery_pending = config.targets.iter().any(|target| target.managed_muted);
+        let runtime = RuntimeCoordinator::new(runtime_active, persisted_recovery_pending);
         Ok(Self {
             hwnd: HWND::default(),
             controls: Controls::default(),
@@ -931,8 +922,7 @@ impl AppWindow {
             config_store,
             config,
             strings,
-            audio: None,
-            foreground_hook: None,
+            runtime,
             running_processes: Vec::new(),
             running_process_refresh_buffer: Vec::new(),
             all_process_choices: Vec::new(),
@@ -946,21 +936,12 @@ impl AppWindow {
             icons,
             settings_window_open: false,
             interactive_resize: false,
-            foreground_process_name_cache: None,
             last_process_refresh_attempt: initial_process_refresh_attempt(),
             process_list_source: ProcessListSource::AudioSessions,
             updating_process_picker: false,
             running_process_choice_selected: false,
-            muted_by_app: HashSet::new(),
-            last_target_muted: Vec::new(),
-            muted_target_count: 0,
-            paused: false,
             show_process_details: false,
-            runtime_active,
             tray_added: false,
-            config_reload_timer_ready: false,
-            audio_fallback_timer_interval_ms: None,
-            managed_mute_fast_retry_remaining,
             issues: initial_issues,
             issue_diagnostics: initial_issue_diagnostics,
             last_status: None,
@@ -984,7 +965,7 @@ impl AppWindow {
         }
         self.apply_process_filter();
         self.refresh_text();
-        if self.runtime_active {
+        if self.runtime.is_active() {
             self.reset_timers();
             self.tick();
         }
@@ -992,10 +973,9 @@ impl AppWindow {
     }
 
     fn activate_replacement_runtime(&mut self) {
-        if self.runtime_active {
+        if !self.runtime.activate() {
             return;
         }
-        self.runtime_active = true;
         self.last_status = None;
         let reload = self.config_store.reload_now();
         self.apply_config_reload_without_startup_sync(reload);
@@ -1373,7 +1353,6 @@ impl AppWindow {
             start_minimized: self.config.start_minimized,
             launch_on_startup: self.config.launch_on_startup,
             hide_to_tray_on_close: self.config.hide_to_tray_on_close,
-            restore_on_exit: self.config.restore_muted_on_exit,
         };
         self.settings_window_open = true;
         Some(SettingsDialogRequest {
@@ -1436,12 +1415,6 @@ impl AppWindow {
             } else {
                 self.clear_issue(StatusIssue::StartupUpdateFailed);
             }
-        }
-        if let Some(restore_on_exit) = changes.restore_on_exit
-            && self.config.restore_muted_on_exit != restore_on_exit
-        {
-            self.config.restore_muted_on_exit = restore_on_exit;
-            changed = true;
         }
         if let Some(hide_to_tray_on_close) = changes.hide_to_tray_on_close
             && self.config.hide_to_tray_on_close != hide_to_tray_on_close
@@ -1759,43 +1732,15 @@ impl AppWindow {
     }
 
     fn refresh_target_mute_snapshot(&mut self) {
-        self.last_target_muted.clear();
-        self.last_target_muted.reserve(self.config.targets.len());
-        let mute_lookup = ManagedMuteLookup::new(&self.muted_by_app);
-        self.muted_target_count = 0;
-        for target in &self.config.targets {
-            let muted = mute_lookup.target_has_managed_mute(target);
-            self.muted_target_count += usize::from(muted);
-            self.last_target_muted.push(muted);
-        }
+        self.runtime
+            .refresh_target_mute_snapshot(&self.config.targets);
     }
 
     fn sync_target_mute_indicators(&mut self) {
-        if self.config.targets.is_empty() {
-            self.muted_target_count = 0;
-            if !self.last_target_muted.is_empty() {
-                self.last_target_muted.clear();
-                self.redraw_target_list();
-            }
-            return;
-        }
-
-        let mut changed = self.last_target_muted.len() != self.config.targets.len();
-        if changed {
-            self.last_target_muted
-                .resize(self.config.targets.len(), false);
-        }
-        let mute_lookup = ManagedMuteLookup::new(&self.muted_by_app);
-        self.muted_target_count = 0;
-        for (muted, target) in self.last_target_muted.iter_mut().zip(&self.config.targets) {
-            let next = mute_lookup.target_has_managed_mute(target);
-            self.muted_target_count += usize::from(next);
-            if *muted != next {
-                *muted = next;
-                changed = true;
-            }
-        }
-        if changed {
+        if self
+            .runtime
+            .sync_target_mute_indicators(&self.config.targets)
+        {
             self.redraw_target_list();
         }
     }
@@ -1830,7 +1775,7 @@ impl AppWindow {
             return ProcessRefreshResult::Failed;
         }
 
-        let Some(audio) = &self.audio else {
+        let Some(audio) = &self.runtime.audio else {
             self.set_issue(StatusIssue::AudioUnavailable);
             return ProcessRefreshResult::Failed;
         };
@@ -1850,7 +1795,7 @@ impl AppWindow {
                 ProcessRefreshResult::Unchanged
             }
             ProcessRefreshOutcome::Failed => {
-                self.audio = None;
+                self.runtime.audio = None;
                 self.set_issue_with_detail(
                     StatusIssue::AudioUnavailable,
                     refresh
@@ -1979,15 +1924,21 @@ impl AppWindow {
     }
 
     fn timer_tick(&mut self, timer_id: usize) {
+        if !self.runtime.is_active() {
+            return;
+        }
         self.retry_missing_timers();
         match timer_id {
-            CONFIG_RELOAD_TIMER_ID if self.reload_config_if_due().target_matcher_changed => {
-                self.tick()
+            CONFIG_RELOAD_TIMER_ID => {
+                let target_matcher_changed = self.reload_config_if_due().target_matcher_changed;
+                self.retry_runtime_mute_state_save();
+                if target_matcher_changed {
+                    self.tick();
+                }
             }
-            CONFIG_RELOAD_TIMER_ID => {}
             AUDIO_FALLBACK_TIMER_ID => {
                 self.clear_foreground_process_cache();
-                self.consume_managed_mute_fast_retry();
+                self.runtime.consume_managed_mute_foreground_retry();
                 self.tick();
             }
             _ => {}
@@ -1997,8 +1948,8 @@ impl AppWindow {
     fn tick(&mut self) {
         self.reload_config_if_due();
 
-        if self.paused {
-            self.foreground_hook = None;
+        if self.runtime.is_paused() {
+            self.runtime.foreground_hook = None;
             self.clear_issue(StatusIssue::ForegroundHookUnavailable);
             let _ = self.restore_managed_mutes();
             self.release_idle_audio_while_paused();
@@ -2008,9 +1959,9 @@ impl AppWindow {
         }
 
         if self.target_matcher.is_empty() && !self.has_managed_mutes() {
-            self.foreground_hook = None;
+            self.runtime.foreground_hook = None;
             self.clear_issue(StatusIssue::ForegroundHookUnavailable);
-            self.audio = None;
+            self.runtime.audio = None;
             self.clear_audio_issues();
             self.sync_audio_fallback_timer();
             self.update_status();
@@ -2032,36 +1983,32 @@ impl AppWindow {
             self.update_foreground_process_name_cache(foreground_pid);
         }
 
-        let Some(audio) = &self.audio else { return };
-        let foreground_process_name = if needs_foreground_process_name {
-            cached_foreground_process_name(
-                self.foreground_process_name_cache.as_ref(),
-                foreground_pid,
-            )
-        } else {
-            None
-        };
-        let apply_result = match audio.apply_mute_plan(
+        let Some(apply_result) = self.runtime.apply_mute_plan(
             &self.target_matcher,
             foreground_pid,
-            foreground_process_name,
-            &mut self.muted_by_app,
+            needs_foreground_process_name,
             &self.config.targets,
-        ) {
+        ) else {
+            return;
+        };
+        let apply_result = match apply_result {
             Ok(result) => {
                 self.clear_issue(StatusIssue::AudioUnavailable);
                 result
             }
             Err(error) => {
-                self.audio = None;
+                self.runtime.audio = None;
                 self.set_issue_with_detail(StatusIssue::AudioUnavailable, error.to_string());
                 return;
             }
         };
 
         if self.apply_target_mute_updates(&apply_result.target_updates) {
-            self.save_config();
+            self.save_runtime_mute_state();
         }
+        let has_managed_mutes = self.has_managed_mutes();
+        self.runtime
+            .cancel_managed_mute_foreground_retry_if_idle(has_managed_mutes);
         self.apply_audio_update_result(apply_result.had_failures, apply_result.failure_detail);
 
         self.sync_target_mute_indicators();
@@ -2072,10 +2019,10 @@ impl AppWindow {
     fn update_status(&mut self) {
         let issue = self.issues.visible();
         let snapshot = StatusSnapshot {
-            paused: self.paused,
+            paused: self.runtime.is_paused(),
             issue,
             target_count: self.config.targets.len(),
-            muted_count: self.muted_target_count,
+            muted_count: self.runtime.muted_target_count(),
         };
         if self
             .last_status
@@ -2118,23 +2065,23 @@ impl AppWindow {
         self.layout_header(snapshot.issue.is_some());
         self.redraw_header();
         self.last_status = Some(snapshot);
-        if self.runtime_active {
+        if self.runtime.is_active() {
             let tray_data = self.tray_data(&self.tray_tip_text_buffer);
             self.add_tray_icon_data(&tray_data);
         }
     }
 
     fn reset_audio_after_endpoint_change(&mut self) {
-        if let Some(audio) = &self.audio {
-            let result = restore_mute_set(audio, &mut self.muted_by_app);
+        if let Some(mut audio) = self.runtime.audio.take() {
+            let result = restore_mute_set(&mut audio, self.runtime.managed_sessions_mut());
             self.apply_audio_update_result(result.had_failures, result.failure_detail);
         }
-        self.audio = None;
         self.sync_target_mute_indicators();
     }
 
     fn reset_audio_if_endpoint_changed(&mut self) {
         if self
+            .runtime
             .audio
             .as_ref()
             .is_some_and(|audio| audio.take_endpoint_changed())
@@ -2144,21 +2091,11 @@ impl AppWindow {
     }
 
     fn update_foreground_process_name_cache(&mut self, foreground_pid: Option<u32>) {
-        let Some(pid) = foreground_pid else {
-            self.foreground_process_name_cache = None;
-            return;
-        };
-
-        if !foreground_process_cache_needs_refresh(self.foreground_process_name_cache.as_ref(), pid)
-        {
-            return;
-        }
-
-        self.foreground_process_name_cache = Some((pid, process::process_name(pid)));
+        self.runtime.update_foreground_process_name(foreground_pid);
     }
 
     fn clear_foreground_process_cache(&mut self) {
-        self.foreground_process_name_cache = None;
+        self.runtime.clear_foreground_process_name();
     }
 
     fn restore_managed_mutes(&mut self) -> Option<StatusIssue> {
@@ -2170,10 +2107,10 @@ impl AppWindow {
             return Some(StatusIssue::AudioUnavailable);
         }
 
-        let Some(audio) = self.audio.take() else {
+        let Some(mut audio) = self.runtime.audio.take() else {
             self.set_issue_with_detail(
                 StatusIssue::AudioUnavailable,
-                "audio controller unavailable while restoring mute state",
+                "audio controller unavailable while unmuting managed sessions",
             );
             return Some(StatusIssue::AudioUnavailable);
         };
@@ -2182,15 +2119,18 @@ impl AppWindow {
             &restore_matcher,
             None,
             None,
-            &mut self.muted_by_app,
+            self.runtime.managed_sessions_mut(),
             &self.config.targets,
         );
-        self.audio = Some(audio);
+        self.runtime.audio = Some(audio);
         let restore_issue = match result {
             Ok(result) => {
                 if self.apply_target_mute_updates(&result.target_updates) {
-                    self.save_config();
+                    self.save_runtime_mute_state();
                 }
+                let has_managed_mutes = self.has_managed_mutes();
+                self.runtime
+                    .cancel_managed_mute_foreground_retry_if_idle(has_managed_mutes);
                 let had_failures = result.had_failures;
                 self.apply_audio_update_result(had_failures, result.failure_detail);
                 if had_failures {
@@ -2200,7 +2140,7 @@ impl AppWindow {
                 }
             }
             Err(error) => {
-                self.audio = None;
+                self.runtime.audio = None;
                 self.set_issue_with_detail(StatusIssue::AudioUnavailable, error.to_string());
                 Some(StatusIssue::AudioUnavailable)
             }
@@ -2210,47 +2150,66 @@ impl AppWindow {
     }
 
     fn restore_target_mute_before_removal(&mut self, target: &TargetProcess) -> bool {
-        let target_sessions = if target.managed_muted {
-            None
-        } else {
-            let target_sessions = matching_session_keys_for_target(target, &self.muted_by_app);
-            if target_sessions.is_empty() {
-                return true;
-            }
-            Some(target_sessions)
+        let target_sessions = session_keys_exclusive_to_target(
+            target,
+            &self.config.targets,
+            self.runtime.managed_sessions(),
+        );
+        if target_sessions.is_empty() && !target.managed_muted {
+            return true;
+        }
+        let mut managed_sessions = self.runtime.managed_sessions().clone();
+
+        let Some(transition_targets) = removal_restore_targets(target, &self.config.targets) else {
+            return false;
         };
+        let transition_matcher = TargetMatcher::new(&transition_targets);
+        let foreground_pid = process::foreground_pid();
+        let foreground_process_name = foreground_pid
+            .filter(|_| transition_matcher.needs_foreground_process_name())
+            .and_then(process::process_name);
 
         if !self.ensure_audio_controller(true) {
             return false;
         }
 
-        let mut target_sessions = target_sessions
-            .unwrap_or_else(|| matching_session_keys_for_target(target, &self.muted_by_app));
-        let mut restore_target = target.clone();
-        restore_target.managed_muted = true;
-        let restore_targets = [restore_target];
-        let restore_matcher = TargetMatcher::default();
-        let Some(audio) = self.audio.take() else {
+        let Some(mut audio) = self.runtime.audio.take() else {
             return false;
         };
         let result = audio.apply_mute_plan(
-            &restore_matcher,
-            None,
-            None,
-            &mut target_sessions,
-            &restore_targets,
+            &transition_matcher,
+            foreground_pid,
+            foreground_process_name.as_deref(),
+            &mut managed_sessions,
+            &transition_targets,
         );
-        self.audio = Some(audio);
+        self.runtime.audio = Some(audio);
         match result {
             Ok(result) => {
-                self.muted_by_app
-                    .retain(|key| !target_matches_session_key(target, key));
-                self.muted_by_app.extend(target_sessions);
-                self.apply_audio_update_result(result.had_failures, result.failure_detail);
-                !result.had_failures
+                let target_restore_failed = result.target_unmute_is_uncertain(target)
+                    || !session_keys_exclusive_to_target(
+                        target,
+                        &self.config.targets,
+                        &managed_sessions,
+                    )
+                    .is_empty();
+                *self.runtime.managed_sessions_mut() = managed_sessions;
+                if self.apply_target_mute_updates(&result.target_updates) {
+                    self.save_runtime_mute_state();
+                }
+                let had_failures = result.had_failures || target_restore_failed;
+                let failure_detail = result.failure_detail.or_else(|| {
+                    target_restore_failed.then(|| {
+                        let mut identity = String::new();
+                        target.display_identity_into(&mut identity);
+                        format!("mute state could not be cleared before removing {identity}")
+                    })
+                });
+                self.apply_audio_update_result(had_failures, failure_detail);
+                !target_restore_failed
             }
             Err(error) => {
-                self.audio = None;
+                self.runtime.audio = None;
                 self.set_issue_with_detail(StatusIssue::AudioUnavailable, error.to_string());
                 false
             }
@@ -2258,20 +2217,20 @@ impl AppWindow {
     }
 
     fn release_idle_audio_while_paused(&mut self) {
-        if self.paused && !self.has_managed_mutes() {
-            self.audio = None;
+        if self.runtime.is_paused() && !self.has_managed_mutes() {
+            self.runtime.audio = None;
             self.clear_audio_issues();
         }
     }
 
     fn ensure_audio_controller(&mut self, report_issue: bool) -> bool {
-        if self.audio.is_some() {
+        if self.runtime.audio.is_some() {
             return true;
         }
 
         match AudioController::new() {
             Ok(audio) => {
-                self.audio = Some(audio);
+                self.runtime.audio = Some(audio);
                 if report_issue {
                     self.clear_issue(StatusIssue::AudioUnavailable);
                 }
@@ -2309,14 +2268,14 @@ impl AppWindow {
             };
             changed |= self.config.set_target_managed_muted_at(index, update.muted);
         }
-        if !self.has_managed_mutes() {
-            self.managed_mute_fast_retry_remaining = 0;
+        if changed {
+            self.runtime.mark_runtime_mute_state_dirty();
         }
         changed
     }
 
     fn has_managed_mutes(&self) -> bool {
-        !self.muted_by_app.is_empty()
+        self.runtime.has_managed_mutes()
             || self
                 .config
                 .targets
@@ -2482,10 +2441,19 @@ impl AppWindow {
     ) -> ConfigReloadResult {
         match reload {
             ConfigReload::Unchanged => ConfigReloadResult::UNCHANGED,
-            ConfigReload::Loaded(config) => {
+            ConfigReload::Loaded(mut config) => {
                 self.clear_issue(StatusIssue::ConfigLoadFailed);
+                let persisted_config = self
+                    .runtime
+                    .runtime_mute_state_dirty()
+                    .then(|| config.clone());
+                self.preserve_dirty_runtime_mute_state(&mut config);
                 let target_matcher_changed = self.apply_external_config(config, sync_startup);
-                self.config_store.accept_loaded(&self.config);
+                if let Some(persisted_config) = persisted_config {
+                    self.config_store.accept_loaded(&persisted_config);
+                } else {
+                    self.config_store.accept_loaded(&self.config);
+                }
                 ConfigReloadResult::changed(target_matcher_changed)
             }
             ConfigReload::Missing => {
@@ -2516,11 +2484,11 @@ impl AppWindow {
     fn install_foreground_hook(&mut self) {
         match unsafe { ForegroundEventHook::new(self.hwnd) } {
             Ok(hook) => {
-                self.foreground_hook = Some(hook);
+                self.runtime.foreground_hook = Some(hook);
                 self.clear_issue(StatusIssue::ForegroundHookUnavailable);
             }
             Err(error) => {
-                self.foreground_hook = None;
+                self.runtime.foreground_hook = None;
                 self.set_issue_with_detail(
                     StatusIssue::ForegroundHookUnavailable,
                     error.to_string(),
@@ -2530,13 +2498,13 @@ impl AppWindow {
     }
 
     fn ensure_foreground_hook(&mut self) {
-        if self.foreground_hook.is_none() {
+        if self.runtime.foreground_hook.is_none() {
             self.install_foreground_hook();
         }
     }
 
     fn reset_timers(&mut self) {
-        self.config_reload_timer_ready =
+        self.runtime.config_reload_timer_ready =
             self.set_timer(CONFIG_RELOAD_TIMER_ID, CONFIG_RELOAD_TIMER_INTERVAL_MS);
         self.reset_polling_timer();
     }
@@ -2550,12 +2518,12 @@ impl AppWindow {
     fn retry_missing_timers(&mut self) {
         let mut retried = false;
         let desired_audio_interval = self.desired_audio_fallback_timer_interval_ms();
-        if !self.config_reload_timer_ready {
-            self.config_reload_timer_ready =
+        if !self.runtime.config_reload_timer_ready {
+            self.runtime.config_reload_timer_ready =
                 self.set_timer(CONFIG_RELOAD_TIMER_ID, CONFIG_RELOAD_TIMER_INTERVAL_MS);
             retried = true;
         }
-        if desired_audio_interval != self.audio_fallback_timer_interval_ms {
+        if desired_audio_interval != self.runtime.audio_fallback_timer_interval_ms {
             self.apply_audio_fallback_timer_interval(desired_audio_interval);
             retried = true;
         }
@@ -2566,30 +2534,18 @@ impl AppWindow {
 
     fn sync_audio_fallback_timer(&mut self) {
         let desired_interval = self.desired_audio_fallback_timer_interval_ms();
-        if desired_interval != self.audio_fallback_timer_interval_ms {
+        if desired_interval != self.runtime.audio_fallback_timer_interval_ms {
             self.apply_audio_fallback_timer_interval(desired_interval);
         }
         self.update_timer_setup_issue(desired_interval);
     }
 
-    fn start_managed_mute_fast_retry(&mut self) {
-        if self.has_managed_mutes() {
-            self.managed_mute_fast_retry_remaining = MANAGED_MUTE_FOREGROUND_RETRY_TICKS;
-        }
-    }
-
-    fn consume_managed_mute_fast_retry(&mut self) {
-        if self.managed_mute_fast_retry_remaining > 0 {
-            self.managed_mute_fast_retry_remaining -= 1;
-        }
-    }
-
     fn desired_audio_fallback_timer_interval_ms(&self) -> Option<u32> {
         desired_audio_fallback_timer_interval_ms(
-            self.paused,
+            self.runtime.is_paused(),
             self.target_matcher.is_empty(),
             self.has_managed_mutes(),
-            self.managed_mute_fast_retry_remaining,
+            self.runtime.managed_mute_foreground_retry_pending(),
             self.config.polling_interval_ms,
         )
     }
@@ -2598,7 +2554,7 @@ impl AppWindow {
         match interval_ms {
             Some(interval_ms) => {
                 if self.set_timer(AUDIO_FALLBACK_TIMER_ID, interval_ms) {
-                    self.audio_fallback_timer_interval_ms = Some(interval_ms);
+                    self.runtime.audio_fallback_timer_interval_ms = Some(interval_ms);
                 }
             }
             None => self.clear_audio_fallback_timer(),
@@ -2606,10 +2562,10 @@ impl AppWindow {
     }
 
     fn clear_audio_fallback_timer(&mut self) {
-        if self.audio_fallback_timer_interval_ms.is_some() {
+        if self.runtime.audio_fallback_timer_interval_ms.is_some() {
             self.clear_timer(AUDIO_FALLBACK_TIMER_ID);
         }
-        self.audio_fallback_timer_interval_ms = None;
+        self.runtime.audio_fallback_timer_interval_ms = None;
     }
 
     fn set_timer(&mut self, timer_id: usize, interval_ms: u32) -> bool {
@@ -2632,8 +2588,8 @@ impl AppWindow {
 
     fn update_timer_setup_issue(&mut self, desired_audio_interval: Option<u32>) {
         let audio_fallback_timer_ready =
-            desired_audio_interval == self.audio_fallback_timer_interval_ms;
-        if self.config_reload_timer_ready && audio_fallback_timer_ready {
+            desired_audio_interval == self.runtime.audio_fallback_timer_interval_ms;
+        if self.runtime.config_reload_timer_ready && audio_fallback_timer_ready {
             self.clear_issue(StatusIssue::TimerSetupFailed);
         } else {
             self.set_issue(StatusIssue::TimerSetupFailed);
@@ -2641,6 +2597,33 @@ impl AppWindow {
     }
 
     fn save_config(&mut self) -> bool {
+        self.save_config_with_intent(ConfigSaveIntent::Settings)
+    }
+
+    fn save_runtime_mute_state(&mut self) -> bool {
+        self.save_config_with_intent(ConfigSaveIntent::RuntimeMuteState)
+    }
+
+    fn retry_runtime_mute_state_save(&mut self) {
+        if self.runtime.runtime_mute_state_dirty() {
+            self.save_runtime_mute_state();
+        }
+    }
+
+    fn preserve_dirty_runtime_mute_state(&self, config: &mut AppConfig) {
+        if !self.runtime.runtime_mute_state_dirty() {
+            return;
+        }
+        for target in &self.config.targets {
+            let Some(index) = target_index_by_identity(&config.targets, &target.name, target.pid)
+            else {
+                continue;
+            };
+            config.targets[index].managed_muted = target.managed_muted;
+        }
+    }
+
+    fn save_config_with_intent(&mut self, intent: ConfigSaveIntent) -> bool {
         const SAVE_RETRY_LIMIT: usize = 3;
 
         for _ in 0..SAVE_RETRY_LIMIT {
@@ -2657,9 +2640,10 @@ impl AppWindow {
                 }
             }
 
-            match self.config_store.save(&self.config) {
+            match self.config_store.save(&self.config, intent) {
                 Ok(ConfigSave::Saved) => {
                     self.window_placement_dirty = false;
+                    self.runtime.mark_runtime_mute_state_saved();
                     self.clear_config_issues();
                     return true;
                 }
@@ -2700,8 +2684,8 @@ impl AppWindow {
         if effects.theme_changed {
             self.apply_resolved_theme(resolve_theme(self.config.theme));
         }
-        if effects.should_start_fast_retry {
-            self.start_managed_mute_fast_retry();
+        if effects.should_schedule_managed_mute_recovery {
+            self.runtime.schedule_managed_mute_foreground_retry(true);
         }
         if effects.target_matcher_changed {
             self.refresh_targets();
@@ -2711,7 +2695,7 @@ impl AppWindow {
         if effects.interval_changed {
             self.reset_polling_timer();
             self.last_status = None;
-        } else if effects.target_matcher_changed || effects.should_start_fast_retry {
+        } else if effects.target_matcher_changed || effects.should_schedule_managed_mute_recovery {
             self.sync_audio_fallback_timer();
         }
         if effects.language_changed {
@@ -3362,10 +3346,9 @@ impl AppWindow {
     }
 
     fn toggle_pause(&mut self) {
-        self.paused = !self.paused;
-        if self.paused {
+        if self.runtime.toggle_paused() {
             let _ = self.restore_managed_mutes();
-            self.foreground_hook = None;
+            self.runtime.foreground_hook = None;
             self.release_idle_audio_while_paused();
         } else {
             self.tick();
@@ -3430,18 +3413,27 @@ impl AppWindow {
     }
 
     fn prepare_for_destroy(&mut self) -> Option<MessageDialogRequest> {
-        self.foreground_hook = None;
+        self.runtime.deactivate();
+        self.runtime.foreground_hook = None;
         self.save_window_placement();
-        let restore_issue = if self.config.restore_muted_on_exit && self.has_managed_mutes() {
-            self.restore_managed_mutes()
-        } else {
-            None
-        };
-        let warning = restore_issue.map(|issue| {
+        self.clear_timer(CONFIG_RELOAD_TIMER_ID);
+        self.runtime.config_reload_timer_ready = false;
+        self.clear_audio_fallback_timer();
+        let restore_issue = self.restore_managed_mutes();
+        let save_issue = (self.runtime.runtime_mute_state_dirty()
+            && !self.save_runtime_mute_state())
+        .then_some(StatusIssue::ConfigSaveFailed);
+        let exit_issue = restore_issue.or(save_issue);
+        let warning = exit_issue.map(|issue| {
             let detail = self.issue_diagnostics.detail(issue);
             let mut request = self.issue_message_request(issue, detail);
-            request.explanation = Some(self.strings.exit_restore_failed_explanation.to_owned());
-            request.diagnostic_code = Some("exit-restore-failed");
+            if matches!(
+                issue,
+                StatusIssue::AudioUnavailable | StatusIssue::AudioUpdateFailed
+            ) {
+                request.explanation = Some(self.strings.exit_restore_failed_explanation.to_owned());
+                request.diagnostic_code = Some("exit-restore-failed");
+            }
             request
         });
         if self.tray_added {
@@ -3458,9 +3450,9 @@ impl AppWindow {
         let status = status_text_and_detail_into(
             self.strings,
             self.issues.visible().map(|issue| self.issue_text(issue)),
-            self.paused,
+            self.runtime.is_paused(),
             self.config.targets.len(),
-            self.muted_target_count,
+            self.runtime.muted_target_count(),
             &mut self.status_detail_text,
         );
         tray_tip_text_into(
@@ -3490,7 +3482,7 @@ impl AppWindow {
     }
 
     fn restore_tray_icon(&mut self) {
-        if !self.runtime_active {
+        if !self.runtime.is_active() {
             return;
         }
         self.tray_added = false;
@@ -3518,8 +3510,12 @@ impl AppWindow {
         let window_visible = unsafe { IsWindowVisible(self.hwnd).as_bool() };
         TrayMenuRequest {
             parent: self.hwnd,
-            status: status_text(self.strings, self.paused, self.issues.visible().is_some())
-                .to_owned(),
+            status: status_text(
+                self.strings,
+                self.runtime.is_paused(),
+                self.issues.visible().is_some(),
+            )
+            .to_owned(),
             visibility_label: if window_visible {
                 self.strings.hide
             } else {
@@ -3527,7 +3523,7 @@ impl AppWindow {
             }
             .to_owned(),
             visibility_command: if window_visible { ID_HIDE } else { ID_SHOW },
-            pause_label: if self.paused {
+            pause_label: if self.runtime.is_paused() {
                 self.strings.resume
             } else {
                 self.strings.pause
@@ -3578,7 +3574,7 @@ impl AppWindow {
         let status = &self.status_display_text;
         let text_color = if issue_visible {
             self.theme.palette.status_muted
-        } else if self.paused {
+        } else if self.runtime.is_paused() {
             self.theme.palette.status_paused
         } else {
             self.theme.palette.status_active
@@ -3695,7 +3691,7 @@ impl AppWindow {
         let shape_center_y = (shape_top + shape_bottom_inclusive) / 2;
         unsafe {
             let brush = CreateSolidBrush(color);
-            if self.paused {
+            if self.runtime.is_paused() {
                 let half_width = px(3).max(2);
                 let points = [
                     POINT {
@@ -3773,11 +3769,7 @@ impl AppWindow {
             return true;
         };
         let note = target.note.as_deref().unwrap_or_default();
-        let target_muted = self
-            .last_target_muted
-            .get(draw.itemID as usize)
-            .copied()
-            .unwrap_or_else(|| target_has_managed_mute(target, &self.muted_by_app));
+        let target_muted = self.runtime.target_muted(draw.itemID as usize, target);
         let status_text = target_status_text(target, target_muted, self.strings);
         let identity_color = if !target.enabled {
             self.theme.palette.status_paused
@@ -4178,7 +4170,7 @@ struct AudioUpdateResult {
 }
 
 fn restore_mute_set(
-    audio: &AudioController,
+    audio: &mut AudioController,
     muted_by_app: &mut HashSet<AudioSessionKey>,
 ) -> AudioUpdateResult {
     let result = match audio.unmute_sessions(muted_by_app) {
@@ -4725,9 +4717,15 @@ unsafe extern "system" fn window_proc(
             }
             WM_FOREGROUND_CHANGED => {
                 FOREGROUND_EVENT_PENDING.store(false, Ordering::Release);
+                if !app.runtime.is_active() {
+                    return LRESULT(0);
+                }
                 app.clear_foreground_process_cache();
-                app.start_managed_mute_fast_retry();
                 app.tick();
+                let has_managed_mutes = app.has_managed_mutes();
+                app.runtime
+                    .schedule_managed_mute_foreground_retry(has_managed_mutes);
+                app.reset_polling_timer();
                 return LRESULT(0);
             }
             WM_PROCESS_SEARCH_RESULT_CHOSEN => {

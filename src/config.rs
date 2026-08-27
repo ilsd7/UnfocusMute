@@ -19,7 +19,7 @@ use windows::Win32::Foundation::{HANDLE, WAIT_OBJECT_0, WAIT_TIMEOUT};
 use windows::Win32::Storage::FileSystem::{
     FILE_NOTIFY_CHANGE_FILE_NAME, FILE_NOTIFY_CHANGE_LAST_WRITE, FILE_NOTIFY_CHANGE_SIZE,
     FindCloseChangeNotification, FindFirstChangeNotificationW, FindNextChangeNotification,
-    MOVEFILE_REPLACE_EXISTING, MOVEFILE_WRITE_THROUGH, MoveFileExW,
+    MOVE_FILE_FLAGS, MOVEFILE_REPLACE_EXISTING, MOVEFILE_WRITE_THROUGH, MoveFileExW,
 };
 #[cfg(windows)]
 use windows::Win32::System::Threading::WaitForSingleObject;
@@ -151,7 +151,6 @@ pub struct AppConfig {
     pub launch_on_startup: bool,
     pub start_minimized: bool,
     pub hide_to_tray_on_close: bool,
-    pub restore_muted_on_exit: bool,
     pub targets: Vec<TargetProcess>,
 }
 
@@ -172,6 +171,12 @@ pub(crate) enum ExistingConfigLoad {
 pub(crate) enum ConfigSourceStamp {
     Unknown,
     Known(Option<ConfigFileStamp>),
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum ConfigDurability {
+    Durable,
+    ProcessCrashSafe,
 }
 
 #[derive(Clone, Copy)]
@@ -286,7 +291,6 @@ impl Default for AppConfig {
             launch_on_startup: false,
             start_minimized: true,
             hide_to_tray_on_close: true,
-            restore_muted_on_exit: true,
             targets: Vec::new(),
         }
     }
@@ -328,7 +332,7 @@ impl AppConfig {
                 "config source changed before startup settings could be saved",
             ));
         };
-        if self.save_if_unchanged(expected_stamp)? {
+        if self.save_if_unchanged(expected_stamp, ConfigDurability::Durable)? {
             return Ok(());
         }
         Err(io::Error::new(
@@ -340,15 +344,26 @@ impl AppConfig {
     pub(crate) fn save_if_unchanged(
         &self,
         expected_stamp: Option<ConfigFileStamp>,
+        durability: ConfigDurability,
     ) -> io::Result<bool> {
         let path = cached_config_file_path()?;
-        self.save_to_path_guarded(path, true, ExistingConfigGuard::Unchanged(expected_stamp))
+        self.save_to_path_guarded(
+            path,
+            true,
+            ExistingConfigGuard::Unchanged(expected_stamp),
+            durability,
+        )
     }
 
     #[cfg(test)]
     fn save_to_path(&self, path: &Path, validate_existing: bool) -> io::Result<()> {
         for _ in 0..3 {
-            if self.save_to_path_guarded(path, validate_existing, ExistingConfigGuard::Any)? {
+            if self.save_to_path_guarded(
+                path,
+                validate_existing,
+                ExistingConfigGuard::Any,
+                ConfigDurability::Durable,
+            )? {
                 return Ok(());
             }
         }
@@ -363,6 +378,7 @@ impl AppConfig {
         path: &Path,
         validate_existing: bool,
         guard: ExistingConfigGuard,
+        durability: ConfigDurability,
     ) -> io::Result<bool> {
         if let Some(parent) = path.parent() {
             fs::create_dir_all(parent)?;
@@ -383,7 +399,9 @@ impl AppConfig {
             discard_open_file(temp_file, &temp_path);
             return Err(error);
         }
-        if let Err(error) = temp_file.sync_all() {
+        if durability == ConfigDurability::Durable
+            && let Err(error) = temp_file.sync_all()
+        {
             discard_open_file(temp_file, &temp_path);
             return Err(error);
         }
@@ -438,7 +456,7 @@ impl AppConfig {
                 }
             }
         }
-        replace_file(&temp_path, path)?;
+        replace_file(&temp_path, path, durability)?;
         Ok(true)
     }
 
@@ -655,10 +673,6 @@ pub(crate) fn merge_pending_config_changes(
     if local.hide_to_tray_on_close != base.hide_to_tray_on_close {
         disk.hide_to_tray_on_close = local.hide_to_tray_on_close;
     }
-    if local.restore_muted_on_exit != base.restore_muted_on_exit {
-        disk.restore_muted_on_exit = local.restore_muted_on_exit;
-    }
-
     merge_pending_target_changes(&base.targets, &local.targets, &mut disk.targets);
 }
 
@@ -874,8 +888,12 @@ fn recover_invalid_config_if_unchanged(
 
     let backup_path = backup_invalid_config_bytes(path, invalid_bytes)?;
     let config = AppConfig::default();
-    let save_result =
-        config.save_to_path_guarded(path, false, ExistingConfigGuard::Unchanged(expected_stamp));
+    let save_result = config.save_to_path_guarded(
+        path,
+        false,
+        ExistingConfigGuard::Unchanged(expected_stamp),
+        ConfigDurability::Durable,
+    );
     match save_result {
         Ok(true) => Ok(Some(AppConfigLoad {
             config,
@@ -982,12 +1000,19 @@ fn discard_invalid_backup(validation: Option<&ExistingConfigValidation>) {
     }
 }
 
-fn replace_file(temp_path: &Path, destination: &Path) -> io::Result<()> {
+fn replace_file(
+    temp_path: &Path,
+    destination: &Path,
+    durability: ConfigDurability,
+) -> io::Result<()> {
     #[cfg(windows)]
-    let result = replace_file_windows(temp_path, destination);
+    let result = replace_file_windows(temp_path, destination, durability);
 
     #[cfg(not(windows))]
-    let result = fs::rename(temp_path, destination);
+    let result = {
+        let _ = durability;
+        fs::rename(temp_path, destination)
+    };
 
     if result.is_err() {
         let _ = fs::remove_file(temp_path);
@@ -1042,10 +1067,14 @@ fn create_temp_config_file(destination: &Path) -> io::Result<(fs::File, PathBuf)
 }
 
 #[cfg(windows)]
-fn replace_file_windows(temp_path: &Path, destination: &Path) -> io::Result<()> {
+fn replace_file_windows(
+    temp_path: &Path,
+    destination: &Path,
+    durability: ConfigDurability,
+) -> io::Result<()> {
     let temp_path = path_to_wide(temp_path);
     let destination = path_to_wide(destination);
-    let flags = MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH;
+    let flags = replace_file_flags(durability);
 
     unsafe {
         MoveFileExW(
@@ -1055,6 +1084,14 @@ fn replace_file_windows(temp_path: &Path, destination: &Path) -> io::Result<()> 
         )
     }
     .map_err(|error| io::Error::other(format!("replace config file: {error}")))
+}
+
+#[cfg(windows)]
+fn replace_file_flags(durability: ConfigDurability) -> MOVE_FILE_FLAGS {
+    match durability {
+        ConfigDurability::Durable => MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH,
+        ConfigDurability::ProcessCrashSafe => MOVEFILE_REPLACE_EXISTING,
+    }
 }
 
 #[cfg(windows)]
@@ -2190,6 +2227,18 @@ mod tests {
     }
 
     #[test]
+    fn target_managed_mute_state_changes_only_when_needed() {
+        let mut config = AppConfig::default();
+        assert!(config.add_target("browser.exe"));
+
+        assert!(!config.set_target_managed_muted_at(0, false));
+        assert!(config.set_target_managed_muted_at(0, true));
+        assert!(config.targets[0].managed_muted);
+        assert!(!config.set_target_managed_muted_at(0, true));
+        assert!(!config.set_target_managed_muted_at(1, true));
+    }
+
+    #[test]
     fn legacy_target_without_enabled_defaults_to_enabled() {
         let config: AppConfig =
             serde_json::from_str(r#"{"targets":[{"name":"game.exe"}]}"#).unwrap();
@@ -2220,6 +2269,24 @@ mod tests {
             serde_json::from_str(r#"{"targets":[{"name":"game.exe"}]}"#).unwrap();
 
         assert!(!config.targets[0].managed_muted);
+    }
+
+    #[test]
+    fn persisted_managed_mute_state_is_restored() {
+        let bytes = br#"{"targets":[{"name":"game.exe","managed_muted":true}]}"#;
+        let config: AppConfig = serde_json::from_slice(bytes).unwrap();
+
+        assert!(config.targets[0].managed_muted);
+    }
+
+    #[test]
+    fn malformed_managed_mute_state_is_rejected() {
+        assert!(
+            serde_json::from_str::<AppConfig>(
+                r#"{"targets":[{"name":"game.exe","managed_muted":"yes"}]}"#,
+            )
+            .is_err()
+        );
     }
 
     #[test]
@@ -2418,7 +2485,19 @@ mod tests {
         assert!(!config.launch_on_startup);
         assert!(config.start_minimized);
         assert!(config.hide_to_tray_on_close);
-        assert!(config.restore_muted_on_exit);
+    }
+
+    #[test]
+    fn retired_restore_on_exit_setting_is_ignored() {
+        let config: AppConfig =
+            serde_json::from_str(r#"{"version":7,"restore_muted_on_exit":false}"#).unwrap();
+
+        assert_eq!(config, AppConfig::default());
+        assert!(
+            !serde_json::to_string(&config)
+                .unwrap()
+                .contains("restore_muted_on_exit")
+        );
     }
 
     #[test]
@@ -2546,10 +2625,23 @@ mod tests {
         fs::write(&destination, "old").unwrap();
         fs::write(&temp_path, "new").unwrap();
 
-        replace_file(&temp_path, &destination).unwrap();
+        replace_file(&temp_path, &destination, ConfigDurability::Durable).unwrap();
 
         assert_eq!(fs::read_to_string(&destination).unwrap(), "new");
         assert!(!temp_path.exists());
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn process_crash_safe_replace_skips_write_through() {
+        assert_eq!(
+            replace_file_flags(ConfigDurability::Durable),
+            MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH
+        );
+        assert_eq!(
+            replace_file_flags(ConfigDurability::ProcessCrashSafe),
+            MOVEFILE_REPLACE_EXISTING
+        );
     }
 
     #[test]
@@ -2701,26 +2793,56 @@ mod tests {
 
     #[test]
     fn guarded_save_does_not_replace_config_changed_after_stamp_check() {
+        for durability in [
+            ConfigDurability::Durable,
+            ConfigDurability::ProcessCrashSafe,
+        ] {
+            let dir = TestDir::new();
+            let config_path = dir.path().join("config.json");
+            AppConfig::default()
+                .save_to_path(&config_path, false)
+                .unwrap();
+            let expected_stamp = config_file_stamp(&config_path);
+            let future_config = format!(r#"{{"version":{}}}"#, CONFIG_VERSION + 1);
+            fs::write(&config_path, &future_config).unwrap();
+
+            let saved = AppConfig::default()
+                .save_to_path_guarded(
+                    &config_path,
+                    true,
+                    ExistingConfigGuard::Unchanged(expected_stamp),
+                    durability,
+                )
+                .unwrap();
+
+            assert!(!saved);
+            assert_eq!(fs::read_to_string(&config_path).unwrap(), future_config);
+            assert_eq!(invalid_backup_count(dir.path()), 0);
+        }
+    }
+
+    #[test]
+    fn process_crash_safe_save_is_atomic_and_immediately_readable() {
         let dir = TestDir::new();
         let config_path = dir.path().join("config.json");
-        AppConfig::default()
-            .save_to_path(&config_path, false)
-            .unwrap();
+        let mut config = AppConfig::default();
+        assert!(config.add_target("game.exe"));
+        config.save_to_path(&config_path, false).unwrap();
         let expected_stamp = config_file_stamp(&config_path);
-        let future_config = format!(r#"{{"version":{}}}"#, CONFIG_VERSION + 1);
-        fs::write(&config_path, &future_config).unwrap();
+        assert!(config.set_target_managed_muted_at(0, true));
 
-        let saved = AppConfig::default()
+        let saved = config
             .save_to_path_guarded(
                 &config_path,
                 true,
                 ExistingConfigGuard::Unchanged(expected_stamp),
+                ConfigDurability::ProcessCrashSafe,
             )
             .unwrap();
+        let reloaded = parse_config_file(fs::File::open(&config_path).unwrap()).unwrap();
 
-        assert!(!saved);
-        assert_eq!(fs::read_to_string(&config_path).unwrap(), future_config);
-        assert_eq!(invalid_backup_count(dir.path()), 0);
+        assert!(saved);
+        assert!(reloaded.targets[0].managed_muted);
     }
 
     #[test]
@@ -2743,6 +2865,7 @@ mod tests {
                 &config_path,
                 true,
                 ExistingConfigGuard::Unchanged(expected_stamp),
+                ConfigDurability::Durable,
             )
             .unwrap();
 
@@ -2852,7 +2975,7 @@ mod tests {
         assert!(base.add_target("game.exe"));
 
         let mut local = base.clone();
-        assert!(local.set_target_managed_muted_at(0, true));
+        assert!(local.set_target_note_at(0, Some("local".to_owned())));
 
         let mut disk = base.clone();
         assert!(disk.add_target("chat.exe"));
@@ -2862,7 +2985,75 @@ mod tests {
         assert_eq!(disk.targets.len(), 2);
         assert_eq!(disk.targets[0].name, "chat.exe");
         assert_eq!(disk.targets[1].name, "game.exe");
-        assert!(disk.targets[1].managed_muted);
+        assert_eq!(disk.targets[1].note.as_deref(), Some("local"));
+    }
+
+    #[test]
+    fn merge_pending_config_changes_keeps_runtime_mute_updates() {
+        let mut base = AppConfig::default();
+        assert!(base.add_target("game.exe"));
+
+        let mut local = base.clone();
+        assert!(local.set_target_managed_muted_at(0, true));
+
+        let mut disk = base.clone();
+        assert!(disk.add_target("chat.exe"));
+
+        merge_pending_config_changes(&base, &local, &mut disk);
+
+        let game = target_index_by_key(&disk.targets, "game.exe", None).unwrap();
+        assert!(disk.targets[game].managed_muted);
+        assert!(target_index_by_key(&disk.targets, "chat.exe", None).is_some());
+    }
+
+    #[test]
+    fn merge_pending_config_changes_keeps_external_runtime_mute_for_local_target_edits() {
+        let mut base = AppConfig::default();
+        assert!(base.add_target("game.exe"));
+
+        let mut local = base.clone();
+        assert!(local.set_target_note_at(0, Some("local".to_owned())));
+
+        let mut disk = base.clone();
+        assert!(disk.set_target_managed_muted_at(0, true));
+
+        merge_pending_config_changes(&base, &local, &mut disk);
+
+        assert_eq!(disk.targets[0].note.as_deref(), Some("local"));
+        assert!(disk.targets[0].managed_muted);
+    }
+
+    #[test]
+    fn merge_pending_config_changes_merges_runtime_and_user_fields_independently() {
+        let mut base = AppConfig::default();
+        assert!(base.add_target("game.exe"));
+        assert!(base.set_target_note_at(0, Some("base".to_owned())));
+
+        let mut local = base.clone();
+        assert!(local.set_target_note_at(0, Some("local".to_owned())));
+        assert!(local.set_target_managed_muted_at(0, true));
+
+        let mut disk = base.clone();
+        assert!(disk.set_target_enabled_at(0, false));
+
+        merge_pending_config_changes(&base, &local, &mut disk);
+
+        assert_eq!(disk.targets[0].note.as_deref(), Some("local"));
+        assert!(!disk.targets[0].enabled);
+        assert!(disk.targets[0].managed_muted);
+    }
+
+    #[test]
+    fn merge_pending_runtime_mute_does_not_resurrect_external_target_removal() {
+        let mut base = AppConfig::default();
+        assert!(base.add_target("game.exe"));
+        let mut local = base.clone();
+        assert!(local.set_target_managed_muted_at(0, true));
+        let mut disk = AppConfig::default();
+
+        merge_pending_config_changes(&base, &local, &mut disk);
+
+        assert!(disk.targets.is_empty());
     }
 
     #[test]
@@ -2880,62 +3071,6 @@ mod tests {
 
         assert_eq!(disk.window_size, local.window_size);
         assert_eq!(disk.language, Language::Ko);
-    }
-
-    #[test]
-    fn merge_pending_config_changes_keeps_external_target_removal_for_runtime_mute() {
-        let mut base = AppConfig::default();
-        assert!(base.add_target("game.exe"));
-
-        let mut local = base.clone();
-        assert!(local.set_target_managed_muted_at(0, true));
-
-        let mut disk = AppConfig::default();
-        assert!(disk.add_target("chat.exe"));
-
-        merge_pending_config_changes(&base, &local, &mut disk);
-
-        assert!(target_index_by_key(&disk.targets, "chat.exe", None).is_some());
-        assert!(target_index_by_key(&disk.targets, "game.exe", None).is_none());
-    }
-
-    #[test]
-    fn merge_pending_config_changes_keeps_external_target_edits_for_runtime_mute() {
-        let mut base = AppConfig::default();
-        assert!(base.add_target("game.exe"));
-        assert!(base.set_target_note_at(0, Some("base".to_owned())));
-
-        let mut local = base.clone();
-        assert!(local.set_target_managed_muted_at(0, true));
-
-        let mut disk = base.clone();
-        assert!(disk.set_target_note_at(0, Some("external".to_owned())));
-        assert!(disk.set_target_enabled_at(0, false));
-
-        merge_pending_config_changes(&base, &local, &mut disk);
-
-        assert_eq!(disk.targets.len(), 1);
-        assert_eq!(disk.targets[0].note.as_deref(), Some("external"));
-        assert!(!disk.targets[0].enabled);
-        assert!(disk.targets[0].managed_muted);
-    }
-
-    #[test]
-    fn merge_pending_config_changes_keeps_external_runtime_mute_for_local_target_edits() {
-        let mut base = AppConfig::default();
-        assert!(base.add_target("game.exe"));
-
-        let mut local = base.clone();
-        assert!(local.set_target_note_at(0, Some("local".to_owned())));
-
-        let mut disk = base.clone();
-        assert!(disk.set_target_managed_muted_at(0, true));
-
-        merge_pending_config_changes(&base, &local, &mut disk);
-
-        assert_eq!(disk.targets.len(), 1);
-        assert_eq!(disk.targets[0].note.as_deref(), Some("local"));
-        assert!(disk.targets[0].managed_muted);
     }
 
     #[test]

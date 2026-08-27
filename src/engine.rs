@@ -2,8 +2,7 @@
 
 #[cfg(test)]
 use crate::config::normalize_process_name;
-use crate::config::{TargetProcess, is_normalized_process_name};
-#[cfg(test)]
+use crate::config::{TargetProcess, compare_target_identity, is_normalized_process_name};
 use std::collections::HashSet;
 
 #[derive(Clone, Debug, Eq, Hash, PartialEq)]
@@ -38,6 +37,46 @@ impl AudioSessionKey {
             pid,
             process_name,
             instance_id,
+        }
+    }
+}
+
+/// Canonical process/PID view of the exact audio sessions owned by this process.
+///
+/// Audio planning and target-status rendering share this lookup so identity matching cannot
+/// drift between the engine and its Windows adapters.
+pub(crate) struct ManagedSessionLookup<'a> {
+    session_keys: &'a HashSet<AudioSessionKey>,
+}
+
+impl<'a> ManagedSessionLookup<'a> {
+    pub(crate) fn new(session_keys: &'a HashSet<AudioSessionKey>) -> Self {
+        Self { session_keys }
+    }
+
+    pub(crate) fn may_include_pid(&self, pid: u32) -> bool {
+        self.session_keys.iter().any(|key| key.pid == pid)
+    }
+
+    pub(crate) fn contains(&self, process_name: &str, pid: u32) -> bool {
+        self.session_keys
+            .iter()
+            .any(|key| key.pid == pid && key.process_name == process_name)
+    }
+
+    pub(crate) fn target_has_managed_mute(&self, target: &TargetProcess) -> bool {
+        if !target.enabled {
+            return false;
+        }
+        if target.managed_muted {
+            return true;
+        }
+        match target.pid {
+            Some(pid) => self.contains(&target.name, pid),
+            None => self
+                .session_keys
+                .iter()
+                .any(|key| key.process_name == target.name),
         }
     }
 }
@@ -86,68 +125,27 @@ pub(crate) enum TargetMatchKind {
 
 #[derive(Clone, Debug, Default)]
 pub struct TargetMatcher {
-    names: Vec<String>,
-    names_by_pid: Vec<(u32, String)>,
+    identities: Vec<(String, Option<u32>)>,
 }
 
 impl TargetMatcher {
     pub fn new(targets: &[TargetProcess]) -> Self {
-        if targets.is_empty() {
-            return Self::default();
-        }
-        if let [target] = targets {
-            return Self::from_single_target(target);
-        }
-
-        let (name_count, pid_count) = target_kind_counts(targets);
-        let mut names = Vec::with_capacity(name_count);
-        let mut names_by_pid = Vec::with_capacity(pid_count);
-
+        let mut identities = Vec::with_capacity(targets.len());
         for target in targets.iter().filter(|target| target.enabled) {
             debug_assert!(is_normalized_process_name(&target.name));
-            let name = target.name.clone();
-            if let Some(pid) = target.pid {
-                names_by_pid.push((pid, name));
-            } else {
-                names.push(name);
-            }
+            identities.push((target.name.clone(), target.pid));
         }
-        if names.len() > 1 {
-            names.sort_unstable();
-            names.dedup();
+        if identities.len() > 1 {
+            identities.sort_unstable_by(|left, right| {
+                compare_target_identity(&left.0, left.1, &right.0, right.1)
+            });
+            identities.dedup();
         }
-        if names_by_pid.len() > 1 {
-            names_by_pid.sort_unstable();
-            names_by_pid.dedup();
-        }
-
-        Self {
-            names,
-            names_by_pid,
-        }
-    }
-
-    fn from_single_target(target: &TargetProcess) -> Self {
-        if !target.enabled {
-            return Self::default();
-        }
-        debug_assert!(is_normalized_process_name(&target.name));
-
-        if let Some(pid) = target.pid {
-            Self {
-                names: Vec::new(),
-                names_by_pid: vec![(pid, target.name.clone())],
-            }
-        } else {
-            Self {
-                names: vec![target.name.clone()],
-                names_by_pid: Vec::new(),
-            }
-        }
+        Self { identities }
     }
 
     pub fn is_empty(&self) -> bool {
-        self.names.is_empty() && self.names_by_pid.is_empty()
+        self.identities.is_empty()
     }
 
     pub fn needs_foreground_process_name(&self) -> bool {
@@ -155,65 +153,32 @@ impl TargetMatcher {
     }
 
     pub fn needs_all_session_process_names(&self) -> bool {
-        !self.names.is_empty()
+        self.identities.iter().any(|(_, pid)| pid.is_none())
     }
 
     pub(crate) fn has_pid_target(&self, pid: u32) -> bool {
-        match self.names_by_pid.as_slice() {
-            [] => false,
-            [(target_pid, _)] => *target_pid == pid,
-            targets => targets
-                .binary_search_by(|(target_pid, _)| target_pid.cmp(&pid))
-                .is_ok(),
-        }
+        self.identities
+            .iter()
+            .any(|(_, target_pid)| *target_pid == Some(pid))
     }
 
     fn match_kind(&self, name: &str, pid: u32) -> Option<TargetMatchKind> {
-        match self.names.as_slice() {
-            [] => {}
-            [target] => {
-                if target == name {
-                    return Some(TargetMatchKind::ProcessName);
-                }
-            }
-            targets => {
-                if targets
-                    .binary_search_by(|target| target.as_str().cmp(name))
-                    .is_ok()
-                {
-                    return Some(TargetMatchKind::ProcessName);
-                }
-            }
-        }
-
-        match self.names_by_pid.as_slice() {
-            [] => None,
-            [(target_pid, target_name)] => {
-                (*target_pid == pid && target_name == name).then_some(TargetMatchKind::Pid)
-            }
-            targets => targets
-                .binary_search_by(|(target_pid, target_name)| {
-                    target_pid
-                        .cmp(&pid)
-                        .then_with(|| target_name.as_str().cmp(name))
-                })
-                .is_ok()
-                .then_some(TargetMatchKind::Pid),
-        }
-    }
-}
-
-fn target_kind_counts(targets: &[TargetProcess]) -> (usize, usize) {
-    let mut name_count = 0;
-    let mut pid_count = 0;
-    for target in targets.iter().filter(|target| target.enabled) {
-        if target.pid.is_some() {
-            pid_count += 1;
+        if self.has_identity(name, None) {
+            Some(TargetMatchKind::ProcessName)
+        } else if self.has_identity(name, Some(pid)) {
+            Some(TargetMatchKind::Pid)
         } else {
-            name_count += 1;
+            None
         }
     }
-    (name_count, pid_count)
+
+    fn has_identity(&self, name: &str, pid: Option<u32>) -> bool {
+        self.identities
+            .binary_search_by(|(target_name, target_pid)| {
+                compare_target_identity(target_name, *target_pid, name, pid)
+            })
+            .is_ok()
+    }
 }
 
 pub struct MutePlanner<'a> {
@@ -342,22 +307,6 @@ impl<'a> MutePlanner<'a> {
     pub(crate) fn session_is_foreground(&self, process_name: &str, pid: u32) -> bool {
         self.foreground_pid == Some(pid) || self.foreground_process_name == Some(process_name)
     }
-
-    pub(crate) fn can_clear_managed_target_state(
-        &self,
-        match_kind: Option<TargetMatchKind>,
-        session_pid: u32,
-        session_is_foreground: bool,
-    ) -> bool {
-        // exe 전체 타깃은 같은 이름의 오래된 세션을 가리킬 수 있어 전면 PID로만
-        // 상태를 지운다. PID 타깃은 같은 exe foreground fallback 자체가 복원
-        // 조건이므로, 실제 foreground로 판단된 세션이면 저장 상태도 정리한다.
-        match match_kind {
-            Some(TargetMatchKind::ProcessName) => self.foreground_pid == Some(session_pid),
-            Some(TargetMatchKind::Pid) => session_is_foreground,
-            None => true,
-        }
-    }
 }
 
 #[cfg(test)]
@@ -428,7 +377,7 @@ mod tests {
     }
 
     #[test]
-    fn single_pid_target_prefilter_matches_without_binary_search() {
+    fn single_pid_target_prefilter_matches() {
         let matcher = TargetMatcher::new(&[TargetProcess::for_pid("game.exe", 10).unwrap()]);
 
         assert!(matcher.has_pid_target(10));
@@ -521,59 +470,6 @@ mod tests {
             planner.desired_mute_with_foreground(planner.match_kind("game.exe", 10), true, true,),
             Some(false)
         );
-    }
-
-    #[test]
-    fn target_state_is_not_cleared_by_non_foreground_session() {
-        let matcher = TargetMatcher::new(&[TargetProcess::new("game.exe").unwrap()]);
-        let planner = MutePlanner::new(&matcher, Some(20), Some("other.exe"));
-
-        assert!(!planner.can_clear_managed_target_state(
-            Some(TargetMatchKind::ProcessName),
-            10,
-            false,
-        ));
-    }
-
-    #[test]
-    fn target_state_is_cleared_by_foreground_session() {
-        let matcher = TargetMatcher::new(&[TargetProcess::new("game.exe").unwrap()]);
-        let planner = MutePlanner::new(&matcher, Some(20), Some("game.exe"));
-
-        assert!(planner.can_clear_managed_target_state(
-            Some(TargetMatchKind::ProcessName),
-            20,
-            true,
-        ));
-    }
-
-    #[test]
-    fn target_state_is_not_cleared_by_foreground_process_name_only() {
-        let matcher = TargetMatcher::new(&[TargetProcess::new("game.exe").unwrap()]);
-        let planner = MutePlanner::new(&matcher, Some(20), Some("game.exe"));
-
-        assert!(!planner.can_clear_managed_target_state(
-            Some(TargetMatchKind::ProcessName),
-            10,
-            true,
-        ));
-    }
-
-    #[test]
-    fn pid_target_state_can_clear_by_foreground_process_name_fallback() {
-        let matcher = TargetMatcher::new(&[TargetProcess::for_pid("game.exe", 10).unwrap()]);
-        let planner = MutePlanner::new(&matcher, Some(20), Some("game.exe"));
-
-        assert!(planner.session_is_foreground("game.exe", 10));
-        assert!(planner.can_clear_managed_target_state(Some(TargetMatchKind::Pid), 10, true,));
-    }
-
-    #[test]
-    fn restore_mode_can_clear_target_state_without_foreground() {
-        let matcher = TargetMatcher::new(&[]);
-        let planner = MutePlanner::new(&matcher, None, None);
-
-        assert!(planner.can_clear_managed_target_state(None, 20, false));
     }
 
     #[test]

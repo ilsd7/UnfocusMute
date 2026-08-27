@@ -1,9 +1,8 @@
 use super::checkbox;
 use super::constants::{
     ID_LANGUAGE_PROMPT_COMBO, ID_LANGUAGE_PROMPT_COMBO_FRAME, ID_LANGUAGE_PROMPT_HIDE_ON_CLOSE,
-    ID_LANGUAGE_PROMPT_OK, ID_LANGUAGE_PROMPT_RESTORE_EXIT, ID_LANGUAGE_PROMPT_START_MINIMIZED,
-    ID_LANGUAGE_PROMPT_STARTUP, ID_LANGUAGE_PROMPT_THEME, LANGUAGE_PROMPT_CLASS_NAME,
-    WM_REDRAW_DEFERRED_CONTROL,
+    ID_LANGUAGE_PROMPT_OK, ID_LANGUAGE_PROMPT_START_MINIMIZED, ID_LANGUAGE_PROMPT_STARTUP,
+    ID_LANGUAGE_PROMPT_THEME, LANGUAGE_PROMPT_CLASS_NAME, WM_REDRAW_DEFERRED_CONTROL,
 };
 use super::language_combo::{LanguageCombo, LanguageComboIds};
 use super::message_dialog::show_info_dialog;
@@ -47,7 +46,6 @@ struct LanguagePrompt {
     language_combo: Option<LanguageCombo>,
     start_minimized_check: HWND,
     launch_on_startup_check: HWND,
-    restore_on_exit_check: HWND,
     hide_to_tray_on_close_check: HWND,
     theme_button: HWND,
     start_button: HWND,
@@ -64,7 +62,7 @@ struct LanguagePrompt {
 const LANGUAGE_PROMPT_WINDOW_STYLE: WINDOW_STYLE =
     WINDOW_STYLE(WS_OVERLAPPED.0 | WS_CAPTION.0 | WS_SYSMENU.0);
 const LANGUAGE_PROMPT_CLIENT_WIDTH: i32 = 620;
-const LANGUAGE_PROMPT_MIN_CLIENT_HEIGHT: i32 = 250;
+const LANGUAGE_PROMPT_MIN_CLIENT_HEIGHT: i32 = 220;
 const LANGUAGE_PROMPT_MARGIN: i32 = 32;
 const LANGUAGE_PROMPT_BOTTOM_MARGIN: i32 = 16;
 const LANGUAGE_PROMPT_CONTENT_WIDTH: i32 =
@@ -86,8 +84,8 @@ const LANGUAGE_PROMPT_BUTTON_TOP_GAP: i32 = 12;
 const LANGUAGE_PROMPT_BUTTON_HEIGHT: i32 = 34;
 const _: () = {
     let single_line_options_bottom = LANGUAGE_PROMPT_OPTIONS_Y
-        + LANGUAGE_PROMPT_OPTION_HEIGHT * 4
-        + LANGUAGE_PROMPT_OPTION_GAP * 3;
+        + LANGUAGE_PROMPT_OPTION_HEIGHT * 3
+        + LANGUAGE_PROMPT_OPTION_GAP * 2;
     assert!(
         single_line_options_bottom
             + LANGUAGE_PROMPT_BUTTON_TOP_GAP
@@ -103,7 +101,6 @@ pub(super) struct InitialPreferences {
     pub(super) theme: ThemePreference,
     pub(super) start_minimized: bool,
     pub(super) launch_on_startup: bool,
-    pub(super) restore_on_exit: bool,
     pub(super) hide_to_tray_on_close: bool,
 }
 
@@ -116,7 +113,6 @@ fn recommended_initial_preferences(
         theme,
         start_minimized: true,
         launch_on_startup: true,
-        restore_on_exit: true,
         hide_to_tray_on_close: true,
     }
 }
@@ -128,7 +124,6 @@ impl LanguagePrompt {
             language_combo: None,
             start_minimized_check: HWND::default(),
             launch_on_startup_check: HWND::default(),
-            restore_on_exit_check: HWND::default(),
             hide_to_tray_on_close_check: HWND::default(),
             theme_button: HWND::default(),
             start_button: HWND::default(),
@@ -206,19 +201,6 @@ impl LanguagePrompt {
                 ID_LANGUAGE_PROMPT_STARTUP,
             )?
         };
-        self.restore_on_exit_check = unsafe {
-            create_multiline_checkbox(
-                hwnd,
-                instance,
-                strings.restore_on_exit,
-                LANGUAGE_PROMPT_MARGIN,
-                LANGUAGE_PROMPT_OPTIONS_Y
-                    + (LANGUAGE_PROMPT_OPTION_HEIGHT + LANGUAGE_PROMPT_OPTION_GAP) * 2,
-                LANGUAGE_PROMPT_CONTENT_WIDTH,
-                LANGUAGE_PROMPT_OPTION_HEIGHT,
-                ID_LANGUAGE_PROMPT_RESTORE_EXIT,
-            )?
-        };
         self.hide_to_tray_on_close_check = unsafe {
             create_multiline_checkbox(
                 hwnd,
@@ -226,7 +208,7 @@ impl LanguagePrompt {
                 strings.hide_to_tray_on_close,
                 LANGUAGE_PROMPT_MARGIN,
                 LANGUAGE_PROMPT_OPTIONS_Y
-                    + (LANGUAGE_PROMPT_OPTION_HEIGHT + LANGUAGE_PROMPT_OPTION_GAP) * 3,
+                    + (LANGUAGE_PROMPT_OPTION_HEIGHT + LANGUAGE_PROMPT_OPTION_GAP) * 2,
                 LANGUAGE_PROMPT_CONTENT_WIDTH,
                 LANGUAGE_PROMPT_OPTION_HEIGHT,
                 ID_LANGUAGE_PROMPT_HIDE_ON_CLOSE,
@@ -250,7 +232,6 @@ impl LanguagePrompt {
             let recommended = recommended_initial_preferences(self.current, self.theme_preference);
             set_checkbox(self.start_minimized_check, recommended.start_minimized);
             set_checkbox(self.launch_on_startup_check, recommended.launch_on_startup);
-            set_checkbox(self.restore_on_exit_check, recommended.restore_on_exit);
             set_checkbox(
                 self.hide_to_tray_on_close_check,
                 recommended.hide_to_tray_on_close,
@@ -267,7 +248,6 @@ impl LanguagePrompt {
             for control in [
                 self.start_minimized_check,
                 self.launch_on_startup_check,
-                self.restore_on_exit_check,
                 self.hide_to_tray_on_close_check,
                 self.start_button,
             ] {
@@ -306,7 +286,6 @@ impl LanguagePrompt {
         for control in [
             self.start_minimized_check,
             self.launch_on_startup_check,
-            self.restore_on_exit_check,
             self.hide_to_tray_on_close_check,
         ] {
             apply_native_control_theme(control);
@@ -340,7 +319,6 @@ impl LanguagePrompt {
             set_text(self.theme_button, self.theme_action_label());
             set_text(self.start_minimized_check, strings.start_minimized);
             set_text(self.launch_on_startup_check, strings.launch_on_startup);
-            set_text(self.restore_on_exit_check, strings.restore_on_exit);
             set_text(
                 self.hide_to_tray_on_close_check,
                 strings.hide_to_tray_on_close,
@@ -392,7 +370,6 @@ impl LanguagePrompt {
         let options = [
             (self.start_minimized_check, strings.start_minimized),
             (self.launch_on_startup_check, strings.launch_on_startup),
-            (self.restore_on_exit_check, strings.restore_on_exit),
             (
                 self.hide_to_tray_on_close_check,
                 strings.hide_to_tray_on_close,
@@ -473,7 +450,6 @@ impl LanguagePrompt {
             theme: self.theme_preference,
             start_minimized: unsafe { is_checked(self.start_minimized_check) },
             launch_on_startup: unsafe { is_checked(self.launch_on_startup_check) },
-            restore_on_exit: unsafe { is_checked(self.restore_on_exit_check) },
             hide_to_tray_on_close: unsafe { is_checked(self.hide_to_tray_on_close_check) },
         };
         self.selected = Some(selected);
@@ -508,10 +484,10 @@ fn option_height(text_width: i32) -> i32 {
     }
 }
 
-fn prompt_client_height(option_heights: [i32; 4]) -> i32 {
+fn prompt_client_height(option_heights: [i32; 3]) -> i32 {
     LANGUAGE_PROMPT_OPTIONS_Y
         + option_heights.into_iter().sum::<i32>()
-        + LANGUAGE_PROMPT_OPTION_GAP * 3
+        + LANGUAGE_PROMPT_OPTION_GAP * 2
         + LANGUAGE_PROMPT_BUTTON_TOP_GAP
         + LANGUAGE_PROMPT_BUTTON_HEIGHT
         + LANGUAGE_PROMPT_BOTTOM_MARGIN
@@ -785,7 +761,6 @@ mod tests {
         assert_eq!(preferences.theme, ThemePreference::System);
         assert!(preferences.start_minimized);
         assert!(preferences.launch_on_startup);
-        assert!(preferences.restore_on_exit);
         assert!(preferences.hide_to_tray_on_close);
     }
 
@@ -819,13 +794,12 @@ mod tests {
     #[test]
     fn prompt_height_grows_with_wrapped_options() {
         assert_eq!(
-            prompt_client_height([LANGUAGE_PROMPT_OPTION_HEIGHT; 4]),
+            prompt_client_height([LANGUAGE_PROMPT_OPTION_HEIGHT; 3]),
             LANGUAGE_PROMPT_MIN_CLIENT_HEIGHT
         );
         assert_eq!(
             prompt_client_height([
                 LANGUAGE_PROMPT_OPTION_TALL_HEIGHT,
-                LANGUAGE_PROMPT_OPTION_HEIGHT,
                 LANGUAGE_PROMPT_OPTION_HEIGHT,
                 LANGUAGE_PROMPT_OPTION_HEIGHT,
             ]),

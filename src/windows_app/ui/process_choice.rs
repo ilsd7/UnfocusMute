@@ -14,15 +14,11 @@ impl ProcessChoice {
         let (display_name, search_text) = match pid {
             Some(pid) => (
                 Some(display_pid_text(&name, pid)),
-                Some(search_text_with_number(
-                    search_name.as_ref(),
-                    pid as usize,
-                    "pid",
-                )),
+                Some(format!("{} {pid} pid", search_name.as_ref())),
             ),
             None if count > 1 => (
                 Some(display_pid_count_text(&name, count)),
-                Some(search_text_with_number(search_name.as_ref(), count, "pid")),
+                Some(format!("{} {count} pid", search_name.as_ref())),
             ),
             None => (None, into_owned_if_allocated(search_name)),
         };
@@ -45,25 +41,15 @@ impl ProcessChoice {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub(super) enum SearchTerms<'a> {
-    Empty,
-    One(Cow<'a, str>),
-    Two(Cow<'a, str>, Cow<'a, str>),
-    Many(Vec<Cow<'a, str>>),
-}
+pub(super) struct SearchTerms<'a>(Vec<Cow<'a, str>>);
 
 impl SearchTerms<'_> {
     pub(super) fn is_empty(&self) -> bool {
-        matches!(self, Self::Empty)
+        self.0.is_empty()
     }
 
     fn all(&self, mut predicate: impl FnMut(&str) -> bool) -> bool {
-        match self {
-            Self::Empty => true,
-            Self::One(term) => predicate(term.as_ref()),
-            Self::Two(first, second) => predicate(first.as_ref()) && predicate(second.as_ref()),
-            Self::Many(terms) => terms.iter().all(|term| predicate(term.as_ref())),
-        }
+        self.0.iter().all(|term| predicate(term.as_ref()))
     }
 }
 
@@ -92,77 +78,15 @@ fn into_owned_if_allocated(text: Cow<'_, str>) -> Option<String> {
 }
 
 fn display_pid_text(text: &str, pid: u32) -> String {
-    let mut output = String::with_capacity(text.len() + 7 + decimal_digit_count(pid as usize));
-    output.push_str(text);
-    output.push_str(" (PID ");
-    push_decimal(&mut output, pid as usize);
-    output.push(')');
-    output
+    format!("{text} (PID {pid})")
 }
 
 fn display_pid_count_text(text: &str, count: usize) -> String {
-    let mut output = String::with_capacity(text.len() + 7 + decimal_digit_count(count));
-    output.push_str(text);
-    output.push_str(" (");
-    push_decimal(&mut output, count);
-    output.push_str(" PID");
-    output.push(')');
-    output
-}
-
-fn search_text_with_number(text: &str, number: usize, label: &str) -> String {
-    let mut output =
-        String::with_capacity(text.len() + 2 + label.len() + decimal_digit_count(number));
-    output.push_str(text);
-    output.push(' ');
-    push_decimal(&mut output, number);
-    output.push(' ');
-    output.push_str(label);
-    output
-}
-
-fn push_decimal(output: &mut String, mut number: usize) {
-    let mut digits = [0u8; 20];
-    let mut len = 0;
-    loop {
-        digits[len] = b'0' + (number % 10) as u8;
-        len += 1;
-        number /= 10;
-        if number == 0 {
-            break;
-        }
-    }
-    for digit in digits[..len].iter().rev() {
-        output.push(*digit as char);
-    }
-}
-
-fn decimal_digit_count(number: usize) -> usize {
-    if number == 0 {
-        1
-    } else {
-        number.ilog10() as usize + 1
-    }
+    format!("{text} ({count} PID)")
 }
 
 pub(super) fn search_terms(query: &str) -> SearchTerms<'_> {
-    let mut terms = query.split_whitespace().map(lowercase_if_needed);
-    let Some(first) = terms.next() else {
-        return SearchTerms::Empty;
-    };
-    let Some(second) = terms.next() else {
-        return SearchTerms::One(first);
-    };
-    let Some(third) = terms.next() else {
-        return SearchTerms::Two(first, second);
-    };
-
-    let mut many = Vec::with_capacity(terms.size_hint().0 + 3);
-    many.push(first);
-    many.push(second);
-    many.push(third);
-    many.extend(terms);
-    SearchTerms::Many(many)
+    SearchTerms(query.split_whitespace().map(lowercase_if_needed).collect())
 }
 
 #[cfg(test)]
@@ -223,18 +147,15 @@ mod tests {
     }
 
     #[test]
-    fn single_search_term_avoids_term_vec() {
-        assert!(matches!(
-            search_terms("player"),
-            SearchTerms::One(Cow::Borrowed("player"))
-        ));
+    fn search_terms_preserve_borrowed_lowercase_text() {
+        assert_eq!(search_terms("player").0, [Cow::Borrowed("player")]);
     }
 
     #[test]
-    fn two_search_terms_avoid_term_vec() {
-        assert!(matches!(
-            search_terms("player 4242"),
-            SearchTerms::Two(Cow::Borrowed("player"), Cow::Borrowed("4242"))
-        ));
+    fn search_terms_collect_each_word() {
+        assert_eq!(
+            search_terms("player 4242").0,
+            [Cow::Borrowed("player"), Cow::Borrowed("4242")]
+        );
     }
 }

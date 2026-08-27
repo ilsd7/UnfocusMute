@@ -3,9 +3,8 @@ use super::constants::{
     ID_SETTINGS_WINDOW_GITHUB, ID_SETTINGS_WINDOW_GITHUB_TOOLTIP, ID_SETTINGS_WINDOW_HIDE_ON_CLOSE,
     ID_SETTINGS_WINDOW_LANGUAGE, ID_SETTINGS_WINDOW_LANGUAGE_FRAME,
     ID_SETTINGS_WINDOW_LAUNCH_STARTUP, ID_SETTINGS_WINDOW_OPEN_CONFIG,
-    ID_SETTINGS_WINDOW_RESTORE_EXIT, ID_SETTINGS_WINDOW_START_MINIMIZED, ID_SETTINGS_WINDOW_THEME,
-    SETTINGS_WINDOW_CLASS_NAME, SS_CENTER_STYLE, SS_CENTERIMAGE_STYLE, SS_OWNERDRAW_STYLE,
-    WM_REDRAW_DEFERRED_CONTROL,
+    ID_SETTINGS_WINDOW_START_MINIMIZED, ID_SETTINGS_WINDOW_THEME, SETTINGS_WINDOW_CLASS_NAME,
+    SS_CENTER_STYLE, SS_CENTERIMAGE_STYLE, SS_OWNERDRAW_STYLE, WM_REDRAW_DEFERRED_CONTROL,
 };
 use super::drawing::{draw_text_line, draw_text_line_at_visual_center};
 use super::language_combo::{LanguageCombo, LanguageComboIds};
@@ -59,7 +58,7 @@ use windows::core::{PCWSTR, w};
 const SETTINGS_WINDOW_STYLE: WINDOW_STYLE =
     WINDOW_STYLE(WS_OVERLAPPED.0 | WS_CAPTION.0 | WS_SYSMENU.0);
 const SETTINGS_CLIENT_WIDTH: i32 = 428;
-const SETTINGS_CLIENT_HEIGHT: i32 = 430;
+const SETTINGS_CLIENT_HEIGHT: i32 = 400;
 const SETTINGS_CARD_X: i32 = 16;
 const SETTINGS_CARD_WIDTH: i32 = SETTINGS_CLIENT_WIDTH - SETTINGS_CARD_X * 2;
 const SETTINGS_CARD_INSET: i32 = 16;
@@ -81,12 +80,11 @@ const SETTINGS_THEME_BUTTON_Y: i32 =
 
 const SETTINGS_BEHAVIOR_CARD_Y: i32 =
     SETTINGS_THEME_CARD_Y + SETTINGS_THEME_CARD_HEIGHT + SETTINGS_CARD_GAP;
-const SETTINGS_BEHAVIOR_CARD_HEIGHT: i32 = 166;
+const SETTINGS_BEHAVIOR_CARD_HEIGHT: i32 = 136;
 const SETTINGS_BEHAVIOR_Y: i32 = SETTINGS_BEHAVIOR_CARD_Y + 12;
 const SETTINGS_CHECK_1_Y: i32 = SETTINGS_BEHAVIOR_Y + 26;
 const SETTINGS_CHECK_2_Y: i32 = SETTINGS_CHECK_1_Y + 30;
 const SETTINGS_CHECK_3_Y: i32 = SETTINGS_CHECK_2_Y + 30;
-const SETTINGS_CHECK_4_Y: i32 = SETTINGS_CHECK_3_Y + 30;
 
 const SETTINGS_LANGUAGE_CARD_Y: i32 =
     SETTINGS_BEHAVIOR_CARD_Y + SETTINGS_BEHAVIOR_CARD_HEIGHT + SETTINGS_CARD_GAP;
@@ -136,7 +134,7 @@ const _: () = {
         SETTINGS_INFO_CARD_Y + SETTINGS_INFO_CARD_HEIGHT
             == SETTINGS_CLIENT_HEIGHT - SETTINGS_CARD_X
     );
-    assert!(SETTINGS_CHECK_4_Y + 26 < SETTINGS_BEHAVIOR_CARD_Y + SETTINGS_BEHAVIOR_CARD_HEIGHT);
+    assert!(SETTINGS_CHECK_3_Y + 26 < SETTINGS_BEHAVIOR_CARD_Y + SETTINGS_BEHAVIOR_CARD_HEIGHT);
     assert!(SETTINGS_OPEN_CONFIG_Y + SETTINGS_OPEN_CONFIG_HEIGHT < SETTINGS_CLIENT_HEIGHT);
 };
 
@@ -155,7 +153,6 @@ pub(super) struct SettingsPreferences {
     pub(super) theme: ThemePreference,
     pub(super) start_minimized: bool,
     pub(super) launch_on_startup: bool,
-    pub(super) restore_on_exit: bool,
     pub(super) hide_to_tray_on_close: bool,
 }
 
@@ -164,7 +161,6 @@ impl SettingsPreferences {
         SettingsChanges {
             start_minimized: changed_value(self.start_minimized, selected.start_minimized),
             launch_on_startup: changed_value(self.launch_on_startup, selected.launch_on_startup),
-            restore_on_exit: changed_value(self.restore_on_exit, selected.restore_on_exit),
             hide_to_tray_on_close: changed_value(
                 self.hide_to_tray_on_close,
                 selected.hide_to_tray_on_close,
@@ -177,7 +173,6 @@ impl SettingsPreferences {
 pub(super) struct SettingsChanges {
     pub(super) start_minimized: Option<bool>,
     pub(super) launch_on_startup: Option<bool>,
-    pub(super) restore_on_exit: Option<bool>,
     pub(super) hide_to_tray_on_close: Option<bool>,
 }
 
@@ -214,7 +209,6 @@ struct SettingsWindow {
     behavior_label: HWND,
     start_minimized_check: HWND,
     launch_startup_check: HWND,
-    restore_exit_check: HWND,
     hide_to_tray_on_close_check: HWND,
     language_label: HWND,
     language_combo: Option<LanguageCombo>,
@@ -243,7 +237,6 @@ impl SettingsWindow {
             behavior_label: HWND::default(),
             start_minimized_check: HWND::default(),
             launch_startup_check: HWND::default(),
-            restore_exit_check: HWND::default(),
             hide_to_tray_on_close_check: HWND::default(),
             language_label: HWND::default(),
             language_combo: None,
@@ -340,25 +333,13 @@ impl SettingsWindow {
                 ID_SETTINGS_WINDOW_LAUNCH_STARTUP,
             )?
         };
-        self.restore_exit_check = unsafe {
-            create_multiline_checkbox(
-                hwnd,
-                instance,
-                strings.restore_on_exit,
-                SETTINGS_CONTENT_X,
-                SETTINGS_CHECK_3_Y,
-                SETTINGS_CONTENT_WIDTH,
-                26,
-                ID_SETTINGS_WINDOW_RESTORE_EXIT,
-            )?
-        };
         self.hide_to_tray_on_close_check = unsafe {
             create_multiline_checkbox(
                 hwnd,
                 instance,
                 strings.hide_to_tray_on_close,
                 SETTINGS_CONTENT_X,
-                SETTINGS_CHECK_4_Y,
+                SETTINGS_CHECK_3_Y,
                 SETTINGS_CONTENT_WIDTH,
                 26,
                 ID_SETTINGS_WINDOW_HIDE_ON_CLOSE,
@@ -476,7 +457,6 @@ impl SettingsWindow {
             self.apply_font();
             set_checkbox(self.start_minimized_check, self.initial.start_minimized);
             set_checkbox(self.launch_startup_check, self.initial.launch_on_startup);
-            set_checkbox(self.restore_exit_check, self.initial.restore_on_exit);
             set_checkbox(
                 self.hide_to_tray_on_close_check,
                 self.initial.hide_to_tray_on_close,
@@ -497,7 +477,6 @@ impl SettingsWindow {
                 self.behavior_label,
                 self.start_minimized_check,
                 self.launch_startup_check,
-                self.restore_exit_check,
                 self.hide_to_tray_on_close_check,
                 self.language_label,
                 self.open_config_button,
@@ -519,7 +498,6 @@ impl SettingsWindow {
         for control in [
             self.start_minimized_check,
             self.launch_startup_check,
-            self.restore_exit_check,
             self.hide_to_tray_on_close_check,
         ] {
             apply_native_control_theme(control);
@@ -542,7 +520,6 @@ impl SettingsWindow {
             theme: self.theme_preference,
             start_minimized: unsafe { is_checked(self.start_minimized_check) },
             launch_on_startup: unsafe { is_checked(self.launch_startup_check) },
-            restore_on_exit: unsafe { is_checked(self.restore_exit_check) },
             hide_to_tray_on_close: unsafe { is_checked(self.hide_to_tray_on_close_check) },
         }
     }
@@ -624,7 +601,6 @@ impl SettingsWindow {
             set_text(self.behavior_label, strings.settings_behavior);
             set_text(self.start_minimized_check, strings.start_minimized);
             set_text(self.launch_startup_check, strings.launch_on_startup);
-            set_text(self.restore_exit_check, strings.restore_on_exit);
             set_text(
                 self.hide_to_tray_on_close_check,
                 strings.hide_to_tray_on_close,
@@ -1481,7 +1457,6 @@ mod tests {
             theme: ThemePreference::System,
             start_minimized: true,
             launch_on_startup: true,
-            restore_on_exit: true,
             hide_to_tray_on_close: true,
         }
     }
@@ -1500,14 +1475,14 @@ mod tests {
     fn behavior_changes_include_only_fields_changed_in_the_dialog() {
         let initial = preferences();
         let selected = SettingsPreferences {
-            restore_on_exit: false,
+            hide_to_tray_on_close: false,
             ..initial
         };
 
         assert_eq!(
             initial.behavior_changes(selected),
             SettingsChanges {
-                restore_on_exit: Some(false),
+                hide_to_tray_on_close: Some(false),
                 ..SettingsChanges::default()
             }
         );

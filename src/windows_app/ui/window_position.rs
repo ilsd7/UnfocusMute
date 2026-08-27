@@ -4,8 +4,8 @@ use super::win32::window_size_for_client_area;
 use crate::config::{AppConfig, WindowPosition, WindowSize};
 use windows::Win32::Foundation::{HWND, POINT, RECT};
 use windows::Win32::Graphics::Gdi::{
-    GetMonitorInfoW, MONITOR_DEFAULTTONEAREST, MONITOR_DEFAULTTONULL, MONITORINFO, MonitorFromRect,
-    MonitorFromWindow,
+    GetMonitorInfoW, HMONITOR, MONITOR_DEFAULTTONEAREST, MONITOR_DEFAULTTONULL, MONITORINFO,
+    MonitorFromRect, MonitorFromWindow,
 };
 use windows::Win32::UI::WindowsAndMessaging::{
     GetClientRect, GetSystemMetrics, GetWindowRect, MINMAXINFO, SM_CXSCREEN, SM_CYSCREEN,
@@ -14,6 +14,7 @@ use windows::Win32::UI::WindowsAndMessaging::{
 
 const SCALE_BASE: i32 = 1_000;
 const DEFAULT_USER_UI_SCALE: i32 = SCALE_BASE;
+const MIN_VISIBLE_EDGE: i32 = 80;
 
 const WMSZ_LEFT: usize = 1;
 const WMSZ_RIGHT: usize = 2;
@@ -59,26 +60,94 @@ pub(super) fn should_start_hidden(
 }
 
 pub(super) fn initial_window_placement(config: &AppConfig) -> InitialWindowPlacement {
-    let work_area = primary_work_area_rect();
     let canvas = main_client_canvas();
     let requested_scale = config
         .window_size
         .map(user_scale_for_logical_size)
         .unwrap_or(DEFAULT_USER_UI_SCALE);
-    let scale = fitted_user_scale(requested_scale, work_area, canvas);
+    let (requested_width, requested_height) = canvas.outer_size(requested_scale);
+    let primary_work_area = primary_work_area_rect();
+    let work_area = initial_work_area(
+        config.window_position,
+        requested_width,
+        requested_height,
+        primary_work_area,
+        nearest_monitor_work_area_for_rect,
+    );
+    let minimum_visible_extent = scale_i32(system_px(MIN_VISIBLE_EDGE), requested_scale);
+    let (placement, scale) = initial_placement_in_work_area(
+        config.window_position,
+        requested_scale,
+        work_area,
+        canvas,
+        minimum_visible_extent,
+    );
     set_user_ui_scale(scale);
 
+    placement
+}
+
+fn initial_work_area(
+    saved_position: Option<WindowPosition>,
+    requested_width: i32,
+    requested_height: i32,
+    primary_work_area: RECT,
+    nearest_work_area: impl FnOnce(RECT) -> Option<RECT>,
+) -> RECT {
+    saved_position
+        .and_then(|position| {
+            nearest_work_area(window_rect(position, requested_width, requested_height))
+        })
+        .unwrap_or(primary_work_area)
+}
+
+fn initial_placement_in_work_area(
+    saved_position: Option<WindowPosition>,
+    requested_scale: i32,
+    work_area: RECT,
+    canvas: ClientCanvas,
+    minimum_visible_extent: i32,
+) -> (InitialWindowPlacement, i32) {
+    let (requested_width, requested_height) = canvas.outer_size(requested_scale);
+    if let Some(position) = saved_position.filter(|position| {
+        window_size_fits_rect(requested_width, requested_height, work_area)
+            && window_has_usable_top_edge(
+                window_rect(*position, requested_width, requested_height),
+                work_area,
+                minimum_visible_extent,
+            )
+    }) {
+        return (
+            InitialWindowPlacement {
+                position,
+                width: requested_width,
+                height: requested_height,
+            },
+            requested_scale,
+        );
+    }
+
+    let scale = fitted_user_scale(requested_scale, work_area, canvas);
     let (width, height) = canvas.outer_size(scale);
-    let position = config
-        .window_position
-        .filter(|position| window_position_is_visible(*position, width, height))
+    let position = saved_position
+        .map(|position| clamp_window_position_to_rect(position, width, height, work_area))
         .unwrap_or_else(|| centered_position_in_rect(width, height, work_area));
 
-    InitialWindowPlacement {
-        position,
-        width,
-        height,
-    }
+    (
+        InitialWindowPlacement {
+            position,
+            width,
+            height,
+        },
+        scale,
+    )
+}
+
+fn window_size_fits_rect(width: i32, height: i32, bounds: RECT) -> bool {
+    width > 0
+        && height > 0
+        && width <= bounds.right.saturating_sub(bounds.left)
+        && height <= bounds.bottom.saturating_sub(bounds.top)
 }
 
 pub(super) fn current_logical_window_size() -> WindowSize {
@@ -192,43 +261,44 @@ pub(super) fn window_position_is_visible(
     width: i32,
     height: i32,
 ) -> bool {
-    const MIN_VISIBLE_EDGE: i32 = 80;
-
     if width <= 0 || height <= 0 {
         return false;
     }
 
-    let window_rect = RECT {
-        left: position.x,
-        top: position.y,
-        right: position.x.saturating_add(width),
-        bottom: position.y.saturating_add(height),
-    };
+    let window_rect = window_rect(position, width, height);
     let monitor = unsafe { MonitorFromRect(&raw const window_rect, MONITOR_DEFAULTTONULL) };
     if monitor.is_invalid() {
         return false;
     }
-    let mut info = MONITORINFO {
-        cbSize: std::mem::size_of::<MONITORINFO>() as u32,
-        ..Default::default()
+    let Some(work_area) = monitor_work_area(monitor) else {
+        return false;
     };
-    if !unsafe { GetMonitorInfoW(monitor, &mut info) }.as_bool() {
+
+    let min_visible_edge = px(MIN_VISIBLE_EDGE);
+    window_has_usable_top_edge(window_rect, work_area, min_visible_edge)
+}
+
+fn window_rect(position: WindowPosition, width: i32, height: i32) -> RECT {
+    RECT {
+        left: position.x,
+        top: position.y,
+        right: position.x.saturating_add(width),
+        bottom: position.y.saturating_add(height),
+    }
+}
+
+fn window_has_usable_top_edge(window: RECT, work_area: RECT, minimum_extent: i32) -> bool {
+    let width = window.right.saturating_sub(window.left);
+    let height = window.bottom.saturating_sub(window.top);
+    if width <= 0 || height <= 0 || minimum_extent <= 0 {
         return false;
     }
 
-    let min_visible_edge = px(MIN_VISIBLE_EDGE);
-    visible_extent(
-        window_rect.left,
-        window_rect.right,
-        info.rcMonitor.left,
-        info.rcMonitor.right,
-    ) >= min_visible_edge
-        && visible_extent(
-            window_rect.top,
-            window_rect.bottom,
-            info.rcMonitor.top,
-            info.rcMonitor.bottom,
-        ) >= min_visible_edge
+    let required_width = minimum_extent.min(width);
+    let required_height = minimum_extent.min(height);
+    visible_extent(window.left, window.right, work_area.left, work_area.right) >= required_width
+        && window.top >= work_area.top
+        && window.top.saturating_add(required_height) <= work_area.bottom
 }
 
 fn visible_extent(start: i32, end: i32, bounds_start: i32, bounds_end: i32) -> i32 {
@@ -406,8 +476,17 @@ pub(super) fn work_area_rect(hwnd: HWND) -> RECT {
     monitor_work_area_rect(hwnd).unwrap_or_else(primary_work_area_rect)
 }
 
+fn nearest_monitor_work_area_for_rect(rect: RECT) -> Option<RECT> {
+    let monitor = unsafe { MonitorFromRect(&raw const rect, MONITOR_DEFAULTTONEAREST) };
+    monitor_work_area(monitor)
+}
+
 fn monitor_work_area_rect(hwnd: HWND) -> Option<RECT> {
     let monitor = unsafe { MonitorFromWindow(hwnd, MONITOR_DEFAULTTONEAREST) };
+    monitor_work_area(monitor)
+}
+
+fn monitor_work_area(monitor: HMONITOR) -> Option<RECT> {
     if monitor.is_invalid() {
         return None;
     }
@@ -472,16 +551,20 @@ mod tests {
     const TEST_MAX_WIDTH: i32 = TEST_CLIENT_WIDTH * 2 + TEST_NONCLIENT_WIDTH;
     const TEST_MAX_HEIGHT: i32 = TEST_CLIENT_HEIGHT * 2 + TEST_NONCLIENT_HEIGHT;
 
+    fn test_canvas() -> ClientCanvas {
+        ClientCanvas {
+            width: TEST_CLIENT_WIDTH,
+            height: TEST_CLIENT_HEIGHT,
+            nonclient_width: TEST_NONCLIENT_WIDTH,
+            nonclient_height: TEST_NONCLIENT_HEIGHT,
+        }
+    }
+
     fn constrain_test_rect(rect: &mut RECT, edge: usize) {
         constrain_rect_to_client_aspect(
             rect,
             edge,
-            ClientCanvas {
-                width: TEST_CLIENT_WIDTH,
-                height: TEST_CLIENT_HEIGHT,
-                nonclient_width: TEST_NONCLIENT_WIDTH,
-                nonclient_height: TEST_NONCLIENT_HEIGHT,
-            },
+            test_canvas(),
             TEST_MIN_WIDTH,
             TEST_MIN_HEIGHT,
             TEST_MAX_WIDTH,
@@ -508,6 +591,206 @@ mod tests {
         assert_eq!(visible_extent(20, 120, 0, 100), 80);
         assert_eq!(visible_extent(-20, 40, 0, 100), 40);
         assert_eq!(visible_extent(120, 180, 0, 100), 0);
+    }
+
+    #[test]
+    fn saved_secondary_monitor_drives_initial_scale_and_position() {
+        let primary_work_area = RECT {
+            left: 0,
+            top: 0,
+            right: 800,
+            bottom: 600,
+        };
+        let secondary_work_area = RECT {
+            left: 800,
+            top: -160,
+            right: 3_360,
+            bottom: 1_280,
+        };
+        let saved_position = WindowPosition { x: 1_000, y: 0 };
+        let requested_scale = 1_500;
+        let canvas = test_canvas();
+        let (requested_width, requested_height) = canvas.outer_size(requested_scale);
+
+        assert!(
+            fitted_user_scale(requested_scale, primary_work_area, canvas) < requested_scale,
+            "the asymmetric primary must be too small for the saved size"
+        );
+        let selected_work_area = initial_work_area(
+            Some(saved_position),
+            requested_width,
+            requested_height,
+            primary_work_area,
+            |saved_rect| {
+                assert_eq!(
+                    saved_rect,
+                    window_rect(saved_position, requested_width, requested_height)
+                );
+                Some(secondary_work_area)
+            },
+        );
+        let (placement, scale) = initial_placement_in_work_area(
+            Some(saved_position),
+            requested_scale,
+            selected_work_area,
+            canvas,
+            80,
+        );
+
+        assert_eq!(selected_work_area, secondary_work_area);
+        assert_eq!(scale, requested_scale);
+        assert_eq!(placement.position, saved_position);
+        assert_eq!(
+            (placement.width, placement.height),
+            canvas.outer_size(scale)
+        );
+    }
+
+    #[test]
+    fn recoverable_partial_position_is_preserved() {
+        let work_area = RECT {
+            left: 0,
+            top: 0,
+            right: 1_920,
+            bottom: 1_040,
+        };
+        let saved_position = WindowPosition { x: 1_840, y: 100 };
+        let canvas = test_canvas();
+
+        let (placement, scale) = initial_placement_in_work_area(
+            Some(saved_position),
+            DEFAULT_USER_UI_SCALE,
+            work_area,
+            canvas,
+            80,
+        );
+
+        assert_eq!(scale, DEFAULT_USER_UI_SCALE);
+        assert_eq!(placement.position, saved_position);
+        assert!(placement.position.x + placement.width > work_area.right);
+    }
+
+    #[test]
+    fn removed_monitor_position_is_clamped_to_the_nearest_remaining_work_area() {
+        let remaining_work_area = RECT {
+            left: 0,
+            top: 0,
+            right: 1_280,
+            bottom: 720,
+        };
+        let saved_position = WindowPosition { x: 2_500, y: 900 };
+        let canvas = test_canvas();
+        let (requested_width, requested_height) = canvas.outer_size(DEFAULT_USER_UI_SCALE);
+        let selected_work_area = initial_work_area(
+            Some(saved_position),
+            requested_width,
+            requested_height,
+            remaining_work_area,
+            |_| Some(remaining_work_area),
+        );
+        let (placement, _) = initial_placement_in_work_area(
+            Some(saved_position),
+            DEFAULT_USER_UI_SCALE,
+            selected_work_area,
+            canvas,
+            80,
+        );
+
+        assert_eq!(placement.position, WindowPosition { x: 620, y: 130 });
+    }
+
+    #[test]
+    fn failed_monitor_lookup_falls_back_to_the_primary_work_area() {
+        let primary_work_area = RECT {
+            left: 100,
+            top: 40,
+            right: 1_300,
+            bottom: 740,
+        };
+
+        assert_eq!(
+            initial_work_area(
+                Some(WindowPosition { x: 5_000, y: 2_000 }),
+                TEST_MIN_WIDTH,
+                TEST_MIN_HEIGHT,
+                primary_work_area,
+                |_| None,
+            ),
+            primary_work_area
+        );
+    }
+
+    #[test]
+    fn visible_corner_without_a_caption_is_not_a_usable_position() {
+        let work_area = RECT {
+            left: 0,
+            top: 0,
+            right: 1_920,
+            bottom: 1_040,
+        };
+        let canvas = test_canvas();
+        let corner_only_position = WindowPosition { x: -580, y: -510 };
+        let corner_only_rect = window_rect(corner_only_position, TEST_MIN_WIDTH, TEST_MIN_HEIGHT);
+
+        assert_eq!(
+            visible_extent(
+                corner_only_rect.left,
+                corner_only_rect.right,
+                work_area.left,
+                work_area.right,
+            ),
+            80
+        );
+        assert_eq!(
+            visible_extent(
+                corner_only_rect.top,
+                corner_only_rect.bottom,
+                work_area.top,
+                work_area.bottom,
+            ),
+            80
+        );
+        assert!(!window_has_usable_top_edge(corner_only_rect, work_area, 80));
+
+        let (placement, _) = initial_placement_in_work_area(
+            Some(corner_only_position),
+            DEFAULT_USER_UI_SCALE,
+            work_area,
+            canvas,
+            80,
+        );
+        assert_eq!(placement.position, WindowPosition { x: 0, y: 0 });
+
+        let visible_caption_rect = window_rect(
+            WindowPosition { x: 1_840, y: 100 },
+            TEST_MIN_WIDTH,
+            TEST_MIN_HEIGHT,
+        );
+        assert!(window_has_usable_top_edge(
+            visible_caption_rect,
+            work_area,
+            80
+        ));
+    }
+
+    #[test]
+    fn initial_position_is_clamped_inside_the_taskbar_adjusted_work_area() {
+        let work_area = RECT {
+            left: 0,
+            top: 48,
+            right: 1_920,
+            bottom: 1_040,
+        };
+        let (placement, _) = initial_placement_in_work_area(
+            Some(WindowPosition { x: 100, y: 0 }),
+            DEFAULT_USER_UI_SCALE,
+            work_area,
+            test_canvas(),
+            80,
+        );
+
+        assert_eq!(placement.position, WindowPosition { x: 100, y: 48 });
+        assert!(placement.position.y + placement.height <= work_area.bottom);
     }
 
     #[test]
