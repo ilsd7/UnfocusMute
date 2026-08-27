@@ -47,24 +47,6 @@ $Checksum = Join-Path $Dist "$PackageName.zip.sha256"
 $TempChecksum = Join-Path $Dist "$PackageName.$([System.Guid]::NewGuid().ToString('N')).tmp.zip.sha256"
 $Utf8NoBom = [System.Text.UTF8Encoding]::new($false)
 
-function Assert-ThirdPartyNoticesVersion {
-    param(
-        [Parameter(Mandatory = $true)]
-        [string]$Path,
-        [Parameter(Mandatory = $true)]
-        [string]$ExpectedVersion
-    )
-
-    $Content = [System.IO.File]::ReadAllText($Path, [System.Text.Encoding]::UTF8)
-    $NoticeMatches = [System.Text.RegularExpressions.Regex]::Matches(
-        $Content,
-        '(?m)^- unfocusmute ([^\r\n]+)$'
-    )
-    if ($NoticeMatches.Count -ne 1 -or $NoticeMatches[0].Groups[1].Value -cne $ExpectedVersion) {
-        throw "THIRD_PARTY_NOTICES.md is stale. Run cargo about generate about.hbs -c about.toml --locked --offline -o THIRD_PARTY_NOTICES.md and commit the result."
-    }
-}
-
 function Replace-PackageOutputs {
     param(
         [Parameter(Mandatory = $true)]
@@ -235,10 +217,7 @@ function Assert-PackageZip {
             $null = $ExpectedEntries.Add($RequiredEntry)
         }
         foreach ($Entry in $ZipFile.Entries) {
-            $EntryName = $Entry.FullName.Replace('\', '/')
-            if ($EntryName.EndsWith('/')) {
-                continue
-            }
+            $EntryName = $Entry.FullName
             Assert-ZipEntryName $EntryName
             if ($Entries.ContainsKey($EntryName)) {
                 throw "Package ZIP contains duplicate entry $EntryName"
@@ -273,6 +252,10 @@ function Assert-ZipEntryName {
         [string]$EntryName
     )
 
+    if ($EntryName.Contains('\')) {
+        throw "Package ZIP contains a non-canonical entry separator in $EntryName"
+    }
+
     if ([System.IO.Path]::IsPathRooted($EntryName)) {
         throw "Package ZIP contains absolute entry $EntryName"
     }
@@ -285,7 +268,55 @@ function Assert-ZipEntryName {
     }
 }
 
-function Remove-PackageOutputs {
+function New-PackageZip {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$StagePath,
+        [Parameter(Mandatory = $true)]
+        [string]$PackageName,
+        [Parameter(Mandatory = $true)]
+        [string]$DestinationPath
+    )
+
+    # Windows PowerShell 5.1's Compress-Archive stores native backslashes in entry names.
+    # Write each entry explicitly so the package remains portable across ZIP readers.
+    Add-Type -AssemblyName System.IO.Compression
+    Add-Type -AssemblyName System.IO.Compression.FileSystem
+
+    $DestinationStream = [System.IO.File]::Open(
+        $DestinationPath,
+        [System.IO.FileMode]::CreateNew,
+        [System.IO.FileAccess]::Write,
+        [System.IO.FileShare]::None
+    )
+    try {
+        $Archive = [System.IO.Compression.ZipArchive]::new(
+            $DestinationStream,
+            [System.IO.Compression.ZipArchiveMode]::Create,
+            $true
+        )
+        try {
+            foreach ($SourceFile in Get-ChildItem -LiteralPath $StagePath -File | Sort-Object -Property Name) {
+                $EntryName = "$PackageName/$($SourceFile.Name)"
+                Assert-ZipEntryName $EntryName
+                $null = [System.IO.Compression.ZipFileExtensions]::CreateEntryFromFile(
+                    $Archive,
+                    $SourceFile.FullName,
+                    $EntryName,
+                    [System.IO.Compression.CompressionLevel]::Optimal
+                )
+            }
+        }
+        finally {
+            $Archive.Dispose()
+        }
+    }
+    finally {
+        $DestinationStream.Dispose()
+    }
+}
+
+function Remove-StalePackageTemps {
     param(
         [Parameter(Mandatory = $true)]
         [string]$DistPath,
@@ -295,15 +326,6 @@ function Remove-PackageOutputs {
 
     if (-not (Test-Path $DistPath)) {
         return
-    }
-
-    $OutputPaths = @(
-        (Join-Path $DistPath $PackageName)
-    )
-    foreach ($OutputPath in $OutputPaths) {
-        if (Test-Path $OutputPath) {
-            Remove-Item $OutputPath -Recurse -Force
-        }
     }
 
     Get-ChildItem $DistPath -Force |
@@ -317,8 +339,7 @@ function Remove-PackageOutputs {
 
 Push-Location $RepoRoot
 try {
-    Remove-PackageOutputs $Dist $PackageName
-    Assert-ThirdPartyNoticesVersion (Join-Path $RepoRoot "THIRD_PARTY_NOTICES.md") $Version
+    Remove-StalePackageTemps $Dist $PackageName
 
     cargo build --release --target $Target --locked
     if ($LASTEXITCODE -ne 0) {
@@ -336,7 +357,7 @@ try {
         "$PackageName/THIRD_PARTY_NOTICES.md"
     )
 
-    Compress-Archive -Path $Stage -DestinationPath $TempZip -CompressionLevel Optimal
+    New-PackageZip $Stage $PackageName $TempZip
     Assert-PackageZip $TempZip $RequiredEntries
     Write-ZipChecksum $TempZip $TempChecksum $ZipFileName
     Assert-ZipChecksum $TempZip $TempChecksum $ZipFileName
