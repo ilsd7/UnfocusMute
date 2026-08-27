@@ -1,5 +1,6 @@
 use crate::config::{
-    AppConfig, ConfigFileStamp, current_config_stamp, merge_pending_config_changes,
+    AppConfig, ConfigFileStamp, ExistingConfigLoad, current_config_stamp,
+    merge_pending_config_changes,
 };
 use std::io;
 use std::time::{Duration, Instant};
@@ -27,12 +28,25 @@ enum ConfigStampState {
     Known(Option<ConfigFileStamp>),
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum ConfigLoadState {
+    Ready,
+    Failed,
+    RecoverMalformed,
+}
+
+impl ConfigLoadState {
+    fn blocks_save(self) -> bool {
+        self == Self::Failed
+    }
+}
+
 pub(super) struct ConfigStore {
     persisted: AppConfig,
     stamp: ConfigStampState,
     next_check: Instant,
     reload_interval: Duration,
-    load_failed: bool,
+    load_state: ConfigLoadState,
 }
 
 impl ConfigStore {
@@ -50,7 +64,11 @@ impl ConfigStore {
             stamp: ConfigStampState::Unknown,
             next_check: Instant::now() + reload_interval,
             reload_interval,
-            load_failed: initial_load_failed,
+            load_state: if initial_load_failed {
+                ConfigLoadState::Failed
+            } else {
+                ConfigLoadState::Ready
+            },
         }
     }
 
@@ -74,32 +92,42 @@ impl ConfigStore {
     pub(super) fn reload_now(&mut self) -> ConfigReload {
         for _ in 0..Self::READ_RETRY_LIMIT {
             let stamp_before_load = current_config_stamp();
-            match AppConfig::load_existing() {
-                Ok(config) => {
+            match AppConfig::load_existing_with_status() {
+                Ok(ExistingConfigLoad::Loaded(config)) => {
                     if current_config_stamp() != stamp_before_load {
                         continue;
                     }
                     self.stamp = ConfigStampState::Known(stamp_before_load);
-                    self.load_failed = false;
+                    self.load_state = ConfigLoadState::Ready;
                     return ConfigReload::Loaded(config);
                 }
-                Err(error) if error.kind() == io::ErrorKind::NotFound => {
+                Ok(ExistingConfigLoad::Missing(_)) => {
                     if current_config_stamp() != stamp_before_load {
                         continue;
                     }
                     self.stamp = ConfigStampState::Known(None);
-                    self.load_failed = false;
+                    self.load_state = ConfigLoadState::Ready;
                     return ConfigReload::Missing;
+                }
+                Ok(ExistingConfigLoad::Malformed(error)) => {
+                    if current_config_stamp() != stamp_before_load {
+                        continue;
+                    }
+                    self.stamp = ConfigStampState::Known(stamp_before_load);
+                    // A reload reports malformed content as a failure. Only an explicit in-app
+                    // save may opt into guarded recovery after checking the file again.
+                    self.load_state = ConfigLoadState::Failed;
+                    return ConfigReload::Failed(error);
                 }
                 Err(error) => {
                     self.stamp = ConfigStampState::Known(stamp_before_load);
-                    self.load_failed = true;
+                    self.load_state = ConfigLoadState::Failed;
                     return ConfigReload::Failed(error);
                 }
             }
         }
 
-        self.load_failed = true;
+        self.load_state = ConfigLoadState::Failed;
         ConfigReload::Failed(io::Error::new(
             io::ErrorKind::WouldBlock,
             "config file kept changing while the app was reading it",
@@ -119,16 +147,28 @@ impl ConfigStore {
             return Ok(ConfigMerge::Ready(None));
         }
 
-        let mut disk_config = match AppConfig::load_existing() {
-            Ok(config) => config,
-            Err(error) if error.kind() == io::ErrorKind::NotFound => {
+        let mut disk_config = match AppConfig::load_existing_with_status() {
+            Ok(ExistingConfigLoad::Loaded(config)) => config,
+            Ok(ExistingConfigLoad::Missing(_)) => {
+                if current_config_stamp() != stamp_before_load {
+                    return Ok(ConfigMerge::Retry);
+                }
                 self.stamp = ConfigStampState::Known(None);
-                self.load_failed = false;
+                self.load_state = ConfigLoadState::Ready;
+                return Ok(ConfigMerge::Ready(None));
+            }
+            Ok(ExistingConfigLoad::Malformed(_)) => {
+                if current_config_stamp() != stamp_before_load {
+                    return Ok(ConfigMerge::Retry);
+                }
+                self.stamp = ConfigStampState::Known(stamp_before_load);
+                // The following save may recover only the exact malformed file inspected here.
+                self.load_state = ConfigLoadState::RecoverMalformed;
                 return Ok(ConfigMerge::Ready(None));
             }
             Err(error) => {
                 self.stamp = ConfigStampState::Known(stamp_before_load);
-                self.load_failed = true;
+                self.load_state = ConfigLoadState::Failed;
                 return Err(error);
             }
         };
@@ -141,7 +181,7 @@ impl ConfigStore {
         merge_pending_config_changes(&self.persisted, local, &mut disk_config);
         self.persisted = next_base;
         self.stamp = ConfigStampState::Known(stamp_after_load);
-        self.load_failed = false;
+        self.load_state = ConfigLoadState::Ready;
         Ok(ConfigMerge::Ready(
             (disk_config != *local).then_some(disk_config),
         ))
@@ -152,7 +192,7 @@ impl ConfigStore {
         let ConfigStampState::Known(expected_stamp) = self.stamp else {
             return Ok(ConfigSave::Retry);
         };
-        if self.load_failed || current_stamp != expected_stamp {
+        if self.load_state.blocks_save() || current_stamp != expected_stamp {
             return Ok(ConfigSave::Retry);
         }
         if !config.save_if_unchanged(expected_stamp)? {
@@ -165,15 +205,27 @@ impl ConfigStore {
         self.stamp = ConfigStampState::Unknown;
         self.persisted = config.clone();
         self.next_check = Instant::now() + self.reload_interval;
-        self.load_failed = false;
+        self.load_state = ConfigLoadState::Ready;
         Ok(ConfigSave::Saved)
     }
 
     fn reload_needed(&self, current: Option<ConfigFileStamp>) -> bool {
-        self.load_failed
+        self.load_state != ConfigLoadState::Ready
             || match self.stamp {
                 ConfigStampState::Unknown => true,
                 ConfigStampState::Known(cached) => current != cached,
             }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::ConfigLoadState;
+
+    #[test]
+    fn malformed_config_is_the_only_failed_load_state_that_allows_save() {
+        assert!(!ConfigLoadState::Ready.blocks_save());
+        assert!(ConfigLoadState::Failed.blocks_save());
+        assert!(!ConfigLoadState::RecoverMalformed.blocks_save());
     }
 }

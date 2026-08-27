@@ -162,6 +162,12 @@ pub struct AppConfigLoad {
     pub(crate) source_stamp: ConfigSourceStamp,
 }
 
+pub(crate) enum ExistingConfigLoad {
+    Loaded(AppConfig),
+    Missing(io::Error),
+    Malformed(io::Error),
+}
+
 #[derive(Clone, Copy)]
 pub(crate) enum ConfigSourceStamp {
     Unknown,
@@ -304,10 +310,15 @@ impl AppConfig {
     }
 
     pub fn load_existing() -> io::Result<Self> {
+        match Self::load_existing_with_status()? {
+            ExistingConfigLoad::Loaded(config) => Ok(config),
+            ExistingConfigLoad::Missing(error) | ExistingConfigLoad::Malformed(error) => Err(error),
+        }
+    }
+
+    pub(crate) fn load_existing_with_status() -> io::Result<ExistingConfigLoad> {
         let path = cached_config_file_path()?;
-        let mut config = parse_config_file(fs::File::open(path)?)?;
-        config.sanitize();
-        Ok(config)
+        load_existing_from_path(path)
     }
 
     pub(crate) fn save_from_source(&self, source_stamp: ConfigSourceStamp) -> io::Result<()> {
@@ -789,9 +800,31 @@ fn load_or_default_from_path(path: &Path) -> io::Result<AppConfigLoad> {
     ))
 }
 
+#[cfg(test)]
 fn parse_config_file(file: fs::File) -> io::Result<AppConfig> {
     let bytes = read_config_file(file)?;
     parse_config_bytes(&bytes)
+}
+
+fn load_existing_from_path(path: &Path) -> io::Result<ExistingConfigLoad> {
+    let file = match fs::File::open(path) {
+        Ok(file) => file,
+        Err(error) if error.kind() == io::ErrorKind::NotFound => {
+            return Ok(ExistingConfigLoad::Missing(error));
+        }
+        Err(error) => return Err(error),
+    };
+    let bytes = read_config_file(file)?;
+    match parse_config_bytes(&bytes) {
+        Ok(mut config) => {
+            config.sanitize();
+            Ok(ExistingConfigLoad::Loaded(config))
+        }
+        Err(error) if error.kind() == io::ErrorKind::InvalidData => {
+            Ok(ExistingConfigLoad::Malformed(error))
+        }
+        Err(error) => Err(error),
+    }
 }
 
 fn read_config_file(file: fs::File) -> io::Result<Vec<u8>> {
@@ -2605,6 +2638,30 @@ mod tests {
     }
 
     #[test]
+    fn existing_load_keeps_read_errors_blocking() {
+        let dir = TestDir::new();
+        let unreadable_path = dir.path().join("unreadable.json");
+        fs::create_dir(&unreadable_path).unwrap();
+
+        assert!(load_existing_from_path(&unreadable_path).is_err());
+    }
+
+    #[test]
+    fn existing_load_keeps_future_config_version_blocking() {
+        let dir = TestDir::new();
+        let config_path = dir.path().join("config.json");
+        let future_config = format!(r#"{{"version":{}}}"#, CONFIG_VERSION + 1);
+        fs::write(&config_path, future_config).unwrap();
+
+        let result = load_existing_from_path(&config_path);
+
+        assert!(matches!(
+            result,
+            Err(error) if error.kind() == io::ErrorKind::Unsupported
+        ));
+    }
+
+    #[test]
     fn invalid_recovery_does_not_replace_config_changed_after_parse() {
         let dir = TestDir::new();
         let config_path = dir.path().join("config.json");
@@ -2664,6 +2721,52 @@ mod tests {
         assert!(!saved);
         assert_eq!(fs::read_to_string(&config_path).unwrap(), future_config);
         assert_eq!(invalid_backup_count(dir.path()), 0);
+    }
+
+    #[test]
+    fn malformed_existing_load_can_be_recovered_by_guarded_save() {
+        let dir = TestDir::new();
+        let config_path = dir.path().join("config.json");
+        fs::write(&config_path, "{not valid json").unwrap();
+
+        let malformed = load_existing_from_path(&config_path).unwrap();
+
+        assert!(matches!(
+            malformed,
+            ExistingConfigLoad::Malformed(error)
+                if error.kind() == io::ErrorKind::InvalidData
+        ));
+        let expected_stamp = config_file_stamp(&config_path);
+
+        let saved = AppConfig::default()
+            .save_to_path_guarded(
+                &config_path,
+                true,
+                ExistingConfigGuard::Unchanged(expected_stamp),
+            )
+            .unwrap();
+
+        assert!(saved);
+        assert!(
+            fs::read_to_string(&config_path)
+                .unwrap()
+                .contains("\"version\"")
+        );
+        let backups = fs::read_dir(dir.path())
+            .unwrap()
+            .filter_map(Result::ok)
+            .filter(|entry| {
+                entry
+                    .file_name()
+                    .to_string_lossy()
+                    .starts_with("config.invalid-")
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(backups.len(), 1);
+        assert_eq!(
+            fs::read_to_string(backups[0].path()).unwrap(),
+            "{not valid json"
+        );
     }
 
     #[test]
