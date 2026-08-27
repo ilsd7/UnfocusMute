@@ -3,7 +3,7 @@
 
   <h1>UnfocusMute</h1>
 
-  <p><strong>Application légère qui s’exécute dans la zone de notification de Windows et coupe automatiquement le son des jeux et applications choisis lorsqu’ils perdent le focus.</strong></p>
+  <p><strong>Application légère qui s’exécute dans la zone de notification de Windows et coupe automatiquement le son des jeux et applications choisis lorsqu’ils ne sont plus au premier plan.</strong></p>
 
   <p>
     <a href="../README.md">English</a> · <a href="README_ko.md">한국어</a> · <a href="README_ja.md">日本語</a> · <a href="README_zh-CN.md">简体中文</a> · <a href="README_es.md">Español</a> · Français · <a href="README_pt.md">Português</a> · <a href="README_hi.md">हिन्दी</a> · <a href="README_ar.md">العربية</a>
@@ -32,7 +32,7 @@
 UnfocusMute est une petite application légère qui s’exécute dans la zone de notification de Windows, coupe automatiquement le son des jeux et applications choisis lorsqu’ils passent en arrière-plan, puis le rétablit lorsqu’ils reviennent au premier plan.
 
 - Compilée en application native Rust, elle s’exécute sans environnement d’exécution séparé.
-- L’exécutable fait environ 500 Ko.
+- L’exécutable fait environ 600 Ko.
 - Elle ne se limite pas aux jeux : vous pouvez aussi ajouter des applications courantes comme des navigateurs, des messageries, des lanceurs et des lecteurs multimédias.
 - La coupure et le rétablissement du son ne s’appliquent qu’aux sessions qu’UnfocusMute a modifiées lui-même ; les sessions dont vous aviez déjà coupé le son ne sont pas touchées.
 
@@ -59,75 +59,75 @@ Sous Windows 10/11, téléchargez l’archive ZIP puis extrayez-la pour lancer l
 | [UnfocusMute-windows-x64.zip](https://github.com/ilsd7/UnfocusMute/releases/latest/download/UnfocusMute-windows-x64.zip) |
 | [Somme de contrôle SHA-256](https://github.com/ilsd7/UnfocusMute/releases/latest/download/UnfocusMute-windows-x64.zip.sha256) · [Notes de version](https://github.com/ilsd7/UnfocusMute/releases/latest) |
 
-Une fois le ZIP extrait, déplacez le dossier `UnfocusMute-windows-x64` à l’emplacement où vous souhaitez conserver l’application, puis lancez `UnfocusMute-v<version>.exe` depuis ce dossier.
+Une fois le ZIP extrait, déplacez le dossier `UnfocusMute-windows-x64` à l’emplacement de votre choix, puis lancez `UnfocusMute-v<version>.exe`. Aucune installation, aucun environnement d’exécution supplémentaire ni aucun outil de développement n’est nécessaire.
 
-UnfocusMute est une application autonome qui ne nécessite aucune installation. Vous n’avez pas non plus besoin d’installer un environnement d’exécution distinct ni des outils de développement tels que Rust, Visual Studio Build Tools ou MinGW.
-
-> **Remarque :** Comme les certificats de signature de code ont un coût, l’application est actuellement distribuée sans signature de code Windows. Un avertissement Windows SmartScreen ou « éditeur inconnu » peut s’afficher au premier lancement. Pour vérifier vous-même l’intégrité du fichier, consultez [Transparence et vérification des fichiers publiés](#transparence-et-vérification-des-fichiers-publiés).
-
-<br>
-
-## À savoir avant utilisation
-
-UnfocusMute s’appuie sur les noms de processus, les informations sur la fenêtre au premier plan et les sessions CoreAudio fournies par Windows. Si un pilote, un réglage d’autorisation ou un logiciel de sécurité limite l’accès aux sessions, le contrôle du son peut ne pas fonctionner correctement.
-
-Nous vous recommandons de laisser UnfocusMute actif dans la zone de notification plutôt que de le fermer. Si une application ajoutée se ferme alors que son son est coupé, ce dernier état peut être conservé. Tant qu’UnfocusMute reste actif, il rétablit automatiquement le son lorsque vous relancez l’application et la ramenez au premier plan. Si vous quittez également UnfocusMute, l’application risque de ne plus émettre de son ; dans ce cas, réactivez manuellement le son dans le `Mélangeur de volume` de Windows.
-
-**Comportement de l’ajout par PID :** Windows ne fournit pas toujours le même PID pour une session audio et pour la fenêtre au premier plan. Pour compenser cela, UnfocusMute considère que l’application est revenue au premier plan lorsque le nom de l’exécutable (`.exe`) associé au PID ajouté correspond à celui de la fenêtre actuellement active.
-
-Si plusieurs instances du même `.exe` sont ouvertes en même temps, il n’est donc pas toujours possible d’isoler parfaitement une instance précise. Dans ce cas, le son peut être rétabli lorsqu’une autre instance est au premier plan.
-
-**Compatibilité anti-triche :** UnfocusMute n’injecte pas de code dans les jeux, ne lit pas la mémoire du jeu, n’intercepte pas les entrées utilisateur et ne modifie pas les fichiers du jeu. Il utilise seulement les informations Windows sur les processus et la fenêtre au premier plan, ainsi que les commandes de coupure du son des sessions CoreAudio. Il est donc conçu pour éviter les conflits avec la plupart des systèmes anti-triche, mais la compatibilité avec tous ces systèmes ne peut pas être garantie.
+> **Remarque :** Pour des raisons de coût, UnfocusMute est distribué sans signature de code Windows. Un avertissement Windows SmartScreen ou « éditeur inconnu » peut donc s’afficher au premier lancement. Pour vérifier vous-même l’origine et l’intégrité du fichier, consultez [Transparence et vérification des fichiers publiés](#transparence-et-vérification-des-fichiers-publiés).
 
 <br>
 
 ## Utilisation
 
-1. Lancez UnfocusMute.
-2. Choisissez la langue. Nous vous recommandons de conserver les réglages par défaut.
-3. Lancez le jeu ou l’application à ajouter.
-4. Sélectionnez une application dans la liste ou saisissez le nom exact de son fichier `.exe`, puis cliquez sur `Ajouter`. L’ajout par nom `.exe` gère ensemble toutes les sessions audio de l’application. Si l’application n’a pas encore créé de session audio, passez à `Tous les processus` pour parcourir tous les processus en cours d’exécution.
-5. Si vous devez ajouter seulement un PID précis, cliquez sur `Vue PID` et choisissez l’entrée concernée. Un ajout par PID n’est valable que pour l’instance actuellement ouverte ; si l’application redémarre avec un autre PID, ajoutez-la à nouveau.
-6. Faites un clic droit sur une application ajoutée pour modifier sa note ou utiliser `Mettre en pause` uniquement pour cette application.
-7. Cliquez sur l’état `Surveillance en cours` en haut pour suspendre ou reprendre toute la surveillance.
-8. Ouvrez `Paramètres` pour modifier les options, notamment le comportement à la fermeture de la fenêtre.
-9. Par défaut, fermer la fenêtre laisse UnfocusMute actif dans la zone de notification. Pour quitter complètement l’application, faites un clic droit sur son icône dans la zone de notification, puis choisissez `Quitter`. Vous pouvez modifier le comportement du bouton de fermeture dans `Paramètres`.
+1. Lancez UnfocusMute. Au premier démarrage, choisissez la langue et les options de lancement, puis cliquez sur `Commencer`.
+2. Lancez le jeu ou l’application à ajouter et faites-lui produire un son pour qu’il apparaisse dans la liste.
+3. Revenez dans UnfocusMute, sélectionnez l’application, puis cliquez sur `Ajouter`. L’ajout par nom de `.exe` prend en charge toutes les sessions audio de l’application et reste valable après son redémarrage.
+4. Passez à une autre fenêtre avec `Alt`+`Tab`, puis revenez. Le son de l’application ajoutée est coupé lorsqu’elle passe en arrière-plan, puis rétabli lorsqu’elle revient au premier plan.
 
-<br>
+C’est tout. La surveillance commence dès l’ajout et, avec les réglages par défaut, UnfocusMute continue de fonctionner dans la zone de notification lorsque vous fermez sa fenêtre.
 
-## Utiliser les notes des applications ajoutées
+> **L’application n’apparaît pas dans la liste ?** Cliquez sur `Tous les processus` ou saisissez directement le nom exact du `.exe`. Utilisez `Vue PID` si vous souhaitez ajouter uniquement un PID précis en cours d’exécution. Comme le PID change à chaque redémarrage de l’application, il est généralement préférable de l’ajouter par le nom du `.exe`.
 
-Si le nom du processus ne suffit pas à reconnaître l’application, faites un clic droit sur l’application ajoutée et choisissez `Modifier la note`. La note s’affiche au-dessus du nom du processus dans la liste, sans changer la manière dont l’application est identifiée.
+### Trouver le nom de l’exécutable
 
-C’est utile lorsqu’un même lanceur de jeu ouvre plusieurs processus, ou lorsqu’un nom d’exécutable n’indique pas clairement son rôle.
-
-- `htgame.exe - NTE`
-- `game.exe (PID 21976) - client du serveur de test`
-
-Les notes sont enregistrées localement avec les autres réglages dans `%APPDATA%\UnfocusMute\config.json`.
-
-<br>
-
-## Trouver le nom de l’exécutable
-
-Si vous ne savez pas quel nom ajouter, ouvrez le Gestionnaire des tâches et cherchez le nom du fichier exécutable de l’application, celui qui se termine par `.exe`.
+Si vous ne connaissez pas le nom de l’application à ajouter, recherchez le nom exact de son `.exe` dans le Gestionnaire des tâches.
 
 1. Lancez d’abord l’application à ajouter.
-2. Utilisez `Alt`+`Tab` ou `Windows`+`Tab` pour revenir au bureau Windows.
+2. Si elle s’exécute en plein écran, passez de l’écran du jeu à une autre fenêtre avec `Alt`+`Tab` ou `Windows`+`Tab`.
 3. Appuyez sur `Ctrl`+`Shift`+`Esc` pour ouvrir le Gestionnaire des tâches.
-4. Triez la liste des processus par `CPU` afin de retrouver l’application que vous venez de lancer.
-5. Faites un clic droit sur cet élément et ouvrez `Propriétés`.
-6. Relevez le nom de l’exécutable se terminant par `.exe`, par exemple `game.exe`, puis ajoutez-le à UnfocusMute.
+4. Dans la liste des processus affichée à l’ouverture, cliquez sur la colonne `Processeur` pour trier les processus du plus actif au moins actif.
+5. Repérez vers le haut de la liste l’application que vous venez de lancer, faites un clic droit dessus, puis sélectionnez `Propriétés`.
+6. Relevez le nom de l’exécutable se terminant par `.exe`, par exemple `game.exe`, puis ajoutez-le dans UnfocusMute.
+
+### Actions courantes
+
+- Faites un clic droit sur une application ajoutée pour la mettre en pause ou la reprendre, modifier sa note ou la retirer de la liste.
+- Cliquez sur l’état `Surveillance en cours` en haut pour suspendre ou reprendre toute la surveillance.
+- Dans `Paramètres`, vous pouvez modifier le démarrage automatique et le comportement à la fermeture de la fenêtre.
+- Pour quitter complètement l’application, faites un clic droit sur l’icône de la zone de notification, puis sélectionnez `Quitter`.
+
+<br>
+
+## Ajouter une note lorsque le nom d’une application n’est pas clair
+
+Faites un clic droit sur une application ajoutée, puis sélectionnez `Modifier la note` pour afficher une description facile à reconnaître au-dessus du nom du processus. La note sert uniquement à distinguer l’application et n’influence pas le choix de l’application à mettre en sourdine.
+
+- `htgame.exe` → `NTE`
+- `game.exe (PID 21976)` → `client du serveur de test`
+
+Les notes sont enregistrées avec les autres réglages dans `%APPDATA%\UnfocusMute\config.json`.
+
+<br>
+
+## Comportements à connaître
+
+**Fonctionnement dans la zone de notification et rétablissement du son :** Si une application ajoutée se ferme alors que son son est coupé, Windows peut mémoriser cet état. Tant qu’UnfocusMute reste actif dans la zone de notification, il rétablit automatiquement le son lorsque vous relancez l’application et la ramenez au premier plan. Si vous avez également quitté UnfocusMute et que l’application reste muette, réactivez manuellement son audio dans le `Mélangeur de volume` de Windows.
+
+**Ajout par PID :** Windows peut attribuer des PID différents à la session audio et à la fenêtre au premier plan. Ainsi, même après un ajout par PID, UnfocusMute considère que l’application est revenue lorsqu’une fenêtre portant le même nom de `.exe` passe au premier plan, puis rétablit le son. Ce mode n’est donc pas adapté si vous souhaitez continuer à utiliser une fenêtre du même `.exe` tout en maintenant un PID précis en sourdine. Il peut en revanche être utile pour couper le son d’un seul PID parmi plusieurs appartenant au même `.exe`, tout en conservant le son des autres PID pendant que vous travaillez dans une autre application.
+
+**Compatibilité anti-triche :** UnfocusMute n’injecte pas de code dans les jeux, ne lit pas leur mémoire, n’intercepte pas les entrées et ne modifie pas leurs fichiers. Il utilise uniquement les informations Windows sur les processus et la fenêtre au premier plan, ainsi que les commandes de mise en sourdine de CoreAudio. Il est conçu pour éviter les conflits avec la plupart des systèmes anti-triche, mais la compatibilité avec tous ces systèmes ne peut pas être garantie.
 
 <br>
 
 ## Dépannage
 
-Si une application n’apparaît pas dans la liste, ou si l’ajout par PID ne se comporte pas comme prévu, consultez d’abord [À savoir avant utilisation](#à-savoir-avant-utilisation) et [Trouver le nom de l’exécutable](#trouver-le-nom-de-lexécutable).
+Commencez par vérifier les points suivants :
 
-Si l’état en haut de la fenêtre passe à `Attention requise`, cliquez sur `Détails` pour consulter le message d’erreur détaillé.
+- **L’application n’apparaît pas dans la liste :** Faites-lui produire un son, puis rouvrez la liste. Si elle reste absente, cliquez sur `Tous les processus` ou [recherchez directement le nom de l’exécutable](#trouver-le-nom-de-lexécutable).
+- **Le son n’est pas coupé :** Vérifiez que l’état en haut indique `Surveillance en cours` et que l’application ajoutée n’est pas `En pause`. Le fonctionnement peut aussi être perturbé si un pilote, un réglage d’autorisation ou un logiciel de sécurité limite l’accès aux sessions audio de Windows.
+- **Le son n’est pas rétabli :** Ramenez l’application au premier plan. Si vous avez déjà quitté UnfocusMute, réactivez manuellement son audio dans le `Mélangeur de volume` de Windows.
+- **L’ajout par PID ne fonctionne pas comme prévu :** Consultez le [comportement de l’ajout par PID](#comportements-à-connaître).
+- **L’état passe à `Attention requise` :** Cliquez sur `Détails`, à côté de l’indicateur d’état, pour consulter l’erreur.
 
-Si le problème persiste, ouvrez une issue sur GitHub.
+Si le problème persiste, [ouvrez une issue sur GitHub](https://github.com/ilsd7/UnfocusMute/issues/new/choose).
 
 Si vous pensez qu’il s’agit d’une faille de sécurité, ne publiez pas les détails dans une issue publique. Utilisez la procédure de signalement privé et consultez [SECURITY.md](../SECURITY.md) pour plus d’informations.
 
@@ -137,7 +137,7 @@ Si vous pensez qu’il s’agit d’une faille de sécurité, ne publiez pas les
 
 Pour consulter ou sauvegarder directement le fichier de configuration, cliquez sur `Ouvrir le dossier des paramètres` dans Paramètres. L’Explorateur de fichiers ouvre le dossier `%APPDATA%\UnfocusMute`, où les paramètres sont enregistrés.
 
-Vous pouvez modifier directement le fichier de configuration, mais si son format est invalide et qu’il ne peut pas être lu, il est sauvegardé sous `config.invalid-<timestamp>.json`. Si le problème est détecté au démarrage de l’application, les paramètres sont restaurés aux valeurs par défaut ; s’il est détecté pendant l’exécution, un nouveau fichier de configuration est créé à partir des paramètres actuels de l’application.
+Vous pouvez également modifier directement `config.json`. Si son format est invalide et ne peut pas être lu, UnfocusMute sauvegarde le fichier d’origine sous `config.invalid-<timestamp>.json`, puis en crée un nouveau à partir des valeurs par défaut ou des réglages actuels de l’application.
 
 <br>
 
@@ -168,11 +168,13 @@ Si vous activez le démarrage automatique à l’ouverture de session Windows, l
 
 UnfocusMute ne stocke pas l’historique d’utilisation, les journaux d’activité, les journaux d’erreurs, les données audio, les titres de fenêtres, les frappes au clavier ni aucune autre information que celles indiquées ci-dessus dans « Informations stockées ».
 
-### Suppression
+### Supprimer complètement UnfocusMute
 
-Pour supprimer tous les fichiers liés à l’application, supprimez le dossier `UnfocusMute-windows-x64`, puis le dossier `%APPDATA%\UnfocusMute`.
+1. Si vous avez activé `Lancer à l’ouverture de session Windows`, désactivez d’abord cette option dans `Paramètres`.
+2. Faites un clic droit sur l’icône de la zone de notification, puis sélectionnez `Quitter`.
+3. Supprimez les dossiers `UnfocusMute-windows-x64` et `%APPDATA%\UnfocusMute`.
 
-Si vous avez déjà activé le démarrage automatique, supprimez aussi la valeur `UnfocusMute` sous `HKEY_CURRENT_USER\Software\Microsoft\Windows\CurrentVersion\Run`.
+Si vous avez déjà supprimé l’exécutable et ne pouvez plus désactiver le démarrage automatique, supprimez la valeur `UnfocusMute` sous `HKEY_CURRENT_USER\Software\Microsoft\Windows\CurrentVersion\Run`.
 
 <br>
 
@@ -231,11 +233,13 @@ Elle ne prouve pas que le code source lui-même est sûr, que l’ensemble de l�
 
 La cible recommandée pour les versions publiées est `x86_64-pc-windows-msvc`.
 
-Prérequis :
+Outils nécessaires :
 
 - Rust stable
 - Visual Studio Build Tools 2022 ou Visual Studio 2022
 - SDK Windows 10/11
+
+`cargo-about` est également nécessaire pour mettre à jour `THIRD_PARTY_NOTICES.md`.
 
 <details>
 <summary>Afficher les commandes de compilation et de création du paquet</summary>
@@ -259,7 +263,7 @@ ZIP de distribution :
 powershell -NoProfile -ExecutionPolicy Bypass -File scripts\package-windows.ps1
 ```
 
-Actualiser les mentions de licence des dépendances tierces :
+Lorsque vous devez actualiser les mentions de licence des dépendances tierces :
 
 ```powershell
 cargo about generate about.hbs -c about.toml --locked --offline -o THIRD_PARTY_NOTICES.md
