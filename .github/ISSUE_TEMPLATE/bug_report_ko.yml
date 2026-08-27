@@ -1,5 +1,5 @@
 name: 버그 제보
-description: 음소거, 복원, 트레이, 설정 저장 등 앱 동작 문제를 제보합니다.
+description: 음소거, 음소거 해제, 트레이, 설정 저장 등 앱 동작 문제를 제보합니다.
 title: "[Bug]: "
 labels: ["bug"]
 body:
@@ -14,7 +14,7 @@ body:
     id: version
     attributes:
       label: UnfocusMute 버전
-      description: 앱 제목, ZIP 안의 실행 파일명, 또는 Releases 페이지에서 확인한 버전을 적어 주세요.
+      description: 설정 화면, ZIP 안의 실행 파일명, 또는 Releases 페이지에서 확인한 버전을 적어 주세요.
       placeholder: "예: 1.0.0"
     validations:
       required: true
@@ -75,7 +75,7 @@ body:
     id: actual
     attributes:
       label: 실제 동작
-      placeholder: "예: 음소거되지 않거나, 다시 전면으로 돌아와도 복원되지 않습니다."
+      placeholder: "예: 음소거되지 않거나, 다시 전면으로 돌아와도 음소거가 해제되지 않습니다."
     validations:
       required: true
 

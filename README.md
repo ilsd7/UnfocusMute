@@ -29,12 +29,12 @@
 
 ---
 
-UnfocusMute is a compact Windows tray app that automatically mutes selected games and apps when they go into the background, then restores their audio when they return to the foreground.
+UnfocusMute is a small, lightweight Windows tray app that automatically mutes selected games and apps when they go into the background, then unmutes them when they return to the foreground.
 
 - Built as a native Rust app, it runs without a separate runtime.
 - The executable is about 600 KB.
 - It is not limited to games; you can also register everyday apps such as browsers, messaging apps, launchers, and media players.
-- UnfocusMute only mutes and restores sessions it changed itself; sessions you had already muted manually are left untouched.
+- Only apps muted by UnfocusMute are automatically unmuted; apps you muted yourself stay muted.
 
 ---
 
@@ -53,6 +53,7 @@ UnfocusMute is a compact Windows tray app that automatically mutes selected game
 ## Download and Run
 
 On Windows 10/11, download the ZIP package and extract it to run the app.
+The minimum supported version is Windows 10 version 1703.
 
 | Latest package |
 | --- |
@@ -70,7 +71,7 @@ After extracting the ZIP, move the `UnfocusMute-windows-x64` folder wherever you
 1. Launch UnfocusMute. On first run, choose your language and startup options, then click `Start`.
 2. Start the game or app you want to register and play some audio so that it appears in the list.
 3. Return to UnfocusMute, select the app, and click `Register`. Registering by `.exe` name manages all audio sessions for that app and continues to work after the app restarts.
-4. Use `Alt`+`Tab` to switch to another window and back. The registered app is muted while it is in the background and restored when it returns to the foreground.
+4. Use `Alt`+`Tab` to switch to another window and back. The registered app is muted while it is in the background and unmuted when it returns to the foreground.
 
 That's it. Monitoring starts as soon as you register the app, and by default UnfocusMute keeps running in the system tray when you close its window.
 
@@ -109,9 +110,9 @@ Notes are stored with the rest of your settings in `%APPDATA%\UnfocusMute\config
 
 ## Important Behavior
 
-**Tray operation and audio restoration:** If a registered app closes while muted, Windows may remember its last mute state. As long as UnfocusMute remains running in the system tray, it automatically restores the sound when you reopen the app and bring it to the foreground. If the app has no sound after you also quit UnfocusMute, unmute it manually in the Windows `Volume mixer`.
+**Tray behavior and automatic unmuting:** UnfocusMute automatically unmutes a registered app when it returns to the foreground or when you quit UnfocusMute. If a registered app exits first, UnfocusMute also clears its mute state. However, if UnfocusMute exits unexpectedly, the app may remain muted in Windows. If an app has no sound the next time you launch it, check whether it is muted in the Windows `Volume mixer`.
 
-**PID registration:** Windows may report different PIDs for an audio session and its foreground window. Because of this, even a PID registration is treated as foreground when a window with the same `.exe` name comes to the front, and its sound is restored. This makes PID registration unsuitable for keeping one PID muted while you continue using another window from the same `.exe`. It can still be useful when you are working in another app and want to mute one of several PIDs from the same `.exe` while leaving the others audible.
+**PID registration:** Windows may report different PIDs for an audio session and its foreground window. Because of this, even a PID registration is treated as foreground when a window with the same `.exe` name comes to the front, and the app is unmuted. This makes PID registration unsuitable for keeping one PID muted while you continue using another window from the same `.exe`. It can still be useful when you are working in another app and want to mute one of several PIDs from the same `.exe` while leaving the others audible.
 
 **Anti-cheat compatibility:** UnfocusMute does not inject code into games, read game memory, hook input, or modify game files. It uses only Windows process and foreground-window information plus CoreAudio mute controls, so it is designed to avoid conflicts with most anti-cheat systems. Compatibility with every anti-cheat system cannot be guaranteed.
 
@@ -123,7 +124,7 @@ Start with these checks:
 
 - **App missing from the list:** Play some audio in the target app, then open the list again. If it still does not appear, click `All processes` or [find the executable name manually](#find-an-executable-name).
 - **App is not muted:** Make sure the status at the top says `Monitoring` and the registered app is not `Paused`. Muting may also fail if a driver, permission setting, or security tool limits access to Windows audio sessions.
-- **Sound is not restored:** Bring the app back to the foreground. If you already quit UnfocusMute, unmute the app manually in the Windows `Volume mixer`.
+- **App stays muted:** If you still cannot hear a registered app after switching back to it, check its mute setting in the Windows `Volume mixer`.
 - **PID registration behaves unexpectedly:** See [PID registration](#important-behavior).
 - **Status changes to `Needs attention`:** Click `Details` next to the status to view the error.
 
@@ -155,7 +156,7 @@ UnfocusMute stores only the settings it needs to operate in `%APPDATA%\UnfocusMu
 
 - Registered process names
 - PIDs you registered directly
-- The most recent mute state of registered apps
+- Last mute state of each registered app
 - Notes you write
 - Selected language and settings
 - Window position and size

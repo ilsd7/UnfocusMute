@@ -14,7 +14,7 @@ body:
     attributes:
       label: Area
       options:
-        - Mute / restore behavior
+        - Mute / unmute behavior
         - Running app selection UX
         - Tray / startup behavior
         - Settings / portable release

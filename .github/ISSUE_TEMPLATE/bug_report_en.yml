@@ -1,5 +1,5 @@
 name: Bug report
-description: Report issues with muting, restoring, tray behavior, settings, or app startup.
+description: Report issues with muting, unmuting, tray behavior, settings, or app startup.
 title: "[Bug]: "
 labels: ["bug"]
 body:
@@ -14,7 +14,7 @@ body:
     id: version
     attributes:
       label: UnfocusMute version
-      description: Use the version shown in the app title, ZIP executable name, or release page.
+      description: Use the version shown in Settings, the ZIP executable name, or the Releases page.
       placeholder: "Example: 1.0.0"
     validations:
       required: true

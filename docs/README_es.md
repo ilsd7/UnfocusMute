@@ -29,12 +29,12 @@
 
 ---
 
-UnfocusMute es una aplicación pequeña y ligera que se ejecuta en la bandeja del sistema de Windows, silencia automáticamente juegos y aplicaciones seleccionados cuando pasan a segundo plano, y restaura el audio cuando vuelven al primer plano.
+UnfocusMute es una aplicación pequeña y ligera para la bandeja del sistema de Windows que silencia automáticamente los juegos y las aplicaciones que elijas cuando pasan a segundo plano y reactiva su sonido cuando vuelven al primer plano.
 
 - Está compilada como aplicación nativa en Rust, así que se ejecuta sin un entorno de ejecución adicional.
 - El ejecutable ocupa unos 600 KB.
 - No se limita a juegos: también puedes registrar aplicaciones comunes como navegadores, aplicaciones de mensajería, lanzadores y reproductores multimedia.
-- El silenciamiento y la restauración solo se aplican a las sesiones que UnfocusMute cambió directamente; las sesiones que tú ya habías silenciado no se modifican.
+- Solo reactiva automáticamente el sonido que ha silenciado el propio UnfocusMute; las aplicaciones que hayas silenciado manualmente permanecen así.
 
 ---
 
@@ -53,6 +53,7 @@ UnfocusMute es una aplicación pequeña y ligera que se ejecuta en la bandeja de
 ## Descargar y ejecutar
 
 En Windows 10/11, descarga el paquete ZIP y extráelo para ejecutar la aplicación.
+La versión mínima compatible es Windows 10, versión 1703.
 
 | Paquete más reciente |
 | --- |
@@ -70,7 +71,7 @@ Después de extraer el ZIP, mueve la carpeta `UnfocusMute-windows-x64` a la ubic
 1. Abre UnfocusMute. La primera vez, elige el idioma y las opciones de inicio, y haz clic en `Comenzar`.
 2. Abre el juego o la aplicación que quieras registrar y reproduce algún sonido para que aparezca en la lista.
 3. Vuelve a UnfocusMute, selecciona la aplicación y haz clic en `Registrar`. Si la registras por el nombre del `.exe`, se administrarán todas sus sesiones de audio y seguirá funcionando aunque reinicies la aplicación.
-4. Cambia a otra ventana con `Alt`+`Tab` y vuelve. La aplicación registrada se silenciará mientras esté en segundo plano y recuperará el sonido al volver al primer plano.
+4. Cambia a otra ventana con `Alt`+`Tab` y vuelve. La aplicación registrada se silenciará mientras esté en segundo plano y su sonido se reactivará cuando vuelva al primer plano.
 
 Eso es todo. La supervisión comienza en cuanto registras la aplicación y, con la configuración predeterminada, UnfocusMute sigue funcionando en la bandeja aunque cierres la ventana.
 
@@ -109,9 +110,9 @@ Las notas se guardan con el resto de la configuración en `%APPDATA%\UnfocusMute
 
 ## Comportamientos importantes
 
-**Ejecución en la bandeja y restauración del sonido:** Si una aplicación registrada se cierra mientras está silenciada, Windows puede recordar ese estado. Si UnfocusMute sigue ejecutándose en la bandeja, restaurará el sonido automáticamente cuando vuelvas a abrir la aplicación y la traigas al primer plano. Si también cerraste UnfocusMute y la aplicación sigue sin sonido, quita el silencio manualmente desde el `Mezclador de volumen` de Windows.
+**Ejecución en la bandeja y reactivación del sonido:** UnfocusMute reactiva automáticamente el sonido de una aplicación registrada cuando esta vuelve al primer plano o cuando sales de UnfocusMute. Si la aplicación se cierra primero, UnfocusMute también se asegura de que no quede silenciada. Sin embargo, si UnfocusMute se cierra de forma inesperada, la aplicación puede permanecer silenciada en Windows. Si la próxima vez que la abras no se oye, comprueba su estado en el `Mezclador de volumen` de Windows.
 
-**Registro por PID:** Windows puede asignar PID distintos a la sesión de audio y a la ventana en primer plano. Por eso, aunque registres una aplicación por PID, UnfocusMute considera que ha vuelto cuando una ventana con el mismo nombre de `.exe` pasa al primer plano y restaura su sonido. Esto no resulta adecuado si quieres seguir usando una ventana del mismo `.exe` mientras mantienes silenciado un PID concreto. En cambio, puede ser útil para silenciar solo uno de varios PID del mismo `.exe` mientras trabajas en otra aplicación y mantener el sonido de los demás.
+**Registro por PID:** Windows puede asignar PID distintos a la sesión de audio y a la ventana en primer plano. Por eso, aunque registres una aplicación por PID, UnfocusMute considera que ha vuelto cuando una ventana con el mismo nombre de `.exe` pasa al primer plano y reactiva su sonido. Esto no resulta adecuado si quieres seguir usando una ventana del mismo `.exe` mientras mantienes silenciado un PID concreto. En cambio, puede ser útil para silenciar solo uno de varios PID del mismo `.exe` mientras trabajas en otra aplicación y mantener el sonido de los demás.
 
 **Compatibilidad con sistemas anti-cheat:** UnfocusMute no inyecta código en los juegos, no lee su memoria, no intercepta la entrada ni modifica sus archivos. Solo usa la información de procesos y ventanas en primer plano de Windows y los controles de silencio de CoreAudio. Está diseñado para evitar conflictos con la mayoría de los sistemas anti-cheat, aunque no se puede garantizar la compatibilidad con todos.
 
@@ -123,7 +124,7 @@ Comprueba primero lo siguiente:
 
 - **La aplicación no aparece en la lista:** Reproduce algún sonido en la aplicación y vuelve a abrir la lista. Si sigue sin aparecer, haz clic en `Todos los procesos` o [busca directamente el nombre del ejecutable](#encontrar-el-nombre-del-ejecutable).
 - **No se silencia:** Comprueba que el estado superior sea `Supervisando` y que la aplicación registrada no esté `En pausa`. También puede fallar si un controlador, la configuración de permisos o un programa de seguridad limita el acceso a las sesiones de audio de Windows.
-- **El sonido no se restaura:** Vuelve a traer la aplicación al primer plano. Si ya cerraste UnfocusMute, quita el silencio manualmente desde el `Mezclador de volumen` de Windows.
+- **La aplicación sigue silenciada:** Si al volver a la aplicación registrada sigue sin oírse, comprueba si está silenciada en el `Mezclador de volumen` de Windows.
 - **El registro por PID no funciona como esperabas:** Consulta el [comportamiento del registro por PID](#comportamientos-importantes).
 - **El estado cambia a `Requiere atención`:** Haz clic en `Detalles`, junto al indicador de estado, para ver el error.
 
@@ -155,7 +156,7 @@ UnfocusMute solo guarda en `%APPDATA%\UnfocusMute\config.json` la configuración
 
 - Nombres de procesos registrados
 - PID registrados directamente
-- Último estado de silencio de las aplicaciones registradas
+- Último estado de silencio de cada aplicación registrada
 - Notas que escribas
 - Idioma y configuración elegidos
 - Posición y tamaño de la ventana
