@@ -9,6 +9,10 @@ pub fn run() -> error::Result<()> {
 }
 
 pub fn show_startup_error(message: &str) {
+    if ui::show_startup_error(message).is_ok() {
+        return;
+    }
+
     use crate::i18n::APP_TITLE;
     use windows::Win32::UI::WindowsAndMessaging::{MB_ICONERROR, MB_OK, MessageBoxW};
     use windows::core::PCWSTR;

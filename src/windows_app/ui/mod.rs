@@ -44,18 +44,18 @@ use windows::Win32::UI::WindowsAndMessaging::{
     GWLP_USERDATA, GetClientRect, GetCursorPos, GetDlgCtrlID, GetWindowRect, HMENU, IDC_ARROW,
     IsDialogMessageW, IsIconic, IsWindowVisible, KillTimer, LB_GETCOUNT, LB_GETCURSEL,
     LB_RESETCONTENT, LB_SETCURSEL, LBN_DBLCLK, LBN_SELCHANGE, LBS_HASSTRINGS, LBS_NOINTEGRALHEIGHT,
-    LBS_NOTIFY, LBS_OWNERDRAWVARIABLE, LoadCursorW, MB_ICONWARNING, MB_OK, MESSAGEBOX_STYLE,
-    MF_GRAYED, MF_SEPARATOR, MF_STRING, MINMAXINFO, MSG, MessageBoxW, PostMessageW,
-    PostQuitMessage, RegisterClassW, RegisterWindowMessageW, SW_HIDE, SW_SHOW, SendMessageW,
-    SetForegroundWindow, SetTimer, SetWindowLongPtrW, ShowWindow, TPM_NONOTIFY, TPM_RETURNCMD,
-    TPM_RIGHTBUTTON, TRACK_POPUP_MENU_FLAGS, TrackPopupMenu, TranslateMessage, WA_INACTIVE,
-    WINDOW_EX_STYLE, WINDOW_STYLE, WINEVENT_OUTOFCONTEXT, WM_ACTIVATE, WM_CLOSE, WM_COMMAND,
-    WM_CONTEXTMENU, WM_CREATE, WM_CTLCOLORBTN, WM_CTLCOLOREDIT, WM_CTLCOLORLISTBOX,
-    WM_CTLCOLORSTATIC, WM_DESTROY, WM_DRAWITEM, WM_ENTERSIZEMOVE, WM_ERASEBKGND, WM_EXITSIZEMOVE,
-    WM_GETFONT, WM_GETMINMAXINFO, WM_KEYDOWN, WM_LBUTTONDBLCLK, WM_LBUTTONDOWN, WM_MEASUREITEM,
-    WM_MOVE, WM_NCCREATE, WM_NCDESTROY, WM_NULL, WM_PAINT, WM_RBUTTONUP, WM_SETFONT, WM_SETREDRAW,
-    WM_SETTINGCHANGE, WM_SHOWWINDOW, WM_SIZE, WM_SIZING, WM_THEMECHANGED, WM_TIMER, WNDCLASSW,
-    WS_CHILD, WS_TABSTOP, WS_VISIBLE, WS_VSCROLL,
+    LBS_NOTIFY, LBS_OWNERDRAWVARIABLE, LoadCursorW, MB_ICONERROR, MB_OK, MF_GRAYED, MF_SEPARATOR,
+    MF_STRING, MINMAXINFO, MSG, MessageBoxW, PostMessageW, PostQuitMessage, RegisterClassW,
+    RegisterWindowMessageW, SW_HIDE, SW_SHOW, SendMessageW, SetForegroundWindow, SetTimer,
+    SetWindowLongPtrW, ShowWindow, TPM_NONOTIFY, TPM_RETURNCMD, TPM_RIGHTBUTTON,
+    TRACK_POPUP_MENU_FLAGS, TrackPopupMenu, TranslateMessage, WA_INACTIVE, WINDOW_EX_STYLE,
+    WINDOW_STYLE, WINEVENT_OUTOFCONTEXT, WM_ACTIVATE, WM_CLOSE, WM_COMMAND, WM_CONTEXTMENU,
+    WM_CREATE, WM_CTLCOLORBTN, WM_CTLCOLOREDIT, WM_CTLCOLORLISTBOX, WM_CTLCOLORSTATIC, WM_DESTROY,
+    WM_DRAWITEM, WM_ENTERSIZEMOVE, WM_ERASEBKGND, WM_EXITSIZEMOVE, WM_GETFONT, WM_GETMINMAXINFO,
+    WM_KEYDOWN, WM_LBUTTONDBLCLK, WM_LBUTTONDOWN, WM_MEASUREITEM, WM_MOVE, WM_NCCREATE,
+    WM_NCDESTROY, WM_NULL, WM_PAINT, WM_RBUTTONUP, WM_SETFONT, WM_SETREDRAW, WM_SETTINGCHANGE,
+    WM_SHOWWINDOW, WM_SIZE, WM_SIZING, WM_THEMECHANGED, WM_TIMER, WNDCLASSW, WS_CHILD, WS_TABSTOP,
+    WS_VISIBLE, WS_VSCROLL,
 };
 use windows::core::{PCWSTR, w};
 
@@ -97,7 +97,7 @@ use managed_mute::{
     ManagedMuteLookup, matching_session_keys_for_target, target_has_managed_mute,
     target_matches_session_key, target_status_text,
 };
-use message_dialog::show_info_dialog;
+use message_dialog::{IssueDialogContent, IssueDialogResult, show_info_dialog, show_issue_dialog};
 use process_choice::{ProcessChoice, search_terms};
 use runtime_logic::{
     MANAGED_MUTE_FOREGROUND_RETRY_TICKS, cached_foreground_process_name,
@@ -154,7 +154,7 @@ const RECOVERED_INVALID_CONFIG_DETAIL: &str =
     "invalid config file was backed up and replaced with defaults";
 const TARGET_PANEL_LEFT: i32 = 14;
 const TARGET_PANEL_RIGHT: i32 = HEADER_CONTENT_RIGHT + (HEADER_LEFT_X - TARGET_PANEL_LEFT);
-const HEADER_STATUS_MAX_WIDTH: i32 = 320;
+const HEADER_STATUS_MAX_WIDTH: i32 = 360;
 const HEADER_STATUS_ICON_WIDTH: i32 = 12;
 const HEADER_STATUS_ICON_GAP: i32 = 5;
 const HEADER_STATUS_HORIZONTAL_PADDING: i32 = 1;
@@ -195,6 +195,33 @@ const LB_ERR: isize = -1;
 pub fn run() -> Result<()> {
     let _com = unsafe { ComApartment::initialize()? };
     unsafe { run_window() }
+}
+
+pub(crate) fn show_startup_error(message: &str) -> Result<()> {
+    unsafe {
+        initialize_common_controls()?;
+    }
+    let module = unsafe { GetModuleHandleW(None).context("get startup error module handle")? };
+    let icons = unsafe { load_app_icons(HINSTANCE(module.0)) };
+    let config = AppConfig::load_existing().unwrap_or_default();
+    let strings = config.language.strings();
+    unsafe {
+        show_issue_dialog(
+            HWND::default(),
+            icons,
+            config.language,
+            config.theme,
+            IssueDialogContent {
+                title: APP_TITLE,
+                summary: strings.startup_error,
+                explanation: Some(strings.startup_error_explanation),
+                detail: Some(message),
+                diagnostic_code: Some("startup-failed"),
+                allow_ignore: false,
+            },
+        )
+        .map(|_| ())
+    }
 }
 
 struct ComApartment;
@@ -277,9 +304,9 @@ unsafe fn run_window() -> Result<()> {
             }
         };
     if config_load.recovered_invalid_config {
-        initial_issues.set(StatusIssue::ConfigLoadFailed);
+        initial_issues.set(StatusIssue::ConfigRecovered);
         initial_issue_diagnostics.set(
-            StatusIssue::ConfigLoadFailed,
+            StatusIssue::ConfigRecovered,
             RECOVERED_INVALID_CONFIG_DETAIL,
         );
     }
@@ -406,7 +433,11 @@ unsafe fn run_window() -> Result<()> {
     if replacement_pending {
         app.borrow_mut().activate_replacement_runtime();
     }
-    if !start_hidden || !app.borrow().tray_added {
+    let should_show_main_window = {
+        let app = app.borrow();
+        main_window_should_be_shown(start_hidden, app.tray_added, app.issues)
+    };
+    if should_show_main_window {
         unsafe {
             let _ = ShowWindow(hwnd, SW_SHOW);
         }
@@ -614,7 +645,6 @@ struct AppWindow {
     strings: &'static Strings,
     audio: Option<AudioController>,
     foreground_hook: Option<ForegroundEventHook>,
-    foreground_hook_failure_notified: bool,
     running_processes: Vec<ProcessInfo>,
     running_process_refresh_buffer: Vec<ProcessInfo>,
     all_process_choices: Vec<ProcessChoice>,
@@ -676,9 +706,15 @@ struct TargetNoteDialogRequest {
 
 struct MessageDialogRequest {
     parent: HWND,
+    icons: AppIcons,
+    language: Language,
+    theme: ThemePreference,
     title: String,
-    body: String,
-    style: MESSAGEBOX_STYLE,
+    summary: String,
+    explanation: Option<String>,
+    detail: Option<String>,
+    diagnostic_code: Option<&'static str>,
+    ignore_issue: Option<StatusIssue>,
 }
 
 struct InfoDialogRequest {
@@ -718,6 +754,7 @@ enum MainWindowAction {
     OpenSettings(SettingsDialogRequest),
     EditTargetNote(TargetNoteDialogRequest),
     ShowMessage(MessageDialogRequest),
+    ShowIssues(Vec<StatusIssue>),
     ShowInfo(InfoDialogRequest),
     ShowTrayMenu(TrayMenuRequest),
     ShowTargetContextMenu(TargetContextMenuRequest),
@@ -896,7 +933,6 @@ impl AppWindow {
             strings,
             audio: None,
             foreground_hook: None,
-            foreground_hook_failure_notified: false,
             running_processes: Vec::new(),
             running_process_refresh_buffer: Vec::new(),
             all_process_choices: Vec::new(),
@@ -1230,7 +1266,7 @@ impl AppWindow {
 
     fn layout_scaled_controls(&self) {
         let issue_visible = self.issues.visible().is_some();
-        self.layout_header(issue_visible, self.current_issue_detail_visible());
+        self.layout_header(issue_visible);
         unsafe {
             let _ = move_window(
                 self.controls.target_list,
@@ -1559,9 +1595,8 @@ impl AppWindow {
         }
     }
 
-    fn layout_header(&self, issue_visible: bool, issue_detail_visible: bool) {
-        let issue_width =
-            (issue_visible && issue_detail_visible).then(|| self.issue_details_button_width());
+    fn layout_header(&self, issue_visible: bool) {
+        let issue_width = issue_visible.then(|| self.issue_details_button_width());
         let layout = fit_header_row(
             self.status_control_width(),
             self.settings_button_width(),
@@ -1604,11 +1639,7 @@ impl AppWindow {
         unsafe {
             let _ = ShowWindow(
                 self.controls.issue_details_button,
-                if issue_detail_visible {
-                    SW_SHOW
-                } else {
-                    SW_HIDE
-                },
+                if issue_visible { SW_SHOW } else { SW_HIDE },
             );
         }
     }
@@ -1653,7 +1684,8 @@ impl AppWindow {
     }
 
     fn status_control_width(&self) -> i32 {
-        status_control_width_for_text(self.text_width(&self.status_display_text))
+        let text_width = self.text_width(&self.status_display_text);
+        status_control_width_for_text(text_width)
     }
 
     fn button_width(&self, text: &str, min_width: i32, max_width: i32) -> i32 {
@@ -1780,9 +1812,13 @@ impl AppWindow {
     }
 
     fn refresh_processes(&mut self) -> ProcessRefreshResult {
+        self.refresh_processes_with_detail().0
+    }
+
+    fn refresh_processes_with_detail(&mut self) -> (ProcessRefreshResult, Option<String>) {
         self.last_process_refresh_attempt = Instant::now();
         match self.process_list_source {
-            ProcessListSource::AudioSessions => self.refresh_audio_session_processes(),
+            ProcessListSource::AudioSessions => (self.refresh_audio_session_processes(), None),
             ProcessListSource::AllProcesses => self.refresh_all_processes(),
         }
     }
@@ -1826,11 +1862,12 @@ impl AppWindow {
         }
     }
 
-    fn refresh_all_processes(&mut self) -> ProcessRefreshResult {
-        match process::refresh_snapshot_processes(
+    fn refresh_all_processes(&mut self) -> (ProcessRefreshResult, Option<String>) {
+        let refresh = process::refresh_snapshot_processes(
             &mut self.running_processes,
             &mut self.running_process_refresh_buffer,
-        ) {
+        );
+        let result = match refresh.outcome {
             ProcessRefreshOutcome::Changed => {
                 self.rebuild_process_choices();
                 self.apply_process_filter();
@@ -1838,7 +1875,8 @@ impl AppWindow {
             }
             ProcessRefreshOutcome::Unchanged => ProcessRefreshResult::Unchanged,
             ProcessRefreshOutcome::Failed => ProcessRefreshResult::Failed,
-        }
+        };
+        (result, refresh.failure_detail)
     }
 
     fn refresh_processes_if_stale(&mut self) -> ProcessRefreshResult {
@@ -1961,6 +1999,7 @@ impl AppWindow {
 
         if self.paused {
             self.foreground_hook = None;
+            self.clear_issue(StatusIssue::ForegroundHookUnavailable);
             let _ = self.restore_managed_mutes();
             self.release_idle_audio_while_paused();
             self.sync_audio_fallback_timer();
@@ -1970,6 +2009,7 @@ impl AppWindow {
 
         if self.target_matcher.is_empty() && !self.has_managed_mutes() {
             self.foreground_hook = None;
+            self.clear_issue(StatusIssue::ForegroundHookUnavailable);
             self.audio = None;
             self.clear_audio_issues();
             self.sync_audio_fallback_timer();
@@ -2034,7 +2074,6 @@ impl AppWindow {
         let snapshot = StatusSnapshot {
             paused: self.paused,
             issue,
-            issue_detail_visible: self.issue_detail_available(issue),
             target_count: self.config.targets.len(),
             muted_count: self.muted_target_count,
         };
@@ -2057,10 +2096,10 @@ impl AppWindow {
             &mut self.status_detail_text,
         );
         self.status_display_text.clear();
-        self.status_display_text.push_str(status);
         if let Some(issue_text) = issue_text.as_deref() {
-            self.status_display_text.push_str(" · ");
             self.status_display_text.push_str(issue_text);
+        } else {
+            self.status_display_text.push_str(status);
         }
         tray_tip_text_into(
             status,
@@ -2076,7 +2115,7 @@ impl AppWindow {
             };
             set_text(self.controls.status_detail, header_detail_text);
         }
-        self.layout_header(snapshot.issue.is_some(), snapshot.issue_detail_visible);
+        self.layout_header(snapshot.issue.is_some());
         self.redraw_header();
         self.last_status = Some(snapshot);
         if self.runtime_active {
@@ -2306,50 +2345,27 @@ impl AppWindow {
     }
 
     fn record_issue_detail(&mut self, issue: StatusIssue, detail: impl Into<String>) {
-        let detail_visible_before = self.current_issue_detail_visible();
-        let changed = self.issue_diagnostics.set(issue, detail);
-        if changed && detail_visible_before != self.current_issue_detail_visible() {
-            self.last_status = None;
-            self.update_status();
-        }
+        self.issue_diagnostics.set(issue, detail);
     }
 
     fn clear_issue(&mut self, issue: StatusIssue) {
-        let detail_visible_before = self.current_issue_detail_visible();
         let issue_changed = self.issues.clear(issue);
-        let detail_changed = self.issue_diagnostics.clear(issue);
-        if issue_changed
-            || (detail_changed && detail_visible_before != self.current_issue_detail_visible())
-        {
+        self.issue_diagnostics.clear(issue);
+        if issue_changed {
             self.last_status = None;
             self.update_status();
         }
     }
 
-    fn clear_issue_mask(&mut self, mask: u8) -> bool {
-        let detail_visible_before = self.current_issue_detail_visible();
+    fn clear_issue_mask(&mut self, mask: u16) -> bool {
         let issue_changed = self.issues.clear_mask(mask);
-        let detail_changed = self.issue_diagnostics.clear_mask(mask);
+        self.issue_diagnostics.clear_mask(mask);
         issue_changed
-            || (detail_changed && detail_visible_before != self.current_issue_detail_visible())
-    }
-
-    fn current_issue_detail_visible(&self) -> bool {
-        self.issue_detail_available(self.issues.visible())
-    }
-
-    fn issue_detail_available(&self, issue: Option<StatusIssue>) -> bool {
-        issue
-            .and_then(|issue| self.issue_diagnostics.detail(issue))
-            .is_some()
     }
 
     fn issue_details_action(&self) -> Option<MainWindowAction> {
-        let issue = self.issues.visible()?;
-        let detail = self.issue_diagnostics.detail(issue)?;
-        Some(MainWindowAction::ShowMessage(
-            self.issue_message_request(issue, Some(detail)),
-        ))
+        let issues = self.issues.visible_issues().collect::<Vec<_>>();
+        (!issues.is_empty()).then_some(MainWindowAction::ShowIssues(issues))
     }
 
     fn issue_message_request(
@@ -2359,10 +2375,53 @@ impl AppWindow {
     ) -> MessageDialogRequest {
         MessageDialogRequest {
             parent: self.hwnd,
+            icons: self.icons,
+            language: self.config.language,
+            theme: self.config.theme,
             title: self.strings.status_issue.to_owned(),
-            body: issue_message_body(self.issue_text(issue), detail),
-            style: MB_OK | MB_ICONWARNING,
+            summary: self.issue_text(issue).to_owned(),
+            explanation: Some(self.issue_explanation(issue).to_owned()),
+            detail: detail.map(str::to_owned),
+            diagnostic_code: Some(issue.code()),
+            ignore_issue: issue.can_ignore().then_some(issue),
         }
+    }
+
+    fn action_failed_request(
+        &self,
+        diagnostic_code: &'static str,
+        detail: Option<String>,
+    ) -> MessageDialogRequest {
+        MessageDialogRequest {
+            parent: self.hwnd,
+            icons: self.icons,
+            language: self.config.language,
+            theme: self.config.theme,
+            title: self.strings.status_issue.to_owned(),
+            summary: self.strings.action_failed.to_owned(),
+            explanation: Some(self.strings.action_failed_explanation.to_owned()),
+            detail,
+            diagnostic_code: Some(diagnostic_code),
+            ignore_issue: None,
+        }
+    }
+
+    fn ignore_issue(&mut self, issue: StatusIssue) -> Option<InfoDialogRequest> {
+        if !self.issues.contains(issue) || !issue.can_ignore() {
+            return None;
+        }
+        if self.issues.ignore(issue) {
+            self.last_status = None;
+            self.update_status();
+        }
+        Some(InfoDialogRequest {
+            parent: self.hwnd,
+            icons: self.icons,
+            language: self.config.language,
+            theme: self.config.theme,
+            title: APP_TITLE.to_owned(),
+            body: self.strings.issue_ignored_explanation.to_owned(),
+        })
     }
 
     fn issue_text(&self, issue: StatusIssue) -> &'static str {
@@ -2370,10 +2429,28 @@ impl AppWindow {
             StatusIssue::AudioUnavailable => self.strings.audio_unavailable,
             StatusIssue::AudioUpdateFailed => self.strings.audio_update_failed,
             StatusIssue::ConfigLoadFailed => self.strings.config_load_failed,
+            StatusIssue::ConfigRecovered => self.strings.config_recovered,
             StatusIssue::ConfigSaveFailed => self.strings.config_save_failed,
             StatusIssue::StartupUpdateFailed => self.strings.startup_update_failed,
             StatusIssue::TimerSetupFailed => self.strings.timer_setup_failed,
             StatusIssue::TrayIconUnavailable => self.strings.tray_icon_unavailable,
+            StatusIssue::ForegroundHookUnavailable => self.strings.foreground_hook_failed,
+        }
+    }
+
+    fn issue_explanation(&self, issue: StatusIssue) -> &'static str {
+        match issue {
+            StatusIssue::AudioUnavailable => self.strings.audio_unavailable_explanation,
+            StatusIssue::AudioUpdateFailed => self.strings.audio_update_failed_explanation,
+            StatusIssue::ConfigLoadFailed => self.strings.config_load_failed_explanation,
+            StatusIssue::ConfigRecovered => self.strings.config_recovered_explanation,
+            StatusIssue::ConfigSaveFailed => self.strings.config_save_failed_explanation,
+            StatusIssue::StartupUpdateFailed => self.strings.startup_update_failed_explanation,
+            StatusIssue::TimerSetupFailed => self.strings.timer_setup_failed_explanation,
+            StatusIssue::TrayIconUnavailable => self.strings.tray_icon_unavailable_explanation,
+            StatusIssue::ForegroundHookUnavailable => {
+                self.strings.foreground_hook_failed_explanation
+            }
         }
     }
 
@@ -2406,9 +2483,7 @@ impl AppWindow {
         match reload {
             ConfigReload::Unchanged => ConfigReloadResult::UNCHANGED,
             ConfigReload::Loaded(config) => {
-                if self.issues.clear(StatusIssue::ConfigLoadFailed) {
-                    self.last_status = None;
-                }
+                self.clear_issue(StatusIssue::ConfigLoadFailed);
                 let target_matcher_changed = self.apply_external_config(config, sync_startup);
                 self.config_store.accept_loaded(&self.config);
                 ConfigReloadResult::changed(target_matcher_changed)
@@ -2442,38 +2517,16 @@ impl AppWindow {
         match unsafe { ForegroundEventHook::new(self.hwnd) } {
             Ok(hook) => {
                 self.foreground_hook = Some(hook);
-                self.foreground_hook_failure_notified = false;
+                self.clear_issue(StatusIssue::ForegroundHookUnavailable);
             }
-            Err(_) => {
+            Err(error) => {
                 self.foreground_hook = None;
-                self.notify_foreground_hook_failure_once();
+                self.set_issue_with_detail(
+                    StatusIssue::ForegroundHookUnavailable,
+                    error.to_string(),
+                );
             }
         }
-    }
-
-    fn notify_foreground_hook_failure_once(&mut self) {
-        if self.foreground_hook_failure_notified {
-            return;
-        }
-
-        self.foreground_hook_failure_notified = true;
-        unsafe {
-            let _ = PostMessageW(
-                Some(self.hwnd),
-                WM_SHOW_FOREGROUND_HOOK_WARNING,
-                WPARAM(0),
-                LPARAM(0),
-            );
-        }
-    }
-
-    fn foreground_hook_warning_action(&self) -> MainWindowAction {
-        MainWindowAction::ShowMessage(MessageDialogRequest {
-            parent: self.hwnd,
-            title: self.strings.status_issue.to_owned(),
-            body: self.strings.foreground_hook_failed.to_owned(),
-            style: MB_OK | MB_ICONWARNING,
-        })
     }
 
     fn ensure_foreground_hook(&mut self) {
@@ -2669,8 +2722,7 @@ impl AppWindow {
     }
 
     fn clear_config_issues(&mut self) {
-        let mask = StatusIssue::ConfigLoadFailed.bit() | StatusIssue::ConfigSaveFailed.bit();
-        if self.clear_issue_mask(mask) {
+        if self.clear_issue_mask(active_config_failure_mask()) {
             self.last_status = None;
             self.update_status();
         }
@@ -2770,7 +2822,7 @@ impl AppWindow {
         match id {
             ID_SHOW => return Some(MainWindowAction::ShowMainWindow),
             ID_ADD_SELECTED => self.add_process_picker_target(),
-            ID_PROCESS_SOURCE => self.toggle_process_list_source(),
+            ID_PROCESS_SOURCE => return self.toggle_process_list_source(),
             ID_TOGGLE_PROCESS_DETAILS => self.toggle_process_details(),
             ID_PID_DETAILS_HELP => return Some(self.pid_details_help_action()),
             ID_RUNNING if notification == EN_CHANGE as u16 && !self.updating_process_picker => {
@@ -3001,12 +3053,19 @@ impl AppWindow {
         self.update_action_buttons();
     }
 
-    fn toggle_process_list_source(&mut self) {
+    fn toggle_process_list_source(&mut self) -> Option<MainWindowAction> {
         self.process_list_source = self.process_list_source.toggled();
         self.focus_main_window();
         self.refresh_process_details_ui();
-        let _ = self.refresh_processes();
+        let (refresh, failure_detail) = self.refresh_processes_with_detail();
         self.show_process_results();
+        (self.process_list_source == ProcessListSource::AllProcesses
+            && refresh == ProcessRefreshResult::Failed)
+            .then(|| {
+                MainWindowAction::ShowMessage(
+                    self.action_failed_request("process-list-refresh-failed", failure_detail),
+                )
+            })
     }
 
     fn focus_main_window(&self) {
@@ -3380,7 +3439,10 @@ impl AppWindow {
         };
         let warning = restore_issue.map(|issue| {
             let detail = self.issue_diagnostics.detail(issue);
-            self.issue_message_request(issue, detail)
+            let mut request = self.issue_message_request(issue, detail);
+            request.explanation = Some(self.strings.exit_restore_failed_explanation.to_owned());
+            request.diagnostic_code = Some("exit-restore-failed");
+            request
         });
         if self.tray_added {
             let data = self.tray_data(APP_TITLE);
@@ -3515,7 +3577,7 @@ impl AppWindow {
         let issue_visible = self.issues.visible().is_some();
         let status = &self.status_display_text;
         let text_color = if issue_visible {
-            self.theme.palette.warning
+            self.theme.palette.status_muted
         } else if self.paused {
             self.theme.palette.status_paused
         } else {
@@ -4140,15 +4202,24 @@ fn last_win32_error_detail(action: &str) -> String {
     format!("{action} failed with WIN32 error {}", error.0)
 }
 
-fn issue_message_body(issue_text: &str, detail: Option<&str>) -> String {
-    let Some(detail) = detail.filter(|detail| !detail.trim().is_empty()) else {
-        return issue_text.to_owned();
-    };
+fn main_window_should_be_shown(start_hidden: bool, tray_added: bool, issues: IssueState) -> bool {
+    !start_hidden || !tray_added || issues.requires_attention()
+}
 
-    let mut body = String::with_capacity(issue_text.len() + detail.len() + 2);
+fn active_config_failure_mask() -> u16 {
+    StatusIssue::ConfigLoadFailed.bit() | StatusIssue::ConfigSaveFailed.bit()
+}
+
+fn issue_message_body(issue_text: &str, explanation: Option<&str>, detail: Option<&str>) -> String {
+    let explanation = explanation.filter(|text| !text.trim().is_empty());
+    let detail = detail.filter(|text| !text.trim().is_empty());
+    let additional_len = explanation.map_or(0, str::len) + detail.map_or(0, str::len);
+    let mut body = String::with_capacity(issue_text.len() + additional_len + 4);
     body.push_str(issue_text);
-    body.push_str("\n\n");
-    body.push_str(detail);
+    for text in [explanation, detail].into_iter().flatten() {
+        body.push_str("\n\n");
+        body.push_str(text);
+    }
     body
 }
 
@@ -4213,10 +4284,26 @@ unsafe fn execute_main_window_action(state: &RefCell<AppWindow>, action: MainWin
                     },
                 )
             };
-            let mut app = state.borrow_mut();
-            app.finish_settings_window_modal();
-            if let Ok(Some(changes)) = result {
-                app.apply_settings_changes(changes);
+            let warning =
+                {
+                    let mut app = state.borrow_mut();
+                    app.finish_settings_window_modal();
+                    match result {
+                        Ok(Some(changes)) => {
+                            app.apply_settings_changes(changes);
+                            None
+                        }
+                        Ok(None) => None,
+                        Err(error) => Some(app.action_failed_request(
+                            "settings-window-failed",
+                            Some(error.to_string()),
+                        )),
+                    }
+                };
+            if let Some(warning) = warning {
+                unsafe {
+                    let _ = show_message_dialog(warning);
+                }
             }
         }
         MainWindowAction::EditTargetNote(request) => {
@@ -4231,17 +4318,67 @@ unsafe fn execute_main_window_action(state: &RefCell<AppWindow>, action: MainWin
                     request.current_note.as_deref(),
                 )
             };
-            if let Ok(Some(note)) = result {
-                state.borrow_mut().apply_target_note_dialog_result(
-                    &request.target_name,
-                    request.target_pid,
-                    note,
-                );
+            let warning =
+                match result {
+                    Ok(Some(note)) => {
+                        state.borrow_mut().apply_target_note_dialog_result(
+                            &request.target_name,
+                            request.target_pid,
+                            note,
+                        );
+                        None
+                    }
+                    Ok(None) => None,
+                    Err(error) => Some(state.borrow().action_failed_request(
+                        "target-note-window-failed",
+                        Some(error.to_string()),
+                    )),
+                };
+            if let Some(warning) = warning {
+                unsafe {
+                    let _ = show_message_dialog(warning);
+                }
             }
         }
         MainWindowAction::ShowMessage(request) => unsafe {
-            show_message_dialog(request);
+            let _ = show_message_dialog(request);
         },
+        MainWindowAction::ShowIssues(issues) => {
+            for issue in issues {
+                let request = {
+                    let app = state.borrow();
+                    if !app.issues.visible_issues().any(|visible| visible == issue) {
+                        continue;
+                    }
+                    app.issue_message_request(issue, app.issue_diagnostics.detail(issue))
+                };
+                let ignore_issue = request.ignore_issue;
+                match unsafe { show_message_dialog(request) } {
+                    IssueDialogResult::Dismissed => break,
+                    IssueDialogResult::Acknowledged => {
+                        if issue.clears_on_acknowledge() {
+                            state.borrow_mut().clear_issue(issue);
+                        }
+                    }
+                    IssueDialogResult::Ignored => {
+                        if let Some(issue) = ignore_issue
+                            && let Some(notice) = state.borrow_mut().ignore_issue(issue)
+                        {
+                            unsafe {
+                                let _ = show_info_dialog(
+                                    notice.parent,
+                                    notice.icons,
+                                    notice.language,
+                                    notice.theme,
+                                    &notice.title,
+                                    &notice.body,
+                                );
+                            }
+                        }
+                    }
+                }
+            }
+        }
         MainWindowAction::ShowInfo(request) => unsafe {
             let _ = show_info_dialog(
                 request.parent,
@@ -4308,7 +4445,7 @@ unsafe fn execute_main_window_action(state: &RefCell<AppWindow>, action: MainWin
             let warning = state.borrow_mut().prepare_for_destroy();
             if let Some(warning) = warning {
                 unsafe {
-                    show_message_dialog(warning);
+                    let _ = show_message_dialog(warning);
                 }
             }
             let hwnd = state.borrow().hwnd;
@@ -4319,16 +4456,41 @@ unsafe fn execute_main_window_action(state: &RefCell<AppWindow>, action: MainWin
     }
 }
 
-unsafe fn show_message_dialog(request: MessageDialogRequest) {
-    let title = to_wide(&request.title);
-    let body = to_wide(&request.body);
-    unsafe {
-        let _ = MessageBoxW(
-            Some(request.parent),
-            PCWSTR(body.as_ptr()),
-            PCWSTR(title.as_ptr()),
-            request.style,
-        );
+unsafe fn show_message_dialog(request: MessageDialogRequest) -> IssueDialogResult {
+    match unsafe {
+        show_issue_dialog(
+            request.parent,
+            request.icons,
+            request.language,
+            request.theme,
+            IssueDialogContent {
+                title: &request.title,
+                summary: &request.summary,
+                explanation: request.explanation.as_deref(),
+                detail: request.detail.as_deref(),
+                diagnostic_code: request.diagnostic_code,
+                allow_ignore: request.ignore_issue.is_some(),
+            },
+        )
+    } {
+        Ok(result) => result,
+        Err(_) => {
+            let title = to_wide(&request.title);
+            let body = to_wide(&issue_message_body(
+                &request.summary,
+                request.explanation.as_deref(),
+                request.detail.as_deref(),
+            ));
+            unsafe {
+                let _ = MessageBoxW(
+                    Some(request.parent),
+                    PCWSTR(body.as_ptr()),
+                    PCWSTR(title.as_ptr()),
+                    MB_OK | MB_ICONERROR,
+                );
+            }
+            IssueDialogResult::Acknowledged
+        }
     }
 }
 
@@ -4570,14 +4732,6 @@ unsafe extern "system" fn window_proc(
             }
             WM_PROCESS_SEARCH_RESULT_CHOSEN => {
                 app.commit_process_result(wparam.0);
-                return LRESULT(0);
-            }
-            WM_SHOW_FOREGROUND_HOOK_WARNING => {
-                let action = app.foreground_hook_warning_action();
-                drop(app);
-                unsafe {
-                    execute_main_window_action(state, action);
-                }
                 return LRESULT(0);
             }
             WM_REFRESH_THEME_VISUALS => {
@@ -4940,12 +5094,41 @@ mod target_list_tests {
     #[test]
     fn issue_message_body_includes_detail_when_available() {
         assert_eq!(
-            issue_message_body("Could not change mute state", Some("SetMute failed")),
-            "Could not change mute state\n\nSetMute failed"
+            issue_message_body(
+                "Could not change mute state",
+                Some("Monitoring continues."),
+                Some("SetMute failed")
+            ),
+            "Could not change mute state\n\nMonitoring continues.\n\nSetMute failed"
         );
         assert_eq!(
-            issue_message_body("Could not change mute state", Some("  ")),
+            issue_message_body("Could not change mute state", Some("  "), Some("  ")),
             "Could not change mute state"
+        );
+    }
+
+    #[test]
+    fn startup_critical_issue_forces_the_main_window_visible() {
+        let mut critical = IssueState::default();
+        critical.set(StatusIssue::ConfigLoadFailed);
+        assert!(main_window_should_be_shown(true, true, critical));
+
+        let mut safe = IssueState::default();
+        safe.set(StatusIssue::StartupUpdateFailed);
+        assert!(!main_window_should_be_shown(true, true, safe));
+        assert!(main_window_should_be_shown(true, false, safe));
+        assert!(main_window_should_be_shown(false, true, safe));
+    }
+
+    #[test]
+    fn successful_save_does_not_clear_unacknowledged_recovery_notice() {
+        assert_eq!(
+            active_config_failure_mask(),
+            StatusIssue::ConfigLoadFailed.bit() | StatusIssue::ConfigSaveFailed.bit()
+        );
+        assert_eq!(
+            active_config_failure_mask() & StatusIssue::ConfigRecovered.bit(),
+            0
         );
     }
 }

@@ -9,6 +9,7 @@ use super::constants::{
 };
 use super::drawing::{draw_text_line, draw_text_line_at_visual_center};
 use super::language_combo::{LanguageCombo, LanguageComboIds};
+use super::message_dialog::{IssueDialogContent, show_issue_dialog};
 use super::modal_window::run_modal_message_loop;
 use super::theme::{
     AppTheme, ResolvedTheme, active_palette, apply_native_control_theme, apply_window_theme, px,
@@ -45,7 +46,7 @@ use windows::Win32::UI::Shell::{
 use windows::Win32::UI::WindowsAndMessaging::{
     BringWindowToTop, CBN_SELCHANGE, CBN_SELENDOK, CREATESTRUCTW, CreateWindowExW, DefWindowProcW,
     GWLP_USERDATA, GetClientRect, GetWindowLongPtrW, GetWindowRect, IDC_ARROW, IDCANCEL,
-    LoadCursorW, MB_ICONWARNING, MB_OK, MessageBoxW, MoveWindow, RegisterClassW, SW_HIDE, SW_SHOW,
+    LoadCursorW, MB_ICONERROR, MB_OK, MessageBoxW, MoveWindow, RegisterClassW, SW_HIDE, SW_SHOW,
     SW_SHOWNOACTIVATE, SendMessageW, SetWindowLongPtrW, ShowWindow, WA_INACTIVE, WINDOW_EX_STYLE,
     WINDOW_STYLE, WM_ACTIVATE, WM_APP, WM_CLOSE, WM_COMMAND, WM_CREATE, WM_CTLCOLORBTN,
     WM_CTLCOLORLISTBOX, WM_CTLCOLORSTATIC, WM_DRAWITEM, WM_ERASEBKGND, WM_MOUSEMOVE, WM_NCCREATE,
@@ -192,8 +193,18 @@ pub(super) enum SettingsLiveUpdate {
 
 #[derive(Clone, Copy)]
 enum SettingsExternalAction {
-    OpenConfigFolder { parent: HWND, language: Language },
-    OpenGithubPage { parent: HWND, language: Language },
+    OpenConfigFolder {
+        parent: HWND,
+        icons: AppIcons,
+        language: Language,
+        theme: ThemePreference,
+    },
+    OpenGithubPage {
+        parent: HWND,
+        icons: AppIcons,
+        language: Language,
+        theme: ThemePreference,
+    },
 }
 
 struct SettingsWindow {
@@ -780,11 +791,15 @@ impl SettingsWindow {
         match id {
             ID_SETTINGS_WINDOW_OPEN_CONFIG => Some(SettingsExternalAction::OpenConfigFolder {
                 parent: self.hwnd,
+                icons: self.icons,
                 language: self.language,
+                theme: self.theme_preference,
             }),
             ID_SETTINGS_WINDOW_GITHUB => Some(SettingsExternalAction::OpenGithubPage {
                 parent: self.hwnd,
+                icons: self.icons,
                 language: self.language,
+                theme: self.theme_preference,
             }),
             _ => None,
         }
@@ -990,27 +1005,60 @@ impl SettingsWindow {
 
 fn execute_settings_external_action(action: SettingsExternalAction) {
     match action {
-        SettingsExternalAction::OpenConfigFolder { parent, language } => {
-            open_config_folder(parent, language)
-        }
-        SettingsExternalAction::OpenGithubPage { parent, language } => {
-            open_github_page(parent, language)
-        }
+        SettingsExternalAction::OpenConfigFolder {
+            parent,
+            icons,
+            language,
+            theme,
+        } => open_config_folder(parent, icons, language, theme),
+        SettingsExternalAction::OpenGithubPage {
+            parent,
+            icons,
+            language,
+            theme,
+        } => open_github_page(parent, icons, language, theme),
     }
 }
 
-fn open_config_folder(parent: HWND, language: Language) {
+fn open_config_folder(parent: HWND, icons: AppIcons, language: Language, theme: ThemePreference) {
     let strings = language.strings();
-    let Ok(config_path) = cached_config_file_path() else {
-        show_warning(parent, language, strings.open_config_failed);
-        return;
+    let config_path = match cached_config_file_path() {
+        Ok(path) => path,
+        Err(error) => {
+            show_warning(
+                parent,
+                icons,
+                language,
+                theme,
+                strings.open_config_failed,
+                "open-config-folder-failed",
+                Some(&error.to_string()),
+            );
+            return;
+        }
     };
     let Some(path) = config_path.parent() else {
-        show_warning(parent, language, strings.open_config_failed);
+        show_warning(
+            parent,
+            icons,
+            language,
+            theme,
+            strings.open_config_failed,
+            "open-config-folder-failed",
+            Some("settings file path has no parent directory"),
+        );
         return;
     };
-    if fs::create_dir_all(path).is_err() {
-        show_warning(parent, language, strings.open_config_failed);
+    if let Err(error) = fs::create_dir_all(path) {
+        show_warning(
+            parent,
+            icons,
+            language,
+            theme,
+            strings.open_config_failed,
+            "open-config-folder-failed",
+            Some(&error.to_string()),
+        );
         return;
     }
     let path = super::win32::path_to_wide(path);
@@ -1024,12 +1072,21 @@ fn open_config_folder(parent: HWND, language: Language) {
             SW_SHOW,
         );
         if result.0 as isize <= 32 {
-            show_warning(parent, language, strings.open_config_failed);
+            let detail = format!("ShellExecuteW failed with code {}", result.0 as isize);
+            show_warning(
+                parent,
+                icons,
+                language,
+                theme,
+                strings.open_config_failed,
+                "open-config-folder-failed",
+                Some(&detail),
+            );
         }
     }
 }
 
-fn open_github_page(parent: HWND, language: Language) {
+fn open_github_page(parent: HWND, icons: AppIcons, language: Language, theme: ThemePreference) {
     let url = to_wide(super::GITHUB_PAGE_URL);
     unsafe {
         let result = ShellExecuteW(
@@ -1041,21 +1098,60 @@ fn open_github_page(parent: HWND, language: Language) {
             SW_SHOW,
         );
         if result.0 as isize <= 32 {
-            show_warning(parent, language, language.strings().open_github_failed);
+            let detail = format!("ShellExecuteW failed with code {}", result.0 as isize);
+            show_warning(
+                parent,
+                icons,
+                language,
+                theme,
+                language.strings().open_github_failed,
+                "open-github-page-failed",
+                Some(&detail),
+            );
         }
     }
 }
 
-fn show_warning(parent: HWND, language: Language, body: &str) {
-    let title = to_wide(language.strings().status_issue);
-    let body = to_wide(body);
+fn show_warning(
+    parent: HWND,
+    icons: AppIcons,
+    language: Language,
+    theme: ThemePreference,
+    body: &str,
+    diagnostic_code: &'static str,
+    detail: Option<&str>,
+) {
     unsafe {
-        let _ = MessageBoxW(
-            Some(parent),
-            PCWSTR(body.as_ptr()),
-            PCWSTR(title.as_ptr()),
-            MB_OK | MB_ICONWARNING,
-        );
+        if show_issue_dialog(
+            parent,
+            icons,
+            language,
+            theme,
+            IssueDialogContent {
+                title: language.strings().status_issue,
+                summary: body,
+                explanation: None,
+                detail,
+                diagnostic_code: Some(diagnostic_code),
+                allow_ignore: false,
+            },
+        )
+        .is_err()
+        {
+            let title = to_wide(language.strings().status_issue);
+            let mut fallback_body = body.to_owned();
+            if let Some(detail) = detail {
+                fallback_body.push_str("\n\n");
+                fallback_body.push_str(detail);
+            }
+            let body = to_wide(&fallback_body);
+            let _ = MessageBoxW(
+                Some(parent),
+                PCWSTR(body.as_ptr()),
+                PCWSTR(title.as_ptr()),
+                MB_OK | MB_ICONERROR,
+            );
+        }
     }
 }
 

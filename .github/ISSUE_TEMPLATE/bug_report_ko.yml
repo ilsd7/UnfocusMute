@@ -83,8 +83,8 @@ body:
     id: app_status
     attributes:
       label: 오류 메시지
-      description: 상단에 `주의`가 표시되면 `세부 정보`를 눌러 팝업의 오류 메시지를 붙여 넣거나 스크린샷을 첨부해 주세요.
-      placeholder: "팝업 오류 메시지를 붙여 넣거나 스크린샷을 첨부해 주세요."
+      description: 상단에 `주의`가 표시되면 `세부 정보`를 누른 뒤 `세부 정보 복사`로 복사한 오류 메시지를 붙여 넣어 주세요.
+      placeholder: "`세부 정보 복사`로 복사한 오류 메시지를 붙여 넣어 주세요."
 
   - type: input
     id: target_app

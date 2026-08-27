@@ -83,8 +83,8 @@ body:
     id: app_status
     attributes:
       label: Error message
-      description: If UnfocusMute shows `Needs attention`, click `Details`, then paste the error message from the popup here or attach a screenshot.
-      placeholder: "Paste the popup error message, or attach a screenshot."
+      description: If UnfocusMute shows `Needs attention`, click `Details`, then use `Copy details` and paste the error message here.
+      placeholder: "Paste the error message copied with `Copy details`."
 
   - type: input
     id: target_app

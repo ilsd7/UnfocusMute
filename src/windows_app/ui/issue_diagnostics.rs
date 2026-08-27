@@ -1,7 +1,5 @@
 use super::state::StatusIssue;
 
-const MAX_ISSUE_DETAIL_CHARS: usize = 1_200;
-
 #[derive(Default)]
 pub(super) struct IssueDiagnostics {
     details: Vec<IssueDiagnostic>,
@@ -40,7 +38,7 @@ impl IssueDiagnostics {
         true
     }
 
-    pub(super) fn clear_mask(&mut self, mask: u8) -> bool {
+    pub(super) fn clear_mask(&mut self, mask: u16) -> bool {
         let old_len = self.details.len();
         self.details.retain(|entry| entry.issue.bit() & mask == 0);
         old_len != self.details.len()
@@ -54,21 +52,12 @@ impl IssueDiagnostics {
     }
 }
 
-fn normalized_detail(mut detail: String) -> Option<String> {
+fn normalized_detail(detail: String) -> Option<String> {
     if detail.trim().is_empty() {
         return None;
     }
 
-    detail = detail.trim().to_owned();
-    truncate_to_chars(&mut detail, MAX_ISSUE_DETAIL_CHARS);
-    Some(detail)
-}
-
-fn truncate_to_chars(value: &mut String, max_chars: usize) {
-    let Some((index, _)) = value.char_indices().nth(max_chars) else {
-        return;
-    };
-    value.truncate(index);
+    Some(detail.trim().to_owned())
 }
 
 #[cfg(test)]
@@ -110,6 +99,19 @@ mod tests {
         assert_eq!(
             diagnostics.detail(StatusIssue::ConfigSaveFailed),
             Some("config")
+        );
+    }
+
+    #[test]
+    fn long_detail_is_preserved_in_full() {
+        let detail = "x".repeat(10_000);
+        let mut diagnostics = IssueDiagnostics::default();
+
+        diagnostics.set(StatusIssue::AudioUpdateFailed, detail.clone());
+
+        assert_eq!(
+            diagnostics.detail(StatusIssue::AudioUpdateFailed),
+            Some(detail.as_str())
         );
     }
 }

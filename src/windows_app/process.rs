@@ -29,6 +29,11 @@ pub enum ProcessRefreshOutcome {
     Failed,
 }
 
+pub(crate) struct SnapshotProcessRefreshResult {
+    pub(crate) outcome: ProcessRefreshOutcome,
+    pub(crate) failure_detail: Option<String>,
+}
+
 #[derive(Default)]
 pub struct ProcessNameResolver {
     names: ProcessNameCache,
@@ -275,11 +280,22 @@ pub(crate) fn replace_processes(
 pub(crate) fn refresh_snapshot_processes(
     processes: &mut Vec<ProcessInfo>,
     scratch: &mut Vec<ProcessInfo>,
-) -> ProcessRefreshOutcome {
-    replace_processes(processes, scratch, collect_process_snapshot)
+) -> SnapshotProcessRefreshResult {
+    let mut failure_detail = None;
+    let outcome = replace_processes(processes, scratch, |next| {
+        if let Err(error) = collect_process_snapshot(next) {
+            failure_detail = Some(error.to_string());
+            return false;
+        }
+        true
+    });
+    SnapshotProcessRefreshResult {
+        outcome,
+        failure_detail,
+    }
 }
 
-fn collect_process_snapshot(processes: &mut Vec<ProcessInfo>) -> bool {
+fn collect_process_snapshot(processes: &mut Vec<ProcessInfo>) -> Result<(), Error> {
     visit_process_snapshot(|pid, name| {
         processes.push(ProcessInfo { pid, name });
         true
@@ -300,14 +316,16 @@ fn process_names_from_snapshot() -> Option<ProcessNameSnapshot> {
     if visit_process_snapshot(|pid, name| {
         processes.push(pid, name);
         true
-    }) {
+    })
+    .is_ok()
+    {
         Some(ProcessNameSnapshot::new(processes.names))
     } else {
         None
     }
 }
 
-fn visit_process_snapshot(mut visit: impl FnMut(u32, String) -> bool) -> bool {
+fn visit_process_snapshot(mut visit: impl FnMut(u32, String) -> bool) -> Result<(), Error> {
     visit_process_snapshot_entries(|entry| {
         if entry.th32ProcessID == 0 {
             return true;
@@ -319,11 +337,11 @@ fn visit_process_snapshot(mut visit: impl FnMut(u32, String) -> bool) -> bool {
     })
 }
 
-fn visit_process_snapshot_entries(mut visit: impl FnMut(&PROCESSENTRY32W) -> bool) -> bool {
+fn visit_process_snapshot_entries(
+    mut visit: impl FnMut(&PROCESSENTRY32W) -> bool,
+) -> Result<(), Error> {
     unsafe {
-        let Ok(snapshot) = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0) else {
-            return false;
-        };
+        let snapshot = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0)?;
         let snapshot = OwnedHandle(snapshot);
 
         let mut entry = PROCESSENTRY32W {
@@ -332,9 +350,7 @@ fn visit_process_snapshot_entries(mut visit: impl FnMut(&PROCESSENTRY32W) -> boo
             ..Default::default()
         };
 
-        if Process32FirstW(snapshot.raw(), &mut entry).is_err() {
-            return false;
-        }
+        Process32FirstW(snapshot.raw(), &mut entry)?;
 
         loop {
             if !visit(&entry) {
@@ -344,11 +360,11 @@ fn visit_process_snapshot_entries(mut visit: impl FnMut(&PROCESSENTRY32W) -> boo
             match Process32NextW(snapshot.raw(), &mut entry) {
                 Ok(()) => continue,
                 Err(error) if process_snapshot_finished(error.code()) => break,
-                Err(_) => return false,
+                Err(error) => return Err(error),
             }
         }
 
-        true
+        Ok(())
     }
 }
 
@@ -373,7 +389,7 @@ fn process_name_from_snapshot(target_pid: u32) -> Option<String> {
     }
 
     let mut result = None;
-    visit_process_snapshot_entries(|entry| {
+    let _ = visit_process_snapshot_entries(|entry| {
         if entry.th32ProcessID == target_pid {
             result = normalize_supported_process_name_utf16(&entry.szExeFile);
             false

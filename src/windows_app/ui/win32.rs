@@ -10,11 +10,11 @@ use std::ffi::c_void;
 use std::os::windows::ffi::OsStrExt;
 use std::path::Path;
 use windows::Win32::Foundation::{
-    COLORREF, HANDLE, HINSTANCE, HWND, LPARAM, LRESULT, POINT, RECT, SIZE, WPARAM,
+    COLORREF, HANDLE, HINSTANCE, HWND, LPARAM, LRESULT, POINT, RECT, WPARAM,
 };
 use windows::Win32::Graphics::Gdi::{
-    CreatePen, CreateSolidBrush, DC_BRUSH, DT_CENTER, DT_LEFT, DT_NOPREFIX, DT_SINGLELINE,
-    DT_VCENTER, DeleteObject, FillRect, GetDC, GetStockObject, GetTextExtentPoint32W,
+    CreatePen, CreateSolidBrush, DC_BRUSH, DT_CALCRECT, DT_CENTER, DT_LEFT, DT_NOPREFIX,
+    DT_SINGLELINE, DT_VCENTER, DeleteObject, DrawTextW, FillRect, GetDC, GetStockObject,
     GetTextMetricsW, HDC, HGDIOBJ, PS_INSIDEFRAME, PS_SOLID, Polygon, RDW_INVALIDATE,
     RDW_UPDATENOW, RedrawWindow, ReleaseDC, RoundRect, ScreenToClient, SelectObject, SetBkColor,
     SetBkMode, SetDCBrushColor, SetTextColor, TEXTMETRICW, TRANSPARENT,
@@ -465,9 +465,18 @@ unsafe fn measure_wide_text_width(
     };
 
     let _selected = unsafe { SelectedGdiObject::select(dc.handle(), font) };
-    let mut size = SIZE::default();
-    if unsafe { GetTextExtentPoint32W(dc.handle(), wide, &mut size).as_bool() } {
-        logical_px_covering(size.cx)
+    let mut measured = RECT::default();
+    let mut wide = wide.to_vec();
+    if unsafe {
+        DrawTextW(
+            dc.handle(),
+            &mut wide,
+            &mut measured,
+            DT_CALCRECT | DT_SINGLELINE | DT_NOPREFIX,
+        )
+    } > 0
+    {
+        logical_px_covering(measured.right.saturating_sub(measured.left))
     } else {
         fallback_width
     }
