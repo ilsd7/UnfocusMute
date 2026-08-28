@@ -50,7 +50,29 @@ impl RuntimeCoordinator {
         self.active
     }
 
-    pub(super) fn activate(&mut self) -> bool {
+    pub(super) fn activate(
+        &mut self,
+        paused: bool,
+        managed_sessions: HashSet<AudioSessionKey>,
+    ) -> bool {
+        if self.active {
+            return false;
+        }
+        self.active = true;
+        self.paused = paused;
+        self.muted_by_app = managed_sessions;
+        true
+    }
+
+    pub(super) fn suspend(&mut self) -> bool {
+        if !self.active {
+            return false;
+        }
+        self.active = false;
+        true
+    }
+
+    pub(super) fn resume(&mut self) -> bool {
         if self.active {
             return false;
         }
@@ -208,13 +230,40 @@ mod tests {
     use super::*;
 
     #[test]
-    fn activation_is_a_one_way_handoff() {
+    fn activation_adopts_transferred_state_only_while_inactive() {
         let mut runtime = RuntimeCoordinator::new(false, false);
 
         assert!(!runtime.is_active());
-        assert!(runtime.activate());
+        let managed_session =
+            AudioSessionKey::new(42, "game.exe", Some("session-a".to_owned())).unwrap();
+        assert!(runtime.activate(true, HashSet::from([managed_session.clone()])));
         assert!(runtime.is_active());
-        assert!(!runtime.activate());
+        assert!(runtime.is_paused());
+        assert!(runtime.managed_sessions().contains(&managed_session));
+        assert!(!runtime.activate(false, HashSet::new()));
+        assert!(runtime.is_paused());
+    }
+
+    #[test]
+    fn suspension_can_be_rolled_back_without_changing_runtime_state() {
+        let mut runtime = RuntimeCoordinator::new(true, false);
+        let managed_session =
+            AudioSessionKey::new(42, "game.exe", Some("session-a".to_owned())).unwrap();
+        runtime
+            .managed_sessions_mut()
+            .insert(managed_session.clone());
+        runtime.toggle_paused();
+        runtime.schedule_managed_mute_foreground_retry(true);
+
+        assert!(runtime.suspend());
+        assert!(!runtime.is_active());
+        assert!(!runtime.suspend());
+        assert!(runtime.resume());
+        assert!(runtime.is_active());
+        assert!(runtime.is_paused());
+        assert!(runtime.managed_sessions().contains(&managed_session));
+        assert!(runtime.managed_mute_foreground_retry_pending());
+        assert!(!runtime.resume());
     }
 
     #[test]

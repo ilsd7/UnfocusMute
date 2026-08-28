@@ -59,11 +59,13 @@ use windows::Win32::UI::WindowsAndMessaging::{
 };
 use windows::core::{PCWSTR, w};
 
+mod app_actions;
 mod checkbox;
 mod config_store;
 mod constants;
 mod controls;
 mod drawing;
+mod handoff;
 mod issue_diagnostics;
 mod language_combo;
 mod language_prompt;
@@ -84,6 +86,7 @@ mod target_note_prompt;
 mod theme;
 mod win32;
 mod window_position;
+mod window_proc;
 
 use config_store::{ConfigMerge, ConfigReload, ConfigSave, ConfigSaveIntent, ConfigStore};
 use constants::*;
@@ -92,6 +95,7 @@ use drawing::{
     centered_pixel_span, draw_glyph_at_visual_center, draw_target_identity_line, draw_text_line,
     text_optical_center_twice,
 };
+use handoff::{HandoffSnapshot, HandoffState};
 use issue_diagnostics::IssueDiagnostics;
 use language_prompt::prompt_initial_language;
 use managed_mute::{removal_restore_targets, session_keys_exclusive_to_target, target_status_text};
@@ -352,7 +356,7 @@ unsafe fn run_window() -> Result<()> {
     let icon = icons.main();
     let class = WNDCLASSW {
         style: Default::default(),
-        lpfnWndProc: Some(window_proc),
+        lpfnWndProc: Some(window_proc::window_proc),
         cbClsExtra: 0,
         cbWndExtra: 0,
         hInstance: instance,
@@ -382,6 +386,7 @@ unsafe fn run_window() -> Result<()> {
     let title = to_wide(APP_TITLE);
     let taskbar_created_message = unsafe { RegisterWindowMessageW(w!("TaskbarCreated")) };
     startup_lease.preflight_replacement()?;
+    let handoff_source = startup_lease.replacement_window();
     let app = Box::new(RefCell::new(AppWindow::new(
         config,
         icons,
@@ -389,7 +394,7 @@ unsafe fn run_window() -> Result<()> {
         initial_issues,
         initial_issue_diagnostics,
         initial_config_load_failed,
-        !replacement_pending,
+        handoff_source,
     )?));
     let app_ptr = app.as_ref() as *const RefCell<AppWindow> as *mut RefCell<AppWindow>;
     let hwnd = match unsafe {
@@ -419,17 +424,20 @@ unsafe fn run_window() -> Result<()> {
         }
     };
 
-    // A replacement window completes WM_CREATE without starting its runtime.
-    // Only retire the old process after that preparation succeeds.
-    let replacement_committed = startup_lease.commit_replacement();
-    if !replacement_committed {
+    // A replacement window stays inactive while a cooperating older version transfers its
+    // quiescent runtime state. Legacy releases fall back to persisted target-level recovery.
+    startup_lease.request_handoff_snapshot(hwnd);
+    // Nested WM_COPYDATA receipt is authoritative even if the outer request times out afterward.
+    let handoff_snapshot = app.borrow_mut().take_handoff_snapshot();
+    if !startup_lease.finish_replacement(handoff_snapshot.is_some()) {
         unsafe {
             let _ = DestroyWindow(hwnd);
         }
         return Ok(());
     }
     if replacement_pending {
-        app.borrow_mut().activate_replacement_runtime();
+        app.borrow_mut()
+            .activate_replacement_runtime(handoff_snapshot);
     }
     let should_show_main_window = {
         let app = app.borrow();
@@ -671,6 +679,7 @@ struct AppWindow {
     taskbar_created_message: u32,
     default_button_id: i32,
     create_error: Option<String>,
+    handoff: HandoffState,
 }
 
 struct SettingsDialogRequest {
@@ -749,6 +758,7 @@ enum MainWindowAction {
     ShowMainWindow,
     HideToTray,
     Close,
+    HandoffClose,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -904,7 +914,7 @@ impl AppWindow {
         initial_issues: IssueState,
         initial_issue_diagnostics: IssueDiagnostics,
         initial_config_load_failed: bool,
-        runtime_active: bool,
+        handoff_source: Option<HWND>,
     ) -> Result<Self> {
         let strings = config.language.strings();
         let config_store = ConfigStore::new(
@@ -913,7 +923,7 @@ impl AppWindow {
             initial_config_load_failed,
         );
         let persisted_recovery_pending = config.targets.iter().any(|target| target.managed_muted);
-        let runtime = RuntimeCoordinator::new(runtime_active, persisted_recovery_pending);
+        let runtime = RuntimeCoordinator::new(handoff_source.is_none(), persisted_recovery_pending);
         Ok(Self {
             hwnd: HWND::default(),
             controls: Controls::default(),
@@ -952,6 +962,7 @@ impl AppWindow {
             taskbar_created_message,
             default_button_id: ID_ADD_SELECTED,
             create_error: None,
+            handoff: HandoffState::new(handoff_source),
         })
     }
 
@@ -972,8 +983,12 @@ impl AppWindow {
         Ok(())
     }
 
-    fn activate_replacement_runtime(&mut self) {
-        if !self.runtime.activate() {
+    fn activate_replacement_runtime(&mut self, snapshot: Option<HandoffSnapshot>) {
+        // Legacy predecessors cannot transfer their in-memory pause state.
+        let (paused, managed_sessions) = snapshot
+            .map(|snapshot| (snapshot.paused, snapshot.managed_sessions))
+            .unwrap_or_default();
+        if !self.runtime.activate(paused, managed_sessions) {
             return;
         }
         self.last_status = None;
@@ -990,6 +1005,51 @@ impl AppWindow {
         }
         self.reset_timers();
         self.tick();
+    }
+
+    fn accept_handoff_snapshot(&mut self, source: HWND, bytes: &[u8]) -> bool {
+        if self.runtime.is_active() {
+            return false;
+        }
+        let Some(snapshot) = HandoffSnapshot::decode(bytes) else {
+            return false;
+        };
+        self.handoff.accept(source, snapshot)
+    }
+
+    fn take_handoff_snapshot(&mut self) -> Option<HandoffSnapshot> {
+        self.handoff.take_received()
+    }
+
+    fn prepare_handoff_snapshot(&mut self) -> Option<Vec<u8>> {
+        if !self.handoff.prepare() {
+            return None;
+        }
+        if !self.runtime.suspend() {
+            let _ = self.handoff.leave_prepared();
+            return None;
+        }
+        self.stop_runtime_work();
+
+        let snapshot =
+            HandoffSnapshot::capture(self.runtime.is_paused(), self.runtime.managed_sessions());
+        match snapshot.encode() {
+            Some(bytes) => Some(bytes),
+            None => {
+                self.abort_handoff();
+                None
+            }
+        }
+    }
+
+    fn abort_handoff(&mut self) {
+        if !self.handoff.leave_prepared() {
+            return;
+        }
+        if self.runtime.resume() {
+            self.reset_timers();
+            self.tick();
+        }
     }
 
     unsafe fn create_controls(&mut self) -> Result<()> {
@@ -3413,12 +3473,7 @@ impl AppWindow {
     }
 
     fn prepare_for_destroy(&mut self) -> Option<MessageDialogRequest> {
-        self.runtime.deactivate();
-        self.runtime.foreground_hook = None;
-        self.save_window_placement();
-        self.clear_timer(CONFIG_RELOAD_TIMER_ID);
-        self.runtime.config_reload_timer_ready = false;
-        self.clear_audio_fallback_timer();
+        self.prepare_for_shutdown();
         let restore_issue = self.restore_managed_mutes();
         let save_issue = (self.runtime.runtime_mute_state_dirty()
             && !self.save_runtime_mute_state())
@@ -3436,6 +3491,32 @@ impl AppWindow {
             }
             request
         });
+        self.remove_tray_icon();
+        warning
+    }
+
+    fn finish_handoff(&mut self) -> bool {
+        if !self.handoff.leave_prepared() {
+            return false;
+        }
+        self.remove_tray_icon();
+        true
+    }
+
+    fn prepare_for_shutdown(&mut self) {
+        self.runtime.deactivate();
+        self.stop_runtime_work();
+        self.save_window_placement();
+    }
+
+    fn stop_runtime_work(&mut self) {
+        self.runtime.foreground_hook = None;
+        self.clear_timer(CONFIG_RELOAD_TIMER_ID);
+        self.runtime.config_reload_timer_ready = false;
+        self.clear_audio_fallback_timer();
+    }
+
+    fn remove_tray_icon(&mut self) {
         if self.tray_added {
             let data = self.tray_data(APP_TITLE);
             unsafe {
@@ -3443,7 +3524,6 @@ impl AppWindow {
             }
             self.tray_added = false;
         }
-        warning
     }
 
     fn add_tray_icon(&mut self) {
@@ -4254,644 +4334,6 @@ fn single_filtered_process_choice_index(
         return None;
     }
     process_choice_indices.first().copied()
-}
-
-unsafe fn execute_main_window_action(state: &RefCell<AppWindow>, action: MainWindowAction) {
-    match action {
-        MainWindowAction::OpenSettings(request) => {
-            let result = unsafe {
-                prompt_settings(
-                    request.parent,
-                    request.instance,
-                    request.icons,
-                    request.initial,
-                    |update| {
-                        let mut app = state.borrow_mut();
-                        match update {
-                            SettingsLiveUpdate::Language(language) => {
-                                app.apply_settings_language(language)
-                            }
-                            SettingsLiveUpdate::Theme(theme) => app.apply_settings_theme(theme),
-                        }
-                    },
-                )
-            };
-            let warning =
-                {
-                    let mut app = state.borrow_mut();
-                    app.finish_settings_window_modal();
-                    match result {
-                        Ok(Some(changes)) => {
-                            app.apply_settings_changes(changes);
-                            None
-                        }
-                        Ok(None) => None,
-                        Err(error) => Some(app.action_failed_request(
-                            "settings-window-failed",
-                            Some(error.to_string()),
-                        )),
-                    }
-                };
-            if let Some(warning) = warning {
-                unsafe {
-                    let _ = show_message_dialog(warning);
-                }
-            }
-        }
-        MainWindowAction::EditTargetNote(request) => {
-            let result = unsafe {
-                prompt_target_note(
-                    request.parent,
-                    request.instance,
-                    request.icon,
-                    request.language,
-                    request.theme,
-                    &request.display_name,
-                    request.current_note.as_deref(),
-                )
-            };
-            let warning =
-                match result {
-                    Ok(Some(note)) => {
-                        state.borrow_mut().apply_target_note_dialog_result(
-                            &request.target_name,
-                            request.target_pid,
-                            note,
-                        );
-                        None
-                    }
-                    Ok(None) => None,
-                    Err(error) => Some(state.borrow().action_failed_request(
-                        "target-note-window-failed",
-                        Some(error.to_string()),
-                    )),
-                };
-            if let Some(warning) = warning {
-                unsafe {
-                    let _ = show_message_dialog(warning);
-                }
-            }
-        }
-        MainWindowAction::ShowMessage(request) => unsafe {
-            let _ = show_message_dialog(request);
-        },
-        MainWindowAction::ShowIssues(issues) => {
-            for issue in issues {
-                let request = {
-                    let app = state.borrow();
-                    if !app.issues.visible_issues().any(|visible| visible == issue) {
-                        continue;
-                    }
-                    app.issue_message_request(issue, app.issue_diagnostics.detail(issue))
-                };
-                let ignore_issue = request.ignore_issue;
-                match unsafe { show_message_dialog(request) } {
-                    IssueDialogResult::Dismissed => break,
-                    IssueDialogResult::Acknowledged => {
-                        if issue.clears_on_acknowledge() {
-                            state.borrow_mut().clear_issue(issue);
-                        }
-                    }
-                    IssueDialogResult::Ignored => {
-                        if let Some(issue) = ignore_issue
-                            && let Some(notice) = state.borrow_mut().ignore_issue(issue)
-                        {
-                            unsafe {
-                                let _ = show_info_dialog(
-                                    notice.parent,
-                                    notice.icons,
-                                    notice.language,
-                                    notice.theme,
-                                    &notice.title,
-                                    &notice.body,
-                                );
-                            }
-                        }
-                    }
-                }
-            }
-        }
-        MainWindowAction::ShowInfo(request) => unsafe {
-            let _ = show_info_dialog(
-                request.parent,
-                request.icons,
-                request.language,
-                request.theme,
-                &request.title,
-                &request.body,
-            );
-        },
-        MainWindowAction::ShowTrayMenu(request) => {
-            if let Some(command) = unsafe { show_tray_menu(request) } {
-                let next_action = state.borrow_mut().command(command, 0, HWND::default());
-                if let Some(next_action) = next_action {
-                    unsafe {
-                        execute_main_window_action(state, next_action);
-                    }
-                }
-            }
-        }
-        MainWindowAction::ShowTargetContextMenu(request) => {
-            if let Some(command) = unsafe { show_target_context_menu(&request) } {
-                let next_action = {
-                    let mut app = state.borrow_mut();
-                    match command {
-                        ID_TARGET_CONTEXT_TOGGLE_ENABLED => {
-                            app.toggle_target_enabled_by_identity(
-                                &request.target_name,
-                                request.target_pid,
-                            );
-                            None
-                        }
-                        ID_TARGET_CONTEXT_EDIT_NOTE => app
-                            .prepare_target_note_dialog_by_identity(
-                                &request.target_name,
-                                request.target_pid,
-                            )
-                            .map(MainWindowAction::EditTargetNote),
-                        ID_REMOVE => {
-                            app.remove_target_by_identity(&request.target_name, request.target_pid);
-                            None
-                        }
-                        _ => None,
-                    }
-                };
-                if let Some(next_action) = next_action {
-                    unsafe {
-                        execute_main_window_action(state, next_action);
-                    }
-                }
-            }
-        }
-        MainWindowAction::ShowMainWindow => {
-            let hwnd = state.borrow().hwnd;
-            show_main_window(hwnd);
-        }
-        MainWindowAction::HideToTray => {
-            let hwnd = state.borrow().hwnd;
-            unsafe {
-                let _ = ShowWindow(hwnd, SW_HIDE);
-            }
-        }
-        MainWindowAction::Close => {
-            let warning = state.borrow_mut().prepare_for_destroy();
-            if let Some(warning) = warning {
-                unsafe {
-                    let _ = show_message_dialog(warning);
-                }
-            }
-            let hwnd = state.borrow().hwnd;
-            unsafe {
-                let _ = DestroyWindow(hwnd);
-            }
-        }
-    }
-}
-
-unsafe fn show_message_dialog(request: MessageDialogRequest) -> IssueDialogResult {
-    match unsafe {
-        show_issue_dialog(
-            request.parent,
-            request.icons,
-            request.language,
-            request.theme,
-            IssueDialogContent {
-                title: &request.title,
-                summary: &request.summary,
-                explanation: request.explanation.as_deref(),
-                detail: request.detail.as_deref(),
-                diagnostic_code: request.diagnostic_code,
-                allow_ignore: request.ignore_issue.is_some(),
-            },
-        )
-    } {
-        Ok(result) => result,
-        Err(_) => {
-            let title = to_wide(&request.title);
-            let body = to_wide(&issue_message_body(
-                &request.summary,
-                request.explanation.as_deref(),
-                request.detail.as_deref(),
-            ));
-            unsafe {
-                let _ = MessageBoxW(
-                    Some(request.parent),
-                    PCWSTR(body.as_ptr()),
-                    PCWSTR(title.as_ptr()),
-                    MB_OK | MB_ICONERROR,
-                );
-            }
-            IssueDialogResult::Acknowledged
-        }
-    }
-}
-
-unsafe fn show_tray_menu(request: TrayMenuRequest) -> Option<i32> {
-    let menu = unsafe { PopupMenu::create() }?;
-    let mut text_buffer = Vec::new();
-
-    for (text, flags, id) in [
-        (&request.status, MF_STRING | MF_GRAYED, 0usize),
-        (
-            &request.visibility_label,
-            MF_STRING,
-            request.visibility_command as usize,
-        ),
-        (&request.pause_label, MF_STRING, ID_PAUSE as usize),
-        (&request.quit_label, MF_STRING, ID_QUIT as usize),
-    ] {
-        write_wide_buffer(text, &mut text_buffer);
-        unsafe {
-            let _ = AppendMenuW(menu.handle(), flags, id, PCWSTR(text_buffer.as_ptr()));
-        }
-        if id == 0 || id == ID_PAUSE as usize {
-            unsafe {
-                let _ = AppendMenuW(menu.handle(), MF_SEPARATOR, 0, PCWSTR::null());
-            }
-        }
-    }
-
-    let mut point = POINT::default();
-    if unsafe { GetCursorPos(&mut point) }.is_err() {
-        return None;
-    }
-    unsafe {
-        let _ = SetForegroundWindow(request.parent);
-    }
-    let flags = TRACK_POPUP_MENU_FLAGS(TPM_RIGHTBUTTON.0 | TPM_RETURNCMD.0 | TPM_NONOTIFY.0);
-    let command = unsafe {
-        TrackPopupMenu(
-            menu.handle(),
-            flags,
-            point.x,
-            point.y,
-            None,
-            request.parent,
-            None,
-        )
-        .0
-    };
-    // Let the notification-area owner finish dismissing the popup before the
-    // next tray interaction. This is the sequence recommended for tray menus.
-    unsafe {
-        let _ = PostMessageW(Some(request.parent), WM_NULL, WPARAM(0), LPARAM(0));
-    }
-    (command != 0).then_some(command as i32)
-}
-
-unsafe fn show_target_context_menu(request: &TargetContextMenuRequest) -> Option<i32> {
-    let menu = unsafe { PopupMenu::create() }?;
-    let mut text_buffer = Vec::new();
-    for (text, id) in [
-        (
-            &request.toggle_label,
-            ID_TARGET_CONTEXT_TOGGLE_ENABLED as usize,
-        ),
-        (&request.edit_label, ID_TARGET_CONTEXT_EDIT_NOTE as usize),
-        (&request.remove_label, ID_REMOVE as usize),
-    ] {
-        write_wide_buffer(text, &mut text_buffer);
-        unsafe {
-            let _ = AppendMenuW(menu.handle(), MF_STRING, id, PCWSTR(text_buffer.as_ptr()));
-        }
-        if id != ID_REMOVE as usize {
-            unsafe {
-                let _ = AppendMenuW(menu.handle(), MF_SEPARATOR, 0, PCWSTR::null());
-            }
-        }
-    }
-
-    unsafe {
-        let _ = SetForegroundWindow(request.parent);
-    }
-    let flags = TRACK_POPUP_MENU_FLAGS(TPM_RIGHTBUTTON.0 | TPM_RETURNCMD.0 | TPM_NONOTIFY.0);
-    let selected = unsafe {
-        TrackPopupMenu(
-            menu.handle(),
-            flags,
-            request.x,
-            request.y,
-            None,
-            request.parent,
-            None,
-        )
-        .0
-    };
-    (selected != 0).then_some(selected as i32)
-}
-
-fn is_state_independent_flat_button(id: i32) -> bool {
-    matches!(
-        id,
-        ID_PROCESS_SOURCE
-            | ID_TOGGLE_PROCESS_DETAILS
-            | ID_PID_DETAILS_HELP
-            | ID_ISSUE_DETAILS
-            | ID_ADD_SELECTED
-    )
-}
-
-unsafe fn draw_state_independent_main_item(lparam: LPARAM) -> Option<LRESULT> {
-    if lparam.0 == 0 {
-        return None;
-    }
-    let draw = unsafe { &*(lparam.0 as *const DRAWITEMSTRUCT) };
-    if !is_state_independent_flat_button(draw.CtlID as i32) {
-        return None;
-    }
-    let font = unsafe { SendMessageW(draw.hwndItem, WM_GETFONT, None, None) }.0;
-    if font == 0 {
-        return None;
-    }
-    Some(LRESULT(
-        unsafe { win32::draw_flat_button(draw, HGDIOBJ(font as *mut c_void)) } as isize,
-    ))
-}
-
-unsafe fn state_independent_main_control_color(
-    message: u32,
-    wparam: WPARAM,
-    lparam: LPARAM,
-) -> Option<LRESULT> {
-    let palette = active_palette();
-    let background = match message {
-        WM_CTLCOLOREDIT => palette.input,
-        WM_CTLCOLORLISTBOX => palette.panel,
-        WM_CTLCOLORBTN => {
-            let control = HWND(lparam.0 as *mut c_void);
-            if !control.0.is_null() && unsafe { GetDlgCtrlID(control) } == ID_PROCESS_SEARCH_TOGGLE
-            {
-                palette.input
-            } else {
-                palette.page
-            }
-        }
-        _ => return None,
-    };
-    unsafe { win32::themed_control_color(wparam, palette.text, background) }
-}
-
-unsafe extern "system" fn window_proc(
-    hwnd: HWND,
-    message: u32,
-    wparam: WPARAM,
-    lparam: LPARAM,
-) -> LRESULT {
-    if message == WM_NCCREATE {
-        let create = lparam.0 as *const CREATESTRUCTW;
-        if !create.is_null() {
-            let app = unsafe { (*create).lpCreateParams as *mut RefCell<AppWindow> };
-            unsafe {
-                SetWindowLongPtrW(hwnd, GWLP_USERDATA, app as isize);
-            }
-        }
-        return LRESULT(1);
-    }
-    if message == WM_REDRAW_DEFERRED_CONTROL {
-        unsafe {
-            win32::redraw_deferred_control(hwnd, wparam);
-        }
-        return LRESULT(0);
-    }
-    if message == WM_DRAWITEM
-        && let Some(result) = unsafe { draw_state_independent_main_item(lparam) }
-    {
-        return result;
-    }
-    if let Some(result) = unsafe { state_independent_main_control_color(message, wparam, lparam) } {
-        return result;
-    }
-    let state = unsafe {
-        let ptr = windows::Win32::UI::WindowsAndMessaging::GetWindowLongPtrW(hwnd, GWLP_USERDATA)
-            as *mut RefCell<AppWindow>;
-        ptr.as_ref()
-    };
-
-    if let Some(state) = state {
-        let Ok(mut app) = state.try_borrow_mut() else {
-            if let Some(result) =
-                unsafe { win32::defer_reentrant_owner_draw(hwnd, message, lparam) }
-            {
-                return result;
-            }
-            return unsafe { DefWindowProcW(hwnd, message, wparam, lparam) };
-        };
-        if let Some(result) =
-            default_button_message_result(message, wparam, &mut app.default_button_id)
-        {
-            return result;
-        }
-        if app.taskbar_created_message != 0 && message == app.taskbar_created_message {
-            app.restore_tray_icon();
-            return LRESULT(0);
-        }
-        match message {
-            WM_CREATE => {
-                if let Err(error) = unsafe { app.on_create(hwnd) } {
-                    app.create_error = Some(error.to_string());
-                    return LRESULT(-1);
-                }
-                return LRESULT(0);
-            }
-            WM_COMMAND => {
-                let id = loword(wparam.0 as u32) as i32;
-                let notification = hiword(wparam.0 as u32);
-                let source = HWND(lparam.0 as *mut c_void);
-                if id == ID_SHOW && notification == 0 {
-                    drop(app);
-                    show_main_window(hwnd);
-                } else {
-                    let action = app.command(id, notification, source);
-                    drop(app);
-                    if let Some(action) = action {
-                        unsafe {
-                            execute_main_window_action(state, action);
-                        }
-                    }
-                }
-                return LRESULT(0);
-            }
-            WM_TIMER => {
-                app.timer_tick(wparam.0);
-                return LRESULT(0);
-            }
-            WM_FOREGROUND_CHANGED => {
-                FOREGROUND_EVENT_PENDING.store(false, Ordering::Release);
-                if !app.runtime.is_active() {
-                    return LRESULT(0);
-                }
-                app.clear_foreground_process_cache();
-                app.tick();
-                let has_managed_mutes = app.has_managed_mutes();
-                app.runtime
-                    .schedule_managed_mute_foreground_retry(has_managed_mutes);
-                app.reset_polling_timer();
-                return LRESULT(0);
-            }
-            WM_PROCESS_SEARCH_RESULT_CHOSEN => {
-                app.commit_process_result(wparam.0);
-                return LRESULT(0);
-            }
-            WM_REFRESH_THEME_VISUALS => {
-                drop(app);
-                unsafe {
-                    let _ = RedrawWindow(
-                        Some(hwnd),
-                        None,
-                        None,
-                        RDW_INVALIDATE | RDW_ERASE | RDW_ALLCHILDREN | RDW_UPDATENOW,
-                    );
-                }
-                return LRESULT(0);
-            }
-            WM_SHOW_PROCESS_RESULTS => {
-                let request = app
-                    .process_picker
-                    .as_ref()
-                    .and_then(|picker| unsafe { picker.prepare_show_popup() });
-                drop(app);
-                if let Some(request) = request {
-                    unsafe {
-                        let _ = request.show();
-                    }
-                }
-                return LRESULT(0);
-            }
-            WM_PAINT => {
-                app.paint(hwnd);
-                return LRESULT(0);
-            }
-            WM_ERASEBKGND if app.erase_background(HDC(wparam.0 as *mut c_void)) => {
-                return LRESULT(1);
-            }
-            WM_SETTINGCHANGE | WM_THEMECHANGED => {
-                app.refresh_system_theme();
-            }
-            WM_MEASUREITEM if app.measure_item(lparam) => {
-                return LRESULT(1);
-            }
-            WM_DRAWITEM if app.draw_item(lparam) => {
-                return LRESULT(1);
-            }
-            WM_SHOWWINDOW => {
-                if wparam.0 != 0 {
-                    app.refresh_processes_if_stale();
-                } else {
-                    app.hide_process_results();
-                }
-                return LRESULT(0);
-            }
-            WM_ACTIVATE if loword(wparam.0 as u32) as u32 == WA_INACTIVE => {
-                let activated_window = HWND(lparam.0 as *mut c_void);
-                if !app.is_process_results_window(activated_window) {
-                    app.hide_process_results();
-                }
-            }
-            WM_LBUTTONDOWN => {
-                app.background_click();
-                return LRESULT(0);
-            }
-            WM_CONTEXTMENU if HWND(wparam.0 as *mut c_void) == app.controls.target_list => {
-                let request = app.prepare_target_context_menu(lparam);
-                drop(app);
-                if let Some(request) = request {
-                    unsafe {
-                        execute_main_window_action(
-                            state,
-                            MainWindowAction::ShowTargetContextMenu(request),
-                        );
-                    }
-                }
-                return LRESULT(0);
-            }
-            WM_GETMINMAXINFO if lparam.0 != 0 => {
-                let info = unsafe { &mut *(lparam.0 as *mut MINMAXINFO) };
-                apply_window_minmax_info(hwnd, info);
-                return LRESULT(0);
-            }
-            WM_SIZING if lparam.0 != 0 => {
-                let rect = unsafe { &mut *(lparam.0 as *mut RECT) };
-                constrain_sizing_rect(hwnd, wparam.0, rect);
-                return LRESULT(1);
-            }
-            WM_MOVE => {
-                app.remember_window_placement();
-                return LRESULT(0);
-            }
-            WM_ENTERSIZEMOVE => {
-                app.hide_process_results();
-                app.interactive_resize = true;
-                return LRESULT(0);
-            }
-            WM_EXITSIZEMOVE => {
-                app.interactive_resize = false;
-                app.rescale_ui_to_window(true);
-                app.save_window_placement();
-                return LRESULT(0);
-            }
-            WM_CLOSE => {
-                app.hide_process_results();
-                if app.settings_window_open {
-                    return LRESULT(0);
-                }
-                if app.config.hide_to_tray_on_close {
-                    if app.prepare_hide_to_tray() {
-                        drop(app);
-                        unsafe {
-                            execute_main_window_action(state, MainWindowAction::HideToTray);
-                        }
-                    }
-                } else {
-                    drop(app);
-                    unsafe {
-                        execute_main_window_action(state, MainWindowAction::Close);
-                    }
-                }
-                return LRESULT(0);
-            }
-            WM_SIZE => {
-                let finalize_visuals = !app.interactive_resize;
-                app.rescale_ui_to_window(finalize_visuals);
-                return LRESULT(0);
-            }
-            WM_CTLCOLORSTATIC => {
-                return app.static_control_color(wparam, lparam);
-            }
-            WM_TRAY_ICON => {
-                match lparam.0 as u32 {
-                    WM_LBUTTONDBLCLK => {
-                        drop(app);
-                        show_main_window(hwnd);
-                    }
-                    WM_RBUTTONUP => {
-                        let request = app.prepare_tray_menu();
-                        drop(app);
-                        unsafe {
-                            execute_main_window_action(
-                                state,
-                                MainWindowAction::ShowTrayMenu(request),
-                            );
-                        }
-                    }
-                    _ => {}
-                }
-                return LRESULT(0);
-            }
-            WM_DESTROY => {
-                drop(app);
-                unsafe {
-                    PostQuitMessage(0);
-                }
-                return LRESULT(0);
-            }
-            WM_NCDESTROY => unsafe {
-                SetWindowLongPtrW(hwnd, GWLP_USERDATA, 0);
-            },
-            _ => {}
-        }
-    }
-
-    unsafe { DefWindowProcW(hwnd, message, wparam, lparam) }
 }
 
 #[cfg(test)]

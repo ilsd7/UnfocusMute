@@ -1,15 +1,17 @@
-use super::constants::MAIN_WINDOW_CLASS_NAME_PREFIX;
+use super::constants::{MAIN_WINDOW_CLASS_NAME_PREFIX, WM_REQUEST_HANDOFF_STATE};
+use super::handoff;
 use super::win32::to_wide;
 use super::window_position::should_start_hidden;
 use crate::config::config_dir;
 use crate::windows_app::error::{Context, Result, message_error};
 use crate::windows_app::process;
+use std::ffi::c_void;
 use std::os::windows::ffi::OsStrExt;
 use std::path::Path;
-use std::time::Duration;
 use windows::Win32::Foundation::{
     CloseHandle, HANDLE, HWND, LPARAM, WAIT_ABANDONED, WAIT_OBJECT_0, WAIT_TIMEOUT, WPARAM,
 };
+use windows::Win32::System::DataExchange::COPYDATASTRUCT;
 use windows::Win32::System::Threading::{
     CreateMutexW, OpenProcess, PROCESS_SYNCHRONIZE, ReleaseMutex, WaitForSingleObject,
 };
@@ -17,14 +19,13 @@ use windows::Win32::UI::Input::KeyboardAndMouse::IsWindowEnabled;
 use windows::Win32::UI::WindowsAndMessaging::{
     FindWindowW, GUI_INMENUMODE, GUI_POPUPMENUMODE, GUI_SYSTEMMENUMODE, GUITHREADINFO,
     GetGUIThreadInfo, GetWindowThreadProcessId, PostThreadMessageW, SMTO_ABORTIFHUNG, SMTO_BLOCK,
-    SW_RESTORE, SendMessageTimeoutW, SetForegroundWindow, ShowWindow, ShowWindowAsync, WM_NULL,
-    WM_QUIT,
+    SMTO_ERRORONEXIT, SW_RESTORE, SendMessageTimeoutW, SetForegroundWindow, ShowWindow,
+    ShowWindowAsync, WM_COPYDATA, WM_NULL, WM_QUIT,
 };
 use windows::core::PCWSTR;
 
 const MUTEX_NAME_PREFIX: &str = "Local\\UnfocusMute.SingleInstance.";
 const HANDOFF_TIMEOUT_MS: u32 = 5_000;
-const WAIT_INFINITE: u32 = u32::MAX;
 
 struct ExistingInstance {
     hwnd: HWND,
@@ -89,18 +90,43 @@ impl StartupLease {
         Ok(())
     }
 
-    pub(super) fn commit_replacement(&mut self) -> bool {
+    pub(super) fn replacement_window(&self) -> Option<HWND> {
+        self.replacement.as_ref().map(|existing| existing.hwnd)
+    }
+
+    pub(super) fn request_handoff_snapshot(&self, successor: HWND) {
+        let Some(existing) = &self.replacement else {
+            return;
+        };
+        if existing_process_has_exited(existing) {
+            return;
+        }
+
+        unsafe {
+            let _ = SendMessageTimeoutW(
+                existing.hwnd,
+                WM_REQUEST_HANDOFF_STATE,
+                WPARAM(successor.0 as usize),
+                LPARAM(0),
+                SMTO_ABORTIFHUNG | SMTO_ERRORONEXIT,
+                HANDOFF_TIMEOUT_MS,
+                None,
+            );
+        }
+    }
+
+    pub(super) fn finish_replacement(&mut self, handoff_transferred: bool) -> bool {
         let Some(existing) = self.replacement.take() else {
             return true;
         };
-        if !existing_ui_allows_handoff(&existing) {
+        if !handoff_transferred && !existing_ui_allows_handoff(&existing) {
             if existing_process_has_exited(&existing) {
                 return true;
             }
             show_existing_window(existing.hwnd);
             return false;
         }
-        replace_existing_instance(existing)
+        replace_existing_instance(existing, handoff_transferred)
     }
 
     pub(super) fn release_startup_lock(&mut self) {
@@ -214,6 +240,16 @@ fn release_is_newer_than_executable(current_version: &str, existing_executable: 
     current_version > existing_version
 }
 
+fn executable_is_newer_than_release(executable: &str, current_version: &str) -> bool {
+    let Some(executable_version) = version_from_executable_name(executable) else {
+        return false;
+    };
+    let Some(current_version) = parse_release_version(current_version) else {
+        return false;
+    };
+    executable_version > current_version
+}
+
 fn version_from_executable_name(file_name: &str) -> Option<(u32, u32, u32)> {
     let file_name = file_name.to_ascii_lowercase();
     let version = file_name
@@ -232,7 +268,7 @@ fn parse_release_version(version: &str) -> Option<(u32, u32, u32)> {
     parts.next().is_none().then_some(parsed)
 }
 
-fn replace_existing_instance(existing: ExistingInstance) -> bool {
+fn replace_existing_instance(existing: ExistingInstance, handoff_transferred: bool) -> bool {
     let current_state = unsafe { WaitForSingleObject(existing.process.0, 0) };
     if current_state == WAIT_OBJECT_0 {
         return true;
@@ -242,8 +278,14 @@ fn replace_existing_instance(existing: ExistingInstance) -> bool {
         return false;
     }
 
-    // This is a version handoff rather than a user-requested exit. Leave managed mute state intact
-    // so the prepared successor can take over without an audible unmute/remute gap.
+    if handoff_transferred {
+        // The old runtime is already quiescent and its exit is queued. The successor can start
+        // immediately without overlapping audio work or depending on teardown latency.
+        return true;
+    }
+
+    // Older releases cannot transfer exact ownership. Stop their message loop without unmuting;
+    // the successor recovers the persisted target-level mute state on its first tick.
     if unsafe { PostThreadMessageW(existing.thread_id, WM_QUIT, WPARAM(0), LPARAM(0)) }.is_err() {
         if unsafe { WaitForSingleObject(existing.process.0, 0) } == WAIT_OBJECT_0 {
             return true;
@@ -252,16 +294,49 @@ fn replace_existing_instance(existing: ExistingInstance) -> bool {
         return false;
     }
 
-    // WM_QUIT cannot be rolled back. Keep the fully prepared successor alive until the old process
-    // releases its process-scoped resources rather than risk both versions exiting.
-    loop {
-        if unsafe { WaitForSingleObject(existing.process.0, WAIT_INFINITE) } == WAIT_OBJECT_0 {
-            return true;
-        }
-        // The handle is owned and was opened for synchronization, so a wait
-        // failure is not expected. Stay in the committed state if it happens.
-        std::thread::sleep(Duration::from_millis(10));
+    // WM_QUIT cannot be rolled back. Wait briefly for normal teardown, then let the prepared
+    // successor continue rather than leaving startup blocked or risking both versions exiting.
+    let _ = unsafe { WaitForSingleObject(existing.process.0, HANDOFF_TIMEOUT_MS) };
+    true
+}
+
+pub(super) fn send_handoff_snapshot(sender: HWND, successor: HWND, bytes: &[u8]) -> bool {
+    let Ok(byte_count) = u32::try_from(bytes.len()) else {
+        return false;
+    };
+    if byte_count == 0 || bytes.len() > handoff::MAX_BYTES || !handoff_successor_is_valid(successor)
+    {
+        return false;
     }
+
+    let data = COPYDATASTRUCT {
+        dwData: handoff::COPYDATA_ID,
+        cbData: byte_count,
+        lpData: bytes.as_ptr().cast::<c_void>().cast_mut(),
+    };
+    let mut result = 0;
+    let sent = unsafe {
+        SendMessageTimeoutW(
+            successor,
+            WM_COPYDATA,
+            WPARAM(sender.0 as usize),
+            LPARAM((&raw const data).cast::<c_void>() as isize),
+            SMTO_ABORTIFHUNG | SMTO_BLOCK | SMTO_ERRORONEXIT,
+            HANDOFF_TIMEOUT_MS,
+            Some(&mut result),
+        )
+    };
+    sent.0 != 0 && result != 0
+}
+
+pub(super) fn handoff_successor_is_valid(hwnd: HWND) -> bool {
+    let mut process_id = 0;
+    if unsafe { GetWindowThreadProcessId(hwnd, Some(&mut process_id)) } == 0 || process_id == 0 {
+        return false;
+    }
+    process::process_name(process_id).is_some_and(|executable| {
+        executable_is_newer_than_release(&executable, env!("CARGO_PKG_VERSION"))
+    })
 }
 
 fn existing_window_is_responsive(existing: &ExistingInstance) -> bool {
@@ -387,6 +462,14 @@ mod tests {
         assert!(release_is_newer_than_executable("1.5.0", running));
         assert!(!release_is_newer_than_executable("1.4.0", running));
         assert!(!release_is_newer_than_executable("1.3.5", running));
+        assert!(executable_is_newer_than_release(
+            "UnfocusMute-v1.5.0.exe",
+            "1.4.0"
+        ));
+        assert!(!executable_is_newer_than_release(
+            "UnfocusMute-v1.4.0.exe",
+            "1.4.0"
+        ));
     }
 
     #[test]

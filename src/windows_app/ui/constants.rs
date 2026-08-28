@@ -20,6 +20,9 @@ pub(super) const WM_PROCESS_SEARCH_RESULT_CHOSEN: u32 = WM_APP + 3;
 pub(super) const WM_REFRESH_THEME_VISUALS: u32 = WM_APP + 5;
 pub(super) const WM_SHOW_PROCESS_RESULTS: u32 = WM_APP + 6;
 pub(super) const WM_REDRAW_DEFERRED_CONTROL: u32 = WM_APP + 7;
+// Cross-version handoff protocol; keep these values stable.
+pub(super) const WM_REQUEST_HANDOFF_STATE: u32 = WM_APP + 8;
+pub(super) const WM_FINISH_HANDOFF: u32 = WM_APP + 9;
 pub(super) const WINDOW_WIDTH: i32 = 660;
 pub(super) const WINDOW_HEIGHT: i32 = 550;
 pub(super) const MAIN_WINDOW_STYLE: WINDOW_STYLE = WINDOW_STYLE(
@@ -41,6 +44,7 @@ pub(super) const ID_REMOVE: i32 = 1007;
 pub(super) const ID_PROCESS_SOURCE: i32 = 1008;
 pub(super) const ID_PAUSE: i32 = 1009;
 pub(super) const ID_HIDE: i32 = 1014;
+// Used by cross-version handoff; keep this command ID stable.
 pub(super) const ID_QUIT: i32 = 1015;
 pub(super) const ID_SHOW: i32 = 1016;
 pub(super) const ID_TOGGLE_PROCESS_DETAILS: i32 = 1018;

@@ -41,7 +41,7 @@ impl AudioSessionKey {
     }
 }
 
-/// Canonical process/PID view of the exact audio sessions owned by this process.
+/// Canonical process/PID view of the audio sessions owned by this process.
 ///
 /// Audio planning and target-status rendering share this lookup so identity matching cannot
 /// drift between the engine and its Windows adapters.
