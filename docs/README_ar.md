@@ -3,7 +3,7 @@
 
   <h1>UnfocusMute</h1>
 
-  <p><strong>تطبيق Windows خفيف يعمل من علبة النظام، يكتم تلقائيًا الألعاب والتطبيقات المختارة عندما لا تعود في المقدمة.</strong></p>
+  <p><strong>تطبيق Windows خفيف يعمل من علبة النظام، يكتم صوت الألعاب والتطبيقات المختارة تلقائيًا عندما تفقد التركيز.</strong></p>
 
   <p dir="ltr">
     <a href="../README.md">English</a> · <a href="README_ko.md">한국어</a> · <a href="README_ja.md">日本語</a> · <a href="README_zh-CN.md">简体中文</a> · <a href="README_es.md">Español</a> · <a href="README_fr.md">Français</a> · <a href="README_pt.md">Português</a> · <a href="README_hi.md">हिन्दी</a> · العربية
@@ -138,7 +138,7 @@ UnfocusMute هو تطبيق Windows صغير وخفيف يعمل من علبة �
 
 ## ملف الإعدادات
 
-إذا احتجت إلى فحص ملف الإعدادات مباشرة أو نسخه احتياطيًا، فانقر زر `فتح مجلد الإعدادات` من شاشة الإعدادات. يفتح مستكشف الملفات مجلد <code dir="ltr">%APPDATA%\UnfocusMute</code> حيث تُحفظ الإعدادات.
+إذا احتجت إلى فحص ملف الإعدادات مباشرة أو نسخه احتياطيًا، فانقر على زر `فتح مجلد الإعدادات` من شاشة الإعدادات. يفتح مستكشف الملفات مجلد <code dir="ltr">%APPDATA%\UnfocusMute</code> حيث تُحفظ الإعدادات.
 
 يمكنك أيضًا تعديل <code dir="ltr">config.json</code> مباشرة. إذا كان تنسيقه غير صالح ولا يمكن قراءته، يحفظ UnfocusMute الملف الأصلي باسم <code dir="ltr">config.invalid-&lt;timestamp&gt;.json</code> ثم ينشئ ملف إعدادات جديدًا استنادًا إلى القيم الافتراضية أو إعدادات التطبيق الحالية.
 

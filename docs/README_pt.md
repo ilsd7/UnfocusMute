@@ -46,7 +46,7 @@ UnfocusMute é um app pequeno e leve que fica na bandeja do sistema do Windows, 
 
 ## Útil quando
 
-- Você alterna com frequência para outras janelas com Alt+Tab enquanto um jogo ou app continua aberto.
+- Você costuma alternar entre um jogo ou app e outras janelas com Alt+Tab, mantendo-o aberto.
 - Você quer manter um app sem som quando ele não tem opção de silenciar em segundo plano.
 - Você quer silenciar apenas o áudio em segundo plano de um app específico enquanto faz outras coisas.
 

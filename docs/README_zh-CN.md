@@ -130,7 +130,7 @@ UnfocusMute 是一款小巧轻量的 Windows 托盘应用，可在所选游戏�
 
 如果问题仍然存在，请[提交 GitHub Issue](https://github.com/ilsd7/UnfocusMute/issues/new/choose)。
 
-如果怀疑存在安全漏洞，请不要在公开Issue中发布细节，而应进行私密报告。具体方法请参阅 [SECURITY.md](../SECURITY.md)。
+如果怀疑存在安全漏洞，请勿在公开 Issue 中发布细节，而应通过私密渠道报告。具体方法请参阅 [SECURITY.md](../SECURITY.md)。
 
 <br>
 
