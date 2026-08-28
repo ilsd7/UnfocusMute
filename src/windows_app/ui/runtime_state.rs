@@ -54,6 +54,7 @@ impl RuntimeCoordinator {
         &mut self,
         paused: bool,
         managed_sessions: HashSet<AudioSessionKey>,
+        ownership_incomplete: bool,
     ) -> bool {
         if self.active {
             return false;
@@ -61,6 +62,7 @@ impl RuntimeCoordinator {
         self.active = true;
         self.paused = paused;
         self.muted_by_app = managed_sessions;
+        self.managed_mute_foreground_retry_pending |= ownership_incomplete;
         true
     }
 
@@ -236,11 +238,12 @@ mod tests {
         assert!(!runtime.is_active());
         let managed_session =
             AudioSessionKey::new(42, "game.exe", Some("session-a".to_owned())).unwrap();
-        assert!(runtime.activate(true, HashSet::from([managed_session.clone()])));
+        assert!(runtime.activate(true, HashSet::from([managed_session.clone()]), true));
         assert!(runtime.is_active());
         assert!(runtime.is_paused());
         assert!(runtime.managed_sessions().contains(&managed_session));
-        assert!(!runtime.activate(false, HashSet::new()));
+        assert!(runtime.managed_mute_foreground_retry_pending());
+        assert!(!runtime.activate(false, HashSet::new(), false));
         assert!(runtime.is_paused());
     }
 

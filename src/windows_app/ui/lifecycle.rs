@@ -20,15 +20,33 @@ impl AppWindow {
 
     pub(super) fn activate_replacement_runtime(&mut self, snapshot: Option<HandoffSnapshot>) {
         // Legacy predecessors cannot transfer their in-memory pause state.
-        let (paused, managed_sessions) = snapshot
-            .map(|snapshot| (snapshot.paused, snapshot.managed_sessions))
+        let (paused, managed_sessions, ownership_incomplete, target_mute_states) = snapshot
+            .map(|snapshot| {
+                (
+                    snapshot.paused,
+                    snapshot.managed_sessions,
+                    snapshot.ownership_incomplete,
+                    snapshot.target_mute_states,
+                )
+            })
             .unwrap_or_default();
-        if !self.runtime.activate(paused, managed_sessions) {
+        if !self
+            .runtime
+            .activate(paused, managed_sessions, ownership_incomplete)
+        {
             return;
         }
         self.last_status = None;
         let reload = self.config_store.reload_now();
         self.apply_config_reload_without_startup_sync(reload);
+        // A failed runtime-state save can leave the old process newer than disk. Apply only its
+        // internal mute flags, and only to targets that still exist after the reload.
+        let mute_state_changed = target_mute_states.is_some_and(|states| {
+            handoff::apply_target_mute_states(&mut self.config.targets, &states)
+        });
+        if mute_state_changed {
+            self.runtime.mark_runtime_mute_state_dirty();
+        }
         let startup_sync = sync_startup_setting(&mut self.config);
         self.issues.merge(startup_sync.issues);
         if let Some(detail) = startup_sync.issue_detail {
@@ -37,6 +55,8 @@ impl AppWindow {
         }
         if startup_sync.config_changed {
             self.save_config();
+        } else if mute_state_changed {
+            self.save_runtime_mute_state();
         }
         self.reset_timers();
         self.tick();
@@ -66,8 +86,15 @@ impl AppWindow {
         }
         self.stop_runtime_work();
 
-        let snapshot =
-            HandoffSnapshot::capture(self.runtime.is_paused(), self.runtime.managed_sessions());
+        let dirty_targets = self
+            .runtime
+            .runtime_mute_state_dirty()
+            .then_some(self.config.targets.as_slice());
+        let snapshot = HandoffSnapshot::capture(
+            self.runtime.is_paused(),
+            self.runtime.managed_sessions(),
+            dirty_targets,
+        );
         match snapshot.encode() {
             Some(bytes) => Some(bytes),
             None => {
