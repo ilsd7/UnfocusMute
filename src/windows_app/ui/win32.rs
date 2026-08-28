@@ -410,10 +410,9 @@ pub(super) fn centered_single_line_edit_rect(
         .right
         .saturating_sub(right_inset.max(0))
         .max(left.saturating_add(1));
-    let top = bounds
-        .top
-        .saturating_add(height.saturating_sub(edit_height) / 2)
-        .saturating_add(optical_offset_y);
+    let (top, edit_height) =
+        centered_control_span_exact(bounds.top.saturating_add(bounds.bottom), edit_height);
+    let top = top.saturating_add(optical_offset_y);
     RECT {
         left,
         top,
@@ -1417,6 +1416,22 @@ mod tests {
         assert_eq!(rect.right, 204);
         assert_eq!(rect.top, 28);
         assert_eq!(rect.bottom, 46);
+    }
+
+    #[test]
+    fn single_line_edit_rect_keeps_an_exact_center_when_slack_is_odd() {
+        let bounds = RECT {
+            left: 10,
+            top: 20,
+            right: 210,
+            bottom: 53,
+        };
+        let rect = centered_single_line_edit_rect(bounds, 16, 8, 6, 1, 2, 0);
+
+        assert_eq!(rect.left, 18);
+        assert_eq!(rect.right, 204);
+        assert_eq!(rect.top + rect.bottom, bounds.top + bounds.bottom);
+        assert_eq!(rect.bottom - rect.top, 19);
     }
 
     #[test]

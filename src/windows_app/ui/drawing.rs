@@ -64,20 +64,46 @@ pub(super) fn draw_glyph_at_visual_center(
 /// The axis deliberately does not depend on the current label. Descenders in a
 /// word such as "Monitoring" must not move a neighboring icon.
 pub(super) fn text_optical_center_twice(hdc: HDC, font: HGDIOBJ, rect: RECT) -> Option<i32> {
+    text_optical_center_twice_with_reference(hdc, font, rect, None)
+}
+
+/// Returns a label-aware optical center for a fixed localized label.
+///
+/// GDI can draw the leading character through a linked fallback font whose
+/// visible axis differs from the UI font. Half-pixel differences retain the
+/// stable capital-height axis because the icon's integer baseline cannot
+/// represent them without jumping a full pixel.
+pub(super) fn localized_text_optical_center_twice(
+    hdc: HDC,
+    font: HGDIOBJ,
+    text: &str,
+    rect: RECT,
+) -> Option<i32> {
+    let reference = text.chars().find(|glyph| !glyph.is_whitespace());
+    text_optical_center_twice_with_reference(hdc, font, rect, reference)
+}
+
+fn text_optical_center_twice_with_reference(
+    hdc: HDC,
+    font: HGDIOBJ,
+    rect: RECT,
+    reference: Option<char>,
+) -> Option<i32> {
     unsafe {
         let previous_font = SelectObject(hdc, font);
         let mut text_metrics = TEXTMETRICW::default();
         let center = GetTextMetricsW(hdc, &mut text_metrics)
             .as_bool()
             .then(|| {
-                let glyph_metrics = selected_glyph_vertical_metrics(hdc, 'H')?;
                 let line_top = rect.top
                     + (rect.bottom - rect.top - text_metrics.tmHeight)
                         .max(0)
                         .div_euclid(2);
                 let baseline = line_top + text_metrics.tmAscent;
-                let glyph_top = baseline - glyph_metrics.origin_y;
-                Some(2 * glyph_top + glyph_metrics.black_box_height - 1)
+                let stable_center = selected_glyph_center_twice(hdc, baseline, 'H');
+                let localized_center =
+                    reference.and_then(|glyph| selected_glyph_center_twice(hdc, baseline, glyph));
+                choose_text_optical_center(stable_center, localized_center)
             })
             .flatten();
         if !previous_font.0.is_null() {
@@ -87,8 +113,22 @@ pub(super) fn text_optical_center_twice(hdc: HDC, font: HGDIOBJ, rect: RECT) -> 
     }
 }
 
-/// Draws a single text line with the font's stable visible axis on an exact
-/// device-pixel center.
+fn selected_glyph_center_twice(hdc: HDC, baseline: i32, glyph: char) -> Option<i32> {
+    let metrics = unsafe { selected_glyph_vertical_metrics(hdc, glyph) }?;
+    let glyph_top = baseline - metrics.origin_y;
+    Some(2 * glyph_top + metrics.black_box_height - 1)
+}
+
+fn choose_text_optical_center(stable: Option<i32>, localized: Option<i32>) -> Option<i32> {
+    match (stable, localized) {
+        (Some(stable), Some(localized)) if (localized - stable).abs() >= 2 => Some(localized),
+        (Some(stable), _) => Some(stable),
+        (None, localized) => localized,
+    }
+}
+
+/// Draws a single text line with the font's stable visible axis on the nearest
+/// representable device-pixel center.
 ///
 /// `DT_VCENTER` centers the font's full line box, whose extra leading and pixel
 /// rounding can make button labels appear to move as the UI zoom changes. The
@@ -209,6 +249,16 @@ pub(super) fn draw_wide_text_block_vertically_centered(
 pub(super) fn centered_pixel_span(center_twice: i32, height: i32) -> (i32, i32) {
     let height = height.max(1);
     let top = round_half_down(center_twice - (height - 1));
+    (top, top + height)
+}
+
+/// Produces an exclusive-bottom pixel span whose center exactly matches the
+/// requested axis, growing the preferred height by at most one pixel.
+pub(super) fn centered_pixel_span_exact(center_twice: i32, preferred_height: i32) -> (i32, i32) {
+    let preferred_height = preferred_height.max(1);
+    let parity_differs = (center_twice - (preferred_height - 1)).rem_euclid(2) != 0;
+    let height = preferred_height + i32::from(parity_differs);
+    let top = (center_twice - (height - 1)).div_euclid(2);
     (top, top + height)
 }
 
@@ -411,10 +461,28 @@ fn draw_wide_text_line(
 
 #[cfg(test)]
 mod tests {
-    use super::centered_pixel_span;
+    use super::{centered_pixel_span, centered_pixel_span_exact, choose_text_optical_center};
 
     fn span_center_twice(span: (i32, i32)) -> i32 {
         span.0 + span.1 - 1
+    }
+
+    #[test]
+    fn localized_text_axis_changes_only_for_representable_differences() {
+        let cases = [
+            (Some(100), Some(100), Some(100)),
+            (Some(100), Some(99), Some(100)),
+            (Some(100), Some(101), Some(100)),
+            (Some(100), Some(98), Some(98)),
+            (Some(100), Some(102), Some(102)),
+            (Some(100), None, Some(100)),
+            (None, Some(98), Some(98)),
+            (None, None, None),
+        ];
+
+        for (stable, localized, expected) in cases {
+            assert_eq!(choose_text_optical_center(stable, localized), expected);
+        }
     }
 
     #[test]
@@ -437,6 +505,19 @@ mod tests {
 
                 assert_eq!(span.1 - span.0, height);
                 assert!(matches!(center_difference, 0 | 1));
+            }
+        }
+    }
+
+    #[test]
+    fn exact_pixel_span_matches_every_center_and_height_parity() {
+        for center_twice in 108..=117 {
+            for preferred_height in 6..=11 {
+                let span = centered_pixel_span_exact(center_twice, preferred_height);
+                let height = span.1 - span.0;
+
+                assert_eq!(span_center_twice(span), center_twice);
+                assert!(matches!(height - preferred_height, 0 | 1));
             }
         }
     }

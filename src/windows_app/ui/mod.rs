@@ -95,8 +95,8 @@ use config_store::{ConfigMerge, ConfigReload, ConfigSave, ConfigSaveIntent, Conf
 use constants::*;
 use controls::Controls;
 use drawing::{
-    centered_pixel_span, draw_glyph_at_visual_center, draw_target_identity_line, draw_text_line,
-    text_optical_center_twice,
+    centered_pixel_span_exact, draw_glyph_at_visual_center, draw_target_identity_line,
+    draw_text_line, localized_text_optical_center_twice, text_optical_center_twice,
 };
 use handoff::{HandoffSnapshot, HandoffState};
 use issue_diagnostics::IssueDiagnostics;
@@ -2944,7 +2944,8 @@ impl AppWindow {
         color: COLORREF,
     ) {
         let center_x = (rect.left + rect.right) / 2;
-        let (shape_top, shape_bottom) = centered_pixel_span(visual_center_twice, px(8).max(6));
+        let (shape_top, shape_bottom) =
+            centered_pixel_span_exact(visual_center_twice, px(8).max(6));
         let shape_bottom_inclusive = shape_bottom - 1;
         let shape_center_y = (shape_top + shape_bottom_inclusive) / 2;
         unsafe {
@@ -3164,17 +3165,22 @@ impl AppWindow {
             bottom: draw.rcItem.bottom,
         };
         let icon = SETTINGS_ICON_GLYPH.chars().next().unwrap_or('\u{e713}');
-        let icon_aligned = text_optical_center_twice(draw.hDC, self.theme.font.handle(), text_rect)
-            .is_some_and(|center| {
-                draw_glyph_at_visual_center(
-                    draw.hDC,
-                    self.theme.icon_font.handle(),
-                    icon,
-                    icon_rect,
-                    center,
-                    content_color,
-                )
-            });
+        let icon_aligned = localized_text_optical_center_twice(
+            draw.hDC,
+            self.theme.font.handle(),
+            self.strings.settings_title,
+            text_rect,
+        )
+        .is_some_and(|center| {
+            draw_glyph_at_visual_center(
+                draw.hDC,
+                self.theme.icon_font.handle(),
+                icon,
+                icon_rect,
+                center,
+                content_color,
+            )
+        });
         if !icon_aligned {
             draw_text_line(
                 draw.hDC,
