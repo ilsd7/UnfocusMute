@@ -71,13 +71,9 @@ impl<'a> ManagedSessionLookup<'a> {
         if target.managed_muted {
             return true;
         }
-        match target.pid {
-            Some(pid) => self.contains(&target.name, pid),
-            None => self
-                .session_keys
-                .iter()
-                .any(|key| key.process_name == target.name),
-        }
+        self.session_keys
+            .iter()
+            .any(|key| target.matches_session(&key.process_name, key.pid))
     }
 }
 
@@ -354,6 +350,33 @@ mod tests {
     }
 
     #[test]
+    fn managed_session_lookup_uses_target_identity_and_persisted_recovery() {
+        let sessions = HashSet::from([
+            AudioSessionKey::new(20, "game.exe", Some("a".to_owned())).unwrap(),
+            AudioSessionKey::new(20, "game.exe", Some("b".to_owned())).unwrap(),
+            AudioSessionKey::new(7, "chat.exe", None).unwrap(),
+        ]);
+        let lookup = ManagedSessionLookup::new(&sessions);
+        let broad_target = TargetProcess::new("game.exe").unwrap();
+        let pid_target = TargetProcess::for_pid("chat.exe", 7).unwrap();
+        let wrong_pid_target = TargetProcess::for_pid("chat.exe", 8).unwrap();
+        let mut disabled_target = broad_target.clone();
+        disabled_target.enabled = false;
+        let mut persisted_target = TargetProcess::new("music.exe").unwrap();
+        persisted_target.managed_muted = true;
+
+        assert!(lookup.may_include_pid(20));
+        assert!(!lookup.may_include_pid(99));
+        assert!(lookup.contains("game.exe", 20));
+        assert!(!lookup.contains("other.exe", 20));
+        assert!(lookup.target_has_managed_mute(&broad_target));
+        assert!(lookup.target_has_managed_mute(&pid_target));
+        assert!(!lookup.target_has_managed_mute(&wrong_pid_target));
+        assert!(!lookup.target_has_managed_mute(&disabled_target));
+        assert!(lookup.target_has_managed_mute(&persisted_target));
+    }
+
+    #[test]
     fn pid_only_targets_need_foreground_name_without_full_session_scan() {
         let pid_matcher = TargetMatcher::new(&[TargetProcess::for_pid("game.exe", 10).unwrap()]);
         let exe_matcher = TargetMatcher::new(&[TargetProcess::new("game.exe").unwrap()]);
@@ -374,14 +397,6 @@ mod tests {
         assert!(matcher.has_pid_target(10));
         assert!(matcher.has_pid_target(20));
         assert!(!matcher.has_pid_target(30));
-    }
-
-    #[test]
-    fn single_pid_target_prefilter_matches() {
-        let matcher = TargetMatcher::new(&[TargetProcess::for_pid("game.exe", 10).unwrap()]);
-
-        assert!(matcher.has_pid_target(10));
-        assert!(!matcher.has_pid_target(20));
     }
 
     #[test]

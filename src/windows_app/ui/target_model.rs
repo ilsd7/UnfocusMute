@@ -64,52 +64,30 @@ mod tests {
     use crate::i18n::Language;
 
     #[test]
-    fn target_display_storage_hint_counts_one_nul_for_plain_target() {
-        let target = TargetProcess::new("abc.exe").unwrap();
+    fn target_display_storage_hint_matches_encoded_display_text() {
+        let plain = TargetProcess::new("abc.exe").unwrap();
+        let pid = TargetProcess::for_pid("abc.exe", 42).unwrap();
+        let mut noted = plain.clone();
+        noted.note = Some("게임".to_owned());
+        let mut paused = plain.clone();
+        paused.enabled = false;
 
-        assert_eq!(
-            target_display_storage_bytes_hint(&target, Language::En.strings()),
-            ("abc.exe".encode_utf16().count() + 1) * size_of::<u16>()
-        );
-    }
+        for (case, target, language) in [
+            ("plain", plain, Language::En),
+            ("pid", pid, Language::En),
+            ("note", noted, Language::En),
+            ("paused", paused, Language::Ko),
+        ] {
+            let strings = language.strings();
+            let mut display_name = String::new();
+            target_display_name_into(&target, strings, &mut display_name);
 
-    #[test]
-    fn target_display_storage_hint_counts_one_nul_for_pid_target() {
-        let target = TargetProcess::for_pid("abc.exe", 42).unwrap();
-        let mut display_name = String::new();
-        target.display_name_into(&mut display_name);
-
-        assert_eq!(
-            target_display_storage_bytes_hint(&target, Language::En.strings()),
-            (display_name.encode_utf16().count() + 1) * size_of::<u16>()
-        );
-    }
-
-    #[test]
-    fn target_display_storage_hint_counts_note_text() {
-        let mut target = TargetProcess::new("abc.exe").unwrap();
-        target.note = Some("게임".to_owned());
-        let mut display_name = String::new();
-        target.display_name_into(&mut display_name);
-
-        assert_eq!(
-            target_display_storage_bytes_hint(&target, Language::En.strings()),
-            (display_name.encode_utf16().count() + 1) * size_of::<u16>()
-        );
-    }
-
-    #[test]
-    fn target_display_storage_hint_counts_paused_prefix() {
-        let mut target = TargetProcess::new("abc.exe").unwrap();
-        target.enabled = false;
-        let strings = Language::Ko.strings();
-        let mut display_name = String::new();
-        target_display_name_into(&target, strings, &mut display_name);
-
-        assert_eq!(
-            target_display_storage_bytes_hint(&target, strings),
-            (display_name.encode_utf16().count() + 1) * size_of::<u16>()
-        );
+            assert_eq!(
+                target_display_storage_bytes_hint(&target, strings),
+                (display_name.encode_utf16().count() + 1) * size_of::<u16>(),
+                "{case}"
+            );
+        }
     }
 
     #[test]

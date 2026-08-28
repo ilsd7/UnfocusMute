@@ -1474,7 +1474,7 @@ mod tests {
     }
 
     #[test]
-    fn encode_wide_for_measurement_uses_stack_for_ascii_and_unicode() {
+    fn encode_wide_for_measurement_borrows_caller_storage_when_text_fits() {
         let mut buffer = [0xffff; 8];
 
         let encoded = encode_wide_for_measurement("abc", &mut buffer);
@@ -1491,7 +1491,7 @@ mod tests {
     }
 
     #[test]
-    fn encode_wide_for_measurement_uses_heap_when_stack_is_small() {
+    fn encode_wide_for_measurement_returns_owned_text_when_storage_is_too_small() {
         let mut buffer = [0xffff; 3];
 
         let encoded = encode_wide_for_measurement("abcd", &mut buffer);
@@ -1509,7 +1509,7 @@ mod tests {
     }
 
     #[test]
-    fn push_utf16_lossy_appends_ascii_fast_path() {
+    fn push_utf16_lossy_decodes_ascii_without_replacement() {
         let mut output = String::from(">");
 
         push_utf16_lossy(

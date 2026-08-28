@@ -278,80 +278,63 @@ mod tests {
     }
 
     #[test]
-    fn only_runtime_mute_changes_use_process_crash_safe_save() {
+    fn save_durability_matches_the_pending_change_contract() {
         let mut persisted = AppConfig::default();
         assert!(persisted.add_target("game.exe"));
         let mut runtime_update = persisted.clone();
         assert!(runtime_update.set_target_managed_muted_at(0, true));
+        let mut settings_update = runtime_update.clone();
+        settings_update.window_position = Some(WindowPosition { x: 10, y: 20 });
 
-        assert_eq!(
-            save_durability(
+        let cases = [
+            (
+                "runtime mute state only",
                 ConfigSaveIntent::RuntimeMuteState,
                 true,
                 ConfigLoadState::Ready,
-                &persisted,
                 &runtime_update,
+                ConfigDurability::ProcessCrashSafe,
             ),
-            ConfigDurability::ProcessCrashSafe
-        );
-        assert_eq!(
-            save_durability(
+            (
+                "settings save intent",
                 ConfigSaveIntent::Settings,
                 true,
                 ConfigLoadState::Ready,
-                &persisted,
                 &runtime_update,
+                ConfigDurability::Durable,
             ),
-            ConfigDurability::Durable
-        );
-    }
-
-    #[test]
-    fn runtime_save_is_upgraded_when_user_settings_are_pending() {
-        let mut persisted = AppConfig::default();
-        assert!(persisted.add_target("game.exe"));
-        let mut runtime_update = persisted.clone();
-        assert!(runtime_update.set_target_managed_muted_at(0, true));
-        runtime_update.window_position = Some(WindowPosition { x: 10, y: 20 });
-
-        assert_eq!(
-            save_durability(
+            (
+                "pending user settings",
                 ConfigSaveIntent::RuntimeMuteState,
                 true,
                 ConfigLoadState::Ready,
-                &persisted,
-                &runtime_update,
+                &settings_update,
+                ConfigDurability::Durable,
             ),
-            ConfigDurability::Durable
-        );
-    }
-
-    #[test]
-    fn runtime_save_is_upgraded_for_missing_or_malformed_config() {
-        let mut persisted = AppConfig::default();
-        assert!(persisted.add_target("game.exe"));
-        let mut runtime_update = persisted.clone();
-        assert!(runtime_update.set_target_managed_muted_at(0, true));
-
-        assert_eq!(
-            save_durability(
+            (
+                "missing configuration file",
                 ConfigSaveIntent::RuntimeMuteState,
                 false,
                 ConfigLoadState::Ready,
-                &persisted,
                 &runtime_update,
+                ConfigDurability::Durable,
             ),
-            ConfigDurability::Durable
-        );
-        assert_eq!(
-            save_durability(
+            (
+                "malformed configuration recovery",
                 ConfigSaveIntent::RuntimeMuteState,
                 true,
                 ConfigLoadState::RecoverMalformed,
-                &persisted,
                 &runtime_update,
+                ConfigDurability::Durable,
             ),
-            ConfigDurability::Durable
-        );
+        ];
+
+        for (case, intent, existing_file, load_state, config, expected) in cases {
+            assert_eq!(
+                save_durability(intent, existing_file, load_state, &persisted, config),
+                expected,
+                "{case}"
+            );
+        }
     }
 }

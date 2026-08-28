@@ -280,16 +280,18 @@ mod tests {
     #[test]
     fn target_indicators_include_exact_session_ownership() {
         let mut runtime = RuntimeCoordinator::new(true, false);
-        let target = TargetProcess::new("game.exe").unwrap();
-        runtime
-            .managed_sessions_mut()
-            .insert(AudioSessionKey::new(42, "game.exe", Some("session-a".to_owned())).unwrap());
+        let game = TargetProcess::new("game.exe").unwrap();
+        let chat = TargetProcess::new("chat.exe").unwrap();
+        runtime.managed_sessions_mut().extend([
+            AudioSessionKey::new(42, "game.exe", Some("session-a".to_owned())).unwrap(),
+            AudioSessionKey::new(42, "game.exe", Some("session-b".to_owned())).unwrap(),
+        ]);
 
-        runtime.refresh_target_mute_snapshot(std::slice::from_ref(&target));
+        runtime.refresh_target_mute_snapshot(&[game.clone(), chat]);
 
         assert!(runtime.has_managed_mutes());
         assert_eq!(runtime.muted_target_count(), 1);
-        assert!(runtime.target_muted(0, &target));
+        assert!(runtime.target_muted(0, &game));
     }
 
     #[test]
@@ -335,14 +337,11 @@ mod tests {
     }
 
     #[test]
-    fn runtime_mute_state_stays_dirty_until_a_save_succeeds() {
+    fn runtime_mute_state_dirty_flag_has_explicit_saved_transition() {
         let mut runtime = RuntimeCoordinator::new(true, false);
 
         assert!(!runtime.runtime_mute_state_dirty());
         runtime.mark_runtime_mute_state_dirty();
-        assert!(runtime.runtime_mute_state_dirty());
-
-        // A failed attempt deliberately has no state transition.
         assert!(runtime.runtime_mute_state_dirty());
 
         runtime.mark_runtime_mute_state_saved();

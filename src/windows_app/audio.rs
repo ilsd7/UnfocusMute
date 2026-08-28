@@ -21,15 +21,13 @@ use windows::core::{BOOL, IUnknown, Interface, PCWSTR, PWSTR, implement};
 
 mod session_logic;
 
-#[cfg(test)]
-use session_logic::ManagedSessionSelection;
 pub use session_logic::TargetMuteStateUpdate;
 use session_logic::{
-    AudioSessionIdentity, ManagedTargetLookup, SessionControlIdentityRef, TargetMuteIdentity,
-    cached_session_requires_unmute, matching_unresolved_session_keys, mute_state_needs_write,
-    same_session_control, same_session_group, same_session_ownership,
+    AudioSessionIdentity, ManagedTargetLookup, PlanApplyOutcome, SessionControlIdentityRef,
+    TargetMuteIdentity, cached_session_requires_unmute, matching_unresolved_session_keys,
+    mute_state_needs_write, same_session_control, same_session_group, same_session_ownership,
     select_runtime_managed_session, should_retain_cached_session, single_session_process_name,
-    target_update_matches, unresolved_session_keys_for_pid,
+    unresolved_session_keys_for_pid,
 };
 
 pub struct AudioController {
@@ -309,7 +307,8 @@ impl AudioController {
             })
             .map(ManagedSessionControl::identity)
             .collect::<Vec<_>>();
-        let mut apply_result = PlanApplyResult::new(managed_muted_sessions.len());
+        let mut outcome = PlanApplyOutcome::new(managed_muted_sessions.len());
+        let mut pending_controls = Vec::with_capacity(managed_muted_sessions.len());
         let mut observed_controls = Vec::new();
         {
             let lookup = ManagedSessionLookup::new(managed_muted_sessions);
@@ -346,7 +345,10 @@ impl AudioController {
                                     },
                                 )
                             }),
-                            &mut apply_result,
+                            SessionApplyOutput {
+                                outcome: &mut outcome,
+                                pending_controls: &mut pending_controls,
+                            },
                         );
                     }
                     SessionVisit::Unresolved(session) => {
@@ -384,19 +386,22 @@ impl AudioController {
                                         },
                                     )
                                 }),
-                                &mut apply_result,
+                                SessionApplyOutput {
+                                    outcome: &mut outcome,
+                                    pending_controls: &mut pending_controls,
+                                },
                             );
                             return;
                         }
                         if lookup.may_include_pid(session.pid) {
-                            apply_result
+                            outcome
                                 .keep_active_sessions_for_pid(session.pid, managed_muted_sessions);
-                            apply_result.block_unmuted_target_states_for_unresolved_pid(
+                            outcome.block_unmuted_target_states_for_unresolved_pid(
                                 session.pid,
                                 managed_muted_sessions,
                                 &target_lookup,
                             );
-                            apply_result.mark_failure(format!(
+                            outcome.mark_failure(format!(
                                 "audio session process name unavailable for managed PID {}",
                                 session.pid
                             ));
@@ -404,11 +409,14 @@ impl AudioController {
                             // With only a saved broad target, an unknown process may be an audio
                             // session that still needs restoring. Delay only broad clear updates;
                             // a later successful pass can clear them without losing recovery.
-                            apply_result.block_unmuted_process_target_states(&target_lookup);
-                            let has_managed_pid_target = apply_result
-                                .block_unmuted_pid_target_states(session.pid, &target_lookup, None);
+                            outcome.block_unmuted_process_target_states(&target_lookup);
+                            let has_managed_pid_target = outcome.block_unmuted_pid_target_states(
+                                session.pid,
+                                &target_lookup,
+                                None,
+                            );
                             if matcher.has_pid_target(session.pid) || has_managed_pid_target {
-                                apply_result.mark_failure(format!(
+                                outcome.mark_failure(format!(
                                     "audio session process name unavailable for PID {}",
                                     session.pid
                                 ));
@@ -416,20 +424,19 @@ impl AudioController {
                         }
                     }
                     SessionVisit::Unreadable => {
-                        apply_result
-                            .mark_failure("audio session unavailable while applying mute plan");
-                        apply_result.block_all_unmuted_target_states();
+                        outcome.mark_failure("audio session unavailable while applying mute plan");
+                        outcome.block_all_unmuted_target_states();
                         preserve_existing_managed_sessions = true;
                     }
                 },
             );
             if let Err(error) = visit_result {
-                apply_result.mark_failure(format!("enumerate audio sessions failed: {error}"));
-                apply_result.block_all_unmuted_target_states();
+                outcome.mark_failure(format!("enumerate audio sessions failed: {error}"));
+                outcome.block_all_unmuted_target_states();
                 preserve_existing_managed_sessions = true;
             }
             if preserve_existing_managed_sessions {
-                apply_result.keep_active_sessions(managed_muted_sessions);
+                outcome.keep_active_sessions(managed_muted_sessions);
             }
 
             let mut reusable_observed_controls = Vec::new();
@@ -456,22 +463,19 @@ impl AudioController {
                     session.process_has_exited(),
                     session.has_expired(),
                 ) {
-                    apply_result
-                        .active_managed_sessions
-                        .push(session.key.clone());
+                    outcome.active_managed_sessions.push(session.key.clone());
                     target_lookup.for_each_matching(
                         &session.key.process_name,
                         session.key.pid,
                         |identity| {
-                            apply_result.block_unmuted_target_state(identity);
+                            outcome.block_unmuted_target_state(identity);
                         },
                     );
                     retained_controls.push(session);
                     continue;
                 }
                 match session.unmute() {
-                    Ok(()) => set_target_states_for_session(
-                        &mut apply_result,
+                    Ok(()) => outcome.set_target_states_for_session(
                         &target_lookup,
                         AudioSessionIdentity {
                             process_name: &session.key.process_name,
@@ -481,18 +485,16 @@ impl AudioController {
                         false,
                     ),
                     Err(error) => {
-                        apply_result.mark_failure(format!(
+                        outcome.mark_failure(format!(
                             "unmute cached audio session failed for {} (PID {}): {error}",
                             session.key.process_name, session.key.pid
                         ));
-                        apply_result
-                            .active_managed_sessions
-                            .push(session.key.clone());
+                        outcome.active_managed_sessions.push(session.key.clone());
                         target_lookup.for_each_matching(
                             &session.key.process_name,
                             session.key.pid,
                             |identity| {
-                                apply_result.block_unmuted_target_state(identity);
+                                outcome.block_unmuted_target_state(identity);
                             },
                         );
                         retained_controls.push(session);
@@ -500,7 +502,6 @@ impl AudioController {
                 }
             }
 
-            let pending_controls = std::mem::take(&mut apply_result.managed_session_controls);
             let mut pending_group_counts = HashMap::new();
             for pending in &pending_controls {
                 *pending_group_counts
@@ -534,7 +535,7 @@ impl AudioController {
                 }
             }
             next_controls.extend(reusable_observed_controls.into_iter().filter(|control| {
-                apply_result
+                outcome
                     .active_managed_sessions
                     .iter()
                     .any(|key| key == &control.key)
@@ -542,14 +543,14 @@ impl AudioController {
             self.managed_session_controls = next_controls;
         }
         managed_muted_sessions.clear();
-        managed_muted_sessions.extend(apply_result.active_managed_sessions.iter().cloned());
+        managed_muted_sessions.extend(outcome.active_managed_sessions.iter().cloned());
 
         Ok(PlannedMuteApplyResult {
-            had_failures: apply_result.had_failures,
-            failure_detail: apply_result.failure_detail,
-            target_updates: apply_result.target_updates,
-            uncertain_unmuted_target_updates: apply_result.uncertain_unmuted_target_updates,
-            block_all_unmuted_target_updates: apply_result.block_all_unmuted_target_updates,
+            had_failures: outcome.had_failures,
+            failure_detail: outcome.failure_detail,
+            target_updates: outcome.target_updates,
+            uncertain_unmuted_target_updates: outcome.uncertain_unmuted_target_updates,
+            block_all_unmuted_target_updates: outcome.block_all_unmuted_target_updates,
         })
     }
 
@@ -641,6 +642,11 @@ struct PendingManagedSessionControl {
     session: IAudioSessionControl2,
     volume: ISimpleAudioVolume,
     identity: usize,
+}
+
+struct SessionApplyOutput<'a> {
+    outcome: &'a mut PlanApplyOutcome,
+    pending_controls: &'a mut Vec<PendingManagedSessionControl>,
 }
 
 struct SessionControlIdentity {
@@ -761,196 +767,27 @@ fn session_muted(volume: &ISimpleAudioVolume) -> windows::core::Result<bool> {
     unsafe { volume.GetMute() }.map(BOOL::as_bool)
 }
 
-struct PlanApplyResult {
-    active_managed_sessions: Vec<AudioSessionKey>,
-    managed_session_controls: Vec<PendingManagedSessionControl>,
-    target_updates: Vec<TargetMuteStateUpdate>,
-    blocked_unmuted_target_updates: Vec<TargetMuteStateUpdate>,
-    uncertain_unmuted_target_updates: Vec<TargetMuteStateUpdate>,
-    block_all_unmuted_target_updates: bool,
-    had_failures: bool,
-    failure_detail: Option<String>,
-}
-
-impl PlanApplyResult {
-    fn new(managed_session_count: usize) -> Self {
-        Self {
-            active_managed_sessions: Vec::with_capacity(managed_session_count),
-            managed_session_controls: Vec::with_capacity(managed_session_count),
-            target_updates: Vec::new(),
-            blocked_unmuted_target_updates: Vec::new(),
-            uncertain_unmuted_target_updates: Vec::new(),
-            block_all_unmuted_target_updates: false,
-            had_failures: false,
-            failure_detail: None,
-        }
-    }
-
-    fn mark_failure(&mut self, detail: impl Into<String>) {
-        self.had_failures = true;
-        record_failure_detail(&mut self.failure_detail, detail);
-    }
-
-    fn keep_session_ownership(
-        &mut self,
-        key: AudioSessionKey,
-        session_keys: &HashSet<AudioSessionKey>,
-    ) {
-        if key.instance_id.is_none() {
-            self.keep_active_sessions_for_identity(&key.process_name, key.pid, session_keys);
-        }
-        self.active_managed_sessions.push(key);
-    }
-
-    fn keep_session_control(
-        &mut self,
-        key: AudioSessionKey,
-        session: IAudioSessionControl2,
-        volume: ISimpleAudioVolume,
-    ) {
-        let identity = session_control_identity(&session);
-        if let Some(existing) = self
-            .managed_session_controls
-            .iter_mut()
-            .find(|existing| existing.identity == identity)
-        {
-            existing.key = key;
-            existing.session = session;
-            existing.volume = volume;
-            return;
-        }
-        self.managed_session_controls
-            .push(PendingManagedSessionControl {
-                key,
-                session,
-                volume,
-                identity,
-            });
-    }
-
-    fn keep_active_sessions_for_pid(&mut self, pid: u32, session_keys: &HashSet<AudioSessionKey>) {
-        for key in session_keys.iter().filter(|key| key.pid == pid) {
-            self.active_managed_sessions.push(key.clone());
-        }
-    }
-
-    fn keep_active_sessions(&mut self, session_keys: &HashSet<AudioSessionKey>) {
-        self.active_managed_sessions
-            .extend(session_keys.iter().cloned());
-    }
-
-    fn keep_active_sessions_for_identity(
-        &mut self,
-        process_name: &str,
-        pid: u32,
-        session_keys: &HashSet<AudioSessionKey>,
-    ) {
-        self.active_managed_sessions.extend(
-            session_keys
-                .iter()
-                .filter(|key| key.pid == pid && key.process_name == process_name)
-                .cloned(),
-        );
-    }
-
-    fn block_unmuted_target_states_for_unresolved_pid(
-        &mut self,
-        pid: u32,
-        session_keys: &HashSet<AudioSessionKey>,
-        target_lookup: &ManagedTargetLookup<'_>,
-    ) {
-        for key in session_keys.iter().filter(|key| key.pid == pid) {
-            target_lookup.for_each_matching(&key.process_name, pid, |identity| {
-                self.block_unmuted_target_state(identity);
-            });
-        }
-        let _ = self.block_unmuted_pid_target_states(pid, target_lookup, Some(session_keys));
-    }
-
-    fn block_unmuted_pid_target_states(
-        &mut self,
-        pid: u32,
-        target_lookup: &ManagedTargetLookup<'_>,
-        known_sessions: Option<&HashSet<AudioSessionKey>>,
-    ) -> bool {
-        let mut blocked = false;
-        target_lookup.for_each_pid_target(pid, |identity| {
-            blocked = true;
-            let has_known_session = known_sessions.is_some_and(|sessions| {
-                sessions
-                    .iter()
-                    .any(|key| key.pid == pid && key.process_name.as_str() == identity.process_name)
-            });
-            if has_known_session {
-                self.block_unmuted_target_state(identity);
-            } else {
-                self.mark_unmuted_target_uncertain(identity);
-            }
+fn keep_session_control(
+    controls: &mut Vec<PendingManagedSessionControl>,
+    key: AudioSessionKey,
+    session: IAudioSessionControl2,
+    volume: ISimpleAudioVolume,
+) {
+    let identity = session_control_identity(&session);
+    if let Some(existing) = controls
+        .iter_mut()
+        .find(|existing| existing.identity == identity)
+    {
+        existing.key = key;
+        existing.session = session;
+        existing.volume = volume;
+    } else {
+        controls.push(PendingManagedSessionControl {
+            key,
+            session,
+            volume,
+            identity,
         });
-        blocked
-    }
-
-    fn block_unmuted_process_target_states(&mut self, target_lookup: &ManagedTargetLookup<'_>) {
-        target_lookup.for_each_process_target(|identity| {
-            self.mark_unmuted_target_uncertain(identity);
-        });
-    }
-
-    fn mark_unmuted_target_uncertain(&mut self, identity: TargetMuteIdentity<'_>) {
-        self.block_unmuted_target_state(identity);
-        if !self.block_all_unmuted_target_updates
-            && !self
-                .uncertain_unmuted_target_updates
-                .iter()
-                .any(|update| target_update_matches(update, identity))
-        {
-            self.uncertain_unmuted_target_updates
-                .push(TargetMuteStateUpdate::new(identity, false));
-        }
-    }
-
-    fn block_unmuted_target_state(&mut self, identity: TargetMuteIdentity<'_>) {
-        if !self.block_all_unmuted_target_updates
-            && !self
-                .blocked_unmuted_target_updates
-                .iter()
-                .any(|update| target_update_matches(update, identity))
-        {
-            self.blocked_unmuted_target_updates
-                .push(TargetMuteStateUpdate::new(identity, false));
-        }
-        self.target_updates
-            .retain(|update| update.muted || !target_update_matches(update, identity));
-    }
-
-    fn block_all_unmuted_target_states(&mut self) {
-        self.block_all_unmuted_target_updates = true;
-        self.blocked_unmuted_target_updates.clear();
-        self.uncertain_unmuted_target_updates.clear();
-        self.target_updates.retain(|update| update.muted);
-    }
-
-    fn set_target_state(&mut self, identity: TargetMuteIdentity<'_>, muted: bool) {
-        if !muted
-            && (self.block_all_unmuted_target_updates
-                || self
-                    .blocked_unmuted_target_updates
-                    .iter()
-                    .any(|update| target_update_matches(update, identity)))
-        {
-            return;
-        }
-
-        if let Some(update) = self
-            .target_updates
-            .iter_mut()
-            .find(|update| target_update_matches(update, identity))
-        {
-            update.muted |= muted;
-        } else {
-            self.target_updates
-                .push(TargetMuteStateUpdate::new(identity, muted));
-        }
     }
 }
 
@@ -961,8 +798,12 @@ fn apply_plan_to_session(
     managed_muted_sessions: &HashSet<AudioSessionKey>,
     target_lookup: &ManagedTargetLookup<'_>,
     force_unmute: bool,
-    result: &mut PlanApplyResult,
+    output: SessionApplyOutput<'_>,
 ) {
+    let SessionApplyOutput {
+        outcome,
+        pending_controls,
+    } = output;
     let match_kind = planner.match_kind(session.process_name, session.pid);
     let runtime_candidate = ManagedSessionLookup::new(managed_muted_sessions)
         .contains(session.process_name, session.pid);
@@ -993,17 +834,16 @@ fn apply_plan_to_session(
         desired_mute
     };
     let Some(volume) = session.volume() else {
-        result.mark_failure(format!(
+        outcome.mark_failure(format!(
             "audio session mute control unavailable for {} (PID {})",
             session.process_name, session.pid
         ));
         if managed {
-            result.keep_session_ownership(
+            outcome.keep_session_ownership(
                 key.take().unwrap_or_else(|| session_key.clone()),
                 managed_muted_sessions,
             );
-            set_target_states_for_session(
-                result,
+            outcome.set_target_states_for_session(
                 target_lookup,
                 session.identity(),
                 fallback_identity,
@@ -1017,11 +857,15 @@ fn apply_plan_to_session(
         if managed {
             if desired_mute {
                 let owned_key = key.take().unwrap_or_else(|| session_key.clone());
-                result.keep_session_ownership(owned_key.clone(), managed_muted_sessions);
-                result.keep_session_control(owned_key, session.control.clone(), volume.clone());
+                outcome.keep_session_ownership(owned_key.clone(), managed_muted_sessions);
+                keep_session_control(
+                    pending_controls,
+                    owned_key,
+                    session.control.clone(),
+                    volume.clone(),
+                );
             }
-            set_target_states_for_session(
-                result,
+            outcome.set_target_states_for_session(
                 target_lookup,
                 session.identity(),
                 fallback_identity,
@@ -1036,16 +880,20 @@ fn apply_plan_to_session(
     // successful mute therefore establishes ownership even though an already-muted manual state
     // cannot be distinguished in this rare error path.
     if let Err(error) = unsafe { volume.SetMute(mute, std::ptr::null()) } {
-        result.mark_failure(format!(
+        outcome.mark_failure(format!(
             "set mute state failed for {} (PID {}): {error}",
             session.process_name, session.pid
         ));
         if managed {
             let owned_key = key.take().unwrap_or_else(|| session_key.clone());
-            result.keep_session_ownership(owned_key.clone(), managed_muted_sessions);
-            result.keep_session_control(owned_key, session.control.clone(), volume.clone());
-            set_target_states_for_session(
-                result,
+            outcome.keep_session_ownership(owned_key.clone(), managed_muted_sessions);
+            keep_session_control(
+                pending_controls,
+                owned_key,
+                session.control.clone(),
+                volume.clone(),
+            );
+            outcome.set_target_states_for_session(
                 target_lookup,
                 session.identity(),
                 fallback_identity,
@@ -1057,11 +905,10 @@ fn apply_plan_to_session(
 
     if mute {
         let owned_key = key.take().unwrap_or_else(|| session_key.clone());
-        result.keep_session_ownership(owned_key.clone(), managed_muted_sessions);
-        result.keep_session_control(owned_key, session.control.clone(), volume);
+        outcome.keep_session_ownership(owned_key.clone(), managed_muted_sessions);
+        keep_session_control(pending_controls, owned_key, session.control.clone(), volume);
     }
-    set_target_states_for_session(
-        result,
+    outcome.set_target_states_for_session(
         target_lookup,
         session.identity(),
         fallback_identity,
@@ -1078,25 +925,6 @@ fn target_identity_for_session<'a>(
         process_name,
         pid: matches!(kind, TargetMatchKind::Pid).then_some(pid),
     })
-}
-
-fn set_target_states_for_session(
-    result: &mut PlanApplyResult,
-    target_lookup: &ManagedTargetLookup<'_>,
-    session: AudioSessionIdentity<'_>,
-    fallback_identity: Option<TargetMuteIdentity<'_>>,
-    muted: bool,
-) {
-    let mut updated_persisted_target = false;
-    target_lookup.for_each_matching(session.process_name, session.pid, |identity| {
-        result.set_target_state(identity, muted);
-        updated_persisted_target = true;
-    });
-    if (muted || !updated_persisted_target)
-        && let Some(identity) = fallback_identity
-    {
-        result.set_target_state(identity, muted);
-    }
 }
 
 fn apply_unmute_to_session(
@@ -1640,362 +1468,7 @@ mod tests {
     }
 
     #[test]
-    fn managed_target_lookup_keeps_persisted_targets_even_when_disabled() {
-        let mut target = TargetProcess::new("game.exe").unwrap();
-        target.enabled = false;
-        target.managed_muted = true;
-        let targets = [target];
-        let target_lookup = ManagedTargetLookup::new(&targets);
-
-        assert!(target_lookup.may_include_pid(42));
-        assert!(target_lookup.has_recovery_match("game.exe", 42));
-    }
-
-    #[test]
-    fn managed_target_lookup_filters_pid_targets_directly() {
-        let mut managed = TargetProcess::for_pid("game.exe", 42).unwrap();
-        managed.managed_muted = true;
-        let inactive = TargetProcess::for_pid("chat.exe", 7).unwrap();
-        let targets = [inactive, managed];
-        let target_lookup = ManagedTargetLookup::new(&targets);
-
-        assert!(target_lookup.may_include_pid(42));
-        assert!(!target_lookup.may_include_pid(7));
-        assert!(target_lookup.has_recovery_match("game.exe", 42));
-        assert!(!target_lookup.has_recovery_match("other.exe", 42));
-    }
-
-    #[test]
-    fn persisted_target_covers_replacement_sessions_even_with_an_exact_runtime_owner() {
-        let mut target = TargetProcess::new("game.exe").unwrap();
-        target.managed_muted = true;
-        let targets = [target];
-        let target_lookup = ManagedTargetLookup::new(&targets);
-        let owned =
-            AudioSessionKey::from_normalized(7, "game.exe".to_owned(), Some("owned".to_owned()));
-        let manual =
-            AudioSessionKey::from_normalized(7, "game.exe".to_owned(), Some("manual".to_owned()));
-        let session_keys = HashSet::from([owned.clone()]);
-        let session_lookup = ManagedSessionLookup::new(&session_keys);
-
-        assert_eq!(
-            select_runtime_managed_session(&owned, &session_keys),
-            ManagedSessionSelection::Exact
-        );
-        assert_eq!(
-            select_runtime_managed_session(&manual, &session_keys),
-            ManagedSessionSelection::Unmanaged
-        );
-        assert!(session_lookup.contains("game.exe", 7));
-        assert!(target_lookup.has_recovery_match("game.exe", 7));
-        assert!(target_lookup.has_recovery_match("game.exe", 8));
-    }
-
-    #[test]
-    fn persisted_target_recovers_when_runtime_ownership_is_empty() {
-        let mut target = TargetProcess::new("game.exe").unwrap();
-        target.managed_muted = true;
-        let targets = [target];
-        let target_lookup = ManagedTargetLookup::new(&targets);
-        let session_keys = HashSet::new();
-        let session = AudioSessionKey::from_normalized(
-            7,
-            "game.exe".to_owned(),
-            Some("recreated".to_owned()),
-        );
-
-        assert_eq!(
-            select_runtime_managed_session(&session, &session_keys),
-            ManagedSessionSelection::Unmanaged
-        );
-        assert!(target_lookup.has_recovery_match("game.exe", 7));
-    }
-
-    #[test]
-    fn target_without_pending_restore_does_not_claim_a_manual_mute() {
-        let target = TargetProcess::new("game.exe").unwrap();
-        let targets = [target];
-        let target_lookup = ManagedTargetLookup::new(&targets);
-
-        assert!(!target_lookup.has_recovery_match("game.exe", 7));
-    }
-
-    #[test]
-    fn missing_instance_id_becomes_explicit_coarse_runtime_ownership() {
-        let exact =
-            AudioSessionKey::from_normalized(7, "game.exe".to_owned(), Some("owned".to_owned()));
-        let coarse = AudioSessionKey::from_normalized(7, "game.exe".to_owned(), None);
-        let session_keys = HashSet::from([exact.clone()]);
-
-        assert_eq!(
-            select_runtime_managed_session(&coarse, &session_keys),
-            ManagedSessionSelection::CoarseRuntime
-        );
-
-        let mut result = PlanApplyResult::new(session_keys.len());
-        result.keep_session_ownership(coarse.clone(), &session_keys);
-        assert!(result.active_managed_sessions.contains(&exact));
-        assert!(result.active_managed_sessions.contains(&coarse));
-    }
-
-    #[test]
-    fn muting_transfers_broad_ownership_to_overlapping_pid_target() {
-        let mut broad = TargetProcess::new("game.exe").unwrap();
-        broad.managed_muted = true;
-        let pid_target = TargetProcess::for_pid("game.exe", 42).unwrap();
-        let targets = [broad, pid_target];
-        let lookup = ManagedTargetLookup::new(&targets);
-        let mut result = PlanApplyResult::new(0);
-
-        set_target_states_for_session(
-            &mut result,
-            &lookup,
-            AudioSessionIdentity {
-                process_name: "game.exe",
-                pid: 42,
-            },
-            Some(TargetMuteIdentity {
-                process_name: "game.exe",
-                pid: Some(42),
-            }),
-            true,
-        );
-
-        assert!(result.target_updates.contains(&TargetMuteStateUpdate {
-            process_name: "game.exe".to_owned(),
-            pid: None,
-            muted: true,
-        }));
-        assert!(result.target_updates.contains(&TargetMuteStateUpdate {
-            process_name: "game.exe".to_owned(),
-            pid: Some(42),
-            muted: true,
-        }));
-    }
-
-    #[test]
-    fn unmuting_updates_persisted_owner_without_claiming_fallback() {
-        let mut broad = TargetProcess::new("game.exe").unwrap();
-        broad.managed_muted = true;
-        let targets = [broad];
-        let lookup = ManagedTargetLookup::new(&targets);
-        let mut result = PlanApplyResult::new(0);
-
-        set_target_states_for_session(
-            &mut result,
-            &lookup,
-            AudioSessionIdentity {
-                process_name: "game.exe",
-                pid: 42,
-            },
-            Some(TargetMuteIdentity {
-                process_name: "game.exe",
-                pid: Some(42),
-            }),
-            false,
-        );
-
-        assert_eq!(
-            result.target_updates,
-            vec![TargetMuteStateUpdate {
-                process_name: "game.exe".to_owned(),
-                pid: None,
-                muted: false,
-            }]
-        );
-    }
-
-    #[test]
-    fn target_updates_keep_muted_state_when_sessions_disagree() {
-        let identity = TargetMuteIdentity {
-            process_name: "game.exe",
-            pid: None,
-        };
-        let mut result = PlanApplyResult::new(0);
-
-        result.set_target_state(identity, false);
-        result.set_target_state(identity, true);
-
-        assert_eq!(
-            result.target_updates,
-            vec![TargetMuteStateUpdate::new(identity, true)]
-        );
-    }
-
-    #[test]
-    fn failed_session_blocks_only_its_unmuted_target_update() {
-        let game = TargetMuteIdentity {
-            process_name: "game.exe",
-            pid: None,
-        };
-        let chat = TargetMuteIdentity {
-            process_name: "chat.exe",
-            pid: Some(7),
-        };
-        let mut result = PlanApplyResult::new(0);
-
-        result.set_target_state(game, false);
-        result.block_unmuted_target_state(game);
-        result.set_target_state(game, false);
-        result.set_target_state(chat, false);
-
-        assert_eq!(
-            result.target_updates,
-            vec![TargetMuteStateUpdate::new(chat, false)]
-        );
-    }
-
-    #[test]
-    fn unreadable_session_blocks_all_clear_updates_but_keeps_mute_updates() {
-        let game = TargetMuteIdentity {
-            process_name: "game.exe",
-            pid: None,
-        };
-        let chat = TargetMuteIdentity {
-            process_name: "chat.exe",
-            pid: Some(7),
-        };
-        let mut result = PlanApplyResult::new(0);
-
-        result.set_target_state(game, false);
-        result.set_target_state(chat, true);
-        result.block_all_unmuted_target_states();
-        result.set_target_state(game, false);
-
-        assert_eq!(
-            result.target_updates,
-            vec![TargetMuteStateUpdate::new(chat, true)]
-        );
-    }
-
-    #[test]
-    fn unresolved_pid_target_blocks_clear_without_an_exact_session_key() {
-        let mut target = TargetProcess::for_pid("game.exe", 42).unwrap();
-        target.managed_muted = true;
-        let targets = [target];
-        let lookup = ManagedTargetLookup::new(&targets);
-        let identity = TargetMuteIdentity {
-            process_name: "game.exe",
-            pid: Some(42),
-        };
-        let mut result = PlanApplyResult::new(0);
-
-        result.set_target_state(identity, false);
-        assert!(result.block_unmuted_pid_target_states(42, &lookup, None));
-        result.set_target_state(identity, false);
-
-        assert!(result.target_updates.is_empty());
-    }
-
-    #[test]
-    fn known_runtime_session_block_is_not_reported_as_target_uncertainty() {
-        let mut target = TargetProcess::for_pid("game.exe", 42).unwrap();
-        target.managed_muted = true;
-        let targets = [target];
-        let lookup = ManagedTargetLookup::new(&targets);
-        let session_keys = HashSet::from([AudioSessionKey::from_normalized(
-            42,
-            "game.exe".to_owned(),
-            Some("owned".to_owned()),
-        )]);
-        let mut result = PlanApplyResult::new(session_keys.len());
-
-        result.block_unmuted_target_states_for_unresolved_pid(42, &session_keys, &lookup);
-
-        assert!(result.uncertain_unmuted_target_updates.is_empty());
-    }
-
-    #[test]
-    fn unresolved_unknown_process_blocks_only_broad_target_clear_updates() {
-        let mut broad = TargetProcess::new("game.exe").unwrap();
-        broad.managed_muted = true;
-        let mut pid_target = TargetProcess::for_pid("chat.exe", 7).unwrap();
-        pid_target.managed_muted = true;
-        let targets = [broad, pid_target];
-        let lookup = ManagedTargetLookup::new(&targets);
-        let broad_identity = TargetMuteIdentity {
-            process_name: "game.exe",
-            pid: None,
-        };
-        let pid_identity = TargetMuteIdentity {
-            process_name: "chat.exe",
-            pid: Some(7),
-        };
-        let mut result = PlanApplyResult::new(0);
-
-        result.set_target_state(broad_identity, false);
-        result.set_target_state(pid_identity, false);
-        result.block_unmuted_process_target_states(&lookup);
-
-        assert_eq!(
-            result.target_updates,
-            vec![TargetMuteStateUpdate::new(pid_identity, false)]
-        );
-    }
-
-    #[test]
-    fn managed_session_lookup_prefilters_by_pid() {
-        let session_keys = (1..=9)
-            .map(|pid| AudioSessionKey::from_normalized(pid as u32, format!("app{pid}.exe"), None))
-            .collect::<HashSet<_>>();
-        let lookup = ManagedSessionLookup::new(&session_keys);
-
-        assert!(lookup.may_include_pid(3));
-        assert!(lookup.contains("app3.exe", 3));
-        assert!(!lookup.contains("other.exe", 3));
-        assert!(!lookup.may_include_pid(99));
-    }
-
-    #[test]
-    fn managed_session_lookup_handles_multiple_instances_of_one_identity() {
-        let session_keys = (1..=9)
-            .map(|index| {
-                AudioSessionKey::from_normalized(
-                    7,
-                    "game.exe".to_owned(),
-                    Some(format!("session-{index}")),
-                )
-            })
-            .collect::<HashSet<_>>();
-        let lookup = ManagedSessionLookup::new(&session_keys);
-
-        assert!(lookup.may_include_pid(7));
-        assert!(lookup.contains("game.exe", 7));
-        assert!(!lookup.contains("game.exe", 8));
-    }
-
-    #[test]
-    fn small_managed_session_lookup_matches_pid_and_name() {
-        let session_keys = HashSet::from([
-            AudioSessionKey::from_normalized(7, "game.exe".to_owned(), None),
-            AudioSessionKey::from_normalized(8, "chat.exe".to_owned(), None),
-            AudioSessionKey::from_normalized(9, "music.exe".to_owned(), None),
-        ]);
-        let lookup = ManagedSessionLookup::new(&session_keys);
-
-        assert!(lookup.may_include_pid(7));
-        assert!(lookup.contains("game.exe", 7));
-        assert!(!lookup.contains("other.exe", 7));
-        assert!(!lookup.contains("game.exe", 42));
-    }
-
-    #[test]
-    fn single_managed_session_lookup_matches_pid_and_name() {
-        let session_keys = HashSet::from([AudioSessionKey::from_normalized(
-            7,
-            "game.exe".to_owned(),
-            None,
-        )]);
-        let lookup = ManagedSessionLookup::new(&session_keys);
-
-        assert!(lookup.may_include_pid(7));
-        assert!(lookup.contains("game.exe", 7));
-        assert!(!lookup.contains("other.exe", 7));
-        assert!(!lookup.contains("game.exe", 8));
-    }
-
-    #[test]
-    fn wide_lossy_string_uses_ascii_fast_path() {
+    fn wide_lossy_string_decodes_ascii_unicode_and_invalid_input() {
         assert_eq!(
             string_from_wide_lossy(&[
                 u16::from(b'a'),
@@ -2006,10 +1479,6 @@ mod tests {
             ]),
             "abc-1"
         );
-    }
-
-    #[test]
-    fn wide_lossy_string_preserves_unicode_and_replacement_behavior() {
         assert_eq!(string_from_wide_lossy(&[0xd55c, 0xae00]), "한글");
         assert_eq!(string_from_wide_lossy(&[0xd800]), "\u{fffd}");
     }
@@ -2043,13 +1512,9 @@ mod tests {
     }
 
     #[test]
-    fn audio_session_snapshot_count_accepts_non_negative_counts() {
-        assert_eq!(audio_session_snapshot_count(0).unwrap(), 0);
-        assert_eq!(audio_session_snapshot_count(3).unwrap(), 3);
-    }
-
-    #[test]
-    fn audio_session_snapshot_count_rejects_negative_counts() {
-        assert!(audio_session_snapshot_count(-1).is_err());
+    fn audio_session_snapshot_count_validates_the_api_range() {
+        for (count, expected) in [(0, Some(0)), (3, Some(3)), (-1, None)] {
+            assert_eq!(audio_session_snapshot_count(count).ok(), expected);
+        }
     }
 }

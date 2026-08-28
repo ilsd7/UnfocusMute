@@ -49,6 +49,10 @@ pub struct TargetProcess {
 }
 
 impl TargetProcess {
+    pub(crate) fn matches_session(&self, process_name: &str, pid: u32) -> bool {
+        self.name == process_name && self.pid.is_none_or(|target_pid| target_pid == pid)
+    }
+
     #[cfg(test)]
     pub fn new(name: impl AsRef<str>) -> Option<Self> {
         let name = normalize_process_name(name.as_ref())?;
@@ -1801,7 +1805,7 @@ mod tests {
     }
 
     #[test]
-    fn normalizes_utf16_paths_before_allocating_name() {
+    fn normalizes_utf16_paths_and_quoted_names() {
         assert_eq!(
             normalize_process_name_utf16(&wide_null_terminated(r"C:\Games\Example.EXE")),
             Some("example.exe".to_owned())
@@ -1853,7 +1857,7 @@ mod tests {
     }
 
     #[test]
-    fn supported_utf16_names_are_filtered_before_allocating_name() {
+    fn accepts_only_supported_utf16_process_names() {
         assert_eq!(
             normalize_supported_process_name_utf16(&wide_null_terminated(r"C:\Games\Example.EXE")),
             Some("example.exe".to_owned())

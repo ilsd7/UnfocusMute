@@ -116,7 +116,7 @@ mod tests {
     }
 
     #[test]
-    fn singleton_choices_reuse_name_for_search() {
+    fn lowercase_singleton_choices_need_no_allocated_search_text() {
         let choice = ProcessChoice::new("player.exe".to_owned(), None, 1);
 
         assert_eq!(choice.search_text, None);
@@ -147,7 +147,7 @@ mod tests {
     }
 
     #[test]
-    fn search_terms_preserve_borrowed_lowercase_text() {
+    fn search_terms_borrow_lowercase_input_without_allocating() {
         assert_eq!(search_terms("player").0, [Cow::Borrowed("player")]);
     }
 

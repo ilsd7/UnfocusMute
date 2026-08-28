@@ -348,7 +348,6 @@ impl SearchPicker {
         };
     }
 
-    /// Lays out the fixed-height picker using logical coordinates.
     pub(super) unsafe fn layout(&self, x: i32, y: i32, width: i32) -> bool {
         let width = width.max(ARROW_SLOT_WIDTH + EDIT_HORIZONTAL_PADDING * 2 + 1);
         if !unsafe {

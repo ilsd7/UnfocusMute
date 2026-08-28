@@ -194,15 +194,7 @@ pub(super) unsafe extern "system" fn window_proc(
             }
             WM_FOREGROUND_CHANGED => {
                 FOREGROUND_EVENT_PENDING.store(false, Ordering::Release);
-                if !app.runtime.is_active() {
-                    return LRESULT(0);
-                }
-                app.clear_foreground_process_cache();
-                app.tick();
-                let has_managed_mutes = app.has_managed_mutes();
-                app.runtime
-                    .schedule_managed_mute_foreground_retry(has_managed_mutes);
-                app.reset_polling_timer();
+                app.foreground_changed();
                 return LRESULT(0);
             }
             WM_PROCESS_SEARCH_RESULT_CHOSEN => {
