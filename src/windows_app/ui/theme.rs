@@ -321,7 +321,7 @@ impl AppTheme {
     pub(super) fn fonts_match_current_scale(&self) -> bool {
         let font_point_size = ui_font_point_size();
         self.font.pixel_height() == font_pixel_height(font_point_size)
-            && self.list_font.pixel_height() == font_pixel_height(font_point_size + 2)
+            && self.list_font.pixel_height() == font_pixel_height(font_point_size + 1)
             && self.icon_font.pixel_height() == font_pixel_height(font_point_size + 1)
             && self.action_icon_font.pixel_height() == font_pixel_height(font_point_size + 3)
     }
@@ -331,7 +331,7 @@ impl AppTheme {
     }
 
     pub(super) fn scaled_list_font() -> UiFont {
-        UiFont::new(ui_font_point_size() + 2)
+        UiFont::new(ui_font_point_size() + 1)
     }
 
     pub(super) fn scaled_icon_font() -> UiFont {
