@@ -16,7 +16,7 @@ use windows::Win32::Graphics::Gdi::{
 use windows::Win32::UI::Controls::{
     DRAWITEMSTRUCT, EM_GETSEL, EM_REPLACESEL, EM_SETSEL, ODS_DISABLED, ODS_SELECTED,
 };
-use windows::Win32::UI::Input::KeyboardAndMouse::{GetFocus, SetFocus};
+use windows::Win32::UI::Input::KeyboardAndMouse::{GetFocus, SetFocus, VK_PROCESSKEY};
 use windows::Win32::UI::Shell::{DefSubclassProc, RemoveWindowSubclass, SetWindowSubclass};
 use windows::Win32::UI::WindowsAndMessaging::{
     AW_SLIDE, AW_VER_NEGATIVE, AW_VER_POSITIVE, AnimateWindow, BS_OWNERDRAW, CreateWindowExW,
@@ -32,6 +32,7 @@ use windows::Win32::UI::WindowsAndMessaging::{
     WM_SETFONT, WS_BORDER, WS_CHILD, WS_CLIPSIBLINGS, WS_DISABLED, WS_EX_NOACTIVATE,
     WS_EX_TOOLWINDOW, WS_POPUP, WS_TABSTOP, WS_VISIBLE, WS_VSCROLL,
 };
+use windows::Win32::UI::WindowsAndMessaging::{MSG, WM_KEYFIRST, WM_KEYLAST};
 use windows::core::{BOOL, PCWSTR, w};
 
 pub(super) const SEARCH_PICKER_HEIGHT: i32 = 32;
@@ -52,11 +53,16 @@ struct InlineCompletion {
     suffix: RefCell<String>,
     composing: Cell<bool>,
     dismissed: Cell<bool>,
+    navigating_results: Cell<bool>,
 }
 
 impl InlineCompletion {
     fn caret_for_suggestion(&self, edit: HWND) -> Option<POINT> {
-        if self.dismissed.get() || self.composing.get() || self.suffix.borrow().is_empty() {
+        if self.dismissed.get()
+            || self.composing.get()
+            || self.navigating_results.get()
+            || self.suffix.borrow().is_empty()
+        {
             return None;
         }
         unsafe {
@@ -443,6 +449,20 @@ impl SearchPicker {
         hwnd == self.handles.edit || hwnd == self.handles.results
     }
 
+    pub(super) fn should_dispatch_to_ime(&self, msg: &MSG) -> bool {
+        msg.hwnd == self.edit()
+            && ime_handles_key(msg.message, msg.wParam, self.completion.composing.get())
+    }
+
+    pub(super) fn enter_action(&self, hwnd: HWND, repeated: bool) -> PickerEnterAction {
+        let row = if self.popup_visible() || self.completion.navigating_results.get() {
+            self.selected_result_index()
+        } else {
+            None
+        };
+        picker_enter_action(repeated, self.can_complete_in(hwnd), row)
+    }
+
     pub(super) unsafe fn set_fonts(&mut self, font: HGDIOBJ, list_font: HGDIOBJ) {
         self.font = font;
         for (hwnd, font) in [
@@ -692,10 +712,11 @@ impl SearchPicker {
         !self.completion.dismissed.get() && !self.completion.suffix.borrow().is_empty()
     }
 
-    pub(super) fn accept_completion(&self) -> bool {
-        if self.completion.caret_for_suggestion(self.edit()).is_none() {
-            return false;
-        }
+    pub(super) fn can_complete_in(&self, hwnd: HWND) -> bool {
+        hwnd == self.edit() && self.completion.caret_for_suggestion(hwnd).is_some()
+    }
+
+    pub(super) fn insert_completion(&self) {
         let suffix = win32::to_wide(&self.completion.suffix.borrow());
         unsafe {
             // Insert through EDIT so the completion is undoable as one edit.
@@ -706,7 +727,6 @@ impl SearchPicker {
                 Some(LPARAM(suffix.as_ptr() as isize)),
             );
         }
-        true
     }
 
     pub(super) unsafe fn focus_edit(&self) {
@@ -729,6 +749,10 @@ impl SearchPicker {
             (None, std::cmp::Ordering::Less) => count - 1,
             (None, _) => 0,
         };
+        self.completion.navigating_results.set(true);
+        unsafe {
+            let _ = RedrawWindow(Some(self.edit()), None, None, RDW_INVALIDATE);
+        }
         Some(SearchSelectionRequest {
             parent: self.parent,
             results: self.handles.results,
@@ -737,6 +761,7 @@ impl SearchPicker {
     }
 
     pub(super) unsafe fn clear_selection(&self) {
+        self.completion.navigating_results.set(false);
         unsafe {
             SendMessageW(
                 self.handles.results,
@@ -765,6 +790,11 @@ impl SearchPicker {
     }
 
     pub(super) unsafe fn hide_popup(&self) {
+        if self.completion.navigating_results.replace(false) {
+            unsafe {
+                let _ = RedrawWindow(Some(self.edit()), None, None, RDW_INVALIDATE);
+            }
+        }
         if !self.popup_visible() {
             return;
         }
@@ -954,6 +984,35 @@ impl SearchPicker {
         unsafe {
             redraw_picker_chrome([self.handles.frame, self.handles.cue, self.handles.toggle]);
         }
+    }
+}
+
+#[derive(Debug, Eq, PartialEq)]
+pub(super) enum PickerEnterAction {
+    IgnoreRepeat,
+    Choose(usize),
+    Complete,
+    Register,
+}
+
+fn ime_handles_key(message: u32, key: WPARAM, composing: bool) -> bool {
+    (WM_KEYFIRST..=WM_KEYLAST).contains(&message)
+        && (composing || (message == WM_KEYDOWN && key.0 == usize::from(VK_PROCESSKEY.0)))
+}
+
+fn picker_enter_action(
+    repeated: bool,
+    has_suggestion: bool,
+    selected_row: Option<usize>,
+) -> PickerEnterAction {
+    if repeated {
+        PickerEnterAction::IgnoreRepeat
+    } else if has_suggestion {
+        PickerEnterAction::Complete
+    } else if let Some(row) = selected_row {
+        PickerEnterAction::Choose(row)
+    } else {
+        PickerEnterAction::Register
     }
 }
 
@@ -1163,6 +1222,42 @@ fn loword(value: u32) -> u16 {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn enter_completes_a_preview_before_registration_and_ignores_key_repeat() {
+        assert_eq!(
+            picker_enter_action(false, true, Some(2)),
+            PickerEnterAction::Complete
+        );
+        assert_eq!(
+            picker_enter_action(true, false, None),
+            PickerEnterAction::IgnoreRepeat
+        );
+        assert_eq!(
+            picker_enter_action(false, false, None),
+            PickerEnterAction::Register
+        );
+        assert_eq!(
+            picker_enter_action(false, false, Some(2)),
+            PickerEnterAction::Choose(2)
+        );
+    }
+
+    #[test]
+    fn composition_keys_bypass_picker_and_dialog_shortcuts() {
+        use windows::Win32::UI::Input::KeyboardAndMouse::{VK_DOWN, VK_RETURN, VK_TAB};
+        for key in [VK_RETURN, VK_TAB, VK_DOWN] {
+            let key = WPARAM(usize::from(key.0));
+            assert!(ime_handles_key(WM_KEYDOWN, key, true));
+            assert!(!ime_handles_key(WM_KEYDOWN, key, false));
+        }
+        assert!(ime_handles_key(
+            WM_KEYDOWN,
+            WPARAM(usize::from(VK_PROCESSKEY.0)),
+            false
+        ));
+        assert!(!ime_handles_key(WM_PAINT, WPARAM(0), true));
+    }
 
     fn rect(left: i32, top: i32, right: i32, bottom: i32) -> RECT {
         RECT {

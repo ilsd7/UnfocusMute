@@ -110,7 +110,9 @@ use runtime_logic::{
     process_refresh_is_stale, replace_text_if_changed,
 };
 use runtime_state::RuntimeCoordinator;
-use search_picker::{SEARCH_PICKER_HEIGHT, SearchPicker, SearchPickerIds, SearchSelectionRequest};
+use search_picker::{
+    PickerEnterAction, SEARCH_PICKER_HEIGHT, SearchPicker, SearchPickerIds, SearchSelectionRequest,
+};
 use settings_window::{SettingsChanges, SettingsLiveUpdate, SettingsPreferences, prompt_settings};
 use single_instance::{main_window_class_name, show_main_window};
 use startup_sync::{
@@ -457,6 +459,18 @@ unsafe fn run_window() -> Result<()> {
     let mut msg = MSG::default();
     while unsafe { get_message(&mut msg)? } {
         unsafe {
+            // Let the edit's IME consume composing keys before either picker
+            // shortcuts or IsDialogMessage can treat Enter as the default button.
+            if app
+                .borrow()
+                .process_picker
+                .as_ref()
+                .is_some_and(|picker| picker.should_dispatch_to_ime(&msg))
+            {
+                let _ = TranslateMessage(&msg);
+                DispatchMessageW(&msg);
+                continue;
+            }
             let selection = {
                 let mut app = app.borrow_mut();
                 app.prepare_process_selection_key(&msg)
@@ -2043,9 +2057,9 @@ impl AppWindow {
             let plain_tab = [VK_SHIFT, VK_CONTROL, VK_MENU]
                 .into_iter()
                 .all(|modifier| unsafe { GetKeyState(i32::from(modifier.0)) } >= 0);
-            if plain_tab && msg.hwnd == process_picker.edit() && process_picker.accept_completion()
-            {
-                self.search_running_processes();
+            if plain_tab && process_picker.can_complete_in(msg.hwnd) {
+                process_picker.insert_completion();
+                self.search_running_processes(true);
                 return true;
             }
             if process_picker.popup_visible() {
@@ -2060,10 +2074,17 @@ impl AppWindow {
             return false;
         }
 
-        if process_picker.popup_visible() && process_picker.selected_result_index().is_some() {
-            self.commit_selected_process_result();
-        } else if self.can_submit_registration_candidate() {
-            self.add_process_picker_target();
+        // Bit 30 of WM_KEYDOWN's lParam is set on auto-repeat. Holding the
+        // key that completes a name must not also register it.
+        match process_picker.enter_action(msg.hwnd, msg.lParam.0 & (1 << 30) != 0) {
+            PickerEnterAction::IgnoreRepeat => {}
+            PickerEnterAction::Choose(index) => self.commit_process_result(index),
+            PickerEnterAction::Complete => {
+                process_picker.insert_completion();
+                self.hide_process_results();
+                self.search_running_processes(false);
+            }
+            PickerEnterAction::Register => self.add_process_picker_target(),
         }
         true
     }
@@ -2123,7 +2144,7 @@ impl AppWindow {
             ID_TOGGLE_PROCESS_DETAILS => self.toggle_process_details(),
             ID_PID_DETAILS_HELP => return Some(self.pid_details_help_action()),
             ID_RUNNING if notification == EN_CHANGE as u16 && !self.updating_process_picker => {
-                self.search_running_processes();
+                self.search_running_processes(true);
             }
             ID_RUNNING if notification == EN_SETFOCUS as u16 && !self.updating_process_picker => {
                 if let Some(process_picker) = &self.process_picker {
@@ -2201,7 +2222,7 @@ impl AppWindow {
         }
     }
 
-    fn search_running_processes(&mut self) {
+    fn search_running_processes(&mut self, show_results: bool) {
         if self.updating_process_picker {
             return;
         }
@@ -2219,7 +2240,7 @@ impl AppWindow {
             return;
         }
         self.apply_process_filter();
-        if !self.process_choice_indices.is_empty() {
+        if show_results && !self.process_choice_indices.is_empty() {
             self.show_process_results();
         }
     }
@@ -2284,16 +2305,6 @@ impl AppWindow {
                 );
             }
         }
-    }
-
-    fn commit_selected_process_result(&mut self) {
-        let Some(process_picker) = &self.process_picker else {
-            return;
-        };
-        let Some(result_index) = process_picker.selected_result_index() else {
-            return;
-        };
-        self.commit_process_result(result_index);
     }
 
     fn commit_process_result(&mut self, result_index: usize) {
@@ -2648,12 +2659,6 @@ impl AppWindow {
                 .is_some_and(|choice| self.can_add_process_choice(choice)),
             RegistrationCandidate::ExactProcessName(name) => self.can_add_process(name, None),
         }
-    }
-
-    fn can_submit_registration_candidate(&mut self) -> bool {
-        self.registration_candidate()
-            .as_ref()
-            .is_some_and(|candidate| self.can_add_registration_candidate(candidate))
     }
 
     fn finish_target_change(&mut self) {
