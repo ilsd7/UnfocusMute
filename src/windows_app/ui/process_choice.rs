@@ -89,9 +89,39 @@ pub(super) fn search_terms(query: &str) -> SearchTerms<'_> {
     SearchTerms(query.split_whitespace().map(lowercase_if_needed).collect())
 }
 
+pub(super) fn completion_suffix<'a>(query: &str, names: impl Iterator<Item = &'a str>) -> &'a str {
+    if query.is_empty() {
+        return "";
+    }
+    let prefix = lowercase_if_needed(query);
+    // Choices are sorted by normalized name, so an exact match precedes any
+    // longer name with the same prefix. PID labels are never part of a name.
+    names
+        .filter_map(|name| name.strip_prefix(prefix.as_ref()))
+        .next()
+        .unwrap_or("")
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn completion_only_extends_a_filename_prefix() {
+        let names = [
+            "a-game.bin",
+            "game.bin",
+            "game.bin",
+            "game.bin.exe",
+            "한글.exe",
+        ];
+        let suffix = |query| completion_suffix(query, names.into_iter());
+        assert_eq!(suffix("Game.b"), "in");
+        assert_eq!(suffix("한"), "글.exe");
+        for query in ["", "game.bin", ".bin", "game 4242", "offline.bin"] {
+            assert_eq!(suffix(query), "");
+        }
+    }
 
     #[test]
     fn pid_choices_match_by_name_and_pid() {

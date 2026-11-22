@@ -1,30 +1,36 @@
 use super::constants::{
     SS_OWNERDRAW_STYLE, WM_PROCESS_SEARCH_RESULT_CHOSEN, WM_SHOW_PROCESS_RESULTS,
 };
-use super::drawing::draw_text_line_at_visual_center;
+use super::drawing::{draw_text_line, draw_text_line_at_visual_center};
 use super::theme::{active_palette, apply_native_control_theme, px};
 use super::win32;
 use crate::windows_app::error::{Context, Result};
+use std::cell::{Cell, RefCell};
+use std::rc::Rc;
 use windows::Win32::Foundation::{HINSTANCE, HWND, LPARAM, LRESULT, POINT, RECT, WPARAM};
 use windows::Win32::Graphics::Gdi::{
     CreatePen, CreateSolidBrush, DT_LEFT, DT_NOPREFIX, DT_SINGLELINE, DT_VCENTER, DeleteObject,
-    FillRect, HDC, HGDIOBJ, PS_SOLID, Polygon, RDW_ERASE, RDW_FRAME, RDW_INVALIDATE, RedrawWindow,
-    ScreenToClient, SelectObject,
+    FillRect, GetDC, HDC, HGDIOBJ, PS_SOLID, Polygon, RDW_ERASE, RDW_FRAME, RDW_INVALIDATE,
+    RedrawWindow, ReleaseDC, ScreenToClient, SelectObject,
 };
-use windows::Win32::UI::Controls::{DRAWITEMSTRUCT, ODS_DISABLED, ODS_SELECTED};
+use windows::Win32::UI::Controls::{
+    DRAWITEMSTRUCT, EM_GETSEL, EM_REPLACESEL, EM_SETSEL, ODS_DISABLED, ODS_SELECTED,
+};
 use windows::Win32::UI::Input::KeyboardAndMouse::{GetFocus, SetFocus};
 use windows::Win32::UI::Shell::{DefSubclassProc, RemoveWindowSubclass, SetWindowSubclass};
 use windows::Win32::UI::WindowsAndMessaging::{
     AW_SLIDE, AW_VER_NEGATIVE, AW_VER_POSITIVE, AnimateWindow, BS_OWNERDRAW, CreateWindowExW,
-    ES_AUTOHSCROLL, GetClientRect, GetCursorPos, GetWindowTextLengthW, HTCLIENT, HWND_BOTTOM,
-    HWND_TOP, IsWindowVisible, LB_ADDSTRING, LB_GETCOUNT, LB_GETCURSEL, LB_GETITEMHEIGHT,
-    LB_RESETCONTENT, LB_SETCURSEL, LBS_HASSTRINGS, LBS_NOINTEGRALHEIGHT, LBS_NOTIFY, MoveWindow,
-    PostMessageW, SPI_GETCLIENTAREAANIMATION, SPI_GETCOMBOBOXANIMATION, SW_HIDE, SW_SHOWNOACTIVATE,
-    SWP_NOACTIVATE, SWP_NOOWNERZORDER, SYSTEM_PARAMETERS_INFO_ACTION,
+    ES_AUTOHSCROLL, GetCaretPos, GetClientRect, GetCursorPos, GetWindowTextLengthW, HTCLIENT,
+    HWND_BOTTOM, HWND_TOP, IsWindowVisible, LB_ADDSTRING, LB_GETCOUNT, LB_GETCURSEL,
+    LB_GETITEMHEIGHT, LB_RESETCONTENT, LB_SETCURSEL, LBS_HASSTRINGS, LBS_NOINTEGRALHEIGHT,
+    LBS_NOTIFY, MoveWindow, PostMessageW, SPI_GETCLIENTAREAANIMATION, SPI_GETCOMBOBOXANIMATION,
+    SW_HIDE, SW_SHOWNOACTIVATE, SWP_NOACTIVATE, SWP_NOOWNERZORDER, SYSTEM_PARAMETERS_INFO_ACTION,
     SYSTEM_PARAMETERS_INFO_UPDATE_FLAGS, SendMessageW, SetWindowPos, ShowWindow,
-    SystemParametersInfoW, WINDOW_EX_STYLE, WINDOW_STYLE, WM_ERASEBKGND, WM_LBUTTONUP,
-    WM_MOUSEMOVE, WM_NCDESTROY, WM_SETCURSOR, WM_SETFONT, WS_BORDER, WS_CHILD, WS_CLIPSIBLINGS,
-    WS_DISABLED, WS_EX_NOACTIVATE, WS_EX_TOOLWINDOW, WS_POPUP, WS_TABSTOP, WS_VISIBLE, WS_VSCROLL,
+    SystemParametersInfoW, WINDOW_EX_STYLE, WINDOW_STYLE, WM_CHAR, WM_ERASEBKGND, WM_GETFONT,
+    WM_IME_ENDCOMPOSITION, WM_IME_STARTCOMPOSITION, WM_KEYDOWN, WM_KILLFOCUS, WM_LBUTTONDOWN,
+    WM_LBUTTONUP, WM_MOUSEMOVE, WM_NCDESTROY, WM_PAINT, WM_PRINTCLIENT, WM_SETCURSOR, WM_SETFOCUS,
+    WM_SETFONT, WS_BORDER, WS_CHILD, WS_CLIPSIBLINGS, WS_DISABLED, WS_EX_NOACTIVATE,
+    WS_EX_TOOLWINDOW, WS_POPUP, WS_TABSTOP, WS_VISIBLE, WS_VSCROLL,
 };
 use windows::core::{BOOL, PCWSTR, w};
 
@@ -40,6 +46,116 @@ const EM_SETCUEBANNER_MESSAGE: u32 = 0x1501;
 const LB_ITEMFROMPOINT_MESSAGE: u32 = 0x01A9;
 const LB_ITEMFROMPOINT_OUTSIDE_MASK: isize = 0x0001_0000;
 const RESULTS_SUBCLASS_ID: usize = 1;
+
+#[derive(Default)]
+struct InlineCompletion {
+    suffix: RefCell<String>,
+    composing: Cell<bool>,
+    dismissed: Cell<bool>,
+}
+
+impl InlineCompletion {
+    fn caret_for_suggestion(&self, edit: HWND) -> Option<POINT> {
+        if self.dismissed.get() || self.composing.get() || self.suffix.borrow().is_empty() {
+            return None;
+        }
+        unsafe {
+            if GetFocus() != edit {
+                return None;
+            }
+            let (mut start, mut end) = (0u32, 0u32);
+            SendMessageW(
+                edit,
+                EM_GETSEL,
+                Some(WPARAM((&raw mut start) as usize)),
+                Some(LPARAM((&raw mut end) as isize)),
+            );
+            if start != end || end != GetWindowTextLengthW(edit) as u32 {
+                return None;
+            }
+            let mut caret = POINT::default();
+            GetCaretPos(&mut caret).ok()?;
+            Some(caret)
+        }
+    }
+
+    fn draw(&self, edit: HWND, supplied_dc: Option<HDC>) {
+        let Some(caret) = self.caret_for_suggestion(edit) else {
+            return;
+        };
+        unsafe {
+            let mut rect = RECT::default();
+            if GetClientRect(edit, &mut rect).is_err() || caret.x >= rect.right {
+                return;
+            }
+            rect.left = caret.x;
+            rect.top = caret.y;
+            let dc = supplied_dc.unwrap_or_else(|| GetDC(Some(edit)));
+            if !dc.0.is_null() {
+                let font = SendMessageW(edit, WM_GETFONT, None, None);
+                draw_text_line(
+                    dc,
+                    HGDIOBJ(font.0 as _),
+                    &self.suffix.borrow(),
+                    rect,
+                    active_palette().subtle_text,
+                    DT_LEFT | DT_SINGLELINE | DT_NOPREFIX,
+                );
+                if supplied_dc.is_none() {
+                    let _ = ReleaseDC(Some(edit), dc);
+                }
+            }
+        }
+    }
+}
+
+unsafe extern "system" fn completion_edit_proc(
+    hwnd: HWND,
+    message: u32,
+    wparam: WPARAM,
+    lparam: LPARAM,
+    id: usize,
+    data: usize,
+) -> LRESULT {
+    let ptr = data as *const InlineCompletion;
+    if message == WM_NCDESTROY {
+        unsafe {
+            let _ = RemoveWindowSubclass(hwnd, Some(completion_edit_proc), id);
+            drop(Rc::from_raw(ptr));
+            return DefSubclassProc(hwnd, message, wparam, lparam);
+        }
+    }
+    // Native edit handling can synchronously notify the parent and destroy the
+    // control. Keep its completion state alive across DefSubclassProc.
+    let completion = unsafe {
+        Rc::increment_strong_count(ptr);
+        Rc::from_raw(ptr)
+    };
+    match message {
+        WM_IME_STARTCOMPOSITION => completion.composing.set(true),
+        WM_IME_ENDCOMPOSITION | WM_KILLFOCUS => completion.composing.set(false),
+        WM_SETFOCUS => completion.dismissed.set(false),
+        _ => {}
+    }
+    let result = unsafe { DefSubclassProc(hwnd, message, wparam, lparam) };
+    match message {
+        WM_PAINT => completion.draw(hwnd, None),
+        WM_PRINTCLIENT => completion.draw(hwnd, Some(HDC(wparam.0 as _))),
+        WM_KEYDOWN
+        | WM_CHAR
+        | EM_SETSEL
+        | WM_LBUTTONDOWN
+        | WM_LBUTTONUP
+        | WM_KILLFOCUS
+        | WM_SETFOCUS
+        | WM_IME_STARTCOMPOSITION
+        | WM_IME_ENDCOMPOSITION => unsafe {
+            let _ = RedrawWindow(Some(hwnd), None, None, RDW_INVALIDATE);
+        },
+        _ => {}
+    }
+    result
+}
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 struct PopupLayout {
@@ -156,6 +272,7 @@ pub(super) struct SearchPicker {
     text_height: i32,
     result_row_height: i32,
     wide_text_buffer: Vec<u16>,
+    completion: Rc<InlineCompletion>,
 }
 
 impl SearchPicker {
@@ -164,6 +281,7 @@ impl SearchPicker {
         parent: HWND,
         instance: HINSTANCE,
         font: HGDIOBJ,
+        list_font: HGDIOBJ,
         ids: SearchPickerIds,
         x: i32,
         y: i32,
@@ -280,12 +398,21 @@ impl SearchPicker {
             text_height: px(14),
             result_row_height: px(24),
             wide_text_buffer: Vec::new(),
+            completion: Rc::default(),
         };
         apply_native_control_theme(edit);
         apply_native_control_theme(results);
         unsafe {
             win32::install_hit_test_transparent_subclass(cue)?;
-            picker.set_font(font);
+            // The edit and its owner can be destroyed in either order.
+            let data = Rc::into_raw(Rc::clone(&picker.completion));
+            if !SetWindowSubclass(edit, Some(completion_edit_proc), 1, data as usize).as_bool() {
+                drop(Rc::from_raw(data));
+                return Err(crate::windows_app::error::message_error(
+                    "install process name completion",
+                ));
+            }
+            picker.set_fonts(font, list_font);
             let _ = picker.layout(x, y, width);
         }
         Ok(picker)
@@ -316,9 +443,13 @@ impl SearchPicker {
         hwnd == self.handles.edit || hwnd == self.handles.results
     }
 
-    pub(super) unsafe fn set_font(&mut self, font: HGDIOBJ) {
+    pub(super) unsafe fn set_fonts(&mut self, font: HGDIOBJ, list_font: HGDIOBJ) {
         self.font = font;
-        for hwnd in [self.handles.edit, self.handles.toggle, self.handles.results] {
+        for (hwnd, font) in [
+            (self.handles.edit, font),
+            (self.handles.toggle, font),
+            (self.handles.results, list_font),
+        ] {
             unsafe {
                 SendMessageW(
                     hwnd,
@@ -541,10 +672,41 @@ impl SearchPicker {
     }
 
     pub(super) unsafe fn dismiss_to_edit(&self) {
+        self.completion.dismissed.set(true);
         unsafe {
             self.hide_popup();
             self.focus_edit();
+            let _ = RedrawWindow(Some(self.edit()), None, None, RDW_INVALIDATE);
         }
+    }
+
+    pub(super) fn set_completion(&self, suffix: &str) {
+        suffix.clone_into(&mut self.completion.suffix.borrow_mut());
+        self.completion.dismissed.set(false);
+        unsafe {
+            let _ = RedrawWindow(Some(self.edit()), None, None, RDW_INVALIDATE);
+        }
+    }
+
+    pub(super) fn has_completion(&self) -> bool {
+        !self.completion.dismissed.get() && !self.completion.suffix.borrow().is_empty()
+    }
+
+    pub(super) fn accept_completion(&self) -> bool {
+        if self.completion.caret_for_suggestion(self.edit()).is_none() {
+            return false;
+        }
+        let suffix = win32::to_wide(&self.completion.suffix.borrow());
+        unsafe {
+            // Insert through EDIT so the completion is undoable as one edit.
+            SendMessageW(
+                self.edit(),
+                EM_REPLACESEL,
+                Some(WPARAM(1)),
+                Some(LPARAM(suffix.as_ptr() as isize)),
+            );
+        }
+        true
     }
 
     pub(super) unsafe fn focus_edit(&self) {

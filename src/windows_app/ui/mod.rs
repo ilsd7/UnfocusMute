@@ -32,7 +32,8 @@ use windows::Win32::UI::Controls::{
     MEASUREITEMSTRUCT, ODS_DISABLED, ODS_FOCUS, ODS_SELECTED,
 };
 use windows::Win32::UI::Input::KeyboardAndMouse::{
-    EnableWindow, SetFocus, VK_DOWN, VK_ESCAPE, VK_RETURN, VK_TAB, VK_UP,
+    EnableWindow, GetKeyState, SetFocus, VK_CONTROL, VK_DOWN, VK_ESCAPE, VK_MENU, VK_RETURN,
+    VK_SHIFT, VK_TAB, VK_UP,
 };
 use windows::Win32::UI::Shell::{
     DefSubclassProc, NIF_ICON, NIF_MESSAGE, NIF_TIP, NIM_ADD, NIM_DELETE, NIM_MODIFY,
@@ -103,7 +104,7 @@ use issue_diagnostics::IssueDiagnostics;
 use language_prompt::prompt_initial_language;
 use managed_mute::{removal_restore_targets, session_keys_exclusive_to_target, target_status_text};
 use message_dialog::{IssueDialogContent, IssueDialogResult, show_info_dialog, show_issue_dialog};
-use process_choice::{ProcessChoice, search_terms};
+use process_choice::{ProcessChoice, completion_suffix, search_terms};
 use runtime_logic::{
     desired_audio_fallback_timer_interval_ms, initial_process_refresh_attempt,
     process_refresh_is_stale, replace_text_if_changed,
@@ -173,14 +174,14 @@ const TARGET_LIST_HEIGHT: i32 = TARGET_PANEL_BOTTOM - TARGET_LIST_Y - 12;
 const TARGET_EMPTY_TITLE_Y: i32 =
     TARGET_PANEL_TOP + (TARGET_PANEL_BOTTOM - TARGET_PANEL_TOP) / 2 - 31;
 const TARGET_EMPTY_HINT_Y: i32 = TARGET_EMPTY_TITLE_Y + 28;
-const TARGET_PLAIN_ROW_HEIGHT: i32 = 34;
-const TARGET_NOTE_ROW_HEIGHT: i32 = 44;
+const TARGET_PLAIN_ROW_HEIGHT: i32 = 38;
+const TARGET_NOTE_ROW_HEIGHT: i32 = 52;
 const TARGET_ROW_HORIZONTAL_PADDING: i32 = 16;
 const TARGET_ROW_TEXT_GAP: i32 = 16;
-const TARGET_ROW_CENTER_LINE_HEIGHT: i32 = 20;
+const TARGET_ROW_CENTER_LINE_HEIGHT: i32 = 24;
 const TARGET_ROW_PRIMARY_TOP: i32 = 5;
-const TARGET_ROW_PRIMARY_BOTTOM: i32 = 23;
-const TARGET_ROW_SECONDARY_TOP: i32 = 24;
+const TARGET_ROW_PRIMARY_BOTTOM: i32 = 26;
+const TARGET_ROW_SECONDARY_TOP: i32 = 27;
 const TARGET_ROW_SECONDARY_BOTTOM_INSET: i32 = 4;
 const PROCESS_PICKER_ROW_Y: i32 = 456;
 const PROCESS_PICKER_ROW_HEIGHT: i32 = SEARCH_PICKER_HEIGHT;
@@ -1041,6 +1042,7 @@ impl AppWindow {
                 self.hwnd,
                 instance,
                 self.theme.font.handle(),
+                self.theme.list_font.handle(),
                 SearchPickerIds {
                     frame: ID_PROCESS_SEARCH_FRAME,
                     edit: ID_RUNNING,
@@ -1150,6 +1152,8 @@ impl AppWindow {
         if finalize_visuals && !self.theme.fonts_match_current_scale() {
             let font = AppTheme::scaled_font();
             let previous_font = self.theme.replace_font(font);
+            let previous_list_font =
+                std::mem::replace(&mut self.theme.list_font, AppTheme::scaled_list_font());
             let icon_font = AppTheme::scaled_icon_font();
             let previous_icon_font = self.theme.replace_icon_font(icon_font);
             let action_icon_font = AppTheme::scaled_action_icon_font();
@@ -1157,6 +1161,7 @@ impl AppWindow {
             let font = self.theme.font.handle();
             self.apply_font_set_to_controls(font, false);
             drop(previous_font);
+            drop(previous_list_font);
             drop(previous_icon_font);
             drop(previous_action_icon_font);
         }
@@ -1376,12 +1381,13 @@ impl AppWindow {
     }
 
     fn refresh_target_status_width(&mut self) {
-        self.target_status_width = self
-            .text_width(self.strings.target_ready)
-            .max(self.text_width(self.strings.target_muted))
-            .max(self.text_width(self.strings.target_excluded))
+        let width =
+            |text| unsafe { measure_text_width(self.hwnd, self.theme.list_font.handle(), text) };
+        self.target_status_width = width(self.strings.target_ready)
+            .max(width(self.strings.target_muted))
+            .max(width(self.strings.target_excluded))
             .saturating_add(8)
-            .clamp(58, 100);
+            .max(58);
     }
 
     fn refresh_process_details_ui(&self) {
@@ -1761,6 +1767,10 @@ impl AppWindow {
         let Some(process_picker) = self.process_picker.as_mut() else {
             return;
         };
+        process_picker.set_completion(completion_suffix(
+            &self.process_query,
+            indices.iter().map(|&index| choices[index].name.as_str()),
+        ));
         let edit = process_picker.edit();
         unsafe {
             window_text_into(edit, &mut self.display_text_buffer);
@@ -2024,11 +2034,20 @@ impl AppWindow {
                 unsafe {
                     process_picker.dismiss_to_edit();
                 }
+                self.update_action_buttons();
                 return true;
             }
             return false;
         }
         if key == VK_TAB.0 {
+            let plain_tab = [VK_SHIFT, VK_CONTROL, VK_MENU]
+                .into_iter()
+                .all(|modifier| unsafe { GetKeyState(i32::from(modifier.0)) } >= 0);
+            if plain_tab && msg.hwnd == process_picker.edit() && process_picker.accept_completion()
+            {
+                self.search_running_processes();
+                return true;
+            }
             if process_picker.popup_visible() {
                 unsafe {
                     process_picker.hide_popup();
@@ -2104,7 +2123,6 @@ impl AppWindow {
             ID_TOGGLE_PROCESS_DETAILS => self.toggle_process_details(),
             ID_PID_DETAILS_HELP => return Some(self.pid_details_help_action()),
             ID_RUNNING if notification == EN_CHANGE as u16 && !self.updating_process_picker => {
-                self.running_process_choice_selected = false;
                 self.search_running_processes();
             }
             ID_RUNNING if notification == EN_SETFOCUS as u16 && !self.updating_process_picker => {
@@ -2194,7 +2212,9 @@ impl AppWindow {
             window_text_into(process_picker.edit(), &mut self.display_text_buffer);
             process_picker.sync_cue_visibility();
         }
-        if !replace_text_if_changed(&mut self.process_query, &mut self.display_text_buffer) {
+        if !replace_text_if_changed(&mut self.process_query, &mut self.display_text_buffer)
+            && !self.running_process_choice_selected
+        {
             self.update_action_buttons();
             return;
         }
@@ -2291,6 +2311,7 @@ impl AppWindow {
             return;
         };
         let edit = process_picker.edit();
+        process_picker.set_completion("");
         self.updating_process_picker = true;
         unsafe {
             set_text(edit, &display_name);
@@ -2319,6 +2340,7 @@ impl AppWindow {
     fn clear_running_process_selection(&mut self) {
         self.running_process_choice_selected = false;
         if let Some(process_picker) = &self.process_picker {
+            process_picker.set_completion("");
             unsafe {
                 self.updating_process_picker = true;
                 process_picker.clear_selection();
@@ -2597,6 +2619,7 @@ impl AppWindow {
         let candidate = registration_candidate_from_picker_state(
             index,
             self.running_process_choice_selected,
+            process_picker.has_completion(),
             &self.process_query,
             &self.display_text_buffer,
             &self.process_choice_indices,
@@ -3073,7 +3096,7 @@ impl AppWindow {
         if note.is_empty() {
             draw_target_identity_line(
                 draw.hDC,
-                self.theme.font.handle(),
+                self.theme.list_font.handle(),
                 target,
                 RECT {
                     left: content_left,
@@ -3085,7 +3108,7 @@ impl AppWindow {
         } else {
             draw_text_line(
                 draw.hDC,
-                self.theme.font.handle(),
+                self.theme.list_font.handle(),
                 note,
                 RECT {
                     left: content_left,
@@ -3097,7 +3120,7 @@ impl AppWindow {
 
             draw_target_identity_line(
                 draw.hDC,
-                self.theme.font.handle(),
+                self.theme.list_font.handle(),
                 target,
                 RECT {
                     left: content_left,
@@ -3110,7 +3133,7 @@ impl AppWindow {
 
         draw_text_line(
             draw.hDC,
-            self.theme.font.handle(),
+            self.theme.list_font.handle(),
             status_text,
             status_rect,
             status_color,
@@ -3249,7 +3272,7 @@ impl AppWindow {
         self.apply_font_to_controls(font, redraw);
         if let Some(process_picker) = &mut self.process_picker {
             unsafe {
-                process_picker.set_font(font);
+                process_picker.set_fonts(font, self.theme.list_font.handle());
             }
         }
     }
@@ -3482,6 +3505,7 @@ fn issue_message_body(issue_text: &str, explanation: Option<&str>, detail: Optio
 fn registration_candidate_from_picker_state(
     combo_index: isize,
     running_process_choice_selected: bool,
+    has_completion: bool,
     process_query: &str,
     picker_text: &str,
     process_choice_indices: &[usize],
@@ -3491,6 +3515,15 @@ fn registration_candidate_from_picker_state(
             .get(combo_index as usize)
             .copied()
             .map(RegistrationCandidate::ProcessChoice);
+    }
+
+    if has_completion && picker_text == process_query {
+        return single_filtered_process_choice_index(
+            process_query,
+            picker_text,
+            process_choice_indices,
+        )
+        .map(RegistrationCandidate::ProcessChoice);
     }
 
     if let Some(name) = normalize_manual_process_name(picker_text)
@@ -3620,7 +3653,9 @@ mod target_list_tests {
         let indices = vec![0, 1];
 
         assert_eq!(
-            registration_candidate_from_picker_state(1, true, "game.exe", "game.exe", &indices),
+            registration_candidate_from_picker_state(
+                1, true, false, "game.exe", "game.exe", &indices
+            ),
             Some(RegistrationCandidate::ProcessChoice(1))
         );
     }
@@ -3630,7 +3665,7 @@ mod target_list_tests {
         let indices = vec![0];
 
         assert_eq!(
-            registration_candidate_from_picker_state(0, true, "", "", &indices),
+            registration_candidate_from_picker_state(0, true, false, "", "", &indices),
             Some(RegistrationCandidate::ProcessChoice(0))
         );
     }
@@ -3642,6 +3677,7 @@ mod target_list_tests {
         assert_eq!(
             registration_candidate_from_picker_state(
                 0,
+                false,
                 false,
                 "  Game.EXE  ",
                 "  Game.EXE  ",
@@ -3659,6 +3695,7 @@ mod target_list_tests {
             registration_candidate_from_picker_state(
                 -1,
                 false,
+                false,
                 r#""Game.EXE""#,
                 r#""Game.EXE""#,
                 &[]
@@ -3673,14 +3710,14 @@ mod target_list_tests {
     fn bin_name_registers_by_name_even_when_a_pid_is_suggested() {
         let input = "My Game.BIN";
         assert_eq!(
-            registration_candidate_from_picker_state(0, false, input, input, &[2]),
+            registration_candidate_from_picker_state(0, false, false, input, input, &[2]),
             Some(RegistrationCandidate::ExactProcessName(
                 "my game.bin".to_owned()
             ))
         );
         for invalid in [r"C:\Games\game.bin", "game.bin --play", "con.bin"] {
             assert_eq!(
-                registration_candidate_from_picker_state(-1, false, invalid, invalid, &[2]),
+                registration_candidate_from_picker_state(-1, false, false, invalid, invalid, &[2]),
                 None
             );
         }
@@ -3694,6 +3731,7 @@ mod target_list_tests {
             registration_candidate_from_picker_state(
                 -1,
                 false,
+                false,
                 "game.exe --fullscreen",
                 "game.exe --fullscreen",
                 &indices
@@ -3704,6 +3742,7 @@ mod target_list_tests {
             registration_candidate_from_picker_state(
                 -1,
                 false,
+                false,
                 r"C:\Games\game.exe",
                 r"C:\Games\game.exe",
                 &indices
@@ -3711,7 +3750,9 @@ mod target_list_tests {
             None
         );
         assert_eq!(
-            registration_candidate_from_picker_state(-1, false, "con.exe", "con.exe", &indices),
+            registration_candidate_from_picker_state(
+                -1, false, false, "con.exe", "con.exe", &indices
+            ),
             None
         );
     }
@@ -3721,7 +3762,7 @@ mod target_list_tests {
         let indices = vec![0, 1];
 
         assert_eq!(
-            registration_candidate_from_picker_state(0, false, "zen", "zen", &indices),
+            registration_candidate_from_picker_state(0, false, false, "zen", "zen", &indices),
             None
         );
     }
@@ -3731,9 +3772,21 @@ mod target_list_tests {
         let indices = vec![3];
 
         assert_eq!(
-            registration_candidate_from_picker_state(-1, false, "zen", "zen", &indices),
+            registration_candidate_from_picker_state(-1, false, false, "zen", "zen", &indices),
             Some(RegistrationCandidate::ProcessChoice(3))
         );
+    }
+
+    #[test]
+    fn registering_an_unfinished_extension_uses_only_an_unambiguous_result() {
+        let candidate = |indices: &[usize]| {
+            registration_candidate_from_picker_state(-1, false, true, "game.e", "game.e", indices)
+        };
+        assert_eq!(
+            candidate(&[7]),
+            Some(RegistrationCandidate::ProcessChoice(7))
+        );
+        assert_eq!(candidate(&[7, 8]), None);
     }
 
     #[test]

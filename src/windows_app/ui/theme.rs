@@ -298,6 +298,7 @@ impl ThemeSurface {
 pub(super) struct AppTheme {
     surface: ThemeSurface,
     pub(super) font: UiFont,
+    pub(super) list_font: UiFont,
     pub(super) icon_font: UiFont,
     pub(super) action_icon_font: UiFont,
 }
@@ -307,6 +308,7 @@ impl AppTheme {
         Self {
             surface: ThemeSurface::new(),
             font: Self::scaled_font(),
+            list_font: Self::scaled_list_font(),
             icon_font: Self::scaled_icon_font(),
             action_icon_font: Self::scaled_action_icon_font(),
         }
@@ -319,12 +321,17 @@ impl AppTheme {
     pub(super) fn fonts_match_current_scale(&self) -> bool {
         let font_point_size = ui_font_point_size();
         self.font.pixel_height() == font_pixel_height(font_point_size)
+            && self.list_font.pixel_height() == font_pixel_height(font_point_size + 2)
             && self.icon_font.pixel_height() == font_pixel_height(font_point_size + 1)
             && self.action_icon_font.pixel_height() == font_pixel_height(font_point_size + 3)
     }
 
     pub(super) fn scaled_font() -> UiFont {
         UiFont::new(ui_font_point_size())
+    }
+
+    pub(super) fn scaled_list_font() -> UiFont {
+        UiFont::new(ui_font_point_size() + 2)
     }
 
     pub(super) fn scaled_icon_font() -> UiFont {
