@@ -70,23 +70,23 @@ Une fois le ZIP extrait, déplacez le dossier `UnfocusMute-windows-x64` à l’e
 
 1. Lancez UnfocusMute. Au premier démarrage, choisissez la langue et les options de lancement, puis cliquez sur `Commencer`.
 2. Lancez le jeu ou l’application à ajouter et faites-lui produire un son pour qu’il apparaisse dans la liste.
-3. Revenez dans UnfocusMute, sélectionnez l’application, puis cliquez sur `Ajouter`. L’ajout par nom de `.exe` prend en charge toutes les sessions audio de l’application et reste valable après son redémarrage.
+3. Revenez dans UnfocusMute, sélectionnez l’application, puis cliquez sur `Ajouter`. L’ajout par nom de fichier exécutable prend en charge toutes les sessions audio de l’application et reste valable après son redémarrage.
 4. Passez à une autre fenêtre avec `Alt`+`Tab`, puis revenez. Le son de l’application ajoutée est coupé lorsqu’elle passe en arrière-plan, puis réactivé lorsqu’elle revient au premier plan.
 
 C’est tout. La surveillance commence dès l’ajout et, avec les réglages par défaut, UnfocusMute continue de fonctionner dans la zone de notification lorsque vous fermez sa fenêtre.
 
-> **L’application n’apparaît pas dans la liste ?** Cliquez sur `Tous les processus` ou saisissez directement le nom exact du `.exe`. Utilisez `Vue PID` si vous souhaitez ajouter uniquement un PID précis en cours d’exécution. Comme le PID change à chaque redémarrage de l’application, il est généralement préférable de l’ajouter par le nom du `.exe`.
+> **L’application n’apparaît pas dans la liste ?** Cliquez sur `Tous les processus` ou saisissez directement le nom exact du fichier exécutable. Utilisez `Vue PID` si vous souhaitez ajouter uniquement un PID précis en cours d’exécution. Comme le PID change à chaque redémarrage de l’application, il est généralement préférable de l’ajouter par le nom du fichier exécutable.
 
 ### Trouver le nom de l’exécutable
 
-Si vous ne connaissez pas le nom de l’application à ajouter, recherchez le nom exact de son `.exe` dans le Gestionnaire des tâches.
+Si vous ne connaissez pas le nom de l’application à ajouter, recherchez le nom exact de son fichier exécutable dans le Gestionnaire des tâches.
 
 1. Lancez d’abord l’application à ajouter.
 2. Si elle s’exécute en plein écran, passez de l’écran du jeu à une autre fenêtre avec `Alt`+`Tab` ou `Windows`+`Tab`.
 3. Appuyez sur `Ctrl`+`Shift`+`Esc` pour ouvrir le Gestionnaire des tâches.
 4. Dans la liste des processus affichée à l’ouverture, cliquez sur la colonne `Processeur` pour trier les processus du plus actif au moins actif.
 5. Repérez vers le haut de la liste l’application que vous venez de lancer, faites un clic droit dessus, puis sélectionnez `Propriétés`.
-6. Relevez le nom de l’exécutable se terminant par `.exe`, par exemple `game.exe`, puis ajoutez-le dans UnfocusMute.
+6. Relevez le nom de l’exécutable avec son extension, par exemple `game.exe` ou `game.bin`, puis ajoutez-le dans UnfocusMute.
 
 ### Actions courantes
 
@@ -112,7 +112,7 @@ Les notes sont enregistrées avec les autres réglages dans `%APPDATA%\UnfocusMu
 
 **Fonctionnement dans la zone de notification et réactivation du son :** UnfocusMute réactive automatiquement le son d’une application ajoutée lorsqu’elle revient au premier plan ou lorsque vous quittez UnfocusMute. Si l’application se ferme en premier, UnfocusMute veille également à réactiver le son. Toutefois, si UnfocusMute se ferme de manière inattendue, le son peut rester coupé dans Windows. Si une application n’émet aucun son à son prochain lancement, vérifiez son état dans le `Mélangeur de volume` de Windows.
 
-**Ajout par PID :** Windows peut attribuer des PID différents à la session audio et à la fenêtre au premier plan. Ainsi, même après un ajout par PID, UnfocusMute considère que l’application est revenue lorsqu’une fenêtre portant le même nom de `.exe` passe au premier plan et en réactive le son. Ce mode n’est donc pas adapté si vous souhaitez continuer à utiliser une fenêtre du même `.exe` tout en maintenant un PID précis en sourdine. Il peut en revanche être utile pour couper le son d’un seul PID parmi plusieurs appartenant au même `.exe`, tout en conservant le son des autres PID pendant que vous travaillez dans une autre application.
+**Ajout par PID :** Windows peut attribuer des PID différents à la session audio et à la fenêtre au premier plan. Ainsi, même après un ajout par PID, UnfocusMute considère que l’application est revenue lorsqu’une fenêtre portant le même nom d’exécutable passe au premier plan et en réactive le son. Ce mode n’est donc pas adapté si vous souhaitez continuer à utiliser une fenêtre du même exécutable tout en maintenant un PID précis en sourdine. Il peut en revanche être utile pour couper le son d’un seul PID parmi plusieurs appartenant au même exécutable, tout en conservant le son des autres PID pendant que vous travaillez dans une autre application.
 
 **Compatibilité anti-triche :** UnfocusMute n’injecte pas de code dans les jeux, ne lit pas leur mémoire, n’intercepte pas les entrées et ne modifie pas leurs fichiers. Il utilise uniquement les informations Windows sur les processus et la fenêtre au premier plan, ainsi que les commandes de mise en sourdine de CoreAudio. Il est conçu pour éviter les conflits avec la plupart des systèmes anti-triche, mais la compatibilité avec tous ces systèmes ne peut pas être garantie.
 

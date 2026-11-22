@@ -488,6 +488,42 @@ mod tests {
     }
 
     #[test]
+    fn foreground_matching_distinguishes_files_with_the_same_stem() {
+        let targets = [TargetProcess::new("game.bin").unwrap()];
+        let bin = session(10, "game.bin", false);
+        let exe = session(20, "game.exe", false);
+        let sessions = [bin.clone(), exe];
+
+        assert_eq!(
+            plan_mute_actions_with_foreground_name(
+                &targets,
+                Some(20),
+                Some("game.exe"),
+                &HashSet::new(),
+                &sessions
+            ),
+            [MuteAction {
+                key: bin.key.clone(),
+                mute: true
+            }]
+        );
+        let muted_bin = session(10, "game.bin", true);
+        assert_eq!(
+            plan_mute_actions_with_foreground_name(
+                &targets,
+                Some(30),
+                Some("game.bin"),
+                &HashSet::from([bin.key.clone()]),
+                &[muted_bin]
+            ),
+            [MuteAction {
+                key: bin.key,
+                mute: false
+            }]
+        );
+    }
+
+    #[test]
     fn mutes_target_sessions_that_are_not_foreground() {
         let targets = vec![TargetProcess::new("game.exe").unwrap()];
         let sessions = vec![session(10, "game.exe", false)];

@@ -1,5 +1,5 @@
 use crate::config::{
-    TargetProcess, is_normalized_process_name, is_supported_normalized_target_process_name,
+    TargetProcess, is_normalized_process_name, is_supported_target_process_name,
     target_index_by_identity,
 };
 use crate::engine::AudioSessionKey;
@@ -193,8 +193,7 @@ impl HandoffSnapshot {
         }
         if wire.target_mute_states.as_ref().is_some_and(|states| {
             states.iter().any(|state| {
-                !is_supported_normalized_target_process_name(&state.process_name)
-                    || state.pid == Some(0)
+                !is_supported_target_process_name(&state.process_name) || state.pid == Some(0)
             })
         }) {
             return None;

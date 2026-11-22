@@ -787,7 +787,7 @@ struct HeaderRowLayout {
 #[derive(Clone, Debug, Eq, PartialEq)]
 enum RegistrationCandidate {
     ProcessChoice(usize),
-    ExactExeName(String),
+    ExactProcessName(String),
 }
 
 fn shrink_width(width: &mut i32, minimum: i32, deficit: i32) -> i32 {
@@ -2165,7 +2165,7 @@ impl AppWindow {
                 }
                 (choice.name.clone(), choice.pid)
             }
-            RegistrationCandidate::ExactExeName(name) => {
+            RegistrationCandidate::ExactProcessName(name) => {
                 if !self.can_add_process(&name, None) {
                     return;
                 }
@@ -2623,7 +2623,7 @@ impl AppWindow {
                 .all_process_choices
                 .get(*index)
                 .is_some_and(|choice| self.can_add_process_choice(choice)),
-            RegistrationCandidate::ExactExeName(name) => self.can_add_process(name, None),
+            RegistrationCandidate::ExactProcessName(name) => self.can_add_process(name, None),
         }
     }
 
@@ -3496,9 +3496,9 @@ fn registration_candidate_from_picker_state(
     if let Some(name) = normalize_manual_process_name(picker_text)
         && is_supported_normalized_target_process_name(&name)
     {
-        return Some(RegistrationCandidate::ExactExeName(name));
+        return Some(RegistrationCandidate::ExactProcessName(name));
     }
-    if picker_text.to_ascii_lowercase().contains(".exe") {
+    if picker_text.contains('.') {
         return None;
     }
 
@@ -3647,7 +3647,9 @@ mod target_list_tests {
                 "  Game.EXE  ",
                 &indices
             ),
-            Some(RegistrationCandidate::ExactExeName("game.exe".to_owned()))
+            Some(RegistrationCandidate::ExactProcessName(
+                "game.exe".to_owned()
+            ))
         );
     }
 
@@ -3661,12 +3663,31 @@ mod target_list_tests {
                 r#""Game.EXE""#,
                 &[]
             ),
-            Some(RegistrationCandidate::ExactExeName("game.exe".to_owned()))
+            Some(RegistrationCandidate::ExactProcessName(
+                "game.exe".to_owned()
+            ))
         );
     }
 
     #[test]
-    fn invalid_exe_intent_never_falls_back_to_a_pid_result() {
+    fn bin_name_registers_by_name_even_when_a_pid_is_suggested() {
+        let input = "My Game.BIN";
+        assert_eq!(
+            registration_candidate_from_picker_state(0, false, input, input, &[2]),
+            Some(RegistrationCandidate::ExactProcessName(
+                "my game.bin".to_owned()
+            ))
+        );
+        for invalid in [r"C:\Games\game.bin", "game.bin --play", "con.bin"] {
+            assert_eq!(
+                registration_candidate_from_picker_state(-1, false, invalid, invalid, &[2]),
+                None
+            );
+        }
+    }
+
+    #[test]
+    fn invalid_file_name_never_falls_back_to_a_pid_result() {
         let indices = vec![0];
 
         assert_eq!(
@@ -3706,7 +3727,7 @@ mod target_list_tests {
     }
 
     #[test]
-    fn single_filtered_non_exe_result_stays_selectable() {
+    fn single_partial_search_result_stays_selectable() {
         let indices = vec![3];
 
         assert_eq!(

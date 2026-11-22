@@ -70,23 +70,23 @@ After extracting the ZIP, move the `UnfocusMute-windows-x64` folder wherever you
 
 1. Launch UnfocusMute. On first run, choose your language and startup options, then click `Start`.
 2. Start the game or app you want to register and play some audio so that it appears in the list.
-3. Return to UnfocusMute, select the app, and click `Register`. Registering by `.exe` name manages all audio sessions for that app and continues to work after the app restarts.
+3. Return to UnfocusMute, select the app, and click `Register`. Registering by executable file name manages all audio sessions for that app and continues to work after the app restarts.
 4. Use `Alt`+`Tab` to switch to another window and back. The registered app is muted while it is in the background and unmuted when it returns to the foreground.
 
 That's it. Monitoring starts as soon as you register the app, and by default UnfocusMute keeps running in the system tray when you close its window.
 
-> **Can't find the app?** Click `All processes` or enter its exact `.exe` name. To register only a particular PID that is currently running, use `PID view`. PIDs change whenever an app restarts, so registering by `.exe` name is the better choice in most cases.
+> **Can't find the app?** Click `All processes` or enter its exact executable file name. To register only a particular PID that is currently running, use `PID view`. PIDs change whenever an app restarts, so registering by executable file name is the better choice in most cases.
 
 ### Find an Executable Name
 
-If you do not know the name of the app you want to register, use Task Manager to find its exact `.exe` name.
+If you do not know the name of the app you want to register, use Task Manager to find its exact executable file name.
 
 1. Start the app you want to register.
 2. If it is running full-screen, use `Alt`+`Tab` or `Windows`+`Tab` to switch away from the game.
 3. Press `Ctrl`+`Shift`+`Esc` to open Task Manager.
 4. In the process list shown when Task Manager opens, click the `CPU` column to sort by highest usage.
 5. Find the app you just started near the top of the list, right-click it, and choose `Properties`.
-6. Note the executable name ending in `.exe`, such as `game.exe`, and register it in UnfocusMute.
+6. Note the executable name including its extension, such as `game.exe` or `game.bin`, and register it in UnfocusMute.
 
 ### Common Actions
 
@@ -112,7 +112,7 @@ Notes are stored with the rest of your settings in `%APPDATA%\UnfocusMute\config
 
 **Tray behavior and automatic unmuting:** UnfocusMute automatically unmutes a registered app when it returns to the foreground or when you quit UnfocusMute. If a registered app exits first, UnfocusMute also clears its mute state. However, if UnfocusMute exits unexpectedly, the app may remain muted in Windows. If an app has no sound the next time you launch it, check whether it is muted in the Windows `Volume mixer`.
 
-**PID registration:** Windows may report different PIDs for an audio session and its foreground window. Because of this, even a PID registration is treated as foreground when a window with the same `.exe` name comes to the front, and the app is unmuted. This makes PID registration unsuitable for keeping one PID muted while you continue using another window from the same `.exe`. It can still be useful when you are working in another app and want to mute one of several PIDs from the same `.exe` while leaving the others audible.
+**PID registration:** Windows may report different PIDs for an audio session and its foreground window. Because of this, even a PID registration is treated as foreground when a window with the same executable name comes to the front, and the app is unmuted. This makes PID registration unsuitable for keeping one PID muted while you continue using another window from the same executable. It can still be useful when you are working in another app and want to mute one of several PIDs from the same executable while leaving the others audible.
 
 **Anti-cheat compatibility:** UnfocusMute does not inject code into games, read game memory, hook input, or modify game files. It uses only Windows process and foreground-window information plus CoreAudio mute controls, so it is designed to avoid conflicts with most anti-cheat systems. Compatibility with every anti-cheat system cannot be guaranteed.
 

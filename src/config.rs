@@ -1306,9 +1306,13 @@ pub(crate) fn is_supported_target_process_name(input: &str) -> bool {
 }
 
 pub(crate) fn is_supported_normalized_target_process_name(input: &str) -> bool {
-    input
-        .strip_suffix(".exe")
-        .is_some_and(|name| !name.is_empty() && !windows_reserved_device_name(name))
+    let Some((stem, extension)) = input.rsplit_once('.') else {
+        return false;
+    };
+    !stem.is_empty()
+        && !extension.is_empty()
+        && !extension.contains(char::is_whitespace)
+        && !windows_reserved_device_name(stem)
 }
 
 fn windows_reserved_device_name(name: &str) -> bool {
@@ -1364,61 +1368,8 @@ pub(crate) fn normalize_process_name_utf16(input: &[u16]) -> Option<String> {
 
 pub(crate) fn normalize_supported_process_name_utf16(input: &[u16]) -> Option<String> {
     let candidate = utf16_process_name_candidate(input)?;
-    if !is_supported_utf16_target_process_name(candidate.name) {
-        return None;
-    }
-    Some(normalized_utf16_process_name(candidate))
-}
-
-fn is_supported_utf16_target_process_name(input: &[u16]) -> bool {
-    strip_ascii_exe_suffix_utf16(input)
-        .is_some_and(|name| !name.is_empty() && !windows_reserved_device_name_utf16(name))
-}
-
-fn strip_ascii_exe_suffix_utf16(input: &[u16]) -> Option<&[u16]> {
-    let stem_len = input.len().checked_sub(4)?;
-    let (stem, suffix) = input.split_at(stem_len);
-    (suffix[0] == u16::from(b'.')
-        && ascii_u16_eq_ignore_case(suffix[1], b'e')
-        && ascii_u16_eq_ignore_case(suffix[2], b'x')
-        && ascii_u16_eq_ignore_case(suffix[3], b'e'))
-    .then_some(stem)
-}
-
-fn windows_reserved_device_name_utf16(name: &[u16]) -> bool {
-    let device_name = name
-        .split(|ch| *ch == u16::from(b'.'))
-        .next()
-        .unwrap_or(name);
-
-    match device_name.len() {
-        3 => {
-            ascii_utf16_eq_ignore_case(device_name, b"con")
-                || ascii_utf16_eq_ignore_case(device_name, b"prn")
-                || ascii_utf16_eq_ignore_case(device_name, b"aux")
-                || ascii_utf16_eq_ignore_case(device_name, b"nul")
-        }
-        4 => {
-            (ascii_utf16_eq_ignore_case(&device_name[..3], b"com")
-                || ascii_utf16_eq_ignore_case(&device_name[..3], b"lpt"))
-                && matches!(device_name[3], 0x31..=0x39)
-        }
-        6 => ascii_utf16_eq_ignore_case(device_name, b"conin$"),
-        7 => ascii_utf16_eq_ignore_case(device_name, b"conout$"),
-        _ => false,
-    }
-}
-
-fn ascii_utf16_eq_ignore_case(input: &[u16], ascii: &[u8]) -> bool {
-    input.len() == ascii.len()
-        && input
-            .iter()
-            .zip(ascii)
-            .all(|(ch, byte)| ascii_u16_eq_ignore_case(*ch, *byte))
-}
-
-fn ascii_u16_eq_ignore_case(ch: u16, ascii: u8) -> bool {
-    ch <= 0x7f && (ch as u8).eq_ignore_ascii_case(&ascii)
+    let name = normalized_utf16_process_name(candidate);
+    is_supported_normalized_target_process_name(&name).then_some(name)
 }
 
 #[derive(Clone, Copy)]
@@ -1839,7 +1790,7 @@ mod tests {
     }
 
     #[test]
-    fn manual_process_names_accept_only_direct_supported_exe_names() {
+    fn manual_process_names_accept_only_direct_file_names() {
         let plain = normalize_manual_process_name("  Game.EXE  ").unwrap();
         let quoted = normalize_manual_process_name(r#""Game.EXE""#).unwrap();
         let command_line = normalize_manual_process_name("game.exe --fullscreen").unwrap();
@@ -1946,12 +1897,46 @@ mod tests {
     }
 
     #[test]
-    fn supported_target_names_must_be_normalized_exe_files() {
+    fn supported_target_names_must_be_normalized_file_names() {
         assert!(is_supported_target_process_name("game.exe"));
         assert!(!is_supported_target_process_name("Game.EXE"));
         assert!(!is_supported_target_process_name(".exe"));
         assert!(!is_supported_target_process_name("system"));
         assert!(!is_supported_target_process_name("game.exe."));
+    }
+
+    #[test]
+    fn non_exe_names_match_windows_lookup_and_survive_config_reload() {
+        let mut config = AppConfig::default();
+        for name in ["My Game.BIN", "My Game.ExE", "Client.v2.X64"] {
+            let expected = name.to_lowercase();
+            let path = format!(r"C:\Games\{name}");
+            assert_eq!(
+                normalize_supported_process_name_utf16(&wide_null_terminated(&path)),
+                Some(expected.clone())
+            );
+            assert!(config.add_target(name));
+            assert!(config.add_pid_target(name, 42));
+        }
+        let dir = TestDir::new();
+        let path = dir.path().join("config.json");
+        config.save_to_path(&path, false).unwrap();
+        let ExistingConfigLoad::Loaded(loaded) = load_existing_from_path(&path).unwrap() else {
+            panic!("expected the saved targets to load");
+        };
+        assert_eq!(loaded.targets, config.targets);
+        for invalid in [
+            ".bin",
+            "con.bin",
+            "nul.v2.bin",
+            "game.bin.",
+            "game.bin --play",
+        ] {
+            assert!(!is_supported_target_process_name(invalid));
+            assert!(
+                normalize_supported_process_name_utf16(&wide_null_terminated(invalid)).is_none()
+            );
+        }
     }
 
     #[test]
@@ -2148,7 +2133,7 @@ mod tests {
     }
 
     #[test]
-    fn non_exe_targets_are_rejected() {
+    fn extensionless_targets_are_rejected() {
         let mut config = AppConfig::default();
 
         assert!(!config.add_target("system"));
@@ -2341,7 +2326,7 @@ mod tests {
     }
 
     #[test]
-    fn loaded_non_exe_targets_are_removed() {
+    fn loaded_extensionless_targets_are_removed() {
         let mut config = AppConfig {
             targets: vec![TargetProcess {
                 name: "system".to_owned(),

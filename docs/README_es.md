@@ -70,23 +70,23 @@ Después de extraer el ZIP, mueve la carpeta `UnfocusMute-windows-x64` a la ubic
 
 1. Abre UnfocusMute. La primera vez, elige el idioma y las opciones de inicio, y haz clic en `Comenzar`.
 2. Abre el juego o la aplicación que quieras registrar y reproduce algún sonido para que aparezca en la lista.
-3. Vuelve a UnfocusMute, selecciona la aplicación y haz clic en `Registrar`. Si la registras por el nombre del `.exe`, se administrarán todas sus sesiones de audio y seguirá funcionando aunque reinicies la aplicación.
+3. Vuelve a UnfocusMute, selecciona la aplicación y haz clic en `Registrar`. Si la registras por el nombre del ejecutable, se administrarán todas sus sesiones de audio y seguirá funcionando aunque reinicies la aplicación.
 4. Cambia a otra ventana con `Alt`+`Tab` y vuelve. La aplicación registrada se silenciará mientras esté en segundo plano y su sonido se reactivará cuando vuelva al primer plano.
 
 Eso es todo. La supervisión comienza en cuanto registras la aplicación y, con la configuración predeterminada, UnfocusMute sigue funcionando en la bandeja aunque cierres la ventana.
 
-> **¿La aplicación no aparece en la lista?** Haz clic en `Todos los procesos` o escribe directamente el nombre exacto del `.exe`. Usa `Vista PID` si solo quieres registrar un PID concreto que esté en ejecución. Como el PID cambia al reiniciar la aplicación, en la mayoría de los casos conviene registrarla por el nombre del `.exe`.
+> **¿La aplicación no aparece en la lista?** Haz clic en `Todos los procesos` o escribe directamente el nombre exacto del ejecutable. Usa `Vista PID` si solo quieres registrar un PID concreto que esté en ejecución. Como el PID cambia al reiniciar la aplicación, en la mayoría de los casos conviene registrarla por el nombre del ejecutable.
 
 ### Encontrar el nombre del ejecutable
 
-Si no sabes el nombre de la aplicación que quieres registrar, consulta el nombre exacto de su `.exe` en el Administrador de tareas.
+Si no sabes el nombre de la aplicación que quieres registrar, consulta el nombre exacto de su ejecutable en el Administrador de tareas.
 
 1. Inicia primero la aplicación que quieres registrar.
 2. Si se está ejecutando a pantalla completa, cambia de la pantalla del juego a otra ventana con `Alt`+`Tab` o `Windows`+`Tab`.
 3. Pulsa `Ctrl`+`Shift`+`Esc` para abrir el Administrador de tareas.
 4. En la lista de procesos que aparece al abrirlo, haz clic en la columna `CPU` para ordenar de mayor a menor uso.
 5. Busca cerca de la parte superior la aplicación que acabas de abrir, haz clic con el botón derecho y selecciona `Propiedades`.
-6. Comprueba el nombre del ejecutable terminado en `.exe`, como `game.exe`, y regístralo en UnfocusMute.
+6. Comprueba el nombre del ejecutable con su extensión, como `game.exe` o `game.bin`, y regístralo en UnfocusMute.
 
 ### Acciones habituales
 
@@ -112,7 +112,7 @@ Las notas se guardan con el resto de la configuración en `%APPDATA%\UnfocusMute
 
 **Ejecución en la bandeja y reactivación del sonido:** UnfocusMute reactiva automáticamente el sonido de una aplicación registrada cuando esta vuelve al primer plano o cuando sales de UnfocusMute. Si la aplicación se cierra primero, UnfocusMute también se asegura de que no quede silenciada. Sin embargo, si UnfocusMute se cierra de forma inesperada, la aplicación puede permanecer silenciada en Windows. Si la próxima vez que la abras no se oye, comprueba su estado en el `Mezclador de volumen` de Windows.
 
-**Registro por PID:** Windows puede asignar PID distintos a la sesión de audio y a la ventana en primer plano. Por eso, aunque registres una aplicación por PID, UnfocusMute considera que ha vuelto cuando una ventana con el mismo nombre de `.exe` pasa al primer plano y reactiva su sonido. Esto no resulta adecuado si quieres seguir usando una ventana del mismo `.exe` mientras mantienes silenciado un PID concreto. En cambio, puede ser útil para silenciar solo uno de varios PID del mismo `.exe` mientras trabajas en otra aplicación y mantener el sonido de los demás.
+**Registro por PID:** Windows puede asignar PID distintos a la sesión de audio y a la ventana en primer plano. Por eso, aunque registres una aplicación por PID, UnfocusMute considera que ha vuelto cuando una ventana con el mismo nombre de ejecutable pasa al primer plano y reactiva su sonido. Esto no resulta adecuado si quieres seguir usando una ventana del mismo ejecutable mientras mantienes silenciado un PID concreto. En cambio, puede ser útil para silenciar solo uno de varios PID del mismo ejecutable mientras trabajas en otra aplicación y mantener el sonido de los demás.
 
 **Compatibilidad con sistemas anti-cheat:** UnfocusMute no inyecta código en los juegos, no lee su memoria, no intercepta la entrada ni modifica sus archivos. Solo usa la información de procesos y ventanas en primer plano de Windows y los controles de silencio de CoreAudio. Está diseñado para evitar conflictos con la mayoría de los sistemas anti-cheat, aunque no se puede garantizar la compatibilidad con todos.
 

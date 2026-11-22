@@ -456,10 +456,10 @@ mod tests {
     }
 
     #[test]
-    fn supported_process_names_require_exe_suffix() {
+    fn snapshot_names_accept_process_files_and_skip_system_entries() {
         assert_eq!(
-            normalize_supported_process_name_utf16(&wide_null_terminated("Game.EXE")),
-            Some("game.exe".to_owned())
+            normalize_supported_process_name_utf16(&wide_null_terminated("Game.BIN")),
+            Some("game.bin".to_owned())
         );
         assert_eq!(
             normalize_supported_process_name_utf16(&wide_null_terminated("System")),
